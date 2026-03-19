@@ -242,3 +242,122 @@ async def test_run_eval_tool_params_override_yaml(tmp_path: Path) -> None:
     assert run_config.data_source == "data/new.jsonl"
     # data_split is always hardcoded to "dev" regardless of YAML
     assert run_config.data_split == "dev"
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Recoverable error path tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_eval_missing_config_file(tmp_path: Path) -> None:
+    """Nonexistent config path returns {'error': 'not_found'}."""
+    from odysseus.mcp import run_eval
+
+    nonexistent = str(tmp_path / "does_not_exist.yaml")
+
+    result = await run_eval(
+        prompt_version="v1",
+        data_source="data/test.jsonl",
+        backend="test-backend",
+        config_path=nonexistent,
+    )
+
+    parsed = json.loads(result)
+    assert parsed["error"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_run_eval_invalid_config_yaml(tmp_path: Path) -> None:
+    """YAML with empty metrics list fails validation, returns {'error': 'validation_error'}."""
+    from odysseus.mcp import run_eval
+
+    config_path = tmp_path / "run_config.yaml"
+    invalid_config = {
+        "metrics": [],  # requires at least one metric
+        "concurrency": {"max_concurrent_requests": 5},
+        "retry": {"max_attempts": 2, "backoff_factor": 2.0, "per_call_timeout_seconds": 30.0},
+        "output": {
+            "results_path": "outputs/results.jsonl",
+            "report_path": "outputs/report.json",
+        },
+    }
+    config_path.write_text(yaml.dump(invalid_config))
+
+    result = await run_eval(
+        prompt_version="v1",
+        data_source="data/test.jsonl",
+        backend="test-backend",
+        config_path=str(config_path),
+    )
+
+    parsed = json.loads(result)
+    assert parsed["error"] == "validation_error"
+
+
+@pytest.mark.asyncio
+async def test_run_eval_unknown_backend(config_dir: Path) -> None:
+    """Unknown backend label causes get_profile to raise KeyError, returns {'error': 'not_found'}."""
+    from odysseus.mcp import run_eval
+
+    config_path = str(config_dir / "run_config.yaml")
+
+    with (
+        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
+        patch("odysseus.mcp.FilePromptManager"),
+        patch("odysseus.mcp.JsonlDatasetManager"),
+        patch("odysseus.mcp.create_default_engine"),
+        patch("odysseus.mcp.JsonResultsCollector"),
+        patch("odysseus.mcp.controller"),
+    ):
+        mock_registry = MagicMock()
+        mock_registry_cls.from_directory.return_value = mock_registry
+        mock_registry.get_profile.side_effect = KeyError("unknown-backend")
+
+        result = await run_eval(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="unknown-backend",
+            config_path=config_path,
+        )
+
+    parsed = json.loads(result)
+    assert parsed["error"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_run_eval_missing_prompt(config_dir: Path) -> None:
+    """FileNotFoundError from controller.run returns {'error': 'not_found'} with version in detail."""
+    from odysseus.mcp import run_eval
+
+    config_path = str(config_dir / "run_config.yaml")
+
+    with (
+        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
+        patch("odysseus.mcp.FilePromptManager"),
+        patch("odysseus.mcp.JsonlDatasetManager"),
+        patch("odysseus.mcp.create_default_engine"),
+        patch("odysseus.mcp.JsonResultsCollector"),
+        patch("odysseus.mcp.controller") as mock_controller,
+    ):
+        mock_registry = MagicMock()
+        mock_registry_cls.from_directory.return_value = mock_registry
+        mock_profile = MagicMock()
+        mock_profile.requests_per_minute = 100
+        mock_profile.tokens_per_minute = 50000
+        mock_registry.get_profile.return_value = mock_profile
+
+        mock_controller.run = AsyncMock(
+            side_effect=FileNotFoundError("prompt v99 not found")
+        )
+
+        result = await run_eval(
+            prompt_version="v99",
+            data_source="data/test.jsonl",
+            backend="test-backend",
+            config_path=config_path,
+        )
+
+    parsed = json.loads(result)
+    assert parsed["error"] == "not_found"
+    assert "v99" in parsed["detail"]
