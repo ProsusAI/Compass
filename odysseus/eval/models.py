@@ -9,6 +9,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from odysseus.eval.diff import MetricDiff, OverheadDiff
+
 
 class MetricConfig(BaseModel):
     """Configuration for a single metric.
@@ -215,3 +217,18 @@ class RunReport(BaseModel):
     metrics: dict[str, float]
     results: list[EvalResult]
     summary: RunSummary
+
+
+class ErrorBreakdown(BaseModel):
+    """Summary of a single failed evaluation example."""
+
+    example_id: str
+    error: str
+    retries: int
+
+
+class RunDiff(BaseModel):
+    """Run-over-run comparison data."""
+
+    metric_diffs: list[MetricDiff]
+    overhead_diff: OverheadDiff | None
