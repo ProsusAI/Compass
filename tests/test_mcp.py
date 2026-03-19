@@ -32,3 +32,21 @@ def test_build_run_config_holdout_split():
         data_split="holdout",
     )
     assert config.data_split == "holdout"
+
+
+from unittest.mock import patch
+
+
+async def test_run_eval_hardcodes_dev_split():
+    """run_eval must always construct RunConfig with data_split='dev'."""
+    with patch("odysseus.mcp._build_run_config") as mock_build:
+        mock_build.return_value = _build_run_config("v1", "data/test.jsonl", "dev")
+        # Import the tool function and call it directly
+        from odysseus.mcp import run_eval
+
+        await run_eval(prompt_version="v1", data_source="data/test.jsonl")
+        mock_build.assert_called_once_with(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            data_split="dev",
+        )
