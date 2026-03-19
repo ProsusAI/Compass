@@ -1,8 +1,101 @@
 """Smoke tests for the MCP server."""
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
-from odysseus.mcp import _build_run_config, mcp
+import pytest
+from pydantic import ValidationError
+
+from odysseus.eval.models import MetricConfig, RunConfig
+from odysseus.mcp import _build_run_config, _load_config, _DEFAULT_METRICS, mcp
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+class TestLoadConfig:
+    """Unit tests for _load_config overlay mechanism."""
+
+    def test_loads_yaml_and_overlays_tool_params(self):
+        config = _load_config(
+            prompt_version="v3",
+            data_source="data/test.jsonl",
+            backend="claude-sonnet",
+            data_split="dev",
+            config_path=str(FIXTURES / "minimal_config.yaml"),
+        )
+        assert config.backend == "claude-sonnet"
+        assert config.prompt_version == "v3"
+        assert config.data_source == "data/test.jsonl"
+        assert config.data_split == "dev"
+        assert len(config.metrics) == 2
+        assert config.metrics[0].name == "accuracy"
+        assert config.metrics[1].name == "f1"
+
+    def test_tool_params_override_yaml_keys(self):
+        """Tool params win over YAML values for overlapping keys."""
+        config = _load_config(
+            prompt_version="v5",
+            data_source="data/override.jsonl",
+            backend="gpt-4o",
+            data_split="holdout",
+            config_path=str(FIXTURES / "minimal_config.yaml"),
+        )
+        assert config.backend == "gpt-4o"
+        assert config.data_split == "holdout"
+
+    def test_missing_optional_sections_use_defaults(self):
+        """concurrency, retry, output fall back to RunConfig defaults."""
+        config = _load_config(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="default",
+            data_split="dev",
+            config_path=str(FIXTURES / "minimal_config.yaml"),
+        )
+        assert config.concurrency.max_concurrent_requests == 20
+        assert config.retry.max_attempts == 3
+        assert config.output.results_path == "outputs/results.jsonl"
+        assert config.output.report_path == "outputs/report.json"
+
+    def test_missing_metrics_uses_default_metrics(self, tmp_path):
+        """When YAML omits metrics, all 4 built-in defaults are used."""
+        empty_yaml = tmp_path / "empty.yaml"
+        empty_yaml.write_text("{}")
+
+        config = _load_config(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="default",
+            data_split="dev",
+            config_path=str(empty_yaml),
+        )
+        assert len(config.metrics) == 4
+        names = [m.name for m in config.metrics]
+        assert names == ["accuracy", "confusion", "f1", "cost_quality_reduction"]
+
+    def test_missing_config_file_raises_file_not_found(self):
+        with pytest.raises(FileNotFoundError):
+            _load_config(
+                prompt_version="v1",
+                data_source="data/test.jsonl",
+                backend="default",
+                data_split="dev",
+                config_path="nonexistent/path.yaml",
+            )
+
+    def test_invalid_yaml_values_raise_validation_error(self, tmp_path):
+        bad_yaml = tmp_path / "bad.yaml"
+        bad_yaml.write_text("concurrency:\n  max_concurrent_requests: -5\nmetrics:\n  - name: accuracy")
+
+        with pytest.raises(ValidationError):
+            _load_config(
+                prompt_version="v1",
+                data_source="data/test.jsonl",
+                backend="default",
+                data_split="dev",
+                config_path=str(bad_yaml),
+            )
 
 
 async def test_server_has_tools():
