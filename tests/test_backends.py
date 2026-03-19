@@ -9,6 +9,7 @@ import yaml
 from pydantic import ValidationError
 
 from odysseus.eval.backends.profile import BackendProfile
+from odysseus.eval.backends.registry import BackendRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -163,3 +164,59 @@ class TestBackendProfileFromYaml:
         path.write_text("- item1\n- item2\n")
         with pytest.raises(ValueError, match="Expected a YAML mapping"):
             BackendProfile.from_yaml(path)
+
+
+# ---------------------------------------------------------------------------
+# BackendRegistry
+# ---------------------------------------------------------------------------
+
+PROFILE_A = {**MINIMAL_PROFILE, "model": "model-a"}
+PROFILE_B = {**MINIMAL_PROFILE, "model": "model-b"}
+
+
+class TestBackendRegistry:
+    def test_registry_from_directory_loads_profiles(self, tmp_path: Path) -> None:
+        _write_profile(tmp_path, "a.yaml", PROFILE_A)
+        _write_profile(tmp_path, "b.yaml", PROFILE_B)
+        reg = BackendRegistry.from_directory(tmp_path)
+        assert len(reg.list_profiles()) == 2
+
+    def test_registry_from_directory_label_is_stem(self, tmp_path: Path) -> None:
+        _write_profile(tmp_path, "my-backend.yaml", MINIMAL_PROFILE)
+        reg = BackendRegistry.from_directory(tmp_path)
+        assert "my-backend" in reg.list_profiles()
+
+    def test_registry_yaml_precedence_over_yml(self, tmp_path: Path) -> None:
+        _write_profile(tmp_path, "dup.yaml", PROFILE_A)
+        _write_profile(tmp_path, "dup.yml", PROFILE_B)
+        reg = BackendRegistry.from_directory(tmp_path)
+        profile = reg.get_profile("dup")
+        assert profile.model == "model-a"
+
+    def test_registry_loads_yml_if_no_yaml(self, tmp_path: Path) -> None:
+        _write_profile(tmp_path, "only.yml", PROFILE_B)
+        reg = BackendRegistry.from_directory(tmp_path)
+        profile = reg.get_profile("only")
+        assert profile.model == "model-b"
+
+    def test_registry_get_profile_unknown_raises(self, tmp_path: Path) -> None:
+        reg = BackendRegistry.from_directory(tmp_path)
+        with pytest.raises(KeyError, match="Unknown backend profile"):
+            reg.get_profile("nonexistent")
+
+    def test_registry_get_profile_returns_profile(self, tmp_path: Path) -> None:
+        _write_profile(tmp_path, "x.yaml", MINIMAL_PROFILE)
+        reg = BackendRegistry.from_directory(tmp_path)
+        p = reg.get_profile("x")
+        assert isinstance(p, BackendProfile)
+        assert p.model == "gpt-4o"
+
+    def test_registry_empty_directory(self, tmp_path: Path) -> None:
+        reg = BackendRegistry.from_directory(tmp_path)
+        assert reg.list_profiles() == []
+
+    def test_registry_inject_profiles_directly(self) -> None:
+        profile = BackendProfile(**MINIMAL_PROFILE)
+        reg = BackendRegistry(profiles={"custom": profile})
+        assert reg.list_profiles() == ["custom"]
+        assert reg.get_profile("custom") is profile
