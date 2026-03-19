@@ -311,6 +311,7 @@ async def test_backoff_sleeps_outside_semaphore():
             return {"answer": "ok"}, TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5)
 
     import unittest.mock
+
     from odysseus.eval.controller import _eval_with_retry
     from odysseus.eval.rate_limiter import TokenBucketRateLimiter
 
