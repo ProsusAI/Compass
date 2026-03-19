@@ -7,6 +7,8 @@ import logging
 import os
 from typing import Literal
 
+from pydantic import ValidationError
+
 from odysseus.eval.models import Example
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ class JsonlDatasetManager:
                         input=record["input"],
                         expected=record["expected"],
                     )
-                except Exception as e:
+                except (KeyError, ValidationError) as e:
                     raise ValueError(f"Line {line_num}: failed to construct Example — {e}") from e
 
                 examples.append(example)
