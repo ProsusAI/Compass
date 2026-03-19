@@ -125,7 +125,7 @@ def _make_config(**overrides: Any) -> RunConfig:
         "data_source": "data/test.jsonl",
         "data_split": "dev",
         "metrics": [MetricConfig(name="accuracy")],
-        "output": OutputConfig(results_path="/dev/null", report_path="/dev/null"),
+        "output": OutputConfig(results_path="outputs/test-results.jsonl", report_path="outputs/test-report.json"),
     }
     defaults.update(overrides)
     return RunConfig(**defaults)
@@ -170,7 +170,7 @@ async def test_happy_path():
 async def test_retry_then_succeed():
     """Backend fails twice then succeeds — verify retry count."""
     backend = MockBackend(fail_count=2)
-    config = _make_config(retry=RetryConfig(max_attempts=3, backoff_factor=0.01))
+    config = _make_config(retry=RetryConfig(max_attempts=3, backoff_factor=1.0))
     deps, _ = _make_deps(backend=backend, examples=_make_examples(1))
     report = await run(config, deps)
 
@@ -183,7 +183,7 @@ async def test_retry_then_succeed():
 async def test_exhausted_retries():
     """Backend always fails — verify error in result."""
     backend = AlwaysFailBackend()
-    config = _make_config(retry=RetryConfig(max_attempts=2, backoff_factor=0.01))
+    config = _make_config(retry=RetryConfig(max_attempts=2, backoff_factor=1.0))
     deps, _ = _make_deps(backend=backend, examples=_make_examples(2))
     report = await run(config, deps)
 
@@ -244,7 +244,7 @@ async def test_timeout():
     """Backend that hangs should be timed out."""
     backend = HangingBackend()
     config = _make_config(
-        retry=RetryConfig(max_attempts=1, backoff_factor=0.01, per_call_timeout_seconds=0.1),
+        retry=RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1),
     )
     deps, _ = _make_deps(backend=backend, examples=_make_examples(1))
     report = await run(config, deps)
