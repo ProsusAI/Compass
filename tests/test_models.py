@@ -31,8 +31,6 @@ def test_metric_config_with_params():
 def test_concurrency_config_defaults():
     cc = ConcurrencyConfig()
     assert cc.max_concurrent_requests == 20
-    assert cc.requests_per_minute == 500
-    assert cc.tokens_per_minute == 100_000
 
 
 def test_retry_config_defaults():
@@ -117,21 +115,12 @@ def test_concurrency_max_concurrent_zero_rejected():
         ConcurrencyConfig(max_concurrent_requests=0)
 
 
-def test_concurrency_rpm_negative_rejected():
+def test_concurrency_old_rate_limit_fields_rejected():
+    """requests_per_minute and tokens_per_minute are no longer accepted."""
     with pytest.raises(ValidationError):
-        ConcurrencyConfig(requests_per_minute=-1)
-
-
-def test_concurrency_tpm_zero_rejected():
+        ConcurrencyConfig(requests_per_minute=500)
     with pytest.raises(ValidationError):
-        ConcurrencyConfig(tokens_per_minute=0)
-
-
-def test_concurrency_minimum_valid_accepted():
-    cc = ConcurrencyConfig(max_concurrent_requests=1, requests_per_minute=1, tokens_per_minute=1)
-    assert cc.max_concurrent_requests == 1
-    assert cc.requests_per_minute == 1
-    assert cc.tokens_per_minute == 1
+        ConcurrencyConfig(tokens_per_minute=100000)
 
 
 def test_retry_max_attempts_zero_rejected():

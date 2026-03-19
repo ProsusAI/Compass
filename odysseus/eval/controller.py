@@ -52,8 +52,8 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
 
     # 3. Evaluate
     rate_limiter = TokenBucketRateLimiter(
-        requests_per_minute=config.concurrency.requests_per_minute,
-        tokens_per_minute=config.concurrency.tokens_per_minute,
+        requests_per_minute=deps.requests_per_minute,
+        tokens_per_minute=deps.tokens_per_minute,
     )
     semaphore = asyncio.Semaphore(config.concurrency.max_concurrent_requests)
 

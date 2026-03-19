@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class MetricConfig(BaseModel):
@@ -30,19 +30,17 @@ class MetricConfig(BaseModel):
 
 
 class ConcurrencyConfig(BaseModel):
-    """Concurrency and rate limiting settings.
+    """Concurrency settings.
 
     Fields:
         max_concurrent_requests: Max parallel requests (>= 1). Default: 20.
-        requests_per_minute: RPM rate limit (>= 1). Default: 500.
-        tokens_per_minute: TPM rate limit (>= 1). Default: 100_000.
     """
 
-    max_concurrent_requests: int = 20
-    requests_per_minute: int = 500
-    tokens_per_minute: int = 100_000
+    model_config = ConfigDict(extra="forbid")
 
-    @field_validator("max_concurrent_requests", "requests_per_minute", "tokens_per_minute")
+    max_concurrent_requests: int = 20
+
+    @field_validator("max_concurrent_requests")
     @classmethod
     def must_be_positive(cls, v: int) -> int:
         if v < 1:
