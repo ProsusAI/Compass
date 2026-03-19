@@ -14,6 +14,7 @@ from odysseus.eval.models import (  # noqa: TC001
     RunReport,
     TokenUsage,
 )
+from odysseus.eval.pricing import ModelPricing  # noqa: TC001
 
 
 @runtime_checkable
@@ -22,6 +23,9 @@ class Backend(Protocol):
 
     @property
     def model_name(self) -> str: ...
+
+    @property
+    def pricing(self) -> ModelPricing | None: ...
 
     async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]: ...
 

@@ -14,7 +14,7 @@ from odysseus.eval.models import (
     RunSummary,
     TokenUsage,
 )
-from odysseus.eval.pricing import MODEL_PRICING, ModelPricing, compute_cost
+from odysseus.eval.pricing import ModelPricing, compute_cost
 from odysseus.eval.protocols import (
     Backend,
     DatasetManager,
@@ -34,7 +34,6 @@ __all__ = [
     "JsonResultsCollector",
     "MetricConfig",
     "MetricsEngine",
-    "MODEL_PRICING",
     "ModelPricing",
     "OutputConfig",
     "PromptManager",

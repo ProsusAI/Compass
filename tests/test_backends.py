@@ -14,6 +14,7 @@ from odysseus.eval.backends.litellm_backend import LiteLLMBackend
 from odysseus.eval.backends.profile import BackendProfile
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import EvalResult, Example, MetricConfig, RunReport, TokenUsage
+from odysseus.eval.pricing import ModelPricing
 from odysseus.eval.protocols import RunDependencies
 
 # ---------------------------------------------------------------------------
@@ -44,7 +45,7 @@ class TestBackendProfileConstruction:
         assert p.model == "gpt-4o"
         assert p.requests_per_minute == 100
         assert p.tokens_per_minute == 50_000
-        assert p.pricing_model is None
+        assert p.pricing is None
         assert p.api_key_env is None
         assert p.api_base is None
         assert p.max_tokens is None
@@ -55,7 +56,11 @@ class TestBackendProfileConstruction:
     def test_profile_valid_full(self) -> None:
         p = BackendProfile(
             model="claude-3-opus",
-            pricing_model="claude-3-opus-20240229",
+            pricing=ModelPricing(
+                input_cost_per_million_tokens=15.0,
+                cached_cost_per_million_tokens=1.5,
+                output_cost_per_million_tokens=75.0,
+            ),
             api_key_env="ANTHROPIC_API_KEY",
             api_base="https://api.anthropic.com",
             requests_per_minute=60,
@@ -66,7 +71,8 @@ class TestBackendProfileConstruction:
             provider_params={"anthropic_version": "2024-01-01"},
         )
         assert p.model == "claude-3-opus"
-        assert p.pricing_model == "claude-3-opus-20240229"
+        assert p.pricing is not None
+        assert p.pricing.input_cost_per_million_tokens == 15.0
         assert p.api_key_env == "ANTHROPIC_API_KEY"
         assert p.api_base == "https://api.anthropic.com"
         assert p.max_tokens == 4096
@@ -108,18 +114,28 @@ class TestBackendProfileConstruction:
 
 
 # ---------------------------------------------------------------------------
-# BackendProfile — effective_pricing_model
+# BackendProfile — pricing field
 # ---------------------------------------------------------------------------
 
 
-class TestBackendProfilePricingModel:
-    def test_profile_effective_pricing_model_default(self) -> None:
+class TestBackendProfilePricing:
+    def test_profile_pricing_default_none(self) -> None:
         p = BackendProfile(**MINIMAL_PROFILE)
-        assert p.effective_pricing_model == "gpt-4o"
+        assert p.pricing is None
 
-    def test_profile_effective_pricing_model_override(self) -> None:
-        p = BackendProfile(**{**MINIMAL_PROFILE, "pricing_model": "gpt-4o-2024-05-13"})
-        assert p.effective_pricing_model == "gpt-4o-2024-05-13"
+    def test_profile_pricing_from_dict(self) -> None:
+        p = BackendProfile(
+            **{
+                **MINIMAL_PROFILE,
+                "pricing": {
+                    "input_cost_per_million_tokens": 2.5,
+                    "cached_cost_per_million_tokens": 1.25,
+                    "output_cost_per_million_tokens": 10.0,
+                },
+            }
+        )
+        assert p.pricing is not None
+        assert p.pricing.input_cost_per_million_tokens == 2.5
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +154,11 @@ class TestBackendProfileFromYaml:
     def test_profile_from_yaml_with_all_fields(self, tmp_path: Path) -> None:
         full = {
             **MINIMAL_PROFILE,
-            "pricing_model": "gpt-4o-2024-05-13",
+            "pricing": {
+                "input_cost_per_million_tokens": 2.5,
+                "cached_cost_per_million_tokens": 1.25,
+                "output_cost_per_million_tokens": 10.0,
+            },
             "api_key_env": "OPENAI_API_KEY",
             "api_base": "https://api.openai.com",
             "max_tokens": 2048,
@@ -148,7 +168,8 @@ class TestBackendProfileFromYaml:
         }
         path = _write_profile(tmp_path, "backend.yaml", full)
         p = BackendProfile.from_yaml(path)
-        assert p.pricing_model == "gpt-4o-2024-05-13"
+        assert p.pricing is not None
+        assert p.pricing.input_cost_per_million_tokens == 2.5
         assert p.api_key_env == "OPENAI_API_KEY"
         assert p.max_tokens == 2048
         assert p.extra_params == {"top_p": 0.9}
@@ -269,15 +290,25 @@ def _make_mock_response(
 
 
 class TestLiteLLMBackend:
-    def test_backend_model_name_default(self) -> None:
+    def test_backend_model_name(self) -> None:
         profile = BackendProfile(**MINIMAL_PROFILE)
         backend = LiteLLMBackend(profile)
         assert backend.model_name == "gpt-4o"
 
-    def test_backend_model_name_pricing_override(self) -> None:
-        profile = BackendProfile(**{**MINIMAL_PROFILE, "pricing_model": "gpt-4o-2024-05-13"})
+    def test_backend_pricing_none_by_default(self) -> None:
+        profile = BackendProfile(**MINIMAL_PROFILE)
         backend = LiteLLMBackend(profile)
-        assert backend.model_name == "gpt-4o-2024-05-13"
+        assert backend.pricing is None
+
+    def test_backend_pricing_from_profile(self) -> None:
+        pricing = ModelPricing(
+            input_cost_per_million_tokens=2.5,
+            cached_cost_per_million_tokens=1.25,
+            output_cost_per_million_tokens=10.0,
+        )
+        profile = BackendProfile(**{**MINIMAL_PROFILE, "pricing": pricing})
+        backend = LiteLLMBackend(profile)
+        assert backend.pricing is pricing
 
     def test_backend_missing_env_var_raises(self) -> None:
         profile = BackendProfile(**{**MINIMAL_PROFILE, "api_key_env": "NONEXISTENT_KEY_12345"})
@@ -379,6 +410,10 @@ class _MockBackend:
     @property
     def model_name(self) -> str:
         return "test"
+
+    @property
+    def pricing(self) -> ModelPricing | None:
+        return None
 
     async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
         return {}, TokenUsage(input_tokens=0, cached_tokens=0, output_tokens=0)
