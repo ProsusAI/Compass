@@ -180,3 +180,19 @@ def test_retry_total_duration_boundary_accepted():
     # total = 62 + 6*289 = 1796 <= 1800
     rc = RetryConfig(max_attempts=6, backoff_factor=2.0, per_call_timeout_seconds=289)
     assert rc.per_call_timeout_seconds == 289
+
+
+def test_output_results_path_wrong_suffix_rejected():
+    with pytest.raises(ValidationError):
+        OutputConfig(results_path="foo.txt")
+
+
+def test_output_report_path_wrong_suffix_rejected():
+    with pytest.raises(ValidationError):
+        OutputConfig(report_path="bar.csv")
+
+
+def test_output_minimum_valid_accepted():
+    oc = OutputConfig(results_path="r.jsonl", report_path="r.json")
+    assert oc.results_path == "r.jsonl"
+    assert oc.report_path == "r.json"

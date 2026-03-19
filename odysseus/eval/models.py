@@ -105,10 +105,29 @@ class RetryConfig(BaseModel):
 
 
 class OutputConfig(BaseModel):
-    """Paths for writing evaluation outputs."""
+    """Paths for writing evaluation outputs.
+
+    Fields:
+        results_path: Path for results file (must end with .jsonl). Default: outputs/results.jsonl.
+        report_path: Path for report file (must end with .json). Default: outputs/report.json.
+    """
 
     results_path: str = "outputs/results.jsonl"
     report_path: str = "outputs/report.json"
+
+    @field_validator("results_path")
+    @classmethod
+    def results_path_must_be_jsonl(cls, v: str) -> str:
+        if not v.endswith(".jsonl"):
+            raise ValueError("results_path must end with .jsonl")
+        return v
+
+    @field_validator("report_path")
+    @classmethod
+    def report_path_must_be_json(cls, v: str) -> str:
+        if not v.endswith(".json"):
+            raise ValueError("report_path must end with .json")
+        return v
 
 
 class RunConfig(BaseModel):
