@@ -1,8 +1,8 @@
 """Tests for the FilePromptManager."""
 
-import asyncio  # noqa: F401 — used in Tasks 4-5 (hot-reload tests)
-import contextlib  # noqa: F401 — used in Tasks 4-5 (hot-reload tests)
-import logging  # noqa: F401 — used in Task 6 (logging tests)
+import asyncio
+import contextlib
+import logging
 from pathlib import Path
 
 import pytest
@@ -121,3 +121,27 @@ class TestHotReload:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await task
+
+
+class TestLogging:
+    def test_load_logs_version_at_info(
+        self, prompts_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        _write_prompt(prompts_dir, "v3.yaml", "some prompt")
+        mgr = FilePromptManager(prompts_dir)
+
+        with caplog.at_level(logging.INFO, logger="odysseus.prompts.manager"):
+            mgr.load("v3")
+
+        assert any("v3" in record.message for record in caplog.records)
+
+    def test_load_latest_logs_resolved_version(
+        self, prompts_dir: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        _write_prompt(prompts_dir, "v1.yaml", "prompt")
+        mgr = FilePromptManager(prompts_dir)
+
+        with caplog.at_level(logging.INFO, logger="odysseus.prompts.manager"):
+            mgr.load("latest")
+
+        assert any("latest" in record.message or "v1" in record.message for record in caplog.records)
