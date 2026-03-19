@@ -30,11 +30,24 @@ class MetricConfig(BaseModel):
 
 
 class ConcurrencyConfig(BaseModel):
-    """Concurrency and rate limiting settings."""
+    """Concurrency and rate limiting settings.
+
+    Fields:
+        max_concurrent_requests: Max parallel requests (>= 1). Default: 20.
+        requests_per_minute: RPM rate limit (>= 1). Default: 500.
+        tokens_per_minute: TPM rate limit (>= 1). Default: 100_000.
+    """
 
     max_concurrent_requests: int = 20
     requests_per_minute: int = 500
     tokens_per_minute: int = 100_000
+
+    @field_validator("max_concurrent_requests", "requests_per_minute", "tokens_per_minute")
+    @classmethod
+    def must_be_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("must be >= 1")
+        return v
 
 
 class RetryConfig(BaseModel):
