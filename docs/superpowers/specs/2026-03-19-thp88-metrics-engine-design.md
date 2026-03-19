@@ -20,7 +20,7 @@ class MetricsEngine(Protocol):
     ) -> dict[str, float]: ...
 ```
 
-The call site in `controller.py` (line 66) updates accordingly to pass `examples`.
+The call site in `controller.py` (the `deps.metrics_engine.compute(...)` call in `run()`) updates accordingly to pass `examples`.
 
 ## Metric Function Signature
 
@@ -106,7 +106,7 @@ Computes cost and quality percentage change of predicted routing vs a baseline, 
 
 **Logic:**
 
-1. **Determine baseline class**: If `baseline_class` is None, auto-select the class with the highest mean `quality_score` across all samples (averaging `expected["routes"][class]["quality_score"]` for each class).
+1. **Determine baseline class**: If `baseline_class` is None, auto-select the class with the highest mean `quality_score` across all samples (averaging `expected["routes"][class]["quality_score"]` for each class). Tie-break alphabetically by class name for determinism.
 2. **Baseline totals**: For each sample, sum `expected["routes"][baseline_class]["cost"]` and `["quality_score"]`.
 3. **Predicted totals**: For each sample, use `output["route"]` to look up `expected["routes"][predicted_route]["cost"]` and `["quality_score"]`. Sum.
 4. **Oracle totals**: For each sample, use `expected["route"]` (ground-truth optimal) to look up cost and quality. Sum.
@@ -124,7 +124,9 @@ Negative `cost_reduction` = cheaper than baseline. Negative `quality_reduction` 
 - **Errored results**: Excluded from all metric computations. Paired by ID, then filtered on `error is None`.
 - **Empty results after filtering**: Return 0.0 for all metrics (no division by zero).
 - **Unknown metric name**: Raise `ValueError` with the unrecognized name.
-- **Missing keys in output/expected**: Let the KeyError propagate — this is a data contract violation.
+- **Missing keys in expected**: Let the KeyError propagate — this is a data contract violation.
+- **Predicted route not in `expected["routes"]`**: Skip that sample (treat as if errored). The model hallucinated a route class that doesn't exist for this sample. Log a warning.
+- **Division by zero in cost/quality reduction**: If baseline total cost or quality is zero, return 0.0 for that reduction metric.
 
 ## File Structure
 
@@ -132,7 +134,8 @@ Negative `cost_reduction` = cheaper than baseline. Negative `quality_reduction` 
 |---|---|---|
 | `odysseus/eval/metrics.py` | Create | `DefaultMetricsEngine`, all built-in metric functions, `create_default_engine()` |
 | `odysseus/eval/protocols.py` | Modify | Add `examples` param to `MetricsEngine.compute()` |
-| `odysseus/eval/controller.py` | Modify | Pass `examples` to `compute()` call (line 66) |
+| `odysseus/eval/controller.py` | Modify | Pass `examples` to `deps.metrics_engine.compute()` call in `run()` |
+| `tests/test_controller.py` | Modify | Update `MockMetricsEngine.compute()` signature to include `examples` param |
 | `tests/test_metrics.py` | Create | Full test coverage |
 
 ## Testing Strategy
@@ -151,6 +154,8 @@ All tests use synthetic data with no external dependencies.
   - Explicit `baseline_class` param overrides default
   - All predictions match baseline → reductions = 0.0
   - Oracle values match hand-computed percentages
+  - Predicted route not in `expected["routes"]` → sample skipped with warning
+  - Baseline tie-breaking is deterministic (alphabetical)
 - **Engine-level**:
   - Unknown metric name → `ValueError`
   - Custom metric via `register()` works
