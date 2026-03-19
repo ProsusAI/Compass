@@ -252,3 +252,149 @@ async def test_timeout():
 
     assert report.summary.failed == 1
     assert "timeout" in (report.results[0].error or "").lower() or "TimeoutError" in (report.results[0].error or "")
+
+
+async def test_rate_limiter_acquired_before_semaphore():
+    """Rate limiter must be acquired before the semaphore to prevent deadlock.
+
+    If all semaphore slots are held by coroutines blocked on rate limiting,
+    no progress can be made. This test verifies the correct ordering by
+    tracking acquire calls on instrumented wrappers.
+    """
+    acquire_order: list[str] = []
+    original_semaphore_cls = asyncio.Semaphore
+
+    class TrackingSemaphore(original_semaphore_cls):
+        async def __aenter__(self):
+            acquire_order.append("semaphore")
+            return await super().__aenter__()
+
+        async def __aexit__(self, *args):
+            return await super().__aexit__(*args)
+
+    from odysseus.eval.rate_limiter import TokenBucketRateLimiter
+
+    class TrackingRateLimiter(TokenBucketRateLimiter):
+        async def acquire(self):
+            acquire_order.append("rate_limiter")
+            await super().acquire()
+
+    backend = MockBackend()
+    retry = RetryConfig(max_attempts=1, backoff_factor=1.0)
+    example = _make_examples(1)[0]
+    rate_limiter = TrackingRateLimiter(requests_per_minute=10000, tokens_per_minute=1_000_000)
+    semaphore = TrackingSemaphore(20)
+
+    from odysseus.eval.controller import _eval_with_retry
+
+    await _eval_with_retry(backend, "prompt", example, retry, rate_limiter, semaphore)
+
+    # rate_limiter must appear before semaphore in the acquire order
+    rl_idx = acquire_order.index("rate_limiter")
+    sem_idx = acquire_order.index("semaphore")
+    assert rl_idx < sem_idx, f"Rate limiter must be acquired before semaphore, got order: {acquire_order}"
+
+
+async def test_backoff_sleeps_outside_semaphore():
+    """Backoff sleep must happen outside the semaphore to free the slot."""
+    semaphore_held_during_sleep = False
+
+    class FailOnceBackend:
+        @property
+        def model_name(self) -> str:
+            return "test-model"
+
+        async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
+            if not hasattr(self, "_called"):
+                self._called = True
+                raise RuntimeError("First attempt fails")
+            return {"answer": "ok"}, TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5)
+
+    import unittest.mock
+
+    from odysseus.eval.controller import _eval_with_retry
+    from odysseus.eval.rate_limiter import TokenBucketRateLimiter
+
+    rate_limiter = TokenBucketRateLimiter(requests_per_minute=10000, tokens_per_minute=1_000_000)
+    semaphore = asyncio.Semaphore(1)  # Single slot so we can detect if it's held
+
+    original_sleep = asyncio.sleep
+
+    async def tracking_sleep(duration):
+        nonlocal semaphore_held_during_sleep
+        # If semaphore can be acquired, it's not held
+        acquired = semaphore._value > 0  # noqa: SLF001
+        if not acquired:
+            semaphore_held_during_sleep = True
+        await original_sleep(0)  # Don't actually wait
+
+    with unittest.mock.patch("asyncio.sleep", side_effect=tracking_sleep):
+        result = await _eval_with_retry(
+            FailOnceBackend(),
+            "prompt",
+            Example(id="ex-0", input={"q": "1"}, expected={"a": "1"}),
+            RetryConfig(max_attempts=2, backoff_factor=1.0),
+            rate_limiter,
+            semaphore,
+        )
+
+    assert result.error is None, "Should succeed on second attempt"
+    assert not semaphore_held_during_sleep, "Semaphore must not be held during backoff sleep"
+
+
+async def test_timeout_wraps_only_backend_call():
+    """Timeout should apply to backend.call() only, not rate limiter or semaphore wait."""
+    from odysseus.eval.controller import _eval_with_retry
+    from odysseus.eval.rate_limiter import TokenBucketRateLimiter
+
+    class SlowAcquireRateLimiter(TokenBucketRateLimiter):
+        """Rate limiter whose acquire takes longer than the call timeout."""
+        async def acquire(self):
+            await asyncio.sleep(0.3)  # Longer than per_call_timeout
+            await super().acquire()
+
+    backend = MockBackend()
+    rate_limiter = SlowAcquireRateLimiter(requests_per_minute=10000, tokens_per_minute=1_000_000)
+    semaphore = asyncio.Semaphore(20)
+
+    # Timeout is 0.1s, but rate limiter takes 0.3s.
+    # If timeout wrapped the whole thing, this would fail with TimeoutError.
+    result = await _eval_with_retry(
+        backend,
+        "prompt",
+        Example(id="ex-0", input={"q": "1"}, expected={"a": "1"}),
+        RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1),
+        rate_limiter,
+        semaphore,
+    )
+
+    # Should succeed because timeout only wraps backend.call(), not acquire()
+    assert result.error is None
+
+
+async def test_token_accounting_post_call():
+    """consume_tokens is called with the actual usage after backend.call()."""
+    from odysseus.eval.controller import _eval_with_retry
+    from odysseus.eval.rate_limiter import TokenBucketRateLimiter
+
+    consumed: list[int] = []
+
+    class TrackingRateLimiter(TokenBucketRateLimiter):
+        def consume_tokens(self, tokens: int) -> None:
+            consumed.append(tokens)
+            super().consume_tokens(tokens)
+
+    backend = MockBackend()  # Returns 10 input + 0 cached + 5 output = 15 total
+    rate_limiter = TrackingRateLimiter(requests_per_minute=10000, tokens_per_minute=1_000_000)
+    semaphore = asyncio.Semaphore(20)
+
+    await _eval_with_retry(
+        backend,
+        "prompt",
+        Example(id="ex-0", input={"q": "1"}, expected={"a": "1"}),
+        RetryConfig(max_attempts=1, backoff_factor=1.0),
+        rate_limiter,
+        semaphore,
+    )
+
+    assert consumed == [15], f"Expected [15] tokens consumed, got {consumed}"

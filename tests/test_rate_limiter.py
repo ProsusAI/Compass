@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import unittest.mock
 
 from odysseus.eval.rate_limiter import TokenBucketRateLimiter
 
@@ -53,3 +54,99 @@ async def test_concurrent_acquire():
     tasks = [asyncio.create_task(worker()) for _ in range(5)]
     await asyncio.gather(*tasks)
     assert len(results) == 5  # All completed (initial balance = 300)
+
+
+async def test_acquire_with_fake_clock():
+    """Fake clock controls refill: time must advance for exhausted bucket to refill."""
+    current_time = 0.0
+
+    def fake_time() -> float:
+        nonlocal current_time
+        return current_time
+
+    limiter = TokenBucketRateLimiter(
+        requests_per_minute=2,
+        tokens_per_minute=100_000,
+        time_fn=fake_time,
+    )
+    # Exhaust both request slots
+    await limiter.acquire()
+    await limiter.acquire()
+
+    # Without advancing time, acquire must block (sleep is called)
+    sleep_called = False
+
+    async def record_and_advance(duration):
+        nonlocal sleep_called, current_time
+        sleep_called = True
+        current_time += duration  # Simulate time passing during sleep
+
+    with unittest.mock.patch("asyncio.sleep", side_effect=record_and_advance):
+        await limiter.acquire()
+
+    assert sleep_called, "Rate limiter must sleep when request bucket is empty"
+    # Confirm fake clock was used (last_refill reflects fake time, not wall clock)
+    assert limiter._last_refill > 0.0  # noqa: SLF001
+
+
+async def test_token_bucket_limits_before_request_bucket():
+    """When tokens are exhausted, acquire waits even if request slots remain."""
+    current_time = 0.0
+
+    def fake_time() -> float:
+        nonlocal current_time
+        return current_time
+
+    # Plenty of requests (600), but only 60 tokens/min = 1 token/sec
+    limiter = TokenBucketRateLimiter(
+        requests_per_minute=600,
+        tokens_per_minute=60,
+        time_fn=fake_time,
+    )
+    await limiter.acquire()
+    # Consume all tokens
+    limiter.consume_tokens(120)  # Drive 60 tokens negative
+
+    # Without advancing time, acquire should not succeed
+    # (token balance is -60, needs 60s to refill to 0)
+    call_count = 0
+
+    async def advance_on_sleep(duration):
+        nonlocal current_time, call_count
+        call_count += 1
+        current_time += duration
+
+    with unittest.mock.patch("asyncio.sleep", side_effect=advance_on_sleep):
+        await limiter.acquire()
+        # Sleep was called at least once because tokens were negative
+        assert call_count >= 1
+
+
+async def test_request_bucket_limits_before_token_bucket():
+    """When requests are exhausted, acquire waits even if tokens remain."""
+    current_time = 0.0
+
+    def fake_time() -> float:
+        nonlocal current_time
+        return current_time
+
+    # Only 2 requests/min, but plenty of tokens
+    limiter = TokenBucketRateLimiter(
+        requests_per_minute=2,
+        tokens_per_minute=100_000,
+        time_fn=fake_time,
+    )
+    await limiter.acquire()
+    await limiter.acquire()
+    # Request balance now ~0, token balance still huge
+
+    call_count = 0
+
+    async def advance_on_sleep(duration):
+        nonlocal current_time, call_count
+        call_count += 1
+        current_time += duration
+
+    with unittest.mock.patch("asyncio.sleep", side_effect=advance_on_sleep):
+        await limiter.acquire()
+        assert call_count >= 1  # Had to wait for request refill
