@@ -7,14 +7,26 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class MetricConfig(BaseModel):
-    """Configuration for a single metric."""
+    """Configuration for a single metric.
+
+    Fields:
+        name: Metric name (non-empty, whitespace stripped).
+        params: Optional metric parameters. Default: {}.
+    """
 
     name: str
     params: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_be_non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("name must be non-empty")
+        return v.strip()
 
 
 class ConcurrencyConfig(BaseModel):
