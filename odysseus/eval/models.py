@@ -87,6 +87,22 @@ class RetryConfig(BaseModel):
             raise ValueError("per_call_timeout_seconds must be > 0")
         return v
 
+    @model_validator(mode="after")
+    def check_retry_bounds(self) -> RetryConfig:
+        if self.per_call_timeout_seconds > 300:
+            raise ValueError(
+                f"per_call_timeout_seconds ({self.per_call_timeout_seconds}) must be <= 300"
+            )
+        total_backoff = sum(
+            self.backoff_factor**i for i in range(1, self.max_attempts)
+        )
+        total_worst_case = total_backoff + self.max_attempts * self.per_call_timeout_seconds
+        if total_worst_case > 1800:
+            raise ValueError(
+                f"total worst-case retry duration ({total_worst_case:.0f}s) exceeds 1800s limit"
+            )
+        return self
+
 
 class OutputConfig(BaseModel):
     """Paths for writing evaluation outputs."""

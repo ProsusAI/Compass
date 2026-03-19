@@ -153,3 +153,30 @@ def test_retry_minimum_valid_accepted():
     assert rc.max_attempts == 1
     assert rc.backoff_factor == 1.0
     assert rc.per_call_timeout_seconds == 0.1
+
+
+def test_retry_timeout_301_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(per_call_timeout_seconds=301)
+
+
+def test_retry_timeout_300_accepted():
+    rc = RetryConfig(per_call_timeout_seconds=300)
+    assert rc.per_call_timeout_seconds == 300
+
+
+def test_retry_total_duration_over_1800_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(max_attempts=10, backoff_factor=3.0, per_call_timeout_seconds=60)
+
+
+def test_retry_total_duration_boundary_rejected():
+    # total = 62 + 6*290 = 1802 > 1800
+    with pytest.raises(ValidationError):
+        RetryConfig(max_attempts=6, backoff_factor=2.0, per_call_timeout_seconds=290)
+
+
+def test_retry_total_duration_boundary_accepted():
+    # total = 62 + 6*289 = 1796 <= 1800
+    rc = RetryConfig(max_attempts=6, backoff_factor=2.0, per_call_timeout_seconds=289)
+    assert rc.per_call_timeout_seconds == 289
