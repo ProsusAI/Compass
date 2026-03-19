@@ -131,7 +131,18 @@ class OutputConfig(BaseModel):
 
 
 class RunConfig(BaseModel):
-    """Top-level configuration for an evaluation run."""
+    """Top-level configuration for an evaluation run.
+
+    Fields:
+        backend: Backend identifier (non-empty). Required.
+        prompt_version: Prompt version string (non-empty). Default: "latest".
+        data_source: Path to dataset (non-empty). Required.
+        data_split: "dev" or "holdout". Required.
+        metrics: At least one MetricConfig. Required.
+        concurrency: ConcurrencyConfig. Default: ConcurrencyConfig().
+        retry: RetryConfig. Default: RetryConfig().
+        output: OutputConfig. Default: OutputConfig().
+    """
 
     backend: str
     prompt_version: str = "latest"
@@ -141,6 +152,20 @@ class RunConfig(BaseModel):
     concurrency: ConcurrencyConfig = ConcurrencyConfig()
     retry: RetryConfig = RetryConfig()
     output: OutputConfig = OutputConfig()
+
+    @field_validator("backend", "prompt_version", "data_source")
+    @classmethod
+    def string_fields_must_be_non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("must be non-empty")
+        return v.strip()
+
+    @field_validator("metrics")
+    @classmethod
+    def metrics_must_be_non_empty(cls, v: list[MetricConfig]) -> list[MetricConfig]:
+        if len(v) == 0:
+            raise ValueError("at least one metric is required")
+        return v
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> RunConfig:

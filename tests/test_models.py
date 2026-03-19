@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 import pytest
 import yaml
@@ -196,3 +197,45 @@ def test_output_minimum_valid_accepted():
     oc = OutputConfig(results_path="r.jsonl", report_path="r.json")
     assert oc.results_path == "r.jsonl"
     assert oc.report_path == "r.json"
+
+
+def _valid_run_kwargs(**overrides: Any) -> dict[str, Any]:
+    """Return valid RunConfig kwargs, with optional overrides."""
+    base = {
+        "backend": "claude-sonnet",
+        "data_source": "data/test.jsonl",
+        "data_split": "dev",
+        "metrics": [{"name": "accuracy"}],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_run_config_empty_backend_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(backend=""))
+
+
+def test_run_config_whitespace_prompt_version_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(prompt_version="  "))
+
+
+def test_run_config_whitespace_data_source_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(data_source="   "))
+
+
+def test_run_config_empty_metrics_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(metrics=[]))
+
+
+def test_run_config_invalid_data_split_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(data_split="test"))
+
+
+def test_run_config_backend_stripped():
+    config = RunConfig(**_valid_run_kwargs(backend="  claude-sonnet  "))
+    assert config.backend == "claude-sonnet"
