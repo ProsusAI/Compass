@@ -773,7 +773,7 @@ async def test_backend_call_minimal_kwargs():
         assert "base_url" not in call_kwargs
         assert "max_tokens" not in call_kwargs
         assert "temperature" not in call_kwargs
-```
+
 
 async def test_backend_extra_params_overrides_provider_params():
     """extra_params overrides provider_params on key conflict."""
@@ -1286,22 +1286,27 @@ These now live on BackendProfile and are bridged to the controller via RunDepend
 
 ### Task 12: Full Suite + Type Check
 
-- [ ] **Step 37: Run full test suite**
+- [ ] **Step 37: Verify litellm dependency in pyproject.toml**
+
+Run: `grep litellm pyproject.toml`
+Expected: `"litellm>=1.50.0",` — already present, no changes needed.
+
+- [ ] **Step 38: Run full test suite**
 
 Run: `uv run pytest -v`
 Expected: All PASS
 
-- [ ] **Step 38: Run type checker**
+- [ ] **Step 39: Run type checker**
 
 Run: `uv run pyright`
 Expected: No errors (or only pre-existing ones unrelated to this change)
 
-- [ ] **Step 39: Run linter**
+- [ ] **Step 40: Run linter**
 
 Run: `uv run ruff check .`
 Expected: No errors
 
-- [ ] **Step 40: Verify Backend protocol satisfaction**
+- [ ] **Step 41: Verify Backend protocol satisfaction**
 
 Run a quick Python check:
 ```bash
