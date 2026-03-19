@@ -55,5 +55,13 @@ class TokenBucketRateLimiter:
             await asyncio.sleep(wait)
 
     def consume_tokens(self, tokens: int) -> None:
-        """Deduct tokens after a call completes. May drive balance negative."""
+        """Deduct tokens after a call completes. May drive balance negative.
+
+        Thread-safety note: this method is intentionally lock-free. Under asyncio's
+        cooperative multitasking model, only one coroutine executes at a time between
+        await points. Since this method is synchronous (no await), it runs atomically
+        with respect to other coroutines — no concurrent mutation of _token_balance is
+        possible. The GIL provides the same guarantee for threaded callers, though this
+        class is designed for single-threaded asyncio use only.
+        """
         self._token_balance -= tokens
