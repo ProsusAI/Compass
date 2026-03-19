@@ -31,11 +31,11 @@ class TokenBucketRateLimiter:
 
         self._request_balance = min(
             float(self._rpm),
-            self._request_balance + elapsed * self._rpm,
+            self._request_balance + elapsed * self._rpm / 60.0,
         )
         self._token_balance = min(
             float(self._tpm),
-            self._token_balance + elapsed * self._tpm,
+            self._token_balance + elapsed * self._tpm / 60.0,
         )
 
     async def acquire(self) -> None:
@@ -48,8 +48,8 @@ class TokenBucketRateLimiter:
                     return
 
                 # Calculate wait time for whichever bucket is limiting
-                wait_request = (1.0 - self._request_balance) / float(self._rpm) if self._request_balance < 1.0 else 0
-                wait_tokens = (-self._token_balance) / float(self._tpm) if self._token_balance <= 0 else 0
+                wait_request = (1.0 - self._request_balance) / (self._rpm / 60.0) if self._request_balance < 1.0 else 0
+                wait_tokens = (-self._token_balance) / (self._tpm / 60.0) if self._token_balance <= 0 else 0
                 wait = max(wait_request, wait_tokens, 0.01)
 
             await asyncio.sleep(wait)
