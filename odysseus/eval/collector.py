@@ -49,7 +49,7 @@ class JsonResultsCollector:
             return None
         try:
             return json.loads(p.read_text())
-        except (json.JSONDecodeError, KeyError):
+        except json.JSONDecodeError:
             return None
 
     @staticmethod

@@ -203,3 +203,9 @@ def test_write_report_no_overhead_diff_when_unchanged(tmp_path, caplog):
         collector.write_report(new_report, path)
 
     assert "Router overhead" not in caplog.text
+
+
+def test_json_results_collector_satisfies_protocol():
+    """JsonResultsCollector is a valid ResultsCollector."""
+    collector = JsonResultsCollector()
+    assert isinstance(collector, ResultsCollector)

@@ -1,5 +1,6 @@
 """Evaluation engine for routing prompt assessment."""
 
+from odysseus.eval.collector import JsonResultsCollector
 from odysseus.eval.controller import run
 from odysseus.eval.models import (
     ConcurrencyConfig,
@@ -30,6 +31,7 @@ __all__ = [
     "DatasetManager",
     "EvalResult",
     "Example",
+    "JsonResultsCollector",
     "MetricConfig",
     "MetricsEngine",
     "MODEL_PRICING",
