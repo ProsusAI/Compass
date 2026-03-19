@@ -1,12 +1,51 @@
 """MCP server entrypoint for Odysseus."""
 
+import json
+from pathlib import Path
 from typing import Literal
 
+import yaml
 from mcp.server.fastmcp import FastMCP
+from pydantic import ValidationError
 
 from odysseus.eval.models import MetricConfig, RunConfig
 
 mcp = FastMCP("odysseus")
+
+_DEFAULT_METRICS = [
+    MetricConfig(name="accuracy"),
+    MetricConfig(name="confusion"),
+    MetricConfig(name="f1"),
+    MetricConfig(name="cost_quality_reduction"),
+]
+
+
+def _load_config(
+    prompt_version: str,
+    data_source: str,
+    backend: str,
+    data_split: Literal["dev", "holdout"],
+    config_path: str,
+) -> RunConfig:
+    """Load a YAML config and overlay tool parameters.
+
+    Tool parameters always override YAML keys. If the YAML omits
+    'metrics', all 4 built-in metrics are used as defaults.
+    """
+    with open(config_path) as f:
+        raw = yaml.safe_load(f) or {}
+
+    raw.update({
+        "backend": backend,
+        "prompt_version": prompt_version,
+        "data_source": data_source,
+        "data_split": data_split,
+    })
+
+    if "metrics" not in raw:
+        raw["metrics"] = [m.model_dump() for m in _DEFAULT_METRICS]
+
+    return RunConfig.model_validate(raw)
 
 
 def _build_run_config(
