@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from odysseus.eval.diff import compute_metric_diffs, compute_overhead_diff
 from odysseus.eval.models import EvalResult, RunReport
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,9 @@ class JsonResultsCollector:
 
             old_summary = previous.get("summary")
             if old_summary is not None:
-                self._log_overhead_diff(old_summary, report.summary.total_cost, report.summary.duration_seconds)
+                self._log_overhead_diff(
+                    old_summary, report.summary.total_cost, report.summary.duration_seconds
+                )
 
     @staticmethod
     def _read_previous_report(path: str) -> dict[str, Any] | None:
@@ -55,18 +58,18 @@ class JsonResultsCollector:
     @staticmethod
     def _log_metric_diff(old: dict[str, float], new: dict[str, float]) -> None:
         """Log changed, added, and removed metrics."""
-        all_keys = sorted(set(old) | set(new))
-        diffs: list[str] = []
-        for key in all_keys:
-            if key in old and key in new:
-                if old[key] != new[key]:
-                    diffs.append(f"  {key}: {old[key]} → {new[key]}")
-            elif key in new:
-                diffs.append(f"  {key}: (new) {new[key]}")
+        diffs = compute_metric_diffs(old, new)
+        if not diffs:
+            return
+        lines: list[str] = []
+        for d in diffs:
+            if d.status == "changed":
+                lines.append(f"  {d.key}: {d.old} → {d.new}")
+            elif d.status == "added":
+                lines.append(f"  {d.key}: (new) {d.new}")
             else:
-                diffs.append(f"  {key}: {old[key]} (removed)")
-        if diffs:
-            logger.info("Metric diff vs previous run:\n%s", "\n".join(diffs))
+                lines.append(f"  {d.key}: {d.old} (removed)")
+        logger.info("Metric diff vs previous run:\n%s", "\n".join(lines))
 
     @staticmethod
     def _log_overhead_diff(
@@ -74,7 +77,11 @@ class JsonResultsCollector:
         new_cost: float,
         new_duration: float,
     ) -> None:
-        """Log router overhead changes (cost and latency)."""
+        """Log router overhead changes (cost and latency).
+
+        Preserves original behavior: logs cost diff even if old_duration is
+        missing, and vice versa.
+        """
         old_cost = old_summary.get("total_cost")
         old_duration = old_summary.get("duration_seconds")
         diffs: list[str] = []
