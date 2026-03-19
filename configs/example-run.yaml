@@ -1,0 +1,41 @@
+# Example evaluation run configuration.
+# Copy this file and modify for your run.
+# See odysseus/eval/models.py for full schema and constraints.
+
+# Backend model identifier (required, non-empty)
+backend: "claude-sonnet-4-20250514"
+
+# Prompt version to load (default: "latest")
+prompt_version: "latest"
+
+# Path to the dataset file (required, non-empty)
+data_source: "data/routing-eval.jsonl"
+
+# Data split: "dev" or "holdout" (required)
+data_split: "dev"
+
+# Metrics to compute (at least one required)
+metrics:
+  - name: "accuracy"
+  - name: "f1"
+    params:
+      average: "macro"
+
+# Concurrency settings (all optional, shown with defaults)
+concurrency:
+  max_concurrent_requests: 20   # >= 1
+  requests_per_minute: 500      # >= 1
+  tokens_per_minute: 100000     # >= 1
+
+# Retry settings (all optional, shown with defaults)
+# Cross-field constraint: per_call_timeout_seconds <= 300,
+# and total worst-case retry duration must be <= 1800s.
+retry:
+  max_attempts: 3               # >= 1
+  backoff_factor: 2.0           # >= 1.0
+  per_call_timeout_seconds: 60  # > 0, <= 300
+
+# Output paths (all optional, shown with defaults)
+output:
+  results_path: "outputs/results.jsonl"   # must end with .jsonl
+  report_path: "outputs/report.json"      # must end with .json

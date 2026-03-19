@@ -239,3 +239,12 @@ def test_run_config_invalid_data_split_rejected():
 def test_run_config_backend_stripped():
     config = RunConfig(**_valid_run_kwargs(backend="  claude-sonnet  "))
     assert config.backend == "claude-sonnet"
+
+
+def test_example_config_round_trip():
+    config = RunConfig.from_yaml("configs/example-run.yaml")
+    assert config.backend == "claude-sonnet-4-20250514"
+    assert config.data_split == "dev"
+    assert len(config.metrics) == 2
+    assert config.concurrency.max_concurrent_requests == 20
+    assert config.retry.max_attempts == 3
