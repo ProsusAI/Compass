@@ -50,6 +50,29 @@ async def run_eval(prompt_version: str, data_source: str) -> str:
 
 
 @mcp.tool()
+async def run_holdout_eval(prompt_version: str, data_source: str) -> str:
+    """Run evaluation on the holdout split.
+
+    This tool must only be available to the Final Evaluation agent.
+    It must NOT be in the Eval Runner agent's tool list.
+
+    Args:
+        prompt_version: Prompt version to evaluate.
+        data_source: Path to the dataset file.
+
+    Returns:
+        Serialized score report.
+    """
+    config = _build_run_config(
+        prompt_version=prompt_version,
+        data_source=data_source,
+        data_split="holdout",
+    )
+    # TODO: wire RunDependencies and call controller.run()
+    return f"run_holdout_eval stub: config.data_split={config.data_split}"
+
+
+@mcp.tool()
 async def optimize_routing_prompt(
     data_path: str,
     problem_description: str,

@@ -50,3 +50,17 @@ async def test_run_eval_hardcodes_dev_split():
             data_source="data/test.jsonl",
             data_split="dev",
         )
+
+
+async def test_run_holdout_eval_hardcodes_holdout_split():
+    """run_holdout_eval must always construct RunConfig with data_split='holdout'."""
+    with patch("odysseus.mcp._build_run_config") as mock_build:
+        mock_build.return_value = _build_run_config("v1", "data/test.jsonl", "holdout")
+        from odysseus.mcp import run_holdout_eval
+
+        await run_holdout_eval(prompt_version="v1", data_source="data/test.jsonl")
+        mock_build.assert_called_once_with(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            data_split="holdout",
+        )
