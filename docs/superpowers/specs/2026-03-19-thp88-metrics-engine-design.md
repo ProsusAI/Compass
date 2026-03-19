@@ -49,7 +49,7 @@ class DefaultMetricsEngine:
 
 1. **Pair and filter**: Match `results` to `examples` by `result.example_id == example.id`. Keep only pairs where `result.error is None`.
 2. **Dispatch**: For each `MetricConfig`, look up `config.name` in `_registry`. Raise `ValueError` if not found. Call `fn(filtered_results, filtered_examples, **config.params)`.
-3. **Merge**: Combine all returned dicts into one flat `dict[str, float]`.
+3. **Merge**: Combine all returned dicts into one flat `dict[str, float]`. If two metrics produce the same key, raise `ValueError` — duplicate keys indicate a configuration or registration bug.
 
 ### Factory function
 
@@ -68,7 +68,7 @@ Metrics operate on `EvalResult.output` and `Example.expected` with these keys:
 
 **`expected` (ground truth from dataset):**
 - `route: str` — ground-truth optimal route for this sample
-- `routes: dict[str, {"cost": float, "quality_score": float}]` — per-class cost and quality score for this sample across all possible route classes
+- `routes: dict[str, {"cost": float, "quality_score": float}]` — per-class cost and quality score for this sample. All samples must have the same set of route class keys.
 
 ## Built-in Metrics
 
