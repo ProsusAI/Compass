@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 
 
 class TokenBucketRateLimiter:
@@ -13,19 +14,25 @@ class TokenBucketRateLimiter:
     - consume_tokens() deducts tokens after a call completes (non-blocking).
     """
 
-    def __init__(self, requests_per_minute: int, tokens_per_minute: int) -> None:
+    def __init__(
+        self,
+        requests_per_minute: int,
+        tokens_per_minute: int,
+        time_fn: Callable[[], float] | None = None,
+    ) -> None:
         self._rpm = requests_per_minute
         self._tpm = tokens_per_minute
 
         self._request_balance: float = float(requests_per_minute)
         self._token_balance: float = float(tokens_per_minute)
 
-        self._last_refill = time.monotonic()
+        self._time_fn = time_fn or time.monotonic
+        self._last_refill = self._time_fn()
         self._lock = asyncio.Lock()
 
     def _refill(self) -> None:
         """Refill both buckets based on elapsed time."""
-        now = time.monotonic()
+        now = self._time_fn()
         elapsed = now - self._last_refill
         self._last_refill = now
 

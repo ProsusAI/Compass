@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import unittest.mock
 
 from odysseus.eval.rate_limiter import TokenBucketRateLimiter
 
@@ -53,3 +54,36 @@ async def test_concurrent_acquire():
     tasks = [asyncio.create_task(worker()) for _ in range(5)]
     await asyncio.gather(*tasks)
     assert len(results) == 5  # All completed (initial balance = 300)
+
+
+async def test_acquire_with_fake_clock():
+    """Fake clock controls refill: time must advance for exhausted bucket to refill."""
+    current_time = 0.0
+
+    def fake_time() -> float:
+        nonlocal current_time
+        return current_time
+
+    limiter = TokenBucketRateLimiter(
+        requests_per_minute=2,
+        tokens_per_minute=100_000,
+        time_fn=fake_time,
+    )
+    # Exhaust both request slots
+    await limiter.acquire()
+    await limiter.acquire()
+
+    # Without advancing time, acquire must block (sleep is called)
+    sleep_called = False
+
+    async def record_and_advance(duration):
+        nonlocal sleep_called, current_time
+        sleep_called = True
+        current_time += duration  # Simulate time passing during sleep
+
+    with unittest.mock.patch("asyncio.sleep", side_effect=record_and_advance):
+        await limiter.acquire()
+
+    assert sleep_called, "Rate limiter must sleep when request bucket is empty"
+    # Confirm fake clock was used (last_refill reflects fake time, not wall clock)
+    assert limiter._last_refill > 0.0  # noqa: SLF001
