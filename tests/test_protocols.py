@@ -1,0 +1,87 @@
+"""Tests for protocol conformance and RunDependencies."""
+
+from typing import Any, Literal
+
+from odysseus.eval.models import (
+    EvalResult,
+    Example,
+    MetricConfig,
+    RunReport,
+    TokenUsage,
+)
+from odysseus.eval.protocols import (
+    Backend,
+    DatasetManager,
+    MetricsEngine,
+    PromptManager,
+    ResultsCollector,
+    RunDependencies,
+)
+
+
+class StubBackend:
+    @property
+    def model_name(self) -> str:
+        return "test-model"
+
+    async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
+        return {"answer": "test"}, TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5)
+
+
+class StubPromptManager:
+    def load(self, version: str) -> str:
+        return "test prompt"
+
+
+class StubDatasetManager:
+    def load(self, path: str, split: Literal["dev", "holdout"]) -> list[Example]:
+        return []
+
+
+class StubMetricsEngine:
+    def compute(self, results: list[EvalResult], metric_configs: list[MetricConfig]) -> dict[str, float]:
+        return {"accuracy": 1.0}
+
+
+class StubResultsCollector:
+    def write_results(self, results: list[EvalResult], path: str) -> None:
+        pass
+
+    def write_report(self, report: RunReport, path: str) -> None:
+        pass
+
+
+def _check_protocol(obj: object, protocol: type) -> bool:
+    """Verify an object structurally conforms to a protocol via isinstance."""
+    return isinstance(obj, protocol)
+
+
+def test_stub_backend_conforms():
+    assert _check_protocol(StubBackend(), Backend)
+
+
+def test_stub_prompt_manager_conforms():
+    assert _check_protocol(StubPromptManager(), PromptManager)
+
+
+def test_stub_dataset_manager_conforms():
+    assert _check_protocol(StubDatasetManager(), DatasetManager)
+
+
+def test_stub_metrics_engine_conforms():
+    assert _check_protocol(StubMetricsEngine(), MetricsEngine)
+
+
+def test_stub_results_collector_conforms():
+    assert _check_protocol(StubResultsCollector(), ResultsCollector)
+
+
+def test_run_dependencies_construction():
+    deps = RunDependencies(
+        backend=StubBackend(),
+        prompt_manager=StubPromptManager(),
+        dataset_manager=StubDatasetManager(),
+        metrics_engine=StubMetricsEngine(),
+        results_collector=StubResultsCollector(),
+    )
+    assert deps.backend.model_name == "test-model"
