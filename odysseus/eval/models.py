@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class MetricConfig(BaseModel):
@@ -51,11 +51,41 @@ class ConcurrencyConfig(BaseModel):
 
 
 class RetryConfig(BaseModel):
-    """Retry behavior for failed backend calls."""
+    """Retry behavior for failed backend calls.
+
+    Fields:
+        max_attempts: Number of attempts (>= 1). Default: 3.
+        backoff_factor: Exponential backoff base (>= 1.0). Default: 2.0.
+        per_call_timeout_seconds: Timeout per call in seconds (> 0, <= 300). Default: 60.0.
+
+    Cross-field validation:
+        Total worst-case duration (all backoff waits + all timeouts) must be <= 1800s.
+    """
 
     max_attempts: int = 3
     backoff_factor: float = 2.0
     per_call_timeout_seconds: float = 60.0
+
+    @field_validator("max_attempts")
+    @classmethod
+    def max_attempts_must_be_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("max_attempts must be >= 1")
+        return v
+
+    @field_validator("backoff_factor")
+    @classmethod
+    def backoff_factor_must_be_at_least_one(cls, v: float) -> float:
+        if v < 1.0:
+            raise ValueError("backoff_factor must be >= 1.0")
+        return v
+
+    @field_validator("per_call_timeout_seconds")
+    @classmethod
+    def timeout_must_be_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("per_call_timeout_seconds must be > 0")
+        return v
 
 
 class OutputConfig(BaseModel):

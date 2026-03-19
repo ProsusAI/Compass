@@ -131,3 +131,25 @@ def test_concurrency_minimum_valid_accepted():
     assert cc.max_concurrent_requests == 1
     assert cc.requests_per_minute == 1
     assert cc.tokens_per_minute == 1
+
+
+def test_retry_max_attempts_zero_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(max_attempts=0)
+
+
+def test_retry_backoff_below_one_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(backoff_factor=0.5)
+
+
+def test_retry_timeout_zero_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(per_call_timeout_seconds=0)
+
+
+def test_retry_minimum_valid_accepted():
+    rc = RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1)
+    assert rc.max_attempts == 1
+    assert rc.backoff_factor == 1.0
+    assert rc.per_call_timeout_seconds == 0.1
