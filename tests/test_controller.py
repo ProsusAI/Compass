@@ -137,6 +137,8 @@ def _make_deps(
     backend: Any = None,
     examples: list[Example] | None = None,
     metrics: dict[str, float] | None = None,
+    requests_per_minute: int = 10000,
+    tokens_per_minute: int = 1_000_000,
 ) -> tuple[RunDependencies, MockResultsCollector]:
     collector = MockResultsCollector()
     deps = RunDependencies(
@@ -145,6 +147,8 @@ def _make_deps(
         dataset_manager=MockDatasetManager(examples or _make_examples(5)),
         metrics_engine=MockMetricsEngine(metrics),
         results_collector=collector,
+        requests_per_minute=requests_per_minute,
+        tokens_per_minute=tokens_per_minute,
     )
     return deps, collector
 
@@ -210,7 +214,6 @@ async def test_concurrency_limit():
         self._attempt_counts[example.id] += 1
         return {"answer": "ok"}, TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5)
 
-    # Monkey-patch call to add a delay
     import types
 
     backend.call = types.MethodType(slow_call, backend)
@@ -218,11 +221,7 @@ async def test_concurrency_limit():
     from odysseus.eval.models import ConcurrencyConfig
 
     config = _make_config(
-        concurrency=ConcurrencyConfig(
-            max_concurrent_requests=2,
-            requests_per_minute=10000,
-            tokens_per_minute=1_000_000,
-        ),
+        concurrency=ConcurrencyConfig(max_concurrent_requests=2),
     )
     deps, _ = _make_deps(backend=backend, examples=_make_examples(6))
     await run(config, deps)

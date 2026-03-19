@@ -24,8 +24,6 @@ metrics:
 # Concurrency settings (all optional, shown with defaults)
 concurrency:
   max_concurrent_requests: 20   # >= 1
-  requests_per_minute: 500      # >= 1
-  tokens_per_minute: 100000     # >= 1
 
 # Retry settings (all optional, shown with defaults)
 # Cross-field constraint: per_call_timeout_seconds <= 300,

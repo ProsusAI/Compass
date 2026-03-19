@@ -70,3 +70,11 @@ class RunDependencies:
     dataset_manager: DatasetManager
     metrics_engine: MetricsEngine
     results_collector: ResultsCollector
+    requests_per_minute: int
+    tokens_per_minute: int
+
+    def __post_init__(self) -> None:
+        if self.requests_per_minute < 1:
+            raise ValueError("requests_per_minute must be >= 1")
+        if self.tokens_per_minute < 1:
+            raise ValueError("tokens_per_minute must be >= 1")
