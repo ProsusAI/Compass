@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -20,14 +21,23 @@ from odysseus.eval.models import (
     TokenUsage,
 )
 
+# Import run_eval at module level — patches target odysseus.mcp.<dep>, not the function.
+from odysseus.mcp import run_eval
 
-def _make_run_report(config: RunConfig) -> RunReport:
-    """Create a minimal RunReport for testing."""
+
+def _stub_run_report() -> RunReport:
+    """Create a minimal RunReport stub for mocking controller.run return values."""
     from datetime import datetime
 
+    stub_config = RunConfig(
+        backend="stub",
+        data_source="stub.jsonl",
+        data_split="dev",
+        metrics=[MetricConfig(name="accuracy")],
+    )
     return RunReport(
-        config=config,
-        metrics={"accuracy": 0.85, "f1/macro": 0.80},
+        config=stub_config,
+        metrics={"accuracy": 0.85},
         results=[
             EvalResult(
                 example_id="ex1",
@@ -77,22 +87,9 @@ def config_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
-@pytest.mark.asyncio
-async def test_run_eval_success(config_dir: Path) -> None:
-    """Successful run_eval returns report and results paths."""
-    from odysseus.mcp import run_eval
-
-    config_path = str(config_dir / "run_config.yaml")
-
-    expected_config = RunConfig(
-        backend="test-backend",
-        prompt_version="v1",
-        data_source="data/test.jsonl",
-        data_split="dev",
-        metrics=[MetricConfig(name="accuracy")],
-    )
-    mock_report = _make_run_report(expected_config)
-
+@pytest.fixture()
+def mcp_mocks():
+    """Patch all run_eval dependencies and yield mock handles."""
     with (
         patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
         patch("odysseus.mcp.FilePromptManager"),
@@ -108,70 +105,52 @@ async def test_run_eval_success(config_dir: Path) -> None:
         mock_profile.tokens_per_minute = 50000
         mock_registry.get_profile.return_value = mock_profile
 
-        mock_controller.run = AsyncMock(return_value=mock_report)
+        mock_controller.run = AsyncMock(return_value=_stub_run_report())
 
-        result = await run_eval(
-            prompt_version="v1",
-            data_source="data/test.jsonl",
-            backend="test-backend",
-            config_path=config_path,
+        yield SimpleNamespace(
+            controller=mock_controller,
+            registry=mock_registry,
+            profile=mock_profile,
         )
-
-    parsed = json.loads(result)
-    assert parsed["report_path"] == "outputs/report.json"
-    assert parsed["results_path"] == "outputs/results.jsonl"
-    mock_controller.run.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
-# Task 2: Config overlay and data_split hardcoding tests
+# Success path
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_run_eval_hardcodes_dev_split(config_dir: Path) -> None:
-    """run_eval always passes data_split='dev' to the controller."""
-    from odysseus.mcp import run_eval
+async def test_run_eval_success(config_dir: Path, mcp_mocks: SimpleNamespace) -> None:
+    """Successful run_eval returns report and results paths."""
+    result = await run_eval(
+        prompt_version="v1",
+        data_source="data/test.jsonl",
+        backend="test-backend",
+        config_path=str(config_dir / "run_config.yaml"),
+    )
 
-    config_path = str(config_dir / "run_config.yaml")
+    parsed = json.loads(result)
+    assert parsed["report_path"] == "outputs/report.json"
+    assert parsed["results_path"] == "outputs/results.jsonl"
+    mcp_mocks.controller.run.assert_awaited_once()
 
-    expected_config = RunConfig(
-        backend="my-backend",
+
+# ---------------------------------------------------------------------------
+# Config overlay and data_split hardcoding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_eval_hardcodes_dev_split(config_dir: Path, mcp_mocks: SimpleNamespace) -> None:
+    """run_eval always passes data_split='dev' and forwards tool params."""
+    await run_eval(
         prompt_version="v2",
         data_source="data/train.jsonl",
-        data_split="dev",
-        metrics=[MetricConfig(name="accuracy")],
+        backend="my-backend",
+        config_path=str(config_dir / "run_config.yaml"),
     )
-    mock_report = _make_run_report(expected_config)
 
-    with (
-        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
-        patch("odysseus.mcp.FilePromptManager"),
-        patch("odysseus.mcp.JsonlDatasetManager"),
-        patch("odysseus.mcp.create_default_engine"),
-        patch("odysseus.mcp.JsonResultsCollector"),
-        patch("odysseus.mcp.controller") as mock_controller,
-    ):
-        mock_registry = MagicMock()
-        mock_registry_cls.from_directory.return_value = mock_registry
-        mock_profile = MagicMock()
-        mock_profile.requests_per_minute = 60
-        mock_profile.tokens_per_minute = 10000
-        mock_registry.get_profile.return_value = mock_profile
-
-        mock_controller.run = AsyncMock(return_value=mock_report)
-
-        await run_eval(
-            prompt_version="v2",
-            data_source="data/train.jsonl",
-            backend="my-backend",
-            config_path=config_path,
-        )
-
-    # Verify controller.run received a RunConfig with data_split == "dev"
-    mock_controller.run.assert_awaited_once()
-    call_args = mock_controller.run.call_args
-    run_config: RunConfig = call_args.args[0]
+    run_config: RunConfig = mcp_mocks.controller.run.call_args.args[0]
     assert run_config.data_split == "dev"
     assert run_config.backend == "my-backend"
     assert run_config.prompt_version == "v2"
@@ -179,13 +158,12 @@ async def test_run_eval_hardcodes_dev_split(config_dir: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_eval_tool_params_override_yaml(tmp_path: Path) -> None:
+async def test_run_eval_tool_params_override_yaml(
+    tmp_path: Path, mcp_mocks: SimpleNamespace
+) -> None:
     """Tool params override YAML values, and data_split is always 'dev'."""
-    from odysseus.mcp import run_eval
-
-    # Write YAML with values that should be overridden
     config_path = tmp_path / "run_config.yaml"
-    yaml_config = {
+    config_path.write_text(yaml.dump({
         "backend": "yaml-backend",
         "prompt_version": "v0",
         "data_source": "data/old.jsonl",
@@ -197,70 +175,35 @@ async def test_run_eval_tool_params_override_yaml(tmp_path: Path) -> None:
             "results_path": "outputs/results.jsonl",
             "report_path": "outputs/report.json",
         },
-    }
-    config_path.write_text(yaml.dump(yaml_config))
+    }))
 
-    expected_config = RunConfig(
-        backend="tool-backend",
+    await run_eval(
         prompt_version="v5",
         data_source="data/new.jsonl",
-        data_split="dev",
-        metrics=[MetricConfig(name="accuracy")],
+        backend="tool-backend",
+        config_path=str(config_path),
     )
-    mock_report = _make_run_report(expected_config)
 
-    with (
-        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
-        patch("odysseus.mcp.FilePromptManager"),
-        patch("odysseus.mcp.JsonlDatasetManager"),
-        patch("odysseus.mcp.create_default_engine"),
-        patch("odysseus.mcp.JsonResultsCollector"),
-        patch("odysseus.mcp.controller") as mock_controller,
-    ):
-        mock_registry = MagicMock()
-        mock_registry_cls.from_directory.return_value = mock_registry
-        mock_profile = MagicMock()
-        mock_profile.requests_per_minute = 100
-        mock_profile.tokens_per_minute = 50000
-        mock_registry.get_profile.return_value = mock_profile
-
-        mock_controller.run = AsyncMock(return_value=mock_report)
-
-        await run_eval(
-            prompt_version="v5",
-            data_source="data/new.jsonl",
-            backend="tool-backend",
-            config_path=str(config_path),
-        )
-
-    mock_controller.run.assert_awaited_once()
-    call_args = mock_controller.run.call_args
-    run_config: RunConfig = call_args.args[0]
-    # Tool params must override YAML
+    run_config: RunConfig = mcp_mocks.controller.run.call_args.args[0]
     assert run_config.backend == "tool-backend"
     assert run_config.prompt_version == "v5"
     assert run_config.data_source == "data/new.jsonl"
-    # data_split is always hardcoded to "dev" regardless of YAML
     assert run_config.data_split == "dev"
 
 
 # ---------------------------------------------------------------------------
-# Task 3: Recoverable error path tests
+# Recoverable error paths
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_run_eval_missing_config_file(tmp_path: Path) -> None:
     """Nonexistent config path returns {'error': 'not_found'}."""
-    from odysseus.mcp import run_eval
-
-    nonexistent = str(tmp_path / "does_not_exist.yaml")
-
     result = await run_eval(
         prompt_version="v1",
         data_source="data/test.jsonl",
         backend="test-backend",
-        config_path=nonexistent,
+        config_path=str(tmp_path / "does_not_exist.yaml"),
     )
 
     parsed = json.loads(result)
@@ -269,25 +212,22 @@ async def test_run_eval_missing_config_file(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_run_eval_invalid_config_yaml(tmp_path: Path) -> None:
-    """YAML with empty metrics list fails validation, returns {'error': 'validation_error'}."""
-    from odysseus.mcp import run_eval
-
+    """YAML with empty metrics list fails validation."""
     config_path = tmp_path / "run_config.yaml"
-    invalid_config = {
-        "metrics": [],  # requires at least one metric
+    config_path.write_text(yaml.dump({
+        "metrics": [],
         "concurrency": {"max_concurrent_requests": 5},
         "retry": {"max_attempts": 2, "backoff_factor": 2.0, "per_call_timeout_seconds": 30.0},
         "output": {
             "results_path": "outputs/results.jsonl",
             "report_path": "outputs/report.json",
         },
-    }
-    config_path.write_text(yaml.dump(invalid_config))
+    }))
 
     result = await run_eval(
         prompt_version="v1",
         data_source="data/test.jsonl",
-        backend="test-backend",
+        backend="test",
         config_path=str(config_path),
     )
 
@@ -296,67 +236,38 @@ async def test_run_eval_invalid_config_yaml(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_eval_unknown_backend(config_dir: Path) -> None:
-    """Unknown backend label causes get_profile to raise KeyError, returns {'error': 'not_found'}."""
-    from odysseus.mcp import run_eval
+async def test_run_eval_unknown_backend(
+    config_dir: Path, mcp_mocks: SimpleNamespace
+) -> None:
+    """Unknown backend label returns {'error': 'not_found'}."""
+    mcp_mocks.registry.get_profile.side_effect = KeyError("unknown-backend")
 
-    config_path = str(config_dir / "run_config.yaml")
-
-    with (
-        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
-        patch("odysseus.mcp.FilePromptManager"),
-        patch("odysseus.mcp.JsonlDatasetManager"),
-        patch("odysseus.mcp.create_default_engine"),
-        patch("odysseus.mcp.JsonResultsCollector"),
-        patch("odysseus.mcp.controller"),
-    ):
-        mock_registry = MagicMock()
-        mock_registry_cls.from_directory.return_value = mock_registry
-        mock_registry.get_profile.side_effect = KeyError("unknown-backend")
-
-        result = await run_eval(
-            prompt_version="v1",
-            data_source="data/test.jsonl",
-            backend="unknown-backend",
-            config_path=config_path,
-        )
+    result = await run_eval(
+        prompt_version="v1",
+        data_source="data/test.jsonl",
+        backend="unknown-backend",
+        config_path=str(config_dir / "run_config.yaml"),
+    )
 
     parsed = json.loads(result)
     assert parsed["error"] == "not_found"
 
 
 @pytest.mark.asyncio
-async def test_run_eval_missing_prompt(config_dir: Path) -> None:
-    """FileNotFoundError from controller.run returns {'error': 'not_found'} with version in detail."""
-    from odysseus.mcp import run_eval
+async def test_run_eval_missing_prompt(
+    config_dir: Path, mcp_mocks: SimpleNamespace
+) -> None:
+    """FileNotFoundError from controller.run returns {'error': 'not_found'}."""
+    mcp_mocks.controller.run = AsyncMock(
+        side_effect=FileNotFoundError("prompt v99 not found")
+    )
 
-    config_path = str(config_dir / "run_config.yaml")
-
-    with (
-        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
-        patch("odysseus.mcp.FilePromptManager"),
-        patch("odysseus.mcp.JsonlDatasetManager"),
-        patch("odysseus.mcp.create_default_engine"),
-        patch("odysseus.mcp.JsonResultsCollector"),
-        patch("odysseus.mcp.controller") as mock_controller,
-    ):
-        mock_registry = MagicMock()
-        mock_registry_cls.from_directory.return_value = mock_registry
-        mock_profile = MagicMock()
-        mock_profile.requests_per_minute = 100
-        mock_profile.tokens_per_minute = 50000
-        mock_registry.get_profile.return_value = mock_profile
-
-        mock_controller.run = AsyncMock(
-            side_effect=FileNotFoundError("prompt v99 not found")
-        )
-
-        result = await run_eval(
-            prompt_version="v99",
-            data_source="data/test.jsonl",
-            backend="test-backend",
-            config_path=config_path,
-        )
+    result = await run_eval(
+        prompt_version="v99",
+        data_source="data/test.jsonl",
+        backend="test-backend",
+        config_path=str(config_dir / "run_config.yaml"),
+    )
 
     parsed = json.loads(result)
     assert parsed["error"] == "not_found"
@@ -364,40 +275,23 @@ async def test_run_eval_missing_prompt(config_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Task 4: Unexpected error test
+# Unexpected error
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_run_eval_unexpected_error_raises_tool_error(config_dir: Path) -> None:
-    """Unexpected RuntimeError from controller.run is re-raised as ToolError."""
-    from odysseus.mcp import run_eval
+async def test_run_eval_unexpected_error_raises_tool_error(
+    config_dir: Path, mcp_mocks: SimpleNamespace
+) -> None:
+    """Unexpected RuntimeError is re-raised as ToolError."""
+    mcp_mocks.controller.run = AsyncMock(
+        side_effect=RuntimeError("connection reset")
+    )
 
-    config_path = str(config_dir / "run_config.yaml")
-
-    with (
-        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
-        patch("odysseus.mcp.FilePromptManager"),
-        patch("odysseus.mcp.JsonlDatasetManager"),
-        patch("odysseus.mcp.create_default_engine"),
-        patch("odysseus.mcp.JsonResultsCollector"),
-        patch("odysseus.mcp.controller") as mock_controller,
-    ):
-        mock_registry = MagicMock()
-        mock_registry_cls.from_directory.return_value = mock_registry
-        mock_profile = MagicMock()
-        mock_profile.requests_per_minute = 100
-        mock_profile.tokens_per_minute = 50000
-        mock_registry.get_profile.return_value = mock_profile
-
-        mock_controller.run = AsyncMock(
-            side_effect=RuntimeError("connection reset")
+    with pytest.raises(ToolError, match="run_eval failed unexpectedly"):
+        await run_eval(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="test-backend",
+            config_path=str(config_dir / "run_config.yaml"),
         )
-
-        with pytest.raises(ToolError, match="run_eval failed unexpectedly"):
-            await run_eval(
-                prompt_version="v1",
-                data_source="data/test.jsonl",
-                backend="test-backend",
-                config_path=config_path,
-            )
