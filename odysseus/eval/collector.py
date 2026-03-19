@@ -1,0 +1,86 @@
+"""Concrete ResultsCollector implementation — writes JSONL results and JSON reports."""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+from odysseus.eval.models import EvalResult, RunReport
+
+logger = logging.getLogger(__name__)
+
+
+class JsonResultsCollector:
+    """Persists evaluation results as JSONL and reports as pretty-printed JSON."""
+
+    def write_results(self, results: list[EvalResult], path: str) -> None:
+        """Write each EvalResult as a JSON line to *path*."""
+        with open(path, "w") as f:
+            for result in results:
+                f.write(result.model_dump_json() + "\n")
+
+    def write_report(self, report: RunReport, path: str) -> None:
+        """Write the full RunReport as pretty-printed JSON to *path*.
+
+        If a previous report exists at *path*, log a human-readable diff
+        of changed metrics and router overhead at INFO level.
+        """
+        previous = self._read_previous_report(path)
+
+        with open(path, "w") as f:
+            f.write(report.model_dump_json(indent=2) + "\n")
+
+        if previous is not None:
+            old_metrics = previous.get("metrics")
+            if old_metrics is not None:
+                self._log_metric_diff(old_metrics, report.metrics)
+
+            old_summary = previous.get("summary")
+            if old_summary is not None:
+                self._log_overhead_diff(old_summary, report.summary.total_cost, report.summary.duration_seconds)
+
+    @staticmethod
+    def _read_previous_report(path: str) -> dict[str, Any] | None:
+        """Read the full previous report dict, or return None."""
+        p = Path(path)
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text())
+        except (json.JSONDecodeError, KeyError):
+            return None
+
+    @staticmethod
+    def _log_metric_diff(old: dict[str, float], new: dict[str, float]) -> None:
+        """Log changed, added, and removed metrics."""
+        all_keys = sorted(set(old) | set(new))
+        diffs: list[str] = []
+        for key in all_keys:
+            if key in old and key in new:
+                if old[key] != new[key]:
+                    diffs.append(f"  {key}: {old[key]} → {new[key]}")
+            elif key in new:
+                diffs.append(f"  {key}: (new) {new[key]}")
+            else:
+                diffs.append(f"  {key}: {old[key]} (removed)")
+        if diffs:
+            logger.info("Metric diff vs previous run:\n%s", "\n".join(diffs))
+
+    @staticmethod
+    def _log_overhead_diff(
+        old_summary: dict[str, Any],
+        new_cost: float,
+        new_duration: float,
+    ) -> None:
+        """Log router overhead changes (cost and latency)."""
+        old_cost = old_summary.get("total_cost")
+        old_duration = old_summary.get("duration_seconds")
+        diffs: list[str] = []
+        if old_cost is not None and old_cost != new_cost:
+            diffs.append(f"  cost: ${old_cost:.4f} → ${new_cost:.4f}")
+        if old_duration is not None and old_duration != new_duration:
+            diffs.append(f"  latency: {old_duration}s → {new_duration}s")
+        if diffs:
+            logger.info("Router overhead diff vs previous run:\n%s", "\n".join(diffs))
