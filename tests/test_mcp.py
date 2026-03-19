@@ -1,15 +1,14 @@
 """Smoke tests for the MCP server."""
 
-from odysseus.mcp import mcp
+from unittest.mock import patch
+
+from odysseus.mcp import _build_run_config, mcp
 
 
 async def test_server_has_tools():
     tools = await mcp.list_tools()
     tool_names = [t.name for t in tools]
     assert "optimize_routing_prompt" in tool_names
-
-
-from odysseus.mcp import _build_run_config
 
 
 def test_build_run_config_dev_split():
@@ -32,9 +31,6 @@ def test_build_run_config_holdout_split():
         data_split="holdout",
     )
     assert config.data_split == "holdout"
-
-
-from unittest.mock import patch
 
 
 async def test_run_eval_hardcodes_dev_split():
@@ -82,9 +78,7 @@ def test_run_eval_does_not_construct_holdout_config():
     for node in ast.walk(tree):
         if isinstance(node, ast.keyword) and node.arg == "data_split":
             assert isinstance(node.value, ast.Constant)
-            assert node.value.value == "dev", (
-                "run_eval must hardcode data_split='dev'"
-            )
+            assert node.value.value == "dev", "run_eval must hardcode data_split='dev'"
 
 
 async def test_run_eval_tool_registered():
@@ -106,9 +100,7 @@ async def test_run_eval_does_not_expose_data_split():
     tools = await mcp.list_tools()
     run_eval_tool = next(t for t in tools if t.name == "run_eval")
     schema_properties = run_eval_tool.inputSchema.get("properties", {})
-    assert "data_split" not in schema_properties, (
-        "data_split must not be exposed as a tool parameter"
-    )
+    assert "data_split" not in schema_properties, "data_split must not be exposed as a tool parameter"
 
 
 async def test_run_holdout_eval_does_not_expose_data_split():
@@ -116,6 +108,4 @@ async def test_run_holdout_eval_does_not_expose_data_split():
     tools = await mcp.list_tools()
     holdout_tool = next(t for t in tools if t.name == "run_holdout_eval")
     schema_properties = holdout_tool.inputSchema.get("properties", {})
-    assert "data_split" not in schema_properties, (
-        "data_split must not be exposed as a tool parameter"
-    )
+    assert "data_split" not in schema_properties, "data_split must not be exposed as a tool parameter"
