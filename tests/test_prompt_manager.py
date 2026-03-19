@@ -1,8 +1,8 @@
 """Tests for the FilePromptManager."""
 
-import asyncio
-import contextlib
-import logging
+import asyncio  # noqa: F401 — used in Tasks 4-5 (hot-reload tests)
+import contextlib  # noqa: F401 — used in Tasks 4-5 (hot-reload tests)
+import logging  # noqa: F401 — used in Task 6 (logging tests)
 from pathlib import Path
 
 import pytest
