@@ -68,23 +68,17 @@ class DefaultMetricsEngine:
         return merged
 
 
-def compute_accuracy(
-    results: list[EvalResult], examples: list[Example]
-) -> dict[str, float]:
+def compute_accuracy(results: list[EvalResult], examples: list[Example]) -> dict[str, float]:
     """Fraction of predictions matching the expected route."""
     if not results:
         return {"accuracy": 0.0}
     correct = sum(
-        1
-        for r, ex in zip(results, examples)
-        if r.output is not None and r.output["route"] == ex.expected["route"]
+        1 for r, ex in zip(results, examples) if r.output is not None and r.output["route"] == ex.expected["route"]
     )
     return {"accuracy": correct / len(results)}
 
 
-def compute_confusion(
-    results: list[EvalResult], examples: list[Example]
-) -> dict[str, float]:
+def compute_confusion(results: list[EvalResult], examples: list[Example]) -> dict[str, float]:
     """Confusion matrix as flat dict keyed by confusion/{true}/{predicted}."""
     if not results:
         return {}
@@ -173,21 +167,13 @@ def compute_cost_quality_reduction(
         return zero_result
 
     return {
-        "cost_reduction": (
-            (predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
-        ),
+        "cost_reduction": ((predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0),
         "quality_reduction": (
-            (predicted_quality - baseline_quality) / baseline_quality
-            if baseline_quality != 0
-            else 0.0
+            (predicted_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
         ),
-        "oracle_cost_reduction": (
-            (oracle_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
-        ),
+        "oracle_cost_reduction": ((oracle_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0),
         "oracle_quality_reduction": (
-            (oracle_quality - baseline_quality) / baseline_quality
-            if baseline_quality != 0
-            else 0.0
+            (oracle_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
         ),
     }
 
@@ -219,9 +205,7 @@ def create_default_engine() -> DefaultMetricsEngine:
     return engine
 
 
-def compute_f1(
-    results: list[EvalResult], examples: list[Example]
-) -> dict[str, float]:
+def compute_f1(results: list[EvalResult], examples: list[Example]) -> dict[str, float]:
     """Per-class precision, recall, F1, and macro F1."""
     if not results:
         return {"f1/macro": 0.0}

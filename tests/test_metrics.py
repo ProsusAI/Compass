@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion, compute_cost_quality_reduction, compute_f1, create_default_engine
+from odysseus.eval.metrics import (
+    DefaultMetricsEngine,
+    compute_accuracy,
+    compute_confusion,
+    compute_cost_quality_reduction,
+    compute_f1,
+    create_default_engine,
+)
 from odysseus.eval.models import EvalResult, Example, MetricConfig
 
 # --- Helpers ---
@@ -321,7 +328,7 @@ def test_cost_quality_hallucinated_route_skipped(caplog):
     ]
     results = [
         _result("ex-0", route="nonexistent-model"),  # hallucinated
-        _result("ex-1", route="claude-sonnet"),       # valid
+        _result("ex-1", route="claude-sonnet"),  # valid
     ]
 
     out = compute_cost_quality_reduction(results, examples, baseline_class="gpt-4o")
