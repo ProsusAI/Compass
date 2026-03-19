@@ -83,5 +83,7 @@ def test_run_dependencies_construction():
         dataset_manager=StubDatasetManager(),
         metrics_engine=StubMetricsEngine(),
         results_collector=StubResultsCollector(),
+        requests_per_minute=100,
+        tokens_per_minute=50000,
     )
     assert deps.backend.model_name == "test-model"

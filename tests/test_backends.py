@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +13,8 @@ from pydantic import ValidationError
 from odysseus.eval.backends.litellm_backend import LiteLLMBackend
 from odysseus.eval.backends.profile import BackendProfile
 from odysseus.eval.backends.registry import BackendRegistry
-from odysseus.eval.models import Example
+from odysseus.eval.models import EvalResult, Example, MetricConfig, RunReport, TokenUsage
+from odysseus.eval.protocols import RunDependencies
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -366,3 +368,75 @@ class TestLiteLLMBackend:
 
         call_kwargs = mock_acompletion.call_args.kwargs
         assert call_kwargs["key"] == "extra_value"
+
+
+# ---------------------------------------------------------------------------
+# RunDependencies validation tests
+# ---------------------------------------------------------------------------
+
+
+class _MockBackend:
+    @property
+    def model_name(self) -> str:
+        return "test"
+
+    async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
+        return {}, TokenUsage(input_tokens=0, cached_tokens=0, output_tokens=0)
+
+
+class _MockPromptManager:
+    def load(self, version: str) -> str:
+        return ""
+
+
+class _MockDatasetManager:
+    def load(self, path: str, split: Literal["dev", "holdout"]) -> list[Example]:
+        return []
+
+
+class _MockMetricsEngine:
+    def compute(
+        self, results: list[EvalResult], examples: list[Example], metric_configs: list[MetricConfig]
+    ) -> dict[str, float]:
+        return {}
+
+
+class _MockResultsCollector:
+    def write_results(self, results: list[EvalResult], path: str) -> None:
+        pass
+
+    def write_report(self, report: RunReport, path: str) -> None:
+        pass
+
+
+def _make_run_deps(**overrides: Any) -> RunDependencies:
+    defaults: dict[str, Any] = {
+        "backend": _MockBackend(),
+        "prompt_manager": _MockPromptManager(),
+        "dataset_manager": _MockDatasetManager(),
+        "metrics_engine": _MockMetricsEngine(),
+        "results_collector": _MockResultsCollector(),
+        "requests_per_minute": 100,
+        "tokens_per_minute": 50000,
+    }
+    defaults.update(overrides)
+    return RunDependencies(**defaults)
+
+
+def test_run_dependencies_valid():
+    """RunDependencies accepts valid rate limit values."""
+    deps = _make_run_deps()
+    assert deps.requests_per_minute == 100
+    assert deps.tokens_per_minute == 50000
+
+
+def test_run_dependencies_rpm_zero_rejected():
+    """RunDependencies rejects requests_per_minute < 1."""
+    with pytest.raises(ValueError, match="requests_per_minute must be >= 1"):
+        _make_run_deps(requests_per_minute=0)
+
+
+def test_run_dependencies_tpm_negative_rejected():
+    """RunDependencies rejects tokens_per_minute < 1."""
+    with pytest.raises(ValueError, match="tokens_per_minute must be >= 1"):
+        _make_run_deps(tokens_per_minute=-1)
