@@ -224,6 +224,13 @@ class TestBackendRegistry:
         assert reg.list_profiles() == ["custom"]
         assert reg.get_profile("custom") is profile
 
+    def test_registry_create_backend(self) -> None:
+        profile = BackendProfile(**MINIMAL_PROFILE)
+        reg = BackendRegistry(profiles={"gpt": profile})
+        backend = reg.create_backend("gpt")
+        assert isinstance(backend, LiteLLMBackend)
+        assert backend.model_name == "gpt-4o"
+
 
 # ---------------------------------------------------------------------------
 # LiteLLMBackend
