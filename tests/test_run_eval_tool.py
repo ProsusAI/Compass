@@ -361,3 +361,43 @@ async def test_run_eval_missing_prompt(config_dir: Path) -> None:
     parsed = json.loads(result)
     assert parsed["error"] == "not_found"
     assert "v99" in parsed["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Unexpected error test
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_eval_unexpected_error_raises_tool_error(config_dir: Path) -> None:
+    """Unexpected RuntimeError from controller.run is re-raised as ToolError."""
+    from odysseus.mcp import run_eval
+
+    config_path = str(config_dir / "run_config.yaml")
+
+    with (
+        patch("odysseus.mcp.BackendRegistry") as mock_registry_cls,
+        patch("odysseus.mcp.FilePromptManager"),
+        patch("odysseus.mcp.JsonlDatasetManager"),
+        patch("odysseus.mcp.create_default_engine"),
+        patch("odysseus.mcp.JsonResultsCollector"),
+        patch("odysseus.mcp.controller") as mock_controller,
+    ):
+        mock_registry = MagicMock()
+        mock_registry_cls.from_directory.return_value = mock_registry
+        mock_profile = MagicMock()
+        mock_profile.requests_per_minute = 100
+        mock_profile.tokens_per_minute = 50000
+        mock_registry.get_profile.return_value = mock_profile
+
+        mock_controller.run = AsyncMock(
+            side_effect=RuntimeError("connection reset")
+        )
+
+        with pytest.raises(ToolError, match="run_eval failed unexpectedly"):
+            await run_eval(
+                prompt_version="v1",
+                data_source="data/test.jsonl",
+                backend="test-backend",
+                config_path=config_path,
+            )
