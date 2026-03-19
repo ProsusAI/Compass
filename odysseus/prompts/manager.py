@@ -42,9 +42,7 @@ class FilePromptManager:
             logger.info("Loaded prompt version '%s'", version)
             return self._cache[version]
 
-        raise FileNotFoundError(
-            f"Prompt version '{version}' not found in {self._dir}"
-        )
+        raise FileNotFoundError(f"Prompt version '{version}' not found in {self._dir}")
 
     # -- Internal helpers ------------------------------------------------------
 
@@ -65,9 +63,7 @@ class FilePromptManager:
     def _load_latest(self) -> str:
         """Resolve 'latest' to the most recently modified prompt file from cache."""
         if not self._cache:
-            raise FileNotFoundError(
-                f"No prompt files found for 'latest' in {self._dir}"
-            )
+            raise FileNotFoundError(f"No prompt files found for 'latest' in {self._dir}")
 
         version = max(self._mtimes, key=self._mtimes.__getitem__)
         content = self._cache[version]

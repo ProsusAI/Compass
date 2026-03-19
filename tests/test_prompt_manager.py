@@ -124,9 +124,7 @@ class TestHotReload:
 
 
 class TestLogging:
-    def test_load_logs_version_at_info(
-        self, prompts_dir: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_load_logs_version_at_info(self, prompts_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
         _write_prompt(prompts_dir, "v3.yaml", "some prompt")
         mgr = FilePromptManager(prompts_dir)
 
@@ -135,9 +133,7 @@ class TestLogging:
 
         assert any("v3" in record.message for record in caplog.records)
 
-    def test_load_latest_logs_resolved_version(
-        self, prompts_dir: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
+    def test_load_latest_logs_resolved_version(self, prompts_dir: Path, caplog: pytest.LogCaptureFixture) -> None:
         _write_prompt(prompts_dir, "v1.yaml", "prompt")
         mgr = FilePromptManager(prompts_dir)
 
