@@ -94,3 +94,112 @@ def test_write_report_creates_json(tmp_path):
     assert parsed["summary"]["total"] == 1
     # Verify it's indented (pretty-printed)
     assert "\n" in content
+
+
+def test_write_report_logs_diff_when_previous_exists(tmp_path, caplog):
+    """When a previous report exists, metric changes are logged at INFO."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "report.json")
+
+    # Write first report
+    old_report = _make_report(metrics={"accuracy": 0.82, "f1": 0.75})
+    collector.write_report(old_report, path)
+
+    # Write second report to same path
+    new_report = _make_report(metrics={"accuracy": 0.85, "f1": 0.75})
+    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+        collector.write_report(new_report, path)
+
+    assert "accuracy: 0.82 → 0.85" in caplog.text
+    # f1 unchanged — should not appear in diff
+    assert "f1" not in caplog.text
+
+
+def test_write_report_no_diff_on_first_run(tmp_path, caplog):
+    """No diff is logged when there is no previous report."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "report.json")
+
+    report = _make_report(metrics={"accuracy": 0.85})
+    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+        collector.write_report(report, path)
+
+    assert "→" not in caplog.text
+
+
+def test_write_report_diff_handles_new_and_removed_metrics(tmp_path, caplog):
+    """Diff logs new metrics and removed metrics."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "report.json")
+
+    old_report = _make_report(metrics={"accuracy": 0.80, "old_metric": 0.50})
+    collector.write_report(old_report, path)
+
+    new_report = _make_report(metrics={"accuracy": 0.85, "new_metric": 0.90})
+    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+        collector.write_report(new_report, path)
+
+    assert "accuracy: 0.8 → 0.85" in caplog.text
+    assert "new_metric: (new) 0.9" in caplog.text
+    assert "old_metric: 0.5 (removed)" in caplog.text
+
+
+def _make_report_with_overhead(
+    metrics: dict[str, float] | None = None,
+    total_cost: float = 0.001,
+    duration_seconds: float = 1.0,
+) -> RunReport:
+    config = RunConfig(
+        backend="test-model",
+        data_source="data/test.jsonl",
+        data_split="dev",
+        metrics=[MetricConfig(name="accuracy")],
+        output=OutputConfig(),
+    )
+    now = datetime.now(UTC)
+    return RunReport(
+        config=config,
+        metrics=metrics or {"accuracy": 0.85},
+        results=[_make_result()],
+        summary=RunSummary(
+            total=1,
+            succeeded=1,
+            failed=0,
+            total_cost=total_cost,
+            start_time=now,
+            end_time=now,
+            duration_seconds=duration_seconds,
+        ),
+    )
+
+
+def test_write_report_logs_router_overhead_diff(tmp_path, caplog):
+    """Router overhead (cost + latency) changes are logged."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "report.json")
+
+    old_report = _make_report_with_overhead(total_cost=0.0500, duration_seconds=12.5)
+    collector.write_report(old_report, path)
+
+    new_report = _make_report_with_overhead(total_cost=0.0350, duration_seconds=9.8)
+    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+        collector.write_report(new_report, path)
+
+    assert "Router overhead" in caplog.text
+    assert "cost: $0.0500 → $0.0350" in caplog.text
+    assert "latency: 12.5s → 9.8s" in caplog.text
+
+
+def test_write_report_no_overhead_diff_when_unchanged(tmp_path, caplog):
+    """No router overhead section when cost and latency are unchanged."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "report.json")
+
+    old_report = _make_report_with_overhead(total_cost=0.05, duration_seconds=10.0)
+    collector.write_report(old_report, path)
+
+    new_report = _make_report_with_overhead(total_cost=0.05, duration_seconds=10.0)
+    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+        collector.write_report(new_report, path)
+
+    assert "Router overhead" not in caplog.text
