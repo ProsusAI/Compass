@@ -91,10 +91,12 @@ async def run_eval(
         # Execute
         await controller.run(config, deps)
 
-        return json.dumps({
-            "report_path": config.output.report_path,
-            "results_path": config.output.results_path,
-        })
+        return json.dumps(
+            {
+                "report_path": config.output.report_path,
+                "results_path": config.output.results_path,
+            }
+        )
 
     except FileNotFoundError as e:
         return json.dumps({"error": "not_found", "detail": str(e)})

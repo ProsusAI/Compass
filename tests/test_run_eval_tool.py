@@ -46,9 +46,7 @@ def _stub_run_report() -> RunReport:
                 error=None,
                 latency_ms=100.0,
                 retries=0,
-                token_usage=TokenUsage(
-                    input_tokens=10, cached_tokens=0, output_tokens=5
-                ),
+                token_usage=TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5),
                 cost=0.001,
             ),
         ],
@@ -158,24 +156,26 @@ async def test_run_eval_hardcodes_dev_split(config_dir: Path, mcp_mocks: SimpleN
 
 
 @pytest.mark.asyncio
-async def test_run_eval_tool_params_override_yaml(
-    tmp_path: Path, mcp_mocks: SimpleNamespace
-) -> None:
+async def test_run_eval_tool_params_override_yaml(tmp_path: Path, mcp_mocks: SimpleNamespace) -> None:
     """Tool params override YAML values, and data_split is always 'dev'."""
     config_path = tmp_path / "run_config.yaml"
-    config_path.write_text(yaml.dump({
-        "backend": "yaml-backend",
-        "prompt_version": "v0",
-        "data_source": "data/old.jsonl",
-        "data_split": "holdout",
-        "metrics": [{"name": "accuracy"}],
-        "concurrency": {"max_concurrent_requests": 5},
-        "retry": {"max_attempts": 2, "backoff_factor": 2.0, "per_call_timeout_seconds": 30.0},
-        "output": {
-            "results_path": "outputs/results.jsonl",
-            "report_path": "outputs/report.json",
-        },
-    }))
+    config_path.write_text(
+        yaml.dump(
+            {
+                "backend": "yaml-backend",
+                "prompt_version": "v0",
+                "data_source": "data/old.jsonl",
+                "data_split": "holdout",
+                "metrics": [{"name": "accuracy"}],
+                "concurrency": {"max_concurrent_requests": 5},
+                "retry": {"max_attempts": 2, "backoff_factor": 2.0, "per_call_timeout_seconds": 30.0},
+                "output": {
+                    "results_path": "outputs/results.jsonl",
+                    "report_path": "outputs/report.json",
+                },
+            }
+        )
+    )
 
     await run_eval(
         prompt_version="v5",
@@ -214,15 +214,19 @@ async def test_run_eval_missing_config_file(tmp_path: Path) -> None:
 async def test_run_eval_invalid_config_yaml(tmp_path: Path) -> None:
     """YAML with empty metrics list fails validation."""
     config_path = tmp_path / "run_config.yaml"
-    config_path.write_text(yaml.dump({
-        "metrics": [],
-        "concurrency": {"max_concurrent_requests": 5},
-        "retry": {"max_attempts": 2, "backoff_factor": 2.0, "per_call_timeout_seconds": 30.0},
-        "output": {
-            "results_path": "outputs/results.jsonl",
-            "report_path": "outputs/report.json",
-        },
-    }))
+    config_path.write_text(
+        yaml.dump(
+            {
+                "metrics": [],
+                "concurrency": {"max_concurrent_requests": 5},
+                "retry": {"max_attempts": 2, "backoff_factor": 2.0, "per_call_timeout_seconds": 30.0},
+                "output": {
+                    "results_path": "outputs/results.jsonl",
+                    "report_path": "outputs/report.json",
+                },
+            }
+        )
+    )
 
     result = await run_eval(
         prompt_version="v1",
@@ -236,9 +240,7 @@ async def test_run_eval_invalid_config_yaml(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_eval_unknown_backend(
-    config_dir: Path, mcp_mocks: SimpleNamespace
-) -> None:
+async def test_run_eval_unknown_backend(config_dir: Path, mcp_mocks: SimpleNamespace) -> None:
     """Unknown backend label returns {'error': 'not_found'}."""
     mcp_mocks.registry.get_profile.side_effect = KeyError("unknown-backend")
 
@@ -254,13 +256,9 @@ async def test_run_eval_unknown_backend(
 
 
 @pytest.mark.asyncio
-async def test_run_eval_missing_prompt(
-    config_dir: Path, mcp_mocks: SimpleNamespace
-) -> None:
+async def test_run_eval_missing_prompt(config_dir: Path, mcp_mocks: SimpleNamespace) -> None:
     """FileNotFoundError from controller.run returns {'error': 'not_found'}."""
-    mcp_mocks.controller.run = AsyncMock(
-        side_effect=FileNotFoundError("prompt v99 not found")
-    )
+    mcp_mocks.controller.run = AsyncMock(side_effect=FileNotFoundError("prompt v99 not found"))
 
     result = await run_eval(
         prompt_version="v99",
@@ -280,13 +278,9 @@ async def test_run_eval_missing_prompt(
 
 
 @pytest.mark.asyncio
-async def test_run_eval_unexpected_error_raises_tool_error(
-    config_dir: Path, mcp_mocks: SimpleNamespace
-) -> None:
+async def test_run_eval_unexpected_error_raises_tool_error(config_dir: Path, mcp_mocks: SimpleNamespace) -> None:
     """Unexpected RuntimeError is re-raised as ToolError."""
-    mcp_mocks.controller.run = AsyncMock(
-        side_effect=RuntimeError("connection reset")
-    )
+    mcp_mocks.controller.run = AsyncMock(side_effect=RuntimeError("connection reset"))
 
     with pytest.raises(ToolError, match="run_eval failed unexpectedly"):
         await run_eval(
