@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion
+from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion, compute_f1
 from odysseus.eval.models import EvalResult, Example, MetricConfig
 
 # --- Helpers ---
@@ -189,3 +189,57 @@ def test_confusion_basic():
 def test_confusion_empty_results():
     out = compute_confusion([], [])
     assert out == {}
+
+
+# --- compute_f1 tests ---
+
+
+def test_f1_perfect_predictions():
+    results = [_result("ex-0", route="gpt-4o"), _result("ex-1", route="claude-sonnet")]
+    examples = [_example("ex-0", route="gpt-4o"), _example("ex-1", route="claude-sonnet")]
+    out = compute_f1(results, examples)
+    assert out["f1/gpt-4o"] == 1.0
+    assert out["precision/gpt-4o"] == 1.0
+    assert out["recall/gpt-4o"] == 1.0
+    assert out["f1/claude-sonnet"] == 1.0
+    assert out["f1/macro"] == 1.0
+
+
+def test_f1_class_with_zero_predictions():
+    """haiku has true samples but zero predictions — precision=0, recall=0, f1=0."""
+    results = [
+        _result("ex-0", route="gpt-4o"),
+        _result("ex-1", route="gpt-4o"),  # misrouted: true=haiku, pred=gpt-4o
+    ]
+    examples = [
+        _example("ex-0", route="gpt-4o"),
+        _example("ex-1", route="haiku"),
+    ]
+    out = compute_f1(results, examples)
+    assert out["precision/haiku"] == 0.0
+    assert out["recall/haiku"] == 0.0
+    assert out["f1/haiku"] == 0.0
+    assert out["precision/gpt-4o"] == pytest.approx(0.5)
+    assert out["recall/gpt-4o"] == 1.0
+    assert out["f1/gpt-4o"] == pytest.approx(2.0 / 3.0)
+
+
+def test_f1_macro_averages_across_classes():
+    """Macro F1 is unweighted average across all classes."""
+    results = [
+        _result("ex-0", route="gpt-4o"),
+        _result("ex-1", route="gpt-4o"),
+        _result("ex-2", route="claude-sonnet"),
+    ]
+    examples = [
+        _example("ex-0", route="gpt-4o"),
+        _example("ex-1", route="claude-sonnet"),
+        _example("ex-2", route="claude-sonnet"),
+    ]
+    out = compute_f1(results, examples)
+    assert out["f1/macro"] == pytest.approx(2.0 / 3.0)
+
+
+def test_f1_empty_results():
+    out = compute_f1([], [])
+    assert out == {"f1/macro": 0.0}

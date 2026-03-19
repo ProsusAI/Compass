@@ -107,3 +107,43 @@ def compute_confusion(
             out[f"confusion/{true_cls}/{pred_cls}"] = float(counts.get((true_cls, pred_cls), 0))
 
     return out
+
+
+def compute_f1(
+    results: list[EvalResult], examples: list[Example]
+) -> dict[str, float]:
+    """Per-class precision, recall, F1, and macro F1."""
+    if not results:
+        return {"f1/macro": 0.0}
+
+    classes: set[str] = set()
+    true_labels: list[str] = []
+    pred_labels: list[str] = []
+    for r, ex in zip(results, examples):
+        true_cls = ex.expected["route"]
+        pred_cls = r.output["route"] if r.output else ""
+        classes.add(true_cls)
+        classes.add(pred_cls)
+        true_labels.append(true_cls)
+        pred_labels.append(pred_cls)
+
+    out: dict[str, float] = {}
+    f1_scores: list[float] = []
+
+    for cls in sorted(classes):
+        tp = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p == cls)
+        fp = sum(1 for t, p in zip(true_labels, pred_labels) if t != cls and p == cls)
+        fn = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p != cls)
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+
+        out[f"precision/{cls}"] = precision
+        out[f"recall/{cls}"] = recall
+        out[f"f1/{cls}"] = f1
+        f1_scores.append(f1)
+
+    out["f1/macro"] = sum(f1_scores) / len(f1_scores) if f1_scores else 0.0
+
+    return out
