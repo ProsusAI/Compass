@@ -209,6 +209,16 @@ def _select_baseline_class(examples: list[Example]) -> str:
     )
 
 
+def create_default_engine() -> DefaultMetricsEngine:
+    """Create a DefaultMetricsEngine with all built-in metrics registered."""
+    engine = DefaultMetricsEngine()
+    engine.register("accuracy", compute_accuracy)
+    engine.register("confusion", compute_confusion)
+    engine.register("f1", compute_f1)
+    engine.register("cost_quality_reduction", compute_cost_quality_reduction)
+    return engine
+
+
 def compute_f1(
     results: list[EvalResult], examples: list[Example]
 ) -> dict[str, float]:

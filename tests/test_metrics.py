@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion, compute_cost_quality_reduction, compute_f1
+from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion, compute_cost_quality_reduction, compute_f1, create_default_engine
 from odysseus.eval.models import EvalResult, Example, MetricConfig
 
 # --- Helpers ---
@@ -357,3 +357,30 @@ def test_cost_quality_empty_results():
     assert out["quality_reduction"] == 0.0
     assert out["oracle_cost_reduction"] == 0.0
     assert out["oracle_quality_reduction"] == 0.0
+
+
+# --- create_default_engine tests ---
+
+
+def test_create_default_engine_has_all_builtins():
+    engine = create_default_engine()
+    assert "accuracy" in engine._registry
+    assert "confusion" in engine._registry
+    assert "f1" in engine._registry
+    assert "cost_quality_reduction" in engine._registry
+
+
+def test_create_default_engine_satisfies_protocol():
+    from odysseus.eval.protocols import MetricsEngine
+
+    engine = create_default_engine()
+    assert isinstance(engine, MetricsEngine)
+
+
+def test_create_default_engine_computes_accuracy():
+    """Integration: factory engine computes accuracy end-to-end."""
+    engine = create_default_engine()
+    results = [_result("ex-0", route="gpt-4o"), _result("ex-1", route="haiku")]
+    examples = [_example("ex-0", route="gpt-4o"), _example("ex-1", route="claude-sonnet")]
+    out = engine.compute(results, examples, [MetricConfig(name="accuracy")])
+    assert out == {"accuracy": 0.5}
