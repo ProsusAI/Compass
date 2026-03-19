@@ -73,7 +73,9 @@ def compute_accuracy(results: list[EvalResult], examples: list[Example]) -> dict
     if not results:
         return {"accuracy": 0.0}
     correct = sum(
-        1 for r, ex in zip(results, examples) if r.output is not None and r.output["route"] == ex.expected["route"]
+        1
+        for r, ex in zip(results, examples, strict=True)
+        if r.output is not None and r.output["route"] == ex.expected["route"]
     )
     return {"accuracy": correct / len(results)}
 
@@ -85,7 +87,7 @@ def compute_confusion(results: list[EvalResult], examples: list[Example]) -> dic
 
     classes: set[str] = set()
     pairs: list[tuple[str, str]] = []
-    for r, ex in zip(results, examples):
+    for r, ex in zip(results, examples, strict=True):
         true_class = ex.expected["route"]
         pred_class = r.output["route"] if r.output else ""
         classes.add(true_class)
@@ -140,7 +142,7 @@ def compute_cost_quality_reduction(
     oracle_quality = 0.0
     counted = 0
 
-    for r, ex in zip(results, examples):
+    for r, ex in zip(results, examples, strict=True):
         routes = ex.expected["routes"]
         pred_route = r.output["route"] if r.output else None
 
@@ -213,7 +215,7 @@ def compute_f1(results: list[EvalResult], examples: list[Example]) -> dict[str, 
     classes: set[str] = set()
     true_labels: list[str] = []
     pred_labels: list[str] = []
-    for r, ex in zip(results, examples):
+    for r, ex in zip(results, examples, strict=True):
         true_cls = ex.expected["route"]
         pred_cls = r.output["route"] if r.output else ""
         classes.add(true_cls)
@@ -225,9 +227,9 @@ def compute_f1(results: list[EvalResult], examples: list[Example]) -> dict[str, 
     f1_scores: list[float] = []
 
     for cls in sorted(classes):
-        tp = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p == cls)
-        fp = sum(1 for t, p in zip(true_labels, pred_labels) if t != cls and p == cls)
-        fn = sum(1 for t, p in zip(true_labels, pred_labels) if t == cls and p != cls)
+        tp = sum(1 for t, p in zip(true_labels, pred_labels, strict=True) if t == cls and p == cls)
+        fp = sum(1 for t, p in zip(true_labels, pred_labels, strict=True) if t != cls and p == cls)
+        fn = sum(1 for t, p in zip(true_labels, pred_labels, strict=True) if t == cls and p != cls)
 
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
         recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
