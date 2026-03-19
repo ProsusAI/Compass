@@ -15,4 +15,6 @@ class JsonResultsCollector:
                 f.write(result.model_dump_json() + "\n")
 
     def write_report(self, report: RunReport, path: str) -> None:
-        raise NotImplementedError
+        """Write the full RunReport as pretty-printed JSON to *path*."""
+        with open(path, "w") as f:
+            f.write(report.model_dump_json(indent=2) + "\n")

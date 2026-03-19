@@ -53,3 +53,44 @@ def test_write_results_empty_list(tmp_path):
     collector.write_results([], path)
 
     assert (tmp_path / "results.jsonl").read_text() == ""
+
+
+def _make_report(metrics: dict[str, float] | None = None) -> RunReport:
+    config = RunConfig(
+        backend="test-model",
+        data_source="data/test.jsonl",
+        data_split="dev",
+        metrics=[MetricConfig(name="accuracy")],
+        output=OutputConfig(),
+    )
+    now = datetime.now(UTC)
+    return RunReport(
+        config=config,
+        metrics=metrics or {"accuracy": 0.85},
+        results=[_make_result()],
+        summary=RunSummary(
+            total=1,
+            succeeded=1,
+            failed=0,
+            total_cost=0.001,
+            start_time=now,
+            end_time=now,
+            duration_seconds=1.0,
+        ),
+    )
+
+
+def test_write_report_creates_json(tmp_path):
+    """Report is written as pretty-printed JSON."""
+    collector = JsonResultsCollector()
+    report = _make_report()
+    path = str(tmp_path / "report.json")
+
+    collector.write_report(report, path)
+
+    content = (tmp_path / "report.json").read_text()
+    parsed = json.loads(content)
+    assert parsed["metrics"]["accuracy"] == 0.85
+    assert parsed["summary"]["total"] == 1
+    # Verify it's indented (pretty-printed)
+    assert "\n" in content
