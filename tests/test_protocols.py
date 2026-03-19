@@ -9,6 +9,7 @@ from odysseus.eval.models import (
     RunReport,
     TokenUsage,
 )
+from odysseus.eval.pricing import ModelPricing
 from odysseus.eval.protocols import (
     Backend,
     DatasetManager,
@@ -23,6 +24,10 @@ class StubBackend:
     @property
     def model_name(self) -> str:
         return "test-model"
+
+    @property
+    def pricing(self) -> ModelPricing | None:
+        return None
 
     async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
         return {"answer": "test"}, TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5)

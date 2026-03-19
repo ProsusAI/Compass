@@ -8,12 +8,14 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, field_validator
 
+from odysseus.eval.pricing import ModelPricing
+
 
 class BackendProfile(BaseModel):
     """Validated backend configuration loaded from YAML."""
 
     model: str
-    pricing_model: str | None = None
+    pricing: ModelPricing | None = None
     api_key_env: str | None = None
     api_base: str | None = None
 
@@ -38,10 +40,6 @@ class BackendProfile(BaseModel):
         if v < 1:
             raise ValueError("must be >= 1")
         return v
-
-    @property
-    def effective_pricing_model(self) -> str:
-        return self.pricing_model or self.model
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> BackendProfile:
