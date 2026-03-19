@@ -1,8 +1,32 @@
 """MCP server entrypoint for Odysseus."""
 
+from typing import Literal
+
 from mcp.server.fastmcp import FastMCP
 
+from odysseus.eval.models import MetricConfig, RunConfig
+
 mcp = FastMCP("odysseus")
+
+
+def _build_run_config(
+    prompt_version: str,
+    data_source: str,
+    data_split: Literal["dev", "holdout"],
+) -> RunConfig:
+    """Build a RunConfig with the given split hardcoded.
+
+    This is the single place where RunConfig is assembled for MCP tools.
+    The split is always provided by the calling tool, never by the agent.
+    """
+    # TODO(THP-129): read backend/metrics from environment or config file
+    return RunConfig(
+        backend="default",
+        prompt_version=prompt_version,
+        data_source=data_source,
+        data_split=data_split,
+        metrics=[MetricConfig(name="accuracy")],
+    )
 
 
 @mcp.tool()
