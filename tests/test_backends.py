@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
 from pydantic import ValidationError
 
+from odysseus.eval.backends.litellm_backend import LiteLLMBackend
 from odysseus.eval.backends.profile import BackendProfile
 from odysseus.eval.backends.registry import BackendRegistry
+from odysseus.eval.models import Example
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -220,3 +223,139 @@ class TestBackendRegistry:
         reg = BackendRegistry(profiles={"custom": profile})
         assert reg.list_profiles() == ["custom"]
         assert reg.get_profile("custom") is profile
+
+
+# ---------------------------------------------------------------------------
+# LiteLLMBackend
+# ---------------------------------------------------------------------------
+
+EXAMPLE = Example(id="ex1", input={"text": "hello"}, expected={"label": "greeting"})
+
+
+def _make_mock_response(
+    content: str = "response text",
+    prompt_tokens: int = 10,
+    completion_tokens: int = 20,
+    cache_read_input_tokens: int | None = 5,
+) -> MagicMock:
+    """Build a mock litellm response object."""
+    choice = MagicMock()
+    choice.message.content = content
+
+    if cache_read_input_tokens is not None:
+        usage = MagicMock()
+        usage.prompt_tokens = prompt_tokens
+        usage.completion_tokens = completion_tokens
+        usage.cache_read_input_tokens = cache_read_input_tokens
+    else:
+        # Simulate usage object that lacks cache_read_input_tokens attr
+        usage = MagicMock(spec=["prompt_tokens", "completion_tokens"])
+        usage.prompt_tokens = prompt_tokens
+        usage.completion_tokens = completion_tokens
+
+    resp = MagicMock()
+    resp.choices = [choice]
+    resp.usage = usage
+    return resp
+
+
+class TestLiteLLMBackend:
+    def test_backend_model_name_default(self) -> None:
+        profile = BackendProfile(**MINIMAL_PROFILE)
+        backend = LiteLLMBackend(profile)
+        assert backend.model_name == "gpt-4o"
+
+    def test_backend_model_name_pricing_override(self) -> None:
+        profile = BackendProfile(**{**MINIMAL_PROFILE, "pricing_model": "gpt-4o-2024-05-13"})
+        backend = LiteLLMBackend(profile)
+        assert backend.model_name == "gpt-4o-2024-05-13"
+
+    def test_backend_missing_env_var_raises(self) -> None:
+        profile = BackendProfile(**{**MINIMAL_PROFILE, "api_key_env": "NONEXISTENT_KEY_12345"})
+        with pytest.raises(KeyError):
+            LiteLLMBackend(profile)
+
+    def test_backend_api_key_not_in_repr(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TEST_KEY_SECRET", "sk-super-secret-value")
+        profile = BackendProfile(**{**MINIMAL_PROFILE, "api_key_env": "TEST_KEY_SECRET"})
+        backend = LiteLLMBackend(profile)
+        assert "sk-super-secret-value" not in repr(backend._api_key)
+
+    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
+    async def test_backend_call_passes_kwargs(self, mock_acompletion: AsyncMock) -> None:
+        mock_acompletion.return_value = _make_mock_response()
+        profile = BackendProfile(
+            model="gpt-4o",
+            requests_per_minute=100,
+            tokens_per_minute=50_000,
+            max_tokens=1024,
+            temperature=0.5,
+            api_base="https://custom.api.com",
+            provider_params={"org": "org-1"},
+            extra_params={"top_p": 0.9},
+        )
+        backend = LiteLLMBackend(profile)
+        await backend.call("test prompt", EXAMPLE)
+
+        mock_acompletion.assert_called_once()
+        call_kwargs = mock_acompletion.call_args
+        assert call_kwargs.kwargs["model"] == "gpt-4o"
+        assert call_kwargs.kwargs["max_tokens"] == 1024
+        assert call_kwargs.kwargs["temperature"] == 0.5
+        assert call_kwargs.kwargs["base_url"] == "https://custom.api.com"
+        assert call_kwargs.kwargs["org"] == "org-1"
+        assert call_kwargs.kwargs["top_p"] == 0.9
+
+    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
+    async def test_backend_call_token_normalisation(self, mock_acompletion: AsyncMock) -> None:
+        mock_acompletion.return_value = _make_mock_response(
+            prompt_tokens=100, completion_tokens=50, cache_read_input_tokens=30
+        )
+        profile = BackendProfile(**MINIMAL_PROFILE)
+        backend = LiteLLMBackend(profile)
+        output, usage = await backend.call("prompt", EXAMPLE)
+
+        assert output == {"content": "response text"}
+        assert usage.input_tokens == 100
+        assert usage.cached_tokens == 30
+        assert usage.output_tokens == 50
+
+    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
+    async def test_backend_call_no_cache_tokens(self, mock_acompletion: AsyncMock) -> None:
+        mock_acompletion.return_value = _make_mock_response(
+            prompt_tokens=100, completion_tokens=50, cache_read_input_tokens=None
+        )
+        profile = BackendProfile(**MINIMAL_PROFILE)
+        backend = LiteLLMBackend(profile)
+        _, usage = await backend.call("prompt", EXAMPLE)
+
+        assert usage.cached_tokens == 0
+
+    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
+    async def test_backend_call_minimal_kwargs(self, mock_acompletion: AsyncMock) -> None:
+        mock_acompletion.return_value = _make_mock_response()
+        profile = BackendProfile(**MINIMAL_PROFILE)
+        backend = LiteLLMBackend(profile)
+        await backend.call("prompt", EXAMPLE)
+
+        call_kwargs = mock_acompletion.call_args.kwargs
+        assert "api_key" not in call_kwargs
+        assert "base_url" not in call_kwargs
+        assert "max_tokens" not in call_kwargs
+        assert "temperature" not in call_kwargs
+
+    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
+    async def test_backend_extra_params_overrides_provider_params(self, mock_acompletion: AsyncMock) -> None:
+        mock_acompletion.return_value = _make_mock_response()
+        profile = BackendProfile(
+            **{
+                **MINIMAL_PROFILE,
+                "provider_params": {"key": "provider_value"},
+                "extra_params": {"key": "extra_value"},
+            }
+        )
+        backend = LiteLLMBackend(profile)
+        await backend.call("prompt", EXAMPLE)
+
+        call_kwargs = mock_acompletion.call_args.kwargs
+        assert call_kwargs["key"] == "extra_value"
