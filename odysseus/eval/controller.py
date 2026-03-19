@@ -63,7 +63,7 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     results = await asyncio.gather(*tasks)
 
     # 4. Compute metrics
-    metrics = deps.metrics_engine.compute(list(results), config.metrics)
+    metrics = deps.metrics_engine.compute(list(results), examples, config.metrics)
 
     # 5. Build report
     end_time = datetime.now(UTC)

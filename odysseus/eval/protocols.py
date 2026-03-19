@@ -44,7 +44,12 @@ class DatasetManager(Protocol):
 class MetricsEngine(Protocol):
     """Computes metrics over evaluation results."""
 
-    def compute(self, results: list[EvalResult], metric_configs: list[MetricConfig]) -> dict[str, float]: ...
+    def compute(
+        self,
+        results: list[EvalResult],
+        examples: list[Example],
+        metric_configs: list[MetricConfig],
+    ) -> dict[str, float]: ...
 
 
 @runtime_checkable

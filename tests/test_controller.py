@@ -96,7 +96,9 @@ class MockMetricsEngine:
     def __init__(self, metrics: dict[str, float] | None = None):
         self._metrics = metrics or {"accuracy": 1.0}
 
-    def compute(self, results: list[EvalResult], metric_configs: list[MetricConfig]) -> dict[str, float]:
+    def compute(
+        self, results: list[EvalResult], examples: list[Example], metric_configs: list[MetricConfig]
+    ) -> dict[str, float]:
         return self._metrics
 
 
