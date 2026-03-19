@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from watchfiles import awatch
+
 logger = logging.getLogger(__name__)
 
 # Extensions recognized as prompt files, in priority order.
@@ -71,3 +73,17 @@ class FilePromptManager:
         content = self._cache[version]
         logger.info("Loaded prompt version '%s' (resolved from 'latest')", version)
         return content
+
+    async def watch(self) -> None:
+        """Watch the prompts directory and rescan on any change.
+
+        This is a long-running coroutine — run it as a background task
+        (``asyncio.create_task``) and cancel to stop.
+        """
+        logger.info("Watching %s for prompt changes", self._dir)
+        # Perform an immediate rescan to capture any changes that occurred
+        # between the last _scan() call and the moment this coroutine started.
+        self._scan()
+        async for _changes in awatch(self._dir):
+            logger.info("Detected change in prompts directory, rescanning")
+            self._scan()
