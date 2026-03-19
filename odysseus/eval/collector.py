@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from odysseus.eval.diff import compute_metric_diffs, compute_overhead_diff
+from odysseus.eval.diff import compute_metric_diffs
 from odysseus.eval.models import EvalResult, RunReport
 
 logger = logging.getLogger(__name__)

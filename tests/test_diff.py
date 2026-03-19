@@ -1,6 +1,6 @@
 """Tests for odysseus.eval.diff — shared diff computation."""
 
-from odysseus.eval.diff import MetricDiff, compute_metric_diffs
+from odysseus.eval.diff import MetricDiff, OverheadDiff, compute_metric_diffs, compute_overhead_diff
 
 
 class TestComputeMetricDiffs:
@@ -37,9 +37,6 @@ class TestComputeMetricDiffs:
 
     def test_both_empty(self) -> None:
         assert compute_metric_diffs({}, {}) == []
-
-
-from odysseus.eval.diff import OverheadDiff, compute_overhead_diff
 
 
 class TestComputeOverheadDiff:

@@ -1,6 +1,19 @@
 """Tests for ScoreReport and ErrorBreakdown models."""
 
-from odysseus.eval.models import ErrorBreakdown
+from datetime import UTC, datetime
+
+from odysseus.eval.diff import MetricDiff, OverheadDiff
+from odysseus.eval.models import (
+    ErrorBreakdown,
+    EvalResult,
+    MetricConfig,
+    RunConfig,
+    RunDiff,
+    RunReport,
+    RunSummary,
+    ScoreReport,
+    TokenUsage,
+)
 
 
 class TestErrorBreakdown:
@@ -15,10 +28,6 @@ class TestErrorBreakdown:
         data = eb.model_dump()
         assert data == {"example_id": "ex-1", "error": "timeout", "retries": 2}
         assert ErrorBreakdown(**data) == eb
-
-
-from odysseus.eval.diff import MetricDiff, OverheadDiff
-from odysseus.eval.models import RunDiff
 
 
 class TestRunDiff:
@@ -40,19 +49,6 @@ class TestRunDiff:
     def test_empty_diffs(self) -> None:
         rd = RunDiff(metric_diffs=[], overhead_diff=None)
         assert rd.metric_diffs == []
-
-
-from datetime import datetime, timezone
-
-from odysseus.eval.models import (
-    EvalResult,
-    RunConfig,
-    RunReport,
-    RunSummary,
-    ScoreReport,
-    TokenUsage,
-    MetricConfig,
-)
 
 
 def _make_run_report(
@@ -103,8 +99,8 @@ def _make_run_report(
             succeeded=num_succeeded,
             failed=num_failed,
             total_cost=0.008,
-            start_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=timezone.utc),
-            end_time=datetime(2026, 3, 19, 10, 1, 0, tzinfo=timezone.utc),
+            start_time=datetime(2026, 3, 19, 10, 0, 0, tzinfo=UTC),
+            end_time=datetime(2026, 3, 19, 10, 1, 0, tzinfo=UTC),
             duration_seconds=60.0,
         ),
     )
