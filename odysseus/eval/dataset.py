@@ -69,6 +69,4 @@ class JsonlDatasetManager:
     def _check_holdout_access() -> None:
         """Raise PermissionError if holdout access is not explicitly allowed."""
         if os.environ.get("ALLOW_HOLDOUT") != "1":
-            raise PermissionError(
-                "Holdout access denied. Set ALLOW_HOLDOUT=1 to access holdout data."
-            )
+            raise PermissionError("Holdout access denied. Set ALLOW_HOLDOUT=1 to access holdout data.")

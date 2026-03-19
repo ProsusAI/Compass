@@ -53,9 +53,12 @@ class TestJsonlDatasetManagerDevSplit:
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "data.jsonl"
-        _write_jsonl(path, [
-            {"id": "1", "input": {"text": "a"}, "expected": {"label": "b"}, "split": "holdout"},
-        ])
+        _write_jsonl(
+            path,
+            [
+                {"id": "1", "input": {"text": "a"}, "expected": {"label": "b"}, "split": "holdout"},
+            ],
+        )
 
         manager = JsonlDatasetManager()
         examples = manager.load(str(path), "dev")
@@ -158,3 +161,12 @@ class TestJsonlDatasetManagerLogging:
             manager.load(str(path), "dev")
 
         assert any("Loaded 2 dev examples" in msg for msg in caplog.messages)
+
+
+class TestJsonlDatasetManagerProtocol:
+    def test_conforms_to_dataset_manager_protocol(self):
+        from odysseus.eval.dataset import JsonlDatasetManager
+        from odysseus.eval.protocols import DatasetManager
+
+        manager = JsonlDatasetManager()
+        assert isinstance(manager, DatasetManager)
