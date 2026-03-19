@@ -70,3 +70,54 @@ class TestLatestResolution:
         _write_prompt(prompts_dir, "v1.yaml", "the prompt")
         mgr = FilePromptManager(prompts_dir)
         assert mgr.load("latest") == "the prompt"
+
+
+class TestHotReload:
+    async def test_cache_updates_on_new_file(self, prompts_dir: Path) -> None:
+        _write_prompt(prompts_dir, "v1.yaml", "original")
+        mgr = FilePromptManager(prompts_dir)
+        assert mgr.load("v1") == "original"
+
+        # Start watcher
+        task = asyncio.create_task(mgr.watch())
+        try:
+            # Add a new file
+            _write_prompt(prompts_dir, "v2.yaml", "new version")
+            # Give watcher time to detect
+            await asyncio.sleep(0.5)
+            assert mgr.load("v2") == "new version"
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def test_cache_updates_on_modified_file(self, prompts_dir: Path) -> None:
+        _write_prompt(prompts_dir, "v1.yaml", "before")
+        mgr = FilePromptManager(prompts_dir)
+        assert mgr.load("v1") == "before"
+
+        task = asyncio.create_task(mgr.watch())
+        try:
+            _write_prompt(prompts_dir, "v1.yaml", "after")
+            await asyncio.sleep(0.5)
+            assert mgr.load("v1") == "after"
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def test_cache_updates_on_deleted_file(self, prompts_dir: Path) -> None:
+        p = _write_prompt(prompts_dir, "v1.yaml", "content")
+        mgr = FilePromptManager(prompts_dir)
+        assert mgr.load("v1") == "content"
+
+        task = asyncio.create_task(mgr.watch())
+        try:
+            p.unlink()
+            await asyncio.sleep(0.5)
+            with pytest.raises(FileNotFoundError):
+                mgr.load("v1")
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
