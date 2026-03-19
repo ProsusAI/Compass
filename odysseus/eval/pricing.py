@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from odysseus.eval.models import TokenUsage
 from pydantic import BaseModel
+
+from odysseus.eval.models import TokenUsage
 
 
 class ModelPricing(BaseModel):

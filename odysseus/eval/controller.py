@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +16,6 @@ from odysseus.eval.models import (
     RunConfig,
     RunReport,
     RunSummary,
-    TokenUsage,
 )
 from odysseus.eval.pricing import compute_cost
 from odysseus.eval.protocols import RunDependencies
@@ -34,8 +33,13 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     4. Write outputs
     5. Return report
     """
-    start_time = datetime.now(timezone.utc)
-    logger.info("Starting evaluation run: backend=%s, data=%s, split=%s", config.backend, config.data_source, config.data_split)
+    start_time = datetime.now(UTC)
+    logger.info(
+        "Starting evaluation run: backend=%s, data=%s, split=%s",
+        config.backend,
+        config.data_source,
+        config.data_split,
+    )
 
     # 1. Load prompt and data
     prompt = deps.prompt_manager.load(config.prompt_version)
@@ -54,8 +58,7 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     semaphore = asyncio.Semaphore(config.concurrency.max_concurrent_requests)
 
     tasks = [
-        _eval_with_retry(deps.backend, prompt, example, config.retry, rate_limiter, semaphore)
-        for example in examples
+        _eval_with_retry(deps.backend, prompt, example, config.retry, rate_limiter, semaphore) for example in examples
     ]
     results = await asyncio.gather(*tasks)
 
@@ -63,7 +66,7 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     metrics = deps.metrics_engine.compute(list(results), config.metrics)
 
     # 5. Build report
-    end_time = datetime.now(timezone.utc)
+    end_time = datetime.now(UTC)
     succeeded = sum(1 for r in results if r.error is None)
     failed = len(results) - succeeded
     total_cost = sum(r.cost or 0.0 for r in results)
@@ -87,7 +90,10 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
 
     logger.info(
         "Run complete: %d/%d succeeded, cost=$%.4f, duration=%.1fs",
-        succeeded, len(results), total_cost, summary.duration_seconds,
+        succeeded,
+        len(results),
+        total_cost,
+        summary.duration_seconds,
     )
 
     # 6. Write outputs
@@ -146,7 +152,7 @@ async def _eval_with_retry(
 
         # Backoff before retry (outside semaphore)
         if attempt < retry_config.max_attempts:
-            backoff = retry_config.backoff_factor ** attempt
+            backoff = retry_config.backoff_factor**attempt
             await asyncio.sleep(backoff)
 
     # All retries exhausted

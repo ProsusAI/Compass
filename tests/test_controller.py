@@ -1,7 +1,6 @@
 """Tests for the run controller."""
 
 import asyncio
-from datetime import datetime, timezone
 from typing import Any, Literal
 
 from odysseus.eval.controller import run
@@ -16,7 +15,6 @@ from odysseus.eval.models import (
     TokenUsage,
 )
 from odysseus.eval.protocols import RunDependencies
-
 
 # --- Mock implementations ---
 
@@ -118,10 +116,7 @@ class MockResultsCollector:
 
 
 def _make_examples(n: int) -> list[Example]:
-    return [
-        Example(id=f"ex-{i}", input={"question": f"q{i}"}, expected={"answer": f"a{i}"})
-        for i in range(n)
-    ]
+    return [Example(id=f"ex-{i}", input={"question": f"q{i}"}, expected={"answer": f"a{i}"}) for i in range(n)]
 
 
 def _make_config(**overrides: Any) -> RunConfig:
@@ -215,11 +210,17 @@ async def test_concurrency_limit():
 
     # Monkey-patch call to add a delay
     import types
+
     backend.call = types.MethodType(slow_call, backend)
 
     from odysseus.eval.models import ConcurrencyConfig
+
     config = _make_config(
-        concurrency=ConcurrencyConfig(max_concurrent_requests=2, requests_per_minute=10000, tokens_per_minute=1_000_000),
+        concurrency=ConcurrencyConfig(
+            max_concurrent_requests=2,
+            requests_per_minute=10000,
+            tokens_per_minute=1_000_000,
+        ),
     )
     deps, _ = _make_deps(backend=backend, examples=_make_examples(6))
     await run(config, deps)
@@ -231,7 +232,7 @@ async def test_output_writing():
     """Results collector receives correct data."""
     deps, collector = _make_deps()
     config = _make_config()
-    report = await run(config, deps)
+    await run(config, deps)
 
     assert collector.written_results is not None
     assert len(collector.written_results) == 5
