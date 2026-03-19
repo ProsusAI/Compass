@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any
 
 import pytest
 import yaml
@@ -131,3 +132,119 @@ def test_concurrency_minimum_valid_accepted():
     assert cc.max_concurrent_requests == 1
     assert cc.requests_per_minute == 1
     assert cc.tokens_per_minute == 1
+
+
+def test_retry_max_attempts_zero_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(max_attempts=0)
+
+
+def test_retry_backoff_below_one_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(backoff_factor=0.5)
+
+
+def test_retry_timeout_zero_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(per_call_timeout_seconds=0)
+
+
+def test_retry_minimum_valid_accepted():
+    rc = RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1)
+    assert rc.max_attempts == 1
+    assert rc.backoff_factor == 1.0
+    assert rc.per_call_timeout_seconds == 0.1
+
+
+def test_retry_timeout_301_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(per_call_timeout_seconds=301)
+
+
+def test_retry_timeout_300_accepted():
+    rc = RetryConfig(per_call_timeout_seconds=300)
+    assert rc.per_call_timeout_seconds == 300
+
+
+def test_retry_total_duration_over_1800_rejected():
+    with pytest.raises(ValidationError):
+        RetryConfig(max_attempts=10, backoff_factor=3.0, per_call_timeout_seconds=60)
+
+
+def test_retry_total_duration_boundary_rejected():
+    # total = 62 + 6*290 = 1802 > 1800
+    with pytest.raises(ValidationError):
+        RetryConfig(max_attempts=6, backoff_factor=2.0, per_call_timeout_seconds=290)
+
+
+def test_retry_total_duration_boundary_accepted():
+    # total = 62 + 6*289 = 1796 <= 1800
+    rc = RetryConfig(max_attempts=6, backoff_factor=2.0, per_call_timeout_seconds=289)
+    assert rc.per_call_timeout_seconds == 289
+
+
+def test_output_results_path_wrong_suffix_rejected():
+    with pytest.raises(ValidationError):
+        OutputConfig(results_path="foo.txt")
+
+
+def test_output_report_path_wrong_suffix_rejected():
+    with pytest.raises(ValidationError):
+        OutputConfig(report_path="bar.csv")
+
+
+def test_output_minimum_valid_accepted():
+    oc = OutputConfig(results_path="r.jsonl", report_path="r.json")
+    assert oc.results_path == "r.jsonl"
+    assert oc.report_path == "r.json"
+
+
+def _valid_run_kwargs(**overrides: Any) -> dict[str, Any]:
+    """Return valid RunConfig kwargs, with optional overrides."""
+    base = {
+        "backend": "claude-sonnet",
+        "data_source": "data/test.jsonl",
+        "data_split": "dev",
+        "metrics": [{"name": "accuracy"}],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_run_config_empty_backend_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(backend=""))
+
+
+def test_run_config_whitespace_prompt_version_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(prompt_version="  "))
+
+
+def test_run_config_whitespace_data_source_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(data_source="   "))
+
+
+def test_run_config_empty_metrics_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(metrics=[]))
+
+
+def test_run_config_invalid_data_split_rejected():
+    with pytest.raises(ValidationError):
+        RunConfig(**_valid_run_kwargs(data_split="test"))
+
+
+def test_run_config_backend_stripped():
+    config = RunConfig(**_valid_run_kwargs(backend="  claude-sonnet  "))
+    assert config.backend == "claude-sonnet"
+
+
+def test_example_config_round_trip():
+    config = RunConfig.from_yaml("configs/example-run.yaml")
+    assert config.backend == "claude-sonnet-4-20250514"
+    assert config.data_split == "dev"
+    assert len(config.metrics) == 2
+    assert config.concurrency.max_concurrent_requests == 20
+    assert config.retry.max_attempts == 3
