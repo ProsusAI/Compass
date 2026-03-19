@@ -63,13 +63,13 @@ async def run_eval(
     try:
         # Load stable config from YAML
         with open(config_path) as f:
-            config_data: dict = yaml.safe_load(f)
+            config_data: dict = yaml.safe_load(f) or {}
 
-        # Overlay agent-controlled parameters
+        # Overlay agent-controlled parameters (tool params override YAML)
         config_data["backend"] = backend
         config_data["prompt_version"] = prompt_version
         config_data["data_source"] = data_source
-        config_data["data_split"] = "dev"
+        config_data["data_split"] = "dev"  # Always dev; holdout requires separate tool (THP-115)
 
         config = RunConfig.model_validate(config_data)
 
