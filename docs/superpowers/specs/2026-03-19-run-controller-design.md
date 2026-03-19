@@ -11,7 +11,7 @@ A Run Controller that loads configuration, initializes components via protocol-b
 ## Design Decisions
 
 - **Protocol-based DI** over ABCs or callbacks — maximally testable, pyright-friendly, no inheritance coupling
-- **Pydantic config model** as the core API — no YAML loader in scope (can be added later as a classmethod)
+- **Pydantic config model** as the core API, with a `RunConfig.from_yaml(path)` classmethod for loading from YAML files
 - **Single async function** `run(config, deps) -> RunReport` — no class instantiation needed
 - **LiteLLM** for multi-provider backend support — wraps `litellm.acompletion()` behind the `Backend` protocol. Note: `litellm` must be added to `pyproject.toml` dependencies.
 - **Retry then continue** error handling — retry with exponential backoff, then record failures and compute metrics on successes only
@@ -33,6 +33,13 @@ class RunConfig(BaseModel):
     concurrency: ConcurrencyConfig = ConcurrencyConfig()
     retry: RetryConfig = RetryConfig()
     output: OutputConfig = OutputConfig()
+
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> "RunConfig":
+        """Load config from a YAML file. Validates via Pydantic on construction."""
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return cls(**data)
 ```
 
 ### Supporting Config Models
@@ -236,3 +243,4 @@ All dependencies mocked via simple classes conforming to protocols. No disk I/O,
 4. **Concurrency** — verify semaphore limits max concurrent calls
 5. **Output writing** — verify results collector receives correct data
 6. **Timeout** — backend hangs past `per_call_timeout_seconds`; verify timeout recorded as error
+7. **YAML loading** — `RunConfig.from_yaml()` with valid YAML; verify round-trips correctly. Invalid YAML raises Pydantic `ValidationError`.
