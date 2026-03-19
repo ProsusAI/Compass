@@ -167,3 +167,20 @@ class TestScoreReport:
         data = score.model_dump()
         restored = ScoreReport(**data)
         assert restored == score
+
+
+class TestExports:
+    def test_score_report_importable_from_eval(self) -> None:
+        from odysseus.eval import ScoreReport as Exported
+
+        assert Exported is ScoreReport
+
+    def test_error_breakdown_importable_from_eval(self) -> None:
+        from odysseus.eval import ErrorBreakdown as Exported
+
+        assert Exported is ErrorBreakdown
+
+    def test_run_diff_importable_from_eval(self) -> None:
+        from odysseus.eval import RunDiff as Exported
+
+        assert Exported is RunDiff
