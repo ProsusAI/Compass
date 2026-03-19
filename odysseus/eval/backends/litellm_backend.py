@@ -10,6 +10,7 @@ from pydantic import SecretStr
 
 from odysseus.eval.backends.profile import BackendProfile
 from odysseus.eval.models import Example, TokenUsage
+from odysseus.eval.pricing import ModelPricing
 
 
 class LiteLLMBackend:
@@ -21,7 +22,11 @@ class LiteLLMBackend:
 
     @property
     def model_name(self) -> str:
-        return self._profile.effective_pricing_model
+        return self._profile.model
+
+    @property
+    def pricing(self) -> ModelPricing | None:
+        return self._profile.pricing
 
     async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
         kwargs: dict[str, Any] = {}

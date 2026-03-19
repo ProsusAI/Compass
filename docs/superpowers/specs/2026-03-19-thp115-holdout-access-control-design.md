@@ -21,14 +21,14 @@ The threat model is an agentic LLM calling MCP tools. It can only use the parame
 
 ### 1. Enforcement Point
 
-**`run_eval` tool** (THP-129):
+**`run_eval` tool** (designed in THP-114, implemented in THP-129):
 - Parameters: `prompt_version: str`, `data_source: str` — no `data_split` parameter.
-- Internally constructs `RunConfig` with `data_split="dev"` hardcoded.
+- Internally constructs `RunConfig` with `data_split="dev"` hardcoded. All other `RunConfig` fields (`backend`, `metrics`, `concurrency`, `retry`, `output`) are assembled from environment/defaults by the tool — not exposed to the agent.
 - Available to: Eval Runner agent.
 
-**`run_holdout_eval` tool** (future task):
-- Parameters: `prompt_version: str`, `data_source: str` — same interface.
-- Internally constructs `RunConfig` with `data_split="holdout"` hardcoded.
+**`run_holdout_eval` tool** (to be filed as a follow-up task before implementation begins):
+- Parameters: `prompt_version: str`, `data_source: str` — identical parameter surface to `run_eval`.
+- Internally constructs `RunConfig` with `data_split="holdout"` hardcoded. Uses the same `RunConfig` assembly logic as `run_eval` for all other fields.
 - Available to: Final Evaluation agent only — must be absent from the Eval Runner agent's tool list.
 
 ### 2. Agent-Visible Error
@@ -37,7 +37,7 @@ Since `data_split` is never exposed as a tool parameter, the primary error path 
 
 **Schema violation:** If the agent tries to pass `data_split` as a tool argument, MCP schema validation rejects the unknown parameter before our code runs. The agent sees a standard MCP schema error. No custom handling needed.
 
-**Internal misuse:** A developer constructing a holdout `RunConfig` in the wrong context is a programming error, not an agent error. No runtime guard — caught by code review and tests.
+**Internal misuse:** A developer constructing a holdout `RunConfig` in the wrong context is a programming error, not an agent error. No runtime guard — caught by code review and tests. A test should verify that no code path outside of `run_holdout_eval` constructs a `RunConfig` with `data_split="holdout"`.
 
 **System prompt reinforcement:** THP-104 (Eval Runner agent system prompt) must explicitly state: *"You do not have access to holdout data. Holdout evaluation is performed by the Final Evaluation agent after convergence."*
 
@@ -58,11 +58,11 @@ A dedicated **Final Evaluation agent** runs after the optimization loop exits (t
 **Tool isolation:**
 - The Eval Runner agent's tool list includes `run_eval` but **not** `run_holdout_eval`.
 - The Final Evaluation agent's tool list includes `run_holdout_eval` but **not** `run_eval`.
-- Enforced by how each agent class declares its tools — no shared "all tools" list.
+- Each agent class declares its own `tools` list attribute — there is no shared "all tools" registry that agents inherit from.
 
 **Trigger condition:**
 - The pipeline orchestrator dispatches the Final Evaluation agent only after the Review agent outputs a convergence signal.
-- The Final Evaluation agent receives the winning `prompt_version` and `data_source` from the pipeline context and calls `run_holdout_eval` exactly once.
+- The Final Evaluation agent receives the winning `prompt_version` and `data_source` from the pipeline context and calls `run_holdout_eval` exactly once. This is advisory (enforced by the agent's system prompt), not a runtime guard — the tool does not track invocation count.
 
 ## What Changes
 
@@ -82,8 +82,12 @@ A dedicated **Final Evaluation agent** runs after the optimization loop exits (t
 | `RunDependencies` | No access-control concerns added. |
 | `controller.run()` | Executes whatever config it receives; enforcement is upstream. |
 
+## Follow-Up Actions
+
+- **File a task** for `run_holdout_eval` tool implementation and the Final Evaluation agent before implementation of THP-129 begins.
+
 ## Out of Scope
 
-- Final Evaluation agent implementation (separate task, not yet filed).
-- `run_holdout_eval` tool implementation (depends on this design being settled).
+- Final Evaluation agent implementation.
+- `run_holdout_eval` tool implementation.
 - Score report format (THP-116).

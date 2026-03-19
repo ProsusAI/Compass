@@ -18,7 +18,7 @@ from odysseus.eval.models import (
     ScoreReport,
     TokenUsage,
 )
-from odysseus.eval.pricing import MODEL_PRICING, ModelPricing, compute_cost
+from odysseus.eval.pricing import ModelPricing, compute_cost
 from odysseus.eval.protocols import (
     Backend,
     DatasetManager,
@@ -43,7 +43,6 @@ __all__ = [
     "MetricConfig",
     "MetricDiff",
     "MetricsEngine",
-    "MODEL_PRICING",
     "ModelPricing",
     "OutputConfig",
     "OverheadDiff",

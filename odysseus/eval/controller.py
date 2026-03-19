@@ -17,7 +17,7 @@ from odysseus.eval.models import (
     RunReport,
     RunSummary,
 )
-from odysseus.eval.pricing import compute_cost
+from odysseus.eval.pricing import ModelPricing, compute_cost
 from odysseus.eval.protocols import RunDependencies
 from odysseus.eval.rate_limiter import TokenBucketRateLimiter
 
@@ -58,7 +58,10 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     semaphore = asyncio.Semaphore(config.concurrency.max_concurrent_requests)
 
     tasks = [
-        _eval_with_retry(deps.backend, prompt, example, config.retry, rate_limiter, semaphore) for example in examples
+        _eval_with_retry(
+            deps.backend, prompt, example, config.retry, rate_limiter, semaphore, deps.backend.pricing
+        )
+        for example in examples
     ]
     results = await asyncio.gather(*tasks)
 
@@ -110,6 +113,7 @@ async def _eval_with_retry(
     retry_config: RetryConfig,
     rate_limiter: TokenBucketRateLimiter,
     semaphore: asyncio.Semaphore,
+    pricing: ModelPricing | None = None,
 ) -> EvalResult:
     """Evaluate a single example with retry and rate limiting."""
     model_name: str = backend.model_name
@@ -131,7 +135,7 @@ async def _eval_with_retry(
                 total_tokens = usage.input_tokens + usage.cached_tokens + usage.output_tokens
                 rate_limiter.consume_tokens(total_tokens)
 
-                cost = compute_cost(model_name, usage)
+                cost = compute_cost(pricing, usage)
 
                 logger.debug("Example %s succeeded on attempt %d", example.id, attempt)
                 return EvalResult(
