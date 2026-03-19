@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.eval.metrics import DefaultMetricsEngine
+from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion
 from odysseus.eval.models import EvalResult, Example, MetricConfig
 
 # --- Helpers ---
@@ -118,3 +118,74 @@ def test_params_passed_to_metric_function():
         [MetricConfig(name="echo", params={"alpha": 0.5, "beta": 1.0})],
     )
     assert out == {"alpha": 0.5, "beta": 1.0}
+
+
+# --- compute_accuracy tests ---
+
+
+def test_accuracy_all_correct():
+    results = [_result("ex-0", route="gpt-4o"), _result("ex-1", route="claude-sonnet")]
+    examples = [_example("ex-0", route="gpt-4o"), _example("ex-1", route="claude-sonnet")]
+    out = compute_accuracy(results, examples)
+    assert out == {"accuracy": 1.0}
+
+
+def test_accuracy_all_wrong():
+    results = [_result("ex-0", route="haiku"), _result("ex-1", route="haiku")]
+    examples = [_example("ex-0", route="gpt-4o"), _example("ex-1", route="claude-sonnet")]
+    out = compute_accuracy(results, examples)
+    assert out == {"accuracy": 0.0}
+
+
+def test_accuracy_mixed():
+    results = [
+        _result("ex-0", route="gpt-4o"),
+        _result("ex-1", route="haiku"),
+        _result("ex-2", route="claude-sonnet"),
+        _result("ex-3", route="gpt-4o"),
+    ]
+    examples = [
+        _example("ex-0", route="gpt-4o"),
+        _example("ex-1", route="claude-sonnet"),
+        _example("ex-2", route="claude-sonnet"),
+        _example("ex-3", route="haiku"),
+    ]
+    out = compute_accuracy(results, examples)
+    assert out == {"accuracy": 0.5}
+
+
+def test_accuracy_empty_results():
+    out = compute_accuracy([], [])
+    assert out == {"accuracy": 0.0}
+
+
+# --- compute_confusion tests ---
+
+
+def test_confusion_basic():
+    """3 samples: 2 correct, 1 misrouted."""
+    results = [
+        _result("ex-0", route="gpt-4o"),
+        _result("ex-1", route="claude-sonnet"),
+        _result("ex-2", route="haiku"),
+    ]
+    examples = [
+        _example("ex-0", route="gpt-4o"),
+        _example("ex-1", route="claude-sonnet"),
+        _example("ex-2", route="claude-sonnet"),
+    ]
+    out = compute_confusion(results, examples)
+    assert out["confusion/gpt-4o/gpt-4o"] == 1.0
+    assert out["confusion/claude-sonnet/claude-sonnet"] == 1.0
+    assert out["confusion/claude-sonnet/haiku"] == 1.0
+    assert out["confusion/gpt-4o/claude-sonnet"] == 0.0
+    assert out["confusion/gpt-4o/haiku"] == 0.0
+    assert out["confusion/haiku/gpt-4o"] == 0.0
+    assert out["confusion/haiku/claude-sonnet"] == 0.0
+    assert out["confusion/haiku/haiku"] == 0.0
+    assert out["confusion/claude-sonnet/gpt-4o"] == 0.0
+
+
+def test_confusion_empty_results():
+    out = compute_confusion([], [])
+    assert out == {}

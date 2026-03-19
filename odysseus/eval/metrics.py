@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from collections.abc import Callable
 
 from odysseus.eval.models import EvalResult, Example, MetricConfig
@@ -65,3 +66,44 @@ class DefaultMetricsEngine:
                 merged[key] = value
 
         return merged
+
+
+def compute_accuracy(
+    results: list[EvalResult], examples: list[Example]
+) -> dict[str, float]:
+    """Fraction of predictions matching the expected route."""
+    if not results:
+        return {"accuracy": 0.0}
+    correct = sum(
+        1
+        for r, ex in zip(results, examples)
+        if r.output is not None and r.output["route"] == ex.expected["route"]
+    )
+    return {"accuracy": correct / len(results)}
+
+
+def compute_confusion(
+    results: list[EvalResult], examples: list[Example]
+) -> dict[str, float]:
+    """Confusion matrix as flat dict keyed by confusion/{true}/{predicted}."""
+    if not results:
+        return {}
+
+    classes: set[str] = set()
+    pairs: list[tuple[str, str]] = []
+    for r, ex in zip(results, examples):
+        true_class = ex.expected["route"]
+        pred_class = r.output["route"] if r.output else ""
+        classes.add(true_class)
+        classes.add(pred_class)
+        pairs.append((true_class, pred_class))
+
+    counts = Counter(pairs)
+
+    sorted_classes = sorted(classes)
+    out: dict[str, float] = {}
+    for true_cls in sorted_classes:
+        for pred_cls in sorted_classes:
+            out[f"confusion/{true_cls}/{pred_cls}"] = float(counts.get((true_cls, pred_cls), 0))
+
+    return out
