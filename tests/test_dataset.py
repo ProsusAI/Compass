@@ -1,10 +1,7 @@
 """Tests for JSONL dataset manager."""
 
 import json
-import os
 from pathlib import Path
-from tempfile import NamedTemporaryFile
-from typing import Literal
 
 import pytest
 
