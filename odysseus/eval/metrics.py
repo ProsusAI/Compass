@@ -109,6 +109,106 @@ def compute_confusion(
     return out
 
 
+def compute_cost_quality_reduction(
+    results: list[EvalResult],
+    examples: list[Example],
+    *,
+    baseline_class: str | None = None,
+) -> dict[str, float]:
+    """Cost and quality percentage change vs baseline, plus oracle reductions.
+
+    Args:
+        results: Filtered successful results.
+        examples: Matched examples (same order as results).
+        baseline_class: Route class to use as baseline. If None, auto-selects
+            the class with highest mean quality_score (tie-break alphabetical).
+    """
+    zero_result = {
+        "cost_reduction": 0.0,
+        "quality_reduction": 0.0,
+        "oracle_cost_reduction": 0.0,
+        "oracle_quality_reduction": 0.0,
+    }
+
+    if not results:
+        return zero_result
+
+    # Auto-select baseline if needed
+    if baseline_class is None:
+        baseline_class = _select_baseline_class(examples)
+
+    # Compute totals, skipping hallucinated routes
+    baseline_cost = 0.0
+    baseline_quality = 0.0
+    predicted_cost = 0.0
+    predicted_quality = 0.0
+    oracle_cost = 0.0
+    oracle_quality = 0.0
+    counted = 0
+
+    for r, ex in zip(results, examples):
+        routes = ex.expected["routes"]
+        pred_route = r.output["route"] if r.output else None
+
+        # Skip hallucinated routes
+        if pred_route is not None and pred_route not in routes:
+            logger.warning(
+                "Predicted route %r not in expected routes for example %s — skipping",
+                pred_route,
+                ex.id,
+            )
+            continue
+
+        oracle_route = ex.expected["route"]
+
+        baseline_cost += routes[baseline_class]["cost"]
+        baseline_quality += routes[baseline_class]["quality_score"]
+        predicted_cost += routes[pred_route]["cost"] if pred_route else 0.0
+        predicted_quality += routes[pred_route]["quality_score"] if pred_route else 0.0
+        oracle_cost += routes[oracle_route]["cost"]
+        oracle_quality += routes[oracle_route]["quality_score"]
+        counted += 1
+
+    if counted == 0:
+        return zero_result
+
+    return {
+        "cost_reduction": (
+            (predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
+        ),
+        "quality_reduction": (
+            (predicted_quality - baseline_quality) / baseline_quality
+            if baseline_quality != 0
+            else 0.0
+        ),
+        "oracle_cost_reduction": (
+            (oracle_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
+        ),
+        "oracle_quality_reduction": (
+            (oracle_quality - baseline_quality) / baseline_quality
+            if baseline_quality != 0
+            else 0.0
+        ),
+    }
+
+
+def _select_baseline_class(examples: list[Example]) -> str:
+    """Select the class with the highest mean quality_score. Tie-break alphabetically."""
+    quality_sums: dict[str, float] = {}
+    quality_counts: dict[str, int] = {}
+
+    for ex in examples:
+        for cls, data in ex.expected["routes"].items():
+            quality_sums[cls] = quality_sums.get(cls, 0.0) + data["quality_score"]
+            quality_counts[cls] = quality_counts.get(cls, 0) + 1
+
+    # Highest mean quality; tie-break by alphabetically first class name
+    return min(
+        quality_sums,
+        key=lambda cls: (-quality_sums[cls] / quality_counts[cls], cls),
+    )
+
+
 def compute_f1(
     results: list[EvalResult], examples: list[Example]
 ) -> dict[str, float]:

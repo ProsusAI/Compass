@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion, compute_f1
+from odysseus.eval.metrics import DefaultMetricsEngine, compute_accuracy, compute_confusion, compute_cost_quality_reduction, compute_f1
 from odysseus.eval.models import EvalResult, Example, MetricConfig
 
 # --- Helpers ---
@@ -243,3 +243,117 @@ def test_f1_macro_averages_across_classes():
 def test_f1_empty_results():
     out = compute_f1([], [])
     assert out == {"f1/macro": 0.0}
+
+
+# --- compute_cost_quality_reduction tests ---
+
+
+def _cost_quality_example(id: str, route: str, routes: dict[str, dict[str, float]]) -> Example:
+    """Create an Example with explicit per-class cost/quality."""
+    return Example(
+        id=id,
+        input={"query": f"q-{id}"},
+        expected={"route": route, "routes": routes},
+    )
+
+
+# Shared route costs/quality for cost_quality tests
+_ROUTES = {
+    "gpt-4o": {"cost": 0.03, "quality_score": 0.95},
+    "claude-sonnet": {"cost": 0.01, "quality_score": 0.88},
+    "haiku": {"cost": 0.002, "quality_score": 0.72},
+}
+
+
+def test_cost_quality_default_baseline():
+    """Auto-selects gpt-4o (highest mean quality=0.95) as baseline."""
+    examples = [
+        _cost_quality_example("ex-0", route="claude-sonnet", routes=_ROUTES),
+        _cost_quality_example("ex-1", route="haiku", routes=_ROUTES),
+    ]
+    # Predict claude-sonnet for both
+    results = [_result("ex-0", route="claude-sonnet"), _result("ex-1", route="claude-sonnet")]
+
+    out = compute_cost_quality_reduction(results, examples)
+
+    # Baseline (gpt-4o): cost = 0.03*2 = 0.06, quality = 0.95*2 = 1.90
+    # Predicted (claude-sonnet): cost = 0.01*2 = 0.02, quality = 0.88*2 = 1.76
+    # Oracle: ex-0=claude-sonnet(0.01, 0.88), ex-1=haiku(0.002, 0.72)
+    #   cost = 0.012, quality = 1.60
+    assert out["cost_reduction"] == pytest.approx((0.02 - 0.06) / 0.06)
+    assert out["quality_reduction"] == pytest.approx((1.76 - 1.90) / 1.90)
+    assert out["oracle_cost_reduction"] == pytest.approx((0.012 - 0.06) / 0.06)
+    assert out["oracle_quality_reduction"] == pytest.approx((1.60 - 1.90) / 1.90)
+
+
+def test_cost_quality_explicit_baseline():
+    """User specifies haiku as baseline instead of auto-select."""
+    examples = [_cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES)]
+    results = [_result("ex-0", route="claude-sonnet")]
+
+    out = compute_cost_quality_reduction(results, examples, baseline_class="haiku")
+
+    # Baseline (haiku): cost = 0.002, quality = 0.72
+    # Predicted (claude-sonnet): cost = 0.01, quality = 0.88
+    # Oracle (gpt-4o): cost = 0.03, quality = 0.95
+    assert out["cost_reduction"] == pytest.approx((0.01 - 0.002) / 0.002)
+    assert out["quality_reduction"] == pytest.approx((0.88 - 0.72) / 0.72)
+    assert out["oracle_cost_reduction"] == pytest.approx((0.03 - 0.002) / 0.002)
+    assert out["oracle_quality_reduction"] == pytest.approx((0.95 - 0.72) / 0.72)
+
+
+def test_cost_quality_all_match_baseline():
+    """All predictions match baseline — reductions are 0."""
+    examples = [_cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES)]
+    results = [_result("ex-0", route="gpt-4o")]
+
+    out = compute_cost_quality_reduction(results, examples, baseline_class="gpt-4o")
+
+    assert out["cost_reduction"] == 0.0
+    assert out["quality_reduction"] == 0.0
+
+
+def test_cost_quality_hallucinated_route_skipped(caplog):
+    """Predicted route not in expected['routes'] — sample skipped with warning."""
+    examples = [
+        _cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES),
+        _cost_quality_example("ex-1", route="gpt-4o", routes=_ROUTES),
+    ]
+    results = [
+        _result("ex-0", route="nonexistent-model"),  # hallucinated
+        _result("ex-1", route="claude-sonnet"),       # valid
+    ]
+
+    out = compute_cost_quality_reduction(results, examples, baseline_class="gpt-4o")
+
+    # Only ex-1 counted: baseline cost=0.03, pred cost=0.01
+    assert out["cost_reduction"] == pytest.approx((0.01 - 0.03) / 0.03)
+    assert "nonexistent-model" in caplog.text
+
+
+def test_cost_quality_baseline_tiebreak_alphabetical():
+    """When two classes tie on quality, pick alphabetically first."""
+    tied_routes = {
+        "alpha-model": {"cost": 0.05, "quality_score": 0.90},
+        "beta-model": {"cost": 0.01, "quality_score": 0.90},
+    }
+    examples = [
+        _cost_quality_example("ex-0", route="alpha-model", routes=tied_routes),
+    ]
+    results = [_result("ex-0", route="beta-model")]
+
+    out = compute_cost_quality_reduction(results, examples)
+
+    # Should use alpha-model as baseline (alphabetically first among tied)
+    # Baseline: cost=0.05, quality=0.90
+    # Predicted: cost=0.01, quality=0.90
+    assert out["cost_reduction"] == pytest.approx((0.01 - 0.05) / 0.05)
+    assert out["quality_reduction"] == 0.0
+
+
+def test_cost_quality_empty_results():
+    out = compute_cost_quality_reduction([], [])
+    assert out["cost_reduction"] == 0.0
+    assert out["quality_reduction"] == 0.0
+    assert out["oracle_cost_reduction"] == 0.0
+    assert out["oracle_quality_reduction"] == 0.0
