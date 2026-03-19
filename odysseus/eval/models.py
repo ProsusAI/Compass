@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from odysseus.eval.diff import MetricDiff, OverheadDiff, compute_metric_diffs, compute_overhead_diff
 
 
 class MetricConfig(BaseModel):
@@ -215,3 +217,72 @@ class RunReport(BaseModel):
     metrics: dict[str, float]
     results: list[EvalResult]
     summary: RunSummary
+
+
+class ErrorBreakdown(BaseModel):
+    """Summary of a single failed evaluation example."""
+
+    example_id: str
+    error: str
+    retries: int
+
+
+class RunDiff(BaseModel):
+    """Run-over-run comparison data."""
+
+    metric_diffs: list[MetricDiff]
+    overhead_diff: OverheadDiff | None
+
+
+class ScoreReport(BaseModel):
+    """Score report passed from EvalRunnerAgent to Review agent via pipeline context.
+
+    This is the contract between the two agents. The Review agent consumes
+    this structure to decide whether the prompt iteration improved.
+    """
+
+    CONTEXT_KEY: ClassVar[str] = "eval_score_report"
+
+    metrics: dict[str, float]
+    summary: RunSummary
+    errors: list[ErrorBreakdown]
+    diff: RunDiff | None
+    report_path: str
+
+    @classmethod
+    def from_run_report(
+        cls,
+        report: RunReport,
+        *,
+        report_path: str,
+        previous_report: RunReport | None = None,
+    ) -> ScoreReport:
+        """Build a ScoreReport from a RunReport and optional previous run."""
+        errors = [
+            ErrorBreakdown(
+                example_id=r.example_id,
+                error=r.error,  # type: ignore[arg-type]
+                retries=r.retries,
+            )
+            for r in report.results
+            if r.error is not None
+        ]
+
+        diff: RunDiff | None = None
+        if previous_report is not None:
+            metric_diffs = compute_metric_diffs(previous_report.metrics, report.metrics)
+            overhead_diff = compute_overhead_diff(
+                old_cost=previous_report.summary.total_cost,
+                old_duration=previous_report.summary.duration_seconds,
+                new_cost=report.summary.total_cost,
+                new_duration=report.summary.duration_seconds,
+            )
+            diff = RunDiff(metric_diffs=metric_diffs, overhead_diff=overhead_diff)
+
+        return cls(
+            metrics=report.metrics,
+            summary=report.summary,
+            errors=errors,
+            diff=diff,
+            report_path=report_path,
+        )
