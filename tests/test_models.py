@@ -3,7 +3,9 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+import pytest
 import yaml
+from pydantic import ValidationError
 
 from odysseus.eval.models import (
     ConcurrencyConfig,
@@ -78,9 +80,6 @@ def test_run_config_from_yaml():
 
 
 def test_run_config_from_yaml_invalid():
-    import pytest
-    from pydantic import ValidationError
-
     data = {"backend": "claude-sonnet"}  # missing required fields
     with NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
         yaml.dump(data, f)
@@ -90,3 +89,45 @@ def test_run_config_from_yaml_invalid():
         RunConfig.from_yaml(path)
 
     path.unlink()
+
+
+def test_metric_config_empty_name_rejected():
+    with pytest.raises(ValidationError):
+        MetricConfig(name="")
+
+
+def test_metric_config_whitespace_name_rejected():
+    with pytest.raises(ValidationError):
+        MetricConfig(name="   ")
+
+
+def test_metric_config_minimal_name_accepted():
+    mc = MetricConfig(name="a")
+    assert mc.name == "a"
+
+
+def test_metric_config_name_stripped():
+    mc = MetricConfig(name="  accuracy  ")
+    assert mc.name == "accuracy"
+
+
+def test_concurrency_max_concurrent_zero_rejected():
+    with pytest.raises(ValidationError):
+        ConcurrencyConfig(max_concurrent_requests=0)
+
+
+def test_concurrency_rpm_negative_rejected():
+    with pytest.raises(ValidationError):
+        ConcurrencyConfig(requests_per_minute=-1)
+
+
+def test_concurrency_tpm_zero_rejected():
+    with pytest.raises(ValidationError):
+        ConcurrencyConfig(tokens_per_minute=0)
+
+
+def test_concurrency_minimum_valid_accepted():
+    cc = ConcurrencyConfig(max_concurrent_requests=1, requests_per_minute=1, tokens_per_minute=1)
+    assert cc.max_concurrent_requests == 1
+    assert cc.requests_per_minute == 1
+    assert cc.tokens_per_minute == 1

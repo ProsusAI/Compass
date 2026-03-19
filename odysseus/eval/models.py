@@ -7,22 +7,47 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class MetricConfig(BaseModel):
-    """Configuration for a single metric."""
+    """Configuration for a single metric.
+
+    Fields:
+        name: Metric name (non-empty, whitespace stripped).
+        params: Optional metric parameters. Default: {}.
+    """
 
     name: str
     params: dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("name")
+    @classmethod
+    def name_must_be_non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("name must be non-empty")
+        return v.strip()
+
 
 class ConcurrencyConfig(BaseModel):
-    """Concurrency and rate limiting settings."""
+    """Concurrency and rate limiting settings.
+
+    Fields:
+        max_concurrent_requests: Max parallel requests (>= 1). Default: 20.
+        requests_per_minute: RPM rate limit (>= 1). Default: 500.
+        tokens_per_minute: TPM rate limit (>= 1). Default: 100_000.
+    """
 
     max_concurrent_requests: int = 20
     requests_per_minute: int = 500
     tokens_per_minute: int = 100_000
+
+    @field_validator("max_concurrent_requests", "requests_per_minute", "tokens_per_minute")
+    @classmethod
+    def must_be_positive(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("must be >= 1")
+        return v
 
 
 class RetryConfig(BaseModel):
