@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator
@@ -15,6 +15,7 @@ class BackendProfile(BaseModel):
     """Validated backend configuration loaded from YAML."""
 
     model: str
+    type: Literal["litellm", "mock_echo"] = "litellm"
     pricing: ModelPricing | None = None
     api_key_env: str | None = None
     api_base: str | None = None

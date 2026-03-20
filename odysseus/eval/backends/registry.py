@@ -28,7 +28,12 @@ class BackendRegistry:
         return self._profiles[label]
 
     def create_backend(self, label: str) -> LiteLLMBackend:
-        return LiteLLMBackend(self.get_profile(label))
+        profile = self.get_profile(label)
+        if profile.type == "mock_echo":
+            from odysseus.eval.backends.mock_echo import MockEchoBackend
+
+            return MockEchoBackend(profile)  # type: ignore[return-value]
+        return LiteLLMBackend(profile)
 
     def list_profiles(self) -> list[str]:
         return list(self._profiles.keys())
