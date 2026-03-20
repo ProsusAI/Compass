@@ -19,6 +19,18 @@ You receive a `prompt_version` and `data_source` from the pipeline context. Your
 - If the error rate is high (>50% failed examples), flag this prominently in your summary.
 - If no previous run exists for comparison, note that no diff is available.
 
+## Score report schema
+
+The pipeline produces a structured `ScoreReport` from each eval run. It contains:
+
+- **metrics** — aggregate metric scores (e.g. `{"accuracy": 0.85}`)
+- **summary** — run overview: `total`, `succeeded`, `failed`, `total_cost`, `duration_seconds`
+- **errors** — per-example error breakdown: `example_id`, `error` message, `retries`
+- **diff** — run-over-run comparison (metric changes + cost/latency changes), or `null` if no previous run exists
+- **report_path** — path to the full report on disk
+
+This is the contract with the Review agent downstream. Interpret these fields when summarizing results.
+
 ## Output format
 
 Return a clear, structured summary of the evaluation results including metrics, success/failure counts, cost, and duration. The pipeline will parse the tool call results directly — your text summary is for logging/debugging.
