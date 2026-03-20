@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from odysseus.eval.models import MetricConfig, RunConfig, RunReport, RunSummary
-from odysseus.mcp import _build_run_config, _load_config, _DEFAULT_METRICS, mcp
+from odysseus.mcp import _load_config, mcp
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -105,55 +105,38 @@ async def test_server_has_tools():
     assert "optimize_routing_prompt" in tool_names
 
 
-def test_build_run_config_dev_split():
-    """_build_run_config with split='dev' sets data_split='dev'."""
-    config = _build_run_config(
-        prompt_version="v1",
-        data_source="data/test.jsonl",
-        data_split="dev",
-    )
-    assert config.data_split == "dev"
-    assert config.prompt_version == "v1"
-    assert config.data_source == "data/test.jsonl"
+async def test_run_eval_hardcodes_dev_split(tmp_path):
+    """run_eval must always call _load_config with data_split='dev'."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("metrics:\n  - name: accuracy")
 
-
-def test_build_run_config_holdout_split():
-    """_build_run_config with split='holdout' sets data_split='holdout'."""
-    config = _build_run_config(
-        prompt_version="v1",
-        data_source="data/test.jsonl",
-        data_split="holdout",
-    )
-    assert config.data_split == "holdout"
-
-
-async def test_run_eval_hardcodes_dev_split():
-    """run_eval must always construct RunConfig with data_split='dev'."""
-    with patch("odysseus.mcp._build_run_config") as mock_build:
-        mock_build.return_value = _build_run_config("v1", "data/test.jsonl", "dev")
-        # Import the tool function and call it directly
+    # Wraps the real _load_config so we can inspect the call args.
+    # run_eval will proceed past _load_config but fail at BackendRegistry;
+    # the error is caught and returned as JSON, so the test completes.
+    with patch("odysseus.mcp._load_config", wraps=_load_config) as mock_load:
         from odysseus.mcp import run_eval
 
-        await run_eval(prompt_version="v1", data_source="data/test.jsonl")
-        mock_build.assert_called_once_with(
+        await run_eval(
             prompt_version="v1",
             data_source="data/test.jsonl",
+            backend="test",
+            config_path=str(config_file),
+        )
+        mock_load.assert_called_once_with(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="test",
             data_split="dev",
+            config_path=str(config_file),
         )
 
 
-async def test_run_holdout_eval_hardcodes_holdout_split():
-    """run_holdout_eval must always construct RunConfig with data_split='holdout'."""
-    with patch("odysseus.mcp._build_run_config") as mock_build:
-        mock_build.return_value = _build_run_config("v1", "data/test.jsonl", "holdout")
-        from odysseus.mcp import run_holdout_eval
+async def test_run_holdout_eval_is_stub():
+    """run_holdout_eval is still a stub (out of THP-129 scope)."""
+    from odysseus.mcp import run_holdout_eval
 
-        await run_holdout_eval(prompt_version="v1", data_source="data/test.jsonl")
-        mock_build.assert_called_once_with(
-            prompt_version="v1",
-            data_source="data/test.jsonl",
-            data_split="holdout",
-        )
+    result = await run_holdout_eval(prompt_version="v1", data_source="data/test.jsonl")
+    assert "stub" in result
 
 
 def test_run_eval_does_not_construct_holdout_config():
