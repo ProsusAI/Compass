@@ -108,7 +108,7 @@ def test_read_status_clarification_required(tmp_path: Path):
 def test_read_status_missing_status_line(tmp_path: Path):
     report = tmp_path / "report.md"
     report.write_text("# Validated Input Report\n\nNo status here.\n")
-    with pytest.raises(ValueError, match="No .\\*Status.\\* line found"):
+    with pytest.raises(ValueError, match="No \\*\\*Status:\\*\\* line found"):
         read_status(report)
 
 
