@@ -5,10 +5,8 @@ Guidelines for requesting missing or unclear information from the user. Follow t
 ## Principles
 
 - **Understand first, validate second.** Before checking fields, make sure you understand the user's routing problem. If you can articulate what they're routing, what tiers are available, and what trade-offs matter — proceed to validation. If not, ask.
-- **One question at a time.** Do not list all issues at once. Ask about the most important gap, wait for the answer, then move on.
-- **Be conversational.** Adapt your phrasing to what the user already said. Build on their words. Do not read from a script.
-- **Suggest, don't demand.** When hinting at expected formats, offer examples — but accept natural language answers. If the user says "just use accuracy, 85% is fine," that's a valid answer.
-- **Don't ask what you already know.** If the comprehension phase resolved a gap, skip it. If the user partially answered, build on that — don't repeat the full question.
+- **One question at a time.** Ask about the most important gap, wait for the answer, then move on.
+- **Be conversational.** Adapt your phrasing to what the user already said. Build on their words.
 
 ## Clarification Flow
 
@@ -24,7 +22,7 @@ If you cannot answer these, ask targeted follow-ups until you can. This is not a
 
 ### Step 2: Validate and identify gaps
 
-After understanding the problem, check the submission against the field definitions. Dispatch the Data Validation agent if a dataset is present. Collect all gaps.
+After understanding the problem, check the submission against the field definitions. Ensure the dataset is validated (via the Data Validation agent) if one is present. Collect all gaps.
 
 - If no gaps: proceed.
 - If only non-blocking gaps: apply defaults (per THP-71), mention what was assumed, proceed.
@@ -41,6 +39,8 @@ Data validation issues inherit the dataset's priority.
 
 Ask about one gap at a time. When the user responds, validate the answer. If sufficient, move to the next gap. If insufficient, explain what's still needed and ask again.
 
+If the user cannot provide a blocking field after two attempts, summarize what is still missing, explain the pipeline cannot proceed without it, and stop. Do not loop indefinitely.
+
 ### Step 4: Re-submission
 
 After all blocking gaps are resolved:
@@ -49,7 +49,7 @@ After all blocking gaps are resolved:
 2. If new gaps emerged (e.g. the provided dataset triggers a data validation issue), re-enter the loop.
 3. If no blocking gaps remain, apply defaults for non-blocking gaps, confirm to the user what you understood and what was assumed, then proceed.
 
-The user does not need to explicitly re-submit. The conversation is a continuous session — each answer is incorporated immediately.
+The conversation is a continuous session — the user does not need to explicitly re-submit.
 
 ## Per-Field Guidance
 
@@ -67,7 +67,6 @@ For each blocking field, this section describes what to ask about, why it matter
 - **What to ask about:** Labeled examples of routing decisions.
 - **Why it matters:** The pipeline needs real data to analyze routing patterns and evaluate prompt quality. No default can substitute actual labeled examples.
 - **Sufficient answer:** A JSONL file path or inline JSONL content. Each record should have at minimum an `input` field (the request) and an `expected` field (the correct routing decision).
-- **Example prompt approach:** "Do you have a dataset of past routing decisions I can work with? I need examples that show the request and which model or tool it should be routed to."
 
 ### Data validation issues (inherits dataset priority)
 
@@ -91,7 +90,7 @@ Used when a required field is entirely missing. Ask an open question, explain wh
 
 Used when input is ambiguous and you can infer likely options from context. Present the options and let the user pick — or provide their own. Always leave room for "none of these."
 
-Example situation: The user mentioned "accuracy" but did not specify a threshold. You might ask: "You mentioned accuracy — do you have a target in mind, like 85%, or should I just optimize without a fixed threshold?"
+Example situation: The user mentioned routing "support queries" but also mentioned a separate "sales pipeline." You might ask: "It sounds like you have two routing setups — support queries and sales. Which one should we focus on first?"
 
 ### Fix
 
