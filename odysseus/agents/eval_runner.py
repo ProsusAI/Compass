@@ -137,4 +137,5 @@ class EvalRunnerAgent(BaseAgent):
         try:
             return RunReport.model_validate_json(p.read_text())
         except Exception:
+            logger.warning("Failed to load previous report at %s for diffing", report_path, exc_info=True)
             return None
