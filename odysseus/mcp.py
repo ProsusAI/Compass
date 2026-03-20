@@ -42,18 +42,19 @@ def _load_config(
     with open(config_path) as f:
         raw = yaml.safe_load(f) or {}
 
-    raw.update({
-        "backend": backend,
-        "prompt_version": prompt_version,
-        "data_source": data_source,
-        "data_split": data_split,
-    })
+    raw.update(
+        {
+            "backend": backend,
+            "prompt_version": prompt_version,
+            "data_source": data_source,
+            "data_split": data_split,
+        }
+    )
 
     if "metrics" not in raw:
         raw["metrics"] = [m.model_dump() for m in _DEFAULT_METRICS]
 
     return RunConfig.model_validate(raw)
-
 
 
 @mcp.tool()
@@ -101,10 +102,12 @@ async def run_eval(
 
         await controller.run(config, deps)
 
-        return json.dumps({
-            "report_path": config.output.report_path,
-            "results_path": config.output.results_path,
-        })
+        return json.dumps(
+            {
+                "report_path": config.output.report_path,
+                "results_path": config.output.results_path,
+            }
+        )
 
     except (FileNotFoundError, KeyError) as e:
         return json.dumps({"error": "not_found", "detail": str(e)})
