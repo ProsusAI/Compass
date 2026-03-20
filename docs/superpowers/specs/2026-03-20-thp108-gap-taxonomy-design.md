@@ -49,7 +49,7 @@ The rule the agent uses to set the `status` field in the `ValidatedInputReport`:
 |---|---|
 | THP-70 | Field list this taxonomy classifies |
 | THP-69 | Metrics context (fixed set; informs `target_metrics` default) |
-| THP-71 | Default values align with this taxonomy's non-blocking defaults |
+| THP-71 | Default values align with this taxonomy's non-blocking defaults. **Note:** `target_metrics` default changed from accuracy to F1 score per design decision; THP-71 must be updated accordingly. |
 | THP-72 | Output schema the agent produces using this taxonomy |
 | THP-107 | System prompt embeds this taxonomy |
 | THP-109 | Clarification templates triggered only for blocking gaps |
