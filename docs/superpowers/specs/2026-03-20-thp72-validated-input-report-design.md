@@ -14,6 +14,12 @@ Define the structure and contract of the validated input report — a Markdown f
 
 No Pydantic model, no JSON Schema. A small Python module provides the context key constant, status constants, and a status-reading helper.
 
+### Design Decisions — Deviations from Ticket
+
+- **Markdown instead of JSON.** The ticket specifies a JSON object schema. We chose Markdown because: (1) the report must be human-reviewable by the user, (2) all downstream consumers are LLM agents that parse Markdown natively via their prompts — no programmatic extraction is needed beyond `read_status()`, and (3) the MCP server only needs the status value, not structured field access. This makes the Markdown file the authoritative format; the ticket's JSON examples informed the section structure.
+- **File paths renamed accordingly.** The ticket suggests `odysseus/agents/user_input_schema.json`. Since the deliverable is now a Markdown template + Python helpers (not a JSON Schema), the files are `user_input_report_template.md` and `user_input_report.py`.
+- **`target_metrics` classification.** THP-108 classifies `target_metrics` as blocking, while THP-71 lists a default for it. This spec follows THP-108 (blocking). The THP-71 default for `target_metrics` is a known cross-ticket inconsistency to be resolved in THP-71.
+
 ## Report Template
 
 ```markdown
@@ -33,9 +39,20 @@ No Pydantic model, no JSON Schema. A small Python module provides the context ke
 - <metric spec, e.g. `accuracy >= 0.85`>
 - ...
 
+### Evaluation Threshold
+<value, if user-provided>
+
+### Data Split Ratio
+<value, if user-provided>
+
+### Max Iterations
+<value, if user-provided>
+
+_(Optional field subsections are only present when the user explicitly provided them. If an optional field was defaulted, it appears in Assumed Defaults instead, not here.)_
+
 ## Gap Report
 
-### <Field Name>
+### <field_identifier>
 - **Classification:** blocking | non-blocking
 - **Rationale:** <why this classification>
 - **Default Applied:** <value, or "N/A" if blocking>
@@ -61,6 +78,8 @@ _(Section omitted entirely if status is `proceed`.)_
 - `## Assumed Defaults` is omitted entirely if no defaults were applied (i.e., status is `proceed`).
 - Blocking gap entries in the Gap Report include the clarification request text from THP-109 templates.
 - Non-blocking gap entries include the default value applied and a user-facing note.
+- Gap Report headings use the exact field identifier from THP-69 (e.g., `### evaluation_threshold`, not "Evaluation Threshold"). This ensures consistency across reports.
+- Confirmed Inputs headings use title-case display names (e.g., `### Routing Dataset`) since they are user-facing. The mapping from display name to field identifier is fixed and unambiguous.
 
 ## Status Semantics
 
@@ -85,6 +104,8 @@ CONTEXT_KEY = "validated_input_report_path"
 
 The User Input Agent writes the report to disk and sets `context[CONTEXT_KEY]` to the file path. Downstream agents receive this path via the context dict and read the Markdown file to extract the sections they need. This follows the existing `ScoreReport.CONTEXT_KEY` pattern.
 
+**Downstream parsing model:** All downstream consumers (THP-73 Data Validation, THP-74 Routing Analysis, etc.) are LLM agents. They receive the report content as part of their prompt context and extract relevant information via natural language understanding — no programmatic Markdown parsing is needed. The only programmatic extraction is `read_status()` used by `mcp.py`.
+
 ## Deliverables
 
 ### 1. `odysseus/agents/user_input_report.py`
@@ -94,7 +115,7 @@ Small Python module:
 - `STATUS_PROCEED = "proceed"` — status constant.
 - `STATUS_PROCEED_WITH_DEFAULTS = "proceed_with_defaults"` — status constant.
 - `STATUS_CLARIFICATION_REQUIRED = "clarification_required"` — status constant.
-- `read_status(path: Path) -> str` — reads a report file and returns the status value. Raises `ValueError` if the status line is missing or contains an unrecognized value.
+- `read_status(path: Path) -> str` — reads a report file and returns the status value. Raises `ValueError` if the status line is missing or contains an unrecognized value. Lets `FileNotFoundError` propagate naturally if the file does not exist. Uses the first `**Status:**` match in the file.
 
 ### 2. `odysseus/agents/user_input_report_template.md`
 
