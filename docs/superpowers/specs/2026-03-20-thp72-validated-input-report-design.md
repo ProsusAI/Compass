@@ -18,7 +18,7 @@ No Pydantic model, no JSON Schema. A small Python module provides the context ke
 
 - **Markdown instead of JSON.** The ticket specifies a JSON object schema. We chose Markdown because: (1) the report must be human-reviewable by the user, (2) all downstream consumers are LLM agents that parse Markdown natively via their prompts — no programmatic extraction is needed beyond `read_status()`, and (3) the MCP server only needs the status value, not structured field access. This makes the Markdown file the authoritative format; the ticket's JSON examples informed the section structure.
 - **File paths renamed accordingly.** The ticket suggests `odysseus/agents/user_input_schema.json`. Since the deliverable is now a Markdown template + Python helpers (not a JSON Schema), the files are `user_input_report_template.md` and `user_input_report.py`.
-- **`target_metrics` classification.** THP-108 classifies `target_metrics` as blocking, while THP-71 lists a default for it. This spec follows THP-108 (blocking). The THP-71 default for `target_metrics` is a known cross-ticket inconsistency to be resolved in THP-71.
+- **`target_metrics` classification.** `target_metrics` is non-blocking per THP-108 (updated) and THP-71. When absent, the pipeline defaults to `["accuracy"]` with no threshold. THP-146 integration tests confirm this behavior.
 
 ## Report Template
 
