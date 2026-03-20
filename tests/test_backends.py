@@ -458,6 +458,58 @@ def _make_run_deps(**overrides: Any) -> RunDependencies:
     return RunDependencies(**defaults)
 
 
+# ---------------------------------------------------------------------------
+# BackendProfile — type field
+# ---------------------------------------------------------------------------
+
+
+def test_profile_type_defaults_to_litellm(tmp_path: Path):
+    """BackendProfile.type defaults to 'litellm'."""
+    profile_path = tmp_path / "default.yaml"
+    profile_path.write_text(yaml.dump({
+        "model": "gpt-4",
+        "requests_per_minute": 100,
+        "tokens_per_minute": 100000,
+    }))
+    profile = BackendProfile.from_yaml(profile_path)
+    assert profile.type == "litellm"
+
+
+def test_profile_type_mock_echo(tmp_path: Path):
+    """BackendProfile.type can be set to 'mock_echo'."""
+    profile_path = tmp_path / "mock.yaml"
+    profile_path.write_text(yaml.dump({
+        "model": "mock-echo",
+        "type": "mock_echo",
+        "requests_per_minute": 10000,
+        "tokens_per_minute": 1000000,
+    }))
+    profile = BackendProfile.from_yaml(profile_path)
+    assert profile.type == "mock_echo"
+
+
+def test_registry_creates_mock_echo_backend(tmp_path: Path):
+    """Registry creates MockEchoBackend when profile type is 'mock_echo'."""
+    backends_dir = tmp_path / "backends"
+    backends_dir.mkdir()
+    (backends_dir / "mock.yaml").write_text(yaml.dump({
+        "model": "mock-echo",
+        "type": "mock_echo",
+        "requests_per_minute": 10000,
+        "tokens_per_minute": 1000000,
+    }))
+    registry = BackendRegistry.from_directory(backends_dir)
+    backend = registry.create_backend("mock")
+
+    from odysseus.eval.backends.mock_echo import MockEchoBackend
+    assert isinstance(backend, MockEchoBackend)
+
+
+# ---------------------------------------------------------------------------
+# RunDependencies validation tests
+# ---------------------------------------------------------------------------
+
+
 def test_run_dependencies_valid():
     """RunDependencies accepts valid rate limit values."""
     deps = _make_run_deps()
