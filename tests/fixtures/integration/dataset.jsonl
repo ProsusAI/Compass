@@ -1,0 +1,5 @@
+{"id": "ex-1", "input": {"question": "I need help with my bill"}, "expected": {"route": "billing"}, "split": "dev"}
+{"id": "ex-2", "input": {"question": "What is my account balance?"}, "expected": {"route": "balance"}, "split": "dev"}
+{"id": "ex-3", "input": {"question": "Cancel my subscription please"}, "expected": {"route": "cancel"}, "split": "dev"}
+{"id": "ex-4", "input": {"question": "I want to speak to someone"}, "expected": {"route": "billing"}, "split": "dev"}
+{"id": "ex-5", "input": {"question": "Check how much I owe"}, "expected": {"route": "balance"}, "split": "dev"}

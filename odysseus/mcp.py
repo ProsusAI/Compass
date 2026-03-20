@@ -96,16 +96,20 @@ async def run_eval(
         config_data["data_source"] = data_source
         config_data["data_split"] = "dev"  # Always dev; holdout requires separate tool (THP-115)
 
+        # Read optional directory overrides before validating RunConfig
+        backends_dir = Path(config_data.pop("backends_dir", "backends"))
+        prompts_dir = Path(config_data.pop("prompts_dir", "prompts"))
+
         config = RunConfig.model_validate(config_data)
 
         # Wire dependencies
-        registry = BackendRegistry.from_directory(Path("backends"))
+        registry = BackendRegistry.from_directory(backends_dir)
         profile = registry.get_profile(backend)
         backend_instance = registry.create_backend(backend)
 
         deps = RunDependencies(
             backend=backend_instance,
-            prompt_manager=FilePromptManager(prompts_dir=Path("prompts")),
+            prompt_manager=FilePromptManager(prompts_dir=prompts_dir),
             dataset_manager=JsonlDatasetManager(),
             metrics_engine=create_default_engine(),
             results_collector=JsonResultsCollector(),
