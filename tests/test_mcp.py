@@ -1,5 +1,6 @@
 """Smoke tests for the MCP server."""
 
+from odysseus.mcp import mcp
 import json
 from datetime import datetime
 from pathlib import Path

@@ -2,10 +2,12 @@
 
 import json
 from pathlib import Path
-from typing import Literal
 
 import yaml
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
+from typing import Literal
+
 from pydantic import ValidationError
 
 from odysseus.eval import controller
@@ -151,6 +153,80 @@ async def optimize_routing_prompt(
     """
     # TODO: Wire up the full pipeline
     return f"Pipeline not yet implemented. Received: {data_path}, {problem_description}, {target_metrics}"
+
+
+@mcp.tool()
+async def run_eval(
+    prompt_version: str,
+    data_source: str,
+    backend: str,
+    config_path: str = "outputs/run_config.yaml",
+) -> str:
+    """Run an evaluation of a prompt version against a dataset.
+
+    Args:
+        prompt_version: Prompt version identifier (e.g. "v3", "latest").
+        data_source: Path to the JSONL dataset file.
+        backend: Backend label matching a profile in backends/ directory.
+        config_path: Path to YAML config with metrics, concurrency, retry,
+                     and output settings. Defaults to "outputs/run_config.yaml".
+
+    Returns:
+        JSON object with report_path and results_path pointing to
+        the full evaluation output on disk.
+    """
+    try:
+        # Load stable config from YAML
+        with open(config_path) as f:
+            config_data: dict = yaml.safe_load(f) or {}
+
+        # Overlay agent-controlled parameters (tool params override YAML)
+        config_data["backend"] = backend
+        config_data["prompt_version"] = prompt_version
+        config_data["data_source"] = data_source
+        config_data["data_split"] = "dev"  # Always dev; holdout requires separate tool (THP-115)
+
+        # Read optional directory overrides before validating RunConfig
+        backends_dir = Path(config_data.pop("backends_dir", "backends"))
+        prompts_dir = Path(config_data.pop("prompts_dir", "prompts"))
+
+        config = RunConfig.model_validate(config_data)
+
+        # Wire dependencies
+        registry = BackendRegistry.from_directory(backends_dir)
+        profile = registry.get_profile(backend)
+        backend_instance = registry.create_backend(backend)
+
+        deps = RunDependencies(
+            backend=backend_instance,
+            prompt_manager=FilePromptManager(prompts_dir=prompts_dir),
+            dataset_manager=JsonlDatasetManager(),
+            metrics_engine=create_default_engine(),
+            results_collector=JsonResultsCollector(),
+            requests_per_minute=profile.requests_per_minute,
+            tokens_per_minute=profile.tokens_per_minute,
+        )
+
+        # Execute
+        await controller.run(config, deps)
+
+        return json.dumps(
+            {
+                "report_path": config.output.report_path,
+                "results_path": config.output.results_path,
+            }
+        )
+
+    except FileNotFoundError as e:
+        return json.dumps({"error": "not_found", "detail": str(e)})
+    except (ValueError, ValidationError) as e:
+        return json.dumps({"error": "validation_error", "detail": str(e)})
+    except KeyError as e:
+        return json.dumps({"error": "not_found", "detail": str(e)})
+    except PermissionError as e:
+        return json.dumps({"error": "permission_denied", "detail": str(e)})
+    except Exception as e:
+        raise ToolError(f"run_eval failed unexpectedly: {e}") from e
 
 
 def main() -> None:

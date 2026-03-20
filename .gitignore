@@ -207,3 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 docs/
+
+# Integration test outputs (generated at runtime)
+tests/fixtures/integration/outputs/

@@ -1,0 +1,13 @@
+backends_dir: tests/fixtures/integration/backends
+prompts_dir: tests/fixtures/integration/prompts
+metrics:
+  - name: accuracy
+concurrency:
+  max_concurrent_requests: 5
+retry:
+  max_attempts: 1
+  backoff_factor: 1.0
+  per_call_timeout_seconds: 30.0
+output:
+  results_path: tests/fixtures/integration/outputs/results.jsonl
+  report_path: tests/fixtures/integration/outputs/report.json
