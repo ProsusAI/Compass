@@ -12,11 +12,15 @@ THP-69 defines the static domain knowledge preloaded into the User Input agent's
 
 **Format:** Structured markdown. No programmatic config, no Python dataclass. This is prose for an LLM to read.
 
+**Target length:** ~500–800 words. The document is embedded in a system prompt (THP-107) alongside content from THP-70, THP-71, THP-72, THP-108, and THP-109. Keep it concise to leave token budget for the other components.
+
 ## Design Decisions
 
 ### Scope boundary
 
 The static context is **high-level domain knowledge only**. Detailed field-by-field validation rules live in THP-70. Blocking/non-blocking gap logic lives in THP-108. Default values live in THP-71. This document provides the domain frame those other documents operate within.
+
+**Note:** The THP-69 task description mentions "acceptable metric formats" and "minimum data volume thresholds" as deliverables. These have been intentionally moved: metric format syntax is prescriptive and belongs in THP-70; data volume thresholds are the Data Validation agent's responsibility (THP-73). This spec keeps THP-69 descriptive rather than prescriptive.
 
 ### Data validation is not owned here
 
@@ -88,9 +92,14 @@ Presents the 4 metrics from the eval framework in plain language. The agent uses
 - *Optimization target:* No. Diagnostic only.
 
 **cost_quality_reduction**
-- *What it measures:* Percentage change in cost and quality vs. a baseline (the highest-quality tier). Shows how much cost is saved and how much quality is lost compared to routing everything to the best option. Includes oracle comparison (the theoretical best routing).
-- *When to use:* The core cost-quality trade-off metric. Essential for understanding whether the router is actually saving money without sacrificing too much quality.
-- *Parameters:* `baseline_class` — which route class to use as the baseline. Auto-selects the highest-quality class if not specified.
+- *What it measures:* Percentage change in cost and quality vs. a baseline (the highest-quality tier). Outputs 4 keys:
+  - `cost_reduction` — % cost change vs. baseline (negative = savings, e.g. -0.30 means 30% cheaper)
+  - `quality_reduction` — % quality change vs. baseline (negative = quality loss)
+  - `oracle_cost_reduction` — theoretical best-case cost change (if every request were routed perfectly)
+  - `oracle_quality_reduction` — theoretical best-case quality change
+- *Sign convention:* Values are negative when the router saves cost or loses quality compared to always using the baseline. A `cost_reduction` of -0.30 means 30% cost savings. A `quality_reduction` of -0.05 means 5% quality loss.
+- *When to use:* The core cost-quality trade-off metric. Essential for understanding whether the router is actually saving money without sacrificing too much quality. The oracle values show how close the router is to the theoretical optimum.
+- *Parameters:* `baseline_class` — which route class to use as the all-traffic baseline. Auto-selects the highest-quality class if not specified. The user specifies this via the metric config params (e.g. `cost_quality_reduction` with `baseline_class: "opus"`); if omitted, auto-selection applies. Detailed metric format syntax is defined in THP-70.
 - *Optimization target:* Yes. Example: `cost_reduction <= -0.30` (at least 30% cost savings).
 
 ## What This Document Does NOT Cover
