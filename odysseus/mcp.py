@@ -118,7 +118,7 @@ async def run_eval(
             tokens_per_minute=profile.tokens_per_minute,
         )
 
-        report = await controller.run(config, deps)
+        await controller.run(config, deps)
 
         return json.dumps({
             "report_path": config.output.report_path,

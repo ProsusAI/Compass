@@ -262,8 +262,8 @@ class TestRunEval:
             )
 
         parsed = json.loads(result)
-        assert "report_path" in parsed
-        assert "results_path" in parsed
+        assert parsed["report_path"] == "outputs/report.json"
+        assert parsed["results_path"] == "outputs/results.jsonl"
 
     async def test_missing_config_returns_not_found(self):
         """Missing config file returns structured not_found error."""
