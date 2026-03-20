@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "odysseus": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "odysseus.mcp"],
+      "cwd": "/Users/thymo.fieten/Documents/project-odysseus"
+    }
+  }
+}
