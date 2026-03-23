@@ -21,8 +21,12 @@ async def test_echoes_expected_route():
     backend = MockEchoBackend(_make_profile())
     example = Example(
         id="ex-1",
-        input={"question": "route me"},
-        expected={"route": "billing"},
+        input="route me",
+        expected={
+            "route": "billing",
+            "routes": {"billing": {"cost": 0.01, "quality_score": 0.9}},
+        },
+        split="dev",
     )
     output, usage = await backend.call("prompt", example)
     assert output == {"route": "billing"}

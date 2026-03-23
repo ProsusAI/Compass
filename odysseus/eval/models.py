@@ -169,12 +169,36 @@ class RunConfig(BaseModel):
         return cls(**data)
 
 
+class ModelCostQuality(BaseModel):
+    """Per-model cost and quality data for a routing option."""
+
+    cost: float
+    quality_score: float
+
+
+class Expected(BaseModel):
+    """Expected routing outcome for an evaluation example."""
+
+    route: str
+    routes: dict[str, ModelCostQuality]
+
+    @model_validator(mode="after")
+    def route_must_be_in_routes(self) -> Expected:
+        if not self.routes:
+            raise ValueError("routes must contain at least one entry")
+        if self.route not in self.routes:
+            raise ValueError(f"route {self.route!r} must be a key in routes, got keys: {list(self.routes.keys())}")
+        return self
+
+
 class Example(BaseModel):
     """A single evaluation example."""
 
     id: str
-    input: dict[str, Any]
-    expected: dict[str, Any]
+    input: str
+    expected: Expected
+    split: Literal["dev", "holdout"]
+    metadata: dict[str, Any] | None = None
 
 
 class TokenUsage(BaseModel):

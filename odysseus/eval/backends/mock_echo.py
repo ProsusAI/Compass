@@ -28,7 +28,7 @@ class MockEchoBackend:
         return self._profile.pricing
 
     async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
-        route = example.expected.get("route", "unknown")
+        route = example.expected.route
         output = {"route": route}
         usage = TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5)
         return output, usage
