@@ -103,6 +103,10 @@ The Verification Agent receives:
 2. **Final validated input report** — extracted from the agent's final message (the Markdown content after `# Validated Input Report`).
 3. **Verification criteria** — the `## Verification Criteria` section from the scenario MD.
 
+A scenario passes only if **all** verification criteria pass. The Verification Agent reports each criterion individually with pass/fail and reasoning, plus an overall verdict.
+
+**Note on premature reports:** The orchestration loop exits whenever `# Validated Input Report` appears — it does not check whether the report is valid or complete. Correctness checking is intentionally delegated to the Verification Agent. If the agent produces a report before resolving all blocking gaps (e.g., in scenario 11), the loop will exit and the verification criteria will catch it as a failure.
+
 ## File layout
 
 ```
@@ -126,9 +130,9 @@ tests/scenarios/
 
 ### Synthetic test data
 
-Two dataset files cover all 10 scenarios.
+Two dataset files are provided. `valid_dataset.jsonl` is used by all active scenarios; `no_expected_field.jsonl` is reserved for scenario 6 when THP-73 lands.
 
-**`valid_dataset.jsonl`** — 5 well-formed cost-quality routing records (used by scenarios 1, 2, 5, 7, 8, 9, 10):
+**`valid_dataset.jsonl`** — 5 well-formed cost-quality routing records (used by scenarios 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12):
 
 ```jsonl
 {"id": "1", "input": {"query": "What is 2+2?"}, "expected": {"route": "haiku"}}
@@ -156,8 +160,8 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Confirmed Inputs contains the problem description
 - [ ] Confirmed Inputs lists `accuracy >= 0.90` as target metric
 - [ ] Confirmed Inputs includes evaluation threshold, data split ratio, and max iterations
-- [ ] No Gap Report section present
-- [ ] No Assumed Defaults section present
+- [ ] No `## Gap Report` heading appears in the report
+- [ ] No `## Assumed Defaults` heading appears in the report
 - [ ] Single turn — agent produced the report without asking clarification questions
 
 ### 2. Missing optional fields — proceed with defaults
@@ -182,7 +186,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 
 **What it tests:** Dataset is missing — agent enters clarification loop, asks for it, user provides it.
 
-**User Simulator:** A data analyst who describes their routing problem clearly but forgets to provide the dataset. When asked, provides the path `tests/scenarios/data/valid_dataset.jsonl`.
+**User Simulator:** A data analyst who describes their routing problem clearly but forgets to provide the dataset. Does not mention any optional fields (metrics, threshold, split ratio, iterations). When asked about the dataset, provides the path `tests/scenarios/data/valid_dataset.jsonl`.
 
 **Verification Criteria:**
 - [ ] Agent asked about the dataset (not all gaps at once)
@@ -261,7 +265,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 
 **What it tests:** Agent catches a metric that can't be used as an optimization target.
 
-**User Simulator:** A user who provides dataset, clear problem description, and specifies `target_metrics: ["confusion"]`. When the agent explains that confusion is diagnostic only, switches to `accuracy >= 0.85`.
+**User Simulator:** A user who provides dataset, a clear problem description, and says "I want to optimize for the confusion matrix." When the agent explains that confusion is diagnostic only, switches to "okay, then let's go with accuracy, at least 85%."
 
 **Verification Criteria:**
 - [ ] Agent identified that `confusion` is not suitable as an optimization target
@@ -309,6 +313,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent extracted the metric spec (`accuracy >= 0.90`) from informal phrasing
 - [ ] Agent did not ask the user to reformat or re-provide information already given
 - [ ] Final report contains the extracted information in clean, structured form
+- [ ] Final report status is `proceed_with_defaults` (user provided dataset, problem description, and target metric, but not threshold, split ratio, or iterations — those get defaults)
 
 ## Out of scope
 
