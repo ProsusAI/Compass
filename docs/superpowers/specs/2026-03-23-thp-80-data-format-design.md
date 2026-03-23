@@ -53,9 +53,12 @@ Each entry in `expected.routes` must contain:
 1. **No null values** in required fields — `id`, `input`, `expected`, `split` must all be present and non-null.
 2. **Type correctness** — `input` must be a string, `expected` must be an object, `id` and `split` must be strings, `expected.route` must be a string, `expected.routes` values must have numeric `cost` and `quality_score`.
 3. **Split values** — `split` must be exactly `"dev"` or `"holdout"`. This field is assigned by the Data Validation Agent, not provided by the user.
-4. **Consistent routing tiers** — the set of unique `expected.route` values defines the routing tiers; `expected.route` must be a key present in `expected.routes`.
-5. **Consistent model set** — all records should have the same set of keys in `expected.routes` (same models across the dataset).
-6. **Minimum record count** — at least one record per unique routing tier (exact thresholds defined in THP-69).
+4. **Route-in-routes (record-level)** — for each record, `expected.route` must be a key present in that record's `expected.routes`.
+5. **Consistent model set (dataset-level)** — all records must have the same set of keys in `expected.routes` (same models across the dataset). The set of unique `expected.route` values across the dataset defines the routing tiers.
+6. **Non-empty routes** — `expected.routes` must contain at least one entry.
+7. **Unique IDs** — all `id` values must be unique within a dataset.
+8. **Minimum record count** — each routing tier must meet the minimum record count thresholds defined in THP-69.
+9. **Quality scores** — no range constraint is imposed on `quality_score` in the schema; normalization is handled conversationally by the agent (see THP-145).
 
 ## Informative Field Alias Table
 
@@ -115,6 +118,18 @@ The Data Validation Agent may use this table as a heuristic for auto-mapping. Wh
 ### THP-106 (System Prompt)
 
 - The conversational flow for gap-filling (missing fields, ambiguous mappings, normalization) should be defined in the system prompt.
+
+## Migration Requirements
+
+This spec intentionally diverges from the current codebase in several ways. The following changes are required as part of or before THP-145:
+
+1. **`input` type change** — The existing `Example` model (`odysseus/eval/models.py`) defines `input` as `dict[str, Any]`. This spec changes it to `string`. The `Example` model and all existing test fixtures (`tests/fixtures/integration/dataset.jsonl`, `tests/scenarios/data/valid_dataset.jsonl`) must be updated.
+
+2. **`split` field on the model** — The existing `Example` model has no `split` field; the dataset loader filters by split from raw JSON but discards it. The model must be extended to include `split`.
+
+3. **Typed `expected` sub-schema** — The existing `expected` field is `dict[str, Any]`. It must be replaced with a typed model capturing `route` (string) and `routes` (dict of model cost/quality objects) to enable schema-level validation of constraints 4–6.
+
+4. **`expected.routes` required** — No existing test fixtures include the `routes` field. All fixtures must be updated to include per-model cost/quality data.
 
 ## Linkages
 
