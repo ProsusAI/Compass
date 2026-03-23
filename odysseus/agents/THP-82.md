@@ -1,7 +1,7 @@
 # THP-82 — Expand analysis dimensions into routing rationale schema
 
 **Type:** Task
-**Status:** To Do
+**Status:** Design Complete
 **Epic:** [THP-74](https://prosus-thymo-thesis.atlassian.net/browse/THP-74) — Routing Analysis Agent
 **Jira:** [THP-82](https://prosus-thymo-thesis.atlassian.net/browse/THP-82)
 **Design spec:** `docs/superpowers/specs/2026-03-23-thp-82-routing-rationale-schema.md`
