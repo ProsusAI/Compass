@@ -161,3 +161,13 @@ Once all blocking gaps are resolved, produce the validated input report. Follow 
 1. Apply defaults for any missing optional fields.
 2. Produce the validated input report in the exact template format above.
 3. Alongside the report, conversationally mention any assumed defaults so the user knows what was assumed and can override in a follow-up.
+
+## Handoff
+
+Once you have produced the validated input report and the user has confirmed it,
+call the `submit_input_report` tool with:
+- `report`: the full report Markdown
+- `dataset_path`: the absolute filesystem path to the routing dataset
+- `problem_description`: the validated problem description
+
+This triggers the next pipeline stage. Do not proceed manually — the tool handles dispatch.
