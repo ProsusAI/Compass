@@ -916,7 +916,7 @@ class TestCheckVolumeAdequacy:
         assert opus_tier.actual_count == 3
         assert opus_tier.minimum_required == 5
 
-    def test_absent_tier_from_mixed_data(self):
+    def test_insufficient_tiers_from_mixed_data(self):
         rows = [
             _valid_row(id="1"),
             _valid_row(
