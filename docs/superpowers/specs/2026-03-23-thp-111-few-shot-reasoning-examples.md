@@ -1,40 +1,57 @@
-# THP-111 — Define Few-Shot Examples of Reasoning Document Output
+# THP-111 — Create 4 Sets of Few-Shot Examples (One Per LLM Skill)
 
-Date: 2026-03-23
-Wave: 3 (after THP-110 + THP-85)
-Epic: THP-74 — Routing Analysis Agent
+Date: 2026-03-23 (revised: expanded from one set to four per-skill sets)
+
+**Wave:** 3 (blocked by THP-110 + THP-85)
 
 ---
 
 ## Summary
 
-Create one or more concrete examples of what a good routing analysis output looks like. These examples ground the final prompt and serve as the reference for what THP-85 (reasoning framework) should produce.
+Create four sets of few-shot examples — one per LLM skill — to be embedded in each skill's `SKILL.md`. Examples must conform to THP-82's rationale schema and THP-86's I/O schemas.
+
+Note: THP-151–154 (skill authoring) may begin with placeholder examples and finalise once this task is complete.
 
 ---
 
-## Scope
+## Per-Skill Example Requirements
 
-- Create fully populated routing analysis output examples that demonstrate correct application of the reasoning framework (THP-85)
-- Cover prototypical cases, boundary cases, hard-negative cases, and rare-class cases
-- Examples must conform to the schema defined in THP-82 and the format defined in THP-86
-- These examples are the reference material for validating THP-86's schema
+### skill-1: `rationale-card-extraction`
+
+- **Count:** 2–3 examples
+- **Format:** `(id, query, label)` → rationale card
+- **Coverage:** prototypical, boundary, and hard-negative cases
+- **Schema:** conforms to THP-82 rationale card schema
+
+### skill-2: `ambiguity-taxonomy`
+
+- **Count:** 1–2 examples
+- **Format:** rationale card set → `taxonomy.json`
+- **Coverage:** shows distinct failure mode tags with different confusion classifications
+
+### skill-3: `boundary-exemplar-tagging`
+
+- **Count:** 2–3 examples
+- **Format:** rationale card set → `tagged_cards.jsonl` annotations
+- **Coverage:** all four boundary tags (`prototypical`, `boundary`, `hard-negative`, `rare-class`) with clear rationales
+
+### skill-4: `confusion-narrative-generation`
+
+- **Count:** 1–2 examples
+- **Format:** `(taxonomy + tagged cards)` → `confusion_narratives.json`
+- **Coverage:** route-pair overlap explanations and fragility assessments
 
 ---
 
 ## Deliverables
 
-- One or more annotated few-shot examples of complete routing analysis document output
+- Four sets of few-shot examples, formatted for direct inclusion in `SKILL.md` files
+- Each set embedded in the corresponding `SKILL.md` by THP-151–154
 
 ---
 
-## Dependencies
+## Success Criteria
 
-- THP-110 (methodology — defines what the output should reflect)
-- THP-85 (reasoning framework — defines the steps the output demonstrates)
-
----
-
-## Downstream Use
-
-- THP-105 (final prompt) — few-shot examples are included in the system prompt
-- THP-86 — reference for validating the artifact schema
+- Each example set is sufficient to ground the skill's output format and reasoning style.
+- Examples cover the full range of boundary tags and failure mode types.
+- All examples are consistent with THP-82's rationale schema and THP-86's I/O schemas.

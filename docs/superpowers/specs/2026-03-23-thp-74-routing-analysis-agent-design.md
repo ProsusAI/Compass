@@ -114,7 +114,7 @@ Output: confusion_narratives.json {
           }]
         }
 ```
-One call synthesising across all prior outputs.
+One call synthesising across skills 2 and 3. Does not depend on the code-step — cluster IDs are not needed to explain route overlap; they are consumed downstream by THP-133.
 
 **code-step: `cluster-id-assignment`**
 
