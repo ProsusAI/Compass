@@ -95,21 +95,22 @@ Wave 3 (parallel): THP-145, THP-106 (needs THP-81)
 ### THP-74 — Routing Analysis Agent
 
 ```
-Wave 1 (parallel): THP-110, THP-85, THP-86, THP-82, THP-84
-Wave 2 (parallel): THP-111 (needs 110+85), THP-112 (needs 110)
-Wave 3:            THP-105 (needs all above)
+Wave 1 (parallel): THP-110, THP-82, THP-84, THP-86
+Wave 2 (parallel): THP-85 (needs 110), THP-112 (needs 110)
+Wave 3:            THP-111 (needs 110+85)
+Wave 4:            THP-105 (needs all above)
 ```
 
 | Wave | Task | Status | Depends on |
 |------|------|--------|-----------|
 | 1 | [THP-110](https://prosus-thymo-thesis.atlassian.net/browse/THP-110) Define routing pattern extraction methodology | ⬜ To Do | — |
-| 1 | [THP-85](https://prosus-thymo-thesis.atlassian.net/browse/THP-85) Expand reasoning framework into boundary and cluster analysis framework | ⬜ To Do | — |
-| 1 | [THP-86](https://prosus-thymo-thesis.atlassian.net/browse/THP-86) Expand output format into structured routing analysis artifact spec and split manifest | ⬜ To Do | — |
 | 1 | [THP-82](https://prosus-thymo-thesis.atlassian.net/browse/THP-82) Expand analysis dimensions into routing rationale schema | ⬜ To Do | — |
 | 1 | [THP-84](https://prosus-thymo-thesis.atlassian.net/browse/THP-84) Create context for routing dataset quality | ⬜ To Do | — |
-| 2 | [THP-111](https://prosus-thymo-thesis.atlassian.net/browse/THP-111) Define few-shot examples of reasoning document output | ⬜ To Do | THP-110, THP-85 |
+| 1 | [THP-86](https://prosus-thymo-thesis.atlassian.net/browse/THP-86) Expand output format into structured routing analysis artifact spec and split manifest | ⬜ To Do | — |
+| 2 | [THP-85](https://prosus-thymo-thesis.atlassian.net/browse/THP-85) Expand reasoning framework into boundary and cluster analysis framework | ⬜ To Do | THP-110 |
 | 2 | [THP-112](https://prosus-thymo-thesis.atlassian.net/browse/THP-112) Define how patterns translate into prompt-ready heuristics | ⬜ To Do | THP-110 |
-| 3 | [THP-105](https://prosus-thymo-thesis.atlassian.net/browse/THP-105) Create final prompt (Phase 1 only) | ⬜ To Do | all above |
+| 3 | [THP-111](https://prosus-thymo-thesis.atlassian.net/browse/THP-111) Define few-shot examples of reasoning document output | ⬜ To Do | THP-110, THP-85 |
+| 4 | [THP-105](https://prosus-thymo-thesis.atlassian.net/browse/THP-105) Create final prompt (Phase 1 only) | ⬜ To Do | all above |
 
 > Note: THP-82 and THP-84 were reassigned here from THP-73. THP-74 now receives the full dataset (no pre-existing split) and produces two outputs: the routing analysis artifact and a `split_manifest.json`. THP-86 owns both the artifact format spec and the Phase 2 stratified split algorithm. THP-105 covers the Phase 1 prompt only; Phase 2 is deterministic (no prompt required).
 
