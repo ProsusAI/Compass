@@ -26,7 +26,7 @@ Users may provide data in other formats (CSV, JSON array). Format conversion is 
 | `id` | `string` | Stable identifier for deduplication and result tracking |
 | `input` | `string` | The user query to be routed |
 | `expected` | `object` | Routing expectation — contains `route` and `routes` |
-| `split` | `string` | Either `"dev"` or `"holdout"` — assigned by the Data Validation Agent, not provided by the user |
+| `split` | `string` | Either `"dev"` or `"holdout"` — assigned by the Routing Analysis Agent downstream, not provided by the user |
 
 The `expected` object must contain:
 
@@ -52,7 +52,7 @@ Each entry in `expected.routes` must contain:
 
 1. **No null values** in required fields — `id`, `input`, `expected`, `split` must all be present and non-null.
 2. **Type correctness** — `input` must be a string, `expected` must be an object, `id` and `split` must be strings, `expected.route` must be a string, `expected.routes` values must have numeric `cost` and `quality_score`.
-3. **Split values** — `split` must be exactly `"dev"` or `"holdout"`. This field is assigned by the Data Validation Agent, not provided by the user.
+3. **Split values** — `split` must be exactly `"dev"` or `"holdout"`. This field is assigned by the Routing Analysis Agent downstream, not provided by the user.
 4. **Route-in-routes (record-level)** — for each record, `expected.route` must be a key present in that record's `expected.routes`.
 5. **Consistent model set (dataset-level)** — all records must have the same set of keys in `expected.routes` (same models across the dataset). The set of unique `expected.route` values across the dataset defines the routing tiers.
 6. **Non-empty routes** — `expected.routes` must contain at least one entry.
@@ -112,7 +112,7 @@ The Data Validation Agent may use this table as a heuristic for auto-mapping. Wh
 - The agent should support **field auto-mapping** using the alias table as a heuristic, asking the user to confirm when ambiguous.
 - When cost/quality data is missing, the agent should **ask the user** to provide it rather than guessing or using defaults.
 - Quality scores outside 0.0–1.0 are not rejected — the agent asks the user how to normalize them.
-- The `split` field is **assigned by the agent**, not expected from the user.
+- The `split` field is **assigned by the Routing Analysis Agent downstream**, not expected from the user or set by the Data Validation Agent.
 - The agent should handle non-JSONL input formats (CSV, JSON array) via conversion.
 
 ### THP-106 (System Prompt)
