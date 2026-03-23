@@ -114,10 +114,14 @@ vocabulary_registry:
 
 ### Seed Values
 
+Only `ambiguity_tags` has seed values. These tags describe properties of the annotation process (boundary cases, mislabels, conflicting signals) that generalize across any routing dataset regardless of domain.
+
+`intent_pattern` and `complexity_structure` have **no seeds** — these vocabularies are fully derived from the dataset. The values that emerge from a model-tier routing dataset will differ from those in a customer-support or content-moderation routing dataset.
+
 | Vocabulary | Seeds |
 |---|---|
-| `intent_pattern` | `factual-lookup`, `data-filtering`, `generation-analysis`, `constraint-satisfaction`, `cross-source-join` |
-| `complexity_structure` | `single-hop`, `multi-hop-chain`, `parallel-constraints`, `sequential-dependency`, `associative-bridge` |
+| `intent_pattern` | *(none — fully derived from dataset)* |
+| `complexity_structure` | *(none — fully derived from dataset)* |
 | `ambiguity_tags` | `AMBIGUOUS_COMPLEXITY`, `AMBIGUOUS_DOMAIN`, `POTENTIAL_MISLABEL`, `BOUNDARY_CASE` |
 
 ---

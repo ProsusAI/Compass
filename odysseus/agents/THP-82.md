@@ -15,8 +15,8 @@ Define the structured routing rationale schema that powers clustering, retrieval
 Produce a reference document covering:
 
 1. **Routing rationale schema** — 4 fields per routing example:
-   - `intent_pattern` — the task type the query represents (e.g. factual-lookup, data-filtering, generation-analysis). Dynamic vocabulary with seed values.
-   - `complexity_structure` — the reasoning topology required to answer (e.g. single-hop, multi-hop-chain, sequential-dependency). Dynamic vocabulary with seed values.
+   - `intent_pattern` — the task type the query represents. Fully derived from the dataset (no seed values — intents are domain-specific).
+   - `complexity_structure` — the reasoning topology required to answer. Fully derived from the dataset (no seed values — complexity patterns are domain-specific).
    - `tier_disqualifiers` — why specific routes are ruled out, as a list of `{route: string, reason: string}`. `route` matches THP-80's `expected.route` value. Every non-assigned route must have at least one entry.
    - `ambiguity_tags` — controlled vocabulary labels for examples near routing boundaries. Dynamic with seed values.
 
