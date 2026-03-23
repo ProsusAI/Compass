@@ -18,13 +18,11 @@ file path of the generated report."""
 
 STATUS_PROCEED: str = "proceed"
 STATUS_PROCEED_WITH_DEFAULTS: str = "proceed_with_defaults"
-STATUS_CLARIFICATION_REQUIRED: str = "clarification_required"
 
 _VALID_STATUSES: frozenset[str] = frozenset(
     {
         STATUS_PROCEED,
         STATUS_PROCEED_WITH_DEFAULTS,
-        STATUS_CLARIFICATION_REQUIRED,
     }
 )
 
@@ -38,13 +36,12 @@ def read_status(path: Path) -> str:
         path: Path to the Markdown report file.
 
     Returns:
-        One of STATUS_PROCEED, STATUS_PROCEED_WITH_DEFAULTS,
-        or STATUS_CLARIFICATION_REQUIRED.
+        One of STATUS_PROCEED or STATUS_PROCEED_WITH_DEFAULTS.
 
     Raises:
         FileNotFoundError: If the file does not exist.
         ValueError: If no **Status:** line is found or the value
-            is not one of the three recognized statuses.
+            is not one of the recognized statuses.
     """
     text = path.read_text()
     match = _STATUS_PATTERN.search(text)

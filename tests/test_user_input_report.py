@@ -7,7 +7,6 @@ import pytest
 
 from odysseus.agents.user_input_report import (
     CONTEXT_KEY,
-    STATUS_CLARIFICATION_REQUIRED,
     STATUS_PROCEED,
     STATUS_PROCEED_WITH_DEFAULTS,
     read_status,
@@ -25,10 +24,6 @@ def test_status_proceed_value():
 
 def test_status_proceed_with_defaults_value():
     assert STATUS_PROCEED_WITH_DEFAULTS == "proceed_with_defaults"
-
-
-def test_status_clarification_required_value():
-    assert STATUS_CLARIFICATION_REQUIRED == "clarification_required"
 
 
 SAMPLE_PROCEED = """\
@@ -56,34 +51,15 @@ data/routing.jsonl
 
 ### target_metrics
 - **Classification:** non-blocking
-- **Rationale:** Accuracy is a sensible baseline default.
-- **Default Applied:** ["accuracy"]
+- **Rationale:** F1 macro handles class imbalance well.
+- **Default Applied:** ["f1/macro"]
 - **Clarification Request:** N/A
 
 ## Assumed Defaults
 
 | Field | Assumed Value | Note |
 |---|---|---|
-| `target_metrics` | ["accuracy"] | No target metrics provided — defaulting to accuracy. |
-"""
-
-SAMPLE_CLARIFICATION = """\
-# Validated Input Report
-
-**Status:** clarification_required
-
-## Confirmed Inputs
-
-### Problem Description
-Route customer queries to the right model tier.
-
-## Gap Report
-
-### routing_dataset
-- **Classification:** blocking
-- **Rationale:** No default can substitute real labeled routing data.
-- **Default Applied:** N/A
-- **Clarification Request:** Please provide a routing dataset as a JSONL file.
+| `target_metrics` | ["f1/macro"] | No target metrics specified — defaulting to F1 macro average. |
 """
 
 
@@ -99,10 +75,12 @@ def test_read_status_proceed_with_defaults(tmp_path: Path):
     assert read_status(report) == "proceed_with_defaults"
 
 
-def test_read_status_clarification_required(tmp_path: Path):
+def test_read_status_rejects_clarification_required(tmp_path: Path):
+    """clarification_required is deprecated — read_status must reject it."""
     report = tmp_path / "report.md"
-    report.write_text(SAMPLE_CLARIFICATION)
-    assert read_status(report) == "clarification_required"
+    report.write_text("# Validated Input Report\n\n**Status:** clarification_required\n")
+    with pytest.raises(ValueError, match="Unrecognized status"):
+        read_status(report)
 
 
 def test_read_status_missing_status_line(tmp_path: Path):
