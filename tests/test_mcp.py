@@ -150,6 +150,31 @@ class TestRunEval:
                 )
 
 
+class TestOdysseusRoutingInputPrompt:
+    """Tests for the odysseus_routing_input MCP prompt."""
+
+    async def test_prompt_registered(self):
+        """odysseus_routing_input is listed as an MCP prompt."""
+        prompts = await mcp.list_prompts()
+        prompt_names = [p.name for p in prompts]
+        assert "odysseus_routing_input" in prompt_names
+
+    async def test_prompt_returns_messages(self):
+        """Prompt returns a non-empty list of messages."""
+        from odysseus.mcp import odysseus_routing_input
+
+        messages = await odysseus_routing_input()
+        assert len(messages) >= 1
+
+    async def test_prompt_content_matches_system_prompt(self):
+        """Prompt content matches the user_input_system.md file."""
+        from odysseus.mcp import odysseus_routing_input
+
+        messages = await odysseus_routing_input()
+        expected = _load_text("prompts/user_input_system.md")
+        assert messages[0].content.text == expected
+
+
 class TestLoadText:
     """Tests for the _load_text file loader helper."""
 

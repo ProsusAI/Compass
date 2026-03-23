@@ -10,6 +10,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.fastmcp.prompts.base import Message, UserMessage
 
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.eval.models import ScoreReport
@@ -32,6 +33,17 @@ def _load_text(relative_path: str) -> str:
 
 
 mcp = FastMCP("odysseus")
+
+
+@mcp.prompt()
+async def odysseus_routing_input() -> list[Message]:
+    """Activate the Odysseus routing input agent.
+
+    Use when a user wants help with a routing optimization problem.
+    Guides the user through providing a complete problem specification.
+    """
+    system_prompt = _load_text("prompts/user_input_system.md")
+    return [UserMessage(content=system_prompt)]
 
 
 @mcp.tool()
