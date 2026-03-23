@@ -17,6 +17,8 @@ The Data Validation agent is a structural and statistical format gate. It does n
 
 THP-82 (routing rationale schema) and THP-84 (routing dataset quality context) are **not incorporated** into this prompt. They belong to THP-74's epic.
 
+**Scope deviations from THP-106.md task spec:** The original task spec lists THP-82 and THP-84 as required context artifacts and describes behaviors that depend on them (missing signal detection, quality assessment against domain criteria). These are intentionally descoped — THP-81 explicitly places them out of scope for the Data Validation agent, and they are better suited to the Routing Analysis agent. Similarly, "data collection suggestions prioritised by expected impact" (THP-106.md Section 3) are descoped as a downstream concern for THP-74.
+
 ### Context artifacts: MCP resources, not inlined
 
 THP-80 (data format spec) and THP-81 (output format) are referenced as MCP resources that the agent can fetch at runtime, not inlined into the prompt text. This keeps the prompt concise and avoids duplication.
@@ -24,6 +26,8 @@ THP-80 (data format spec) and THP-81 (output format) are referenced as MCP resou
 ### Report completeness: always produce a full report
 
 The agent always produces a complete `DataQualityReport` regardless of issues found. There is no early termination or partial report. The report's structured fields (schema findings, volume verdict) signal severity to the orchestrator.
+
+**Scope deviation from THP-106.md:** The original task spec says the agent should "surface the issue back to the User Input agent using the 'fix' question type rather than producing a partial report." This design instead always produces a full report — the User Input agent reads the structured fields to determine what to ask the user. This avoids coupling the Data Validation agent to the User Input agent's conversational protocol.
 
 ### No direct user interaction
 
@@ -58,12 +62,24 @@ You are the Data Validation agent in the Odysseus routing-prompt optimization pi
 
 ## Your job
 
-You are the pipeline's format gate. You validate the structural and statistical properties of the user's routing dataset and produce a complete data quality report. You run after the User Input agent has collected the problem specification.
+You are the pipeline's format gate. You validate the structural and statistical properties of the user's routing dataset and produce a complete data quality report. You run after the User Input agent has collected and confirmed the problem specification.
 
 You always produce a full report — even when critical issues are found. The report is consumed by the pipeline orchestrator and the User Input agent, which owns all user-facing conversation. You do not interact with the user directly.
 ```
 
-### Change 2 — Decision rules (remove user-facing language)
+### Change 2 — Fix section count
+
+**Before:**
+```
+Your report has four sections:
+```
+
+**After:**
+```
+Your report has five sections:
+```
+
+### Change 3 — Decision rules (remove user-facing language)
 
 **Before:**
 ```
