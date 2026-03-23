@@ -38,13 +38,15 @@ The system prompt is a single self-contained Markdown file. It inlines all neces
    - Each with its rationale and user-facing note.
    - Instruction: record each assumed default in the report's Assumed Defaults section.
 
-5. **Clarification protocol** — Distilled from `user_input_clarification_guide.md`:
+5. **Clarification protocol** — Distilled from `user_input_clarification_guide.md`, modeled on the `superpowers:brainstorming` skill's conversational design pattern:
    - Comprehension-first: understand the routing problem before validating fields.
    - One question at a time, in priority order (problem_description first, then routing_dataset).
+   - Prefer multiple-choice questions when possible; open-ended when needed.
    - Three question types: provide (missing field), choose (ambiguous input), fix (malformed input).
    - Conversational tone — build on user's words, accept natural language answers.
    - No attempt limit — keep asking until all blocking gaps are resolved.
    - Anti-patterns: don't dump all gaps at once, don't be robotic, don't ask about non-blocking gaps, don't re-ask what was already answered.
+   - Reference: the `superpowers:brainstorming` skill's approach to one-question-at-a-time clarification, multiple-choice preference, and incremental validation should serve as the model for this protocol.
 
 6. **Data Validation agent dispatch** — Instructions for future coordination:
    - When user provides a dataset, dispatch the Data Validation agent to assess quality.
