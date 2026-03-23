@@ -1,0 +1,252 @@
+"""Tests for odysseus.agents.data_validation_checks."""
+
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+from odysseus.agents.data_validation_checks import (
+    DataQualityReport,
+    LabelDistribution,
+    SchemaFinding,
+    TierDistribution,
+    TierVolume,
+    VolumeAssessment,
+    check_schema_conformance,
+)
+
+
+def _valid_row(**overrides) -> dict:
+    """Build a valid row, overriding specific fields."""
+    row = {
+        "id": "ex-1",
+        "input": "What is quantum entanglement?",
+        "expected": {
+            "route": "opus",
+            "routes": {
+                "opus": {"cost": 0.05, "quality_score": 0.98},
+                "haiku": {"cost": 0.002, "quality_score": 0.72},
+            },
+        },
+    }
+    row.update(overrides)
+    return row
+
+
+# ---------------------------------------------------------------------------
+# Model tests
+# ---------------------------------------------------------------------------
+
+
+class TestSchemaFinding:
+    def test_pass_finding(self) -> None:
+        f = SchemaFinding(field="input", status="pass")
+        assert f.status == "pass"
+        assert f.violation is None
+        assert f.row_indices == []
+
+    def test_fail_finding(self) -> None:
+        f = SchemaFinding(field="input", status="fail", violation="missing key", row_indices=[0, 2])
+        assert f.status == "fail"
+        assert f.violation == "missing key"
+        assert f.row_indices == [0, 2]
+
+    def test_invalid_status_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            SchemaFinding(field="input", status="warning")  # type: ignore[arg-type]
+
+
+class TestTierDistribution:
+    def test_construction(self) -> None:
+        td = TierDistribution(tier="opus", count=10, percentage=0.5, imbalanced=False)
+        assert td.tier == "opus"
+        assert td.count == 10
+        assert td.percentage == 0.5
+        assert td.imbalanced is False
+
+
+class TestLabelDistribution:
+    def test_construction_with_min_tier_percentage(self) -> None:
+        ld = LabelDistribution(
+            tiers=[TierDistribution(tier="opus", count=10, percentage=1.0, imbalanced=False)],
+            total_records=10,
+            num_tiers=1,
+            imbalanced_tiers=[],
+            min_tier_percentage=0.1,
+        )
+        assert ld.min_tier_percentage == 0.1
+        assert ld.num_tiers == 1
+
+
+class TestVolumeAssessment:
+    def test_pass_verdict(self) -> None:
+        va = VolumeAssessment(
+            tiers=[TierVolume(tier="opus", verdict="adequate", actual_count=20, minimum_required=5)],
+            overall_verdict="pass",
+            min_per_tier=5,
+        )
+        assert va.overall_verdict == "pass"
+
+    def test_invalid_verdict_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            VolumeAssessment(
+                tiers=[],
+                overall_verdict="maybe",  # type: ignore[arg-type]
+                min_per_tier=5,
+            )
+
+
+class TestDataQualityReport:
+    def test_full_construction(self) -> None:
+        report = DataQualityReport(
+            summary="All checks passed.",
+            schema_findings=[SchemaFinding(field="input", status="pass")],
+            label_distribution=LabelDistribution(
+                tiers=[TierDistribution(tier="opus", count=10, percentage=1.0, imbalanced=False)],
+                total_records=10,
+                num_tiers=1,
+                imbalanced_tiers=[],
+                min_tier_percentage=0.1,
+            ),
+            volume_assessment=VolumeAssessment(
+                tiers=[TierVolume(tier="opus", verdict="adequate", actual_count=10, minimum_required=5)],
+                overall_verdict="pass",
+                min_per_tier=5,
+            ),
+        )
+        assert report.summary == "All checks passed."
+        assert len(report.schema_findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# check_schema_conformance tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckSchemaConformance:
+    def test_valid_rows_all_pass(self) -> None:
+        rows = [_valid_row(id="ex-1"), _valid_row(id="ex-2")]
+        findings = check_schema_conformance(rows)
+        assert all(f.status == "pass" for f in findings)
+
+    def test_missing_required_key_input(self) -> None:
+        row = _valid_row()
+        del row["input"]
+        findings = check_schema_conformance([row])
+        required_finding = next(f for f in findings if f.field == "required_keys")
+        assert required_finding.status == "fail"
+        assert 0 in required_finding.row_indices
+
+    def test_missing_required_key_expected(self) -> None:
+        row = _valid_row()
+        del row["expected"]
+        findings = check_schema_conformance([row])
+        required_finding = next(f for f in findings if f.field == "required_keys")
+        assert required_finding.status == "fail"
+        assert 0 in required_finding.row_indices
+
+    def test_null_input_treated_as_missing(self) -> None:
+        row = _valid_row(input=None)
+        findings = check_schema_conformance([row])
+        required_finding = next(f for f in findings if f.field == "required_keys")
+        assert required_finding.status == "fail"
+        assert 0 in required_finding.row_indices
+
+    def test_null_id_treated_as_missing(self) -> None:
+        row = _valid_row(id=None)
+        findings = check_schema_conformance([row])
+        required_finding = next(f for f in findings if f.field == "required_keys")
+        assert required_finding.status == "fail"
+        assert 0 in required_finding.row_indices
+
+    def test_missing_expected_route(self) -> None:
+        row = _valid_row()
+        del row["expected"]["route"]
+        findings = check_schema_conformance([row])
+        required_finding = next(f for f in findings if f.field == "required_keys")
+        assert required_finding.status == "fail"
+        assert 0 in required_finding.row_indices
+
+    def test_missing_expected_routes(self) -> None:
+        row = _valid_row()
+        del row["expected"]["routes"]
+        findings = check_schema_conformance([row])
+        required_finding = next(f for f in findings if f.field == "required_keys")
+        assert required_finding.status == "fail"
+        assert 0 in required_finding.row_indices
+
+    def test_empty_rows_all_pass(self) -> None:
+        findings = check_schema_conformance([])
+        assert all(f.status == "pass" for f in findings)
+
+    def test_wrong_type_input_not_string(self) -> None:
+        row = _valid_row(input=42)
+        findings = check_schema_conformance([row])
+        type_finding = next(f for f in findings if f.field == "types")
+        assert type_finding.status == "fail"
+        assert 0 in type_finding.row_indices
+
+    def test_wrong_type_expected_not_dict(self) -> None:
+        row = _valid_row(expected="not a dict")
+        findings = check_schema_conformance([row])
+        type_finding = next(f for f in findings if f.field == "types")
+        assert type_finding.status == "fail"
+        assert 0 in type_finding.row_indices
+
+    def test_route_not_in_routes_keys(self) -> None:
+        row = _valid_row()
+        row["expected"]["route"] = "sonnet"  # not in routes
+        findings = check_schema_conformance([row])
+        rir_finding = next(f for f in findings if f.field == "route_in_routes")
+        assert rir_finding.status == "fail"
+        assert 0 in rir_finding.row_indices
+
+    def test_empty_routes_detected(self) -> None:
+        row = _valid_row()
+        row["expected"]["routes"] = {}
+        findings = check_schema_conformance([row])
+        nonempty_finding = next(f for f in findings if f.field == "non_empty_routes")
+        assert nonempty_finding.status == "fail"
+        assert 0 in nonempty_finding.row_indices
+
+    def test_inconsistent_model_set(self) -> None:
+        row_a = _valid_row(id="ex-1")
+        row_b = _valid_row(id="ex-2")
+        row_b["expected"]["routes"] = {
+            "opus": {"cost": 0.05, "quality_score": 0.98},
+            "sonnet": {"cost": 0.01, "quality_score": 0.85},
+        }
+        findings = check_schema_conformance([row_a, row_b])
+        cons_finding = next(f for f in findings if f.field == "consistent_model_set")
+        assert cons_finding.status == "fail"
+        assert 1 in cons_finding.row_indices
+
+    def test_duplicate_ids(self) -> None:
+        rows = [_valid_row(id="ex-1"), _valid_row(id="ex-1")]
+        findings = check_schema_conformance(rows)
+        dup_finding = next(f for f in findings if f.field == "unique_ids")
+        assert dup_finding.status == "fail"
+        assert 1 in dup_finding.row_indices
+
+    def test_invalid_cost_quality_types(self) -> None:
+        row = _valid_row()
+        row["expected"]["routes"]["opus"]["cost"] = "expensive"
+        row["expected"]["routes"]["opus"]["quality_score"] = "high"
+        findings = check_schema_conformance([row])
+        type_finding = next(f for f in findings if f.field == "types")
+        assert type_finding.status == "fail"
+        assert 0 in type_finding.row_indices
+
+    def test_multiple_rows_mixed_validity(self) -> None:
+        good = _valid_row(id="ex-1")
+        bad_input = _valid_row(id="ex-2", input=123)
+        bad_route = _valid_row(id="ex-3")
+        bad_route["expected"]["route"] = "sonnet"
+        findings = check_schema_conformance([good, bad_input, bad_route])
+        type_finding = next(f for f in findings if f.field == "types")
+        assert type_finding.status == "fail"
+        assert 1 in type_finding.row_indices
+        assert 0 not in type_finding.row_indices
+        rir_finding = next(f for f in findings if f.field == "route_in_routes")
+        assert rir_finding.status == "fail"
+        assert 2 in rir_finding.row_indices
