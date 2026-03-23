@@ -34,7 +34,7 @@ Implement the remaining validation checks and wire them into the MCP server as a
 
 All changes in `odysseus/agents/data_validation_checks.py`.
 
-**Extend `check_schema_conformance`:** Add a check that scans all fields across all rows for null/None values and reports which fields have nulls and in which rows. The existing null check only covers required fields; this extends to detecting nulls in any field including optional ones (e.g., `metadata` sub-fields).
+**Extend `check_schema_conformance`:** Add a check that scans all fields across all rows for null/None values and reports which fields have nulls and in which rows. The existing null check only covers required fields; this extends to detecting nulls in any field including optional ones. Null detection is constrained to top-level fields plus `expected.*` fields — no arbitrary recursion into nested structures.
 
 **New function `check_query_length_distribution(rows: list[dict]) -> QueryLengthDistribution`:**
 - Extracts the `input` field from each row
@@ -58,7 +58,8 @@ class QueryLengthDistribution(BaseModel):
 
 **`run_all_checks(rows: list[dict]) -> DataQualityReport`** in `data_validation_checks.py`:
 - Calls all four check functions: `check_schema_conformance`, `check_label_distribution`, `check_volume_adequacy`, `check_query_length_distribution`
-- Uses sensible defaults for thresholds (e.g., `min_tier_percentage=10.0`, `min_per_tier=5`)
+- Uses sensible defaults for thresholds (`min_tier_percentage=10.0`, `min_per_tier=5`) — these are intentional defaults, not magic numbers; comment them as such
+- Sets `summary=""` (the calling LLM writes the narrative summary separately)
 - Assembles and returns a `DataQualityReport`
 
 **MCP additions in `odysseus/mcp.py`:**
