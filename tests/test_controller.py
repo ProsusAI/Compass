@@ -357,7 +357,12 @@ async def test_backoff_sleeps_outside_semaphore():
         result = await _eval_with_retry(
             FailOnceBackend(),
             "prompt",
-            Example(id="ex-0", input="q1", expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}, split="dev"),
+            Example(
+                id="ex-0",
+                input="q1",
+                expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
+                split="dev",
+            ),
             RetryConfig(max_attempts=2, backoff_factor=1.0),
             rate_limiter,
             semaphore,
@@ -384,7 +389,12 @@ async def test_timeout_wraps_only_backend_call():
     result = await _eval_with_retry(
         backend,
         "prompt",
-        Example(id="ex-0", input="q1", expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}, split="dev"),
+        Example(
+            id="ex-0",
+            input="q1",
+            expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
+            split="dev",
+        ),
         RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1),
         rate_limiter,
         semaphore,
@@ -409,7 +419,12 @@ async def test_token_accounting_post_call():
     await _eval_with_retry(
         backend,
         "prompt",
-        Example(id="ex-0", input="q1", expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}, split="dev"),
+        Example(
+            id="ex-0",
+            input="q1",
+            expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
+            split="dev",
+        ),
         RetryConfig(max_attempts=1, backoff_factor=1.0),
         rate_limiter,
         semaphore,

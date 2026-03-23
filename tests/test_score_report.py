@@ -109,7 +109,9 @@ def _make_run_report(
 class TestScoreReport:
     def test_from_run_report_basic(self) -> None:
         report = _make_run_report()
-        score = ScoreReport.from_run_report(report, report_path="outputs/report.json", results_path="outputs/results.jsonl")
+        score = ScoreReport.from_run_report(
+            report, report_path="outputs/report.json", results_path="outputs/results.jsonl"
+        )
 
         assert score.metrics == {"accuracy": 0.85}
         assert score.summary.total == 10
@@ -120,7 +122,9 @@ class TestScoreReport:
 
     def test_errors_extracted(self) -> None:
         report = _make_run_report(num_failed=3)
-        score = ScoreReport.from_run_report(report, report_path="outputs/report.json", results_path="outputs/results.jsonl")
+        score = ScoreReport.from_run_report(
+            report, report_path="outputs/report.json", results_path="outputs/results.jsonl"
+        )
 
         assert len(score.errors) == 3
         assert score.errors[0].example_id == "fail-0"
@@ -130,7 +134,9 @@ class TestScoreReport:
 
     def test_no_errors_when_all_succeed(self) -> None:
         report = _make_run_report(num_succeeded=5, num_failed=0)
-        score = ScoreReport.from_run_report(report, report_path="outputs/report.json", results_path="outputs/results.jsonl")
+        score = ScoreReport.from_run_report(
+            report, report_path="outputs/report.json", results_path="outputs/results.jsonl"
+        )
         assert score.errors == []
 
     def test_with_previous_report_generates_diff(self) -> None:
@@ -155,12 +161,16 @@ class TestScoreReport:
 
     def test_context_key_excluded_from_serialization(self) -> None:
         report = _make_run_report()
-        score = ScoreReport.from_run_report(report, report_path="outputs/report.json", results_path="outputs/results.jsonl")
+        score = ScoreReport.from_run_report(
+            report, report_path="outputs/report.json", results_path="outputs/results.jsonl"
+        )
         assert "CONTEXT_KEY" not in score.model_dump()
 
     def test_serialization_roundtrip(self) -> None:
         report = _make_run_report()
-        score = ScoreReport.from_run_report(report, report_path="outputs/report.json", results_path="outputs/results.jsonl")
+        score = ScoreReport.from_run_report(
+            report, report_path="outputs/report.json", results_path="outputs/results.jsonl"
+        )
         data = score.model_dump()
         restored = ScoreReport(**data)
         assert restored == score

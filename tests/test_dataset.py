@@ -17,9 +17,36 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
 
 
 SAMPLE_RECORDS = [
-    {"id": "1", "input": "hello", "expected": {"route": "greeting", "routes": {"greeting": {"cost": 0.01, "quality_score": 0.9}, "farewell": {"cost": 0.01, "quality_score": 0.5}}}, "split": "dev"},
-    {"id": "2", "input": "bye", "expected": {"route": "farewell", "routes": {"greeting": {"cost": 0.01, "quality_score": 0.4}, "farewell": {"cost": 0.01, "quality_score": 0.95}}}, "split": "dev"},
-    {"id": "3", "input": "secret", "expected": {"route": "hidden", "routes": {"hidden": {"cost": 0.02, "quality_score": 0.8}}}, "split": "holdout"},
+    {
+        "id": "1",
+        "input": "hello",
+        "expected": {
+            "route": "greeting",
+            "routes": {
+                "greeting": {"cost": 0.01, "quality_score": 0.9},
+                "farewell": {"cost": 0.01, "quality_score": 0.5},
+            },
+        },
+        "split": "dev",
+    },
+    {
+        "id": "2",
+        "input": "bye",
+        "expected": {
+            "route": "farewell",
+            "routes": {
+                "greeting": {"cost": 0.01, "quality_score": 0.4},
+                "farewell": {"cost": 0.01, "quality_score": 0.95},
+            },
+        },
+        "split": "dev",
+    },
+    {
+        "id": "3",
+        "input": "secret",
+        "expected": {"route": "hidden", "routes": {"hidden": {"cost": 0.02, "quality_score": 0.8}}},
+        "split": "holdout",
+    },
 ]
 
 
@@ -57,7 +84,12 @@ class TestJsonlDatasetManagerDevSplit:
         _write_jsonl(
             path,
             [
-                {"id": "1", "input": "a", "expected": {"route": "b", "routes": {"b": {"cost": 0.01, "quality_score": 0.9}}}, "split": "holdout"},
+                {
+                    "id": "1",
+                    "input": "a",
+                    "expected": {"route": "b", "routes": {"b": {"cost": 0.01, "quality_score": 0.9}}},
+                    "split": "holdout",
+                },
             ],
         )
 
@@ -118,7 +150,12 @@ class TestJsonlDatasetManagerErrors:
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "bad.jsonl"
-        path.write_text('{"id":"1","input":"hi","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},"split":"dev"}\nNOT JSON\n')
+        valid = (
+            '{"id":"1","input":"hi","expected":'
+            '{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},'
+            '"split":"dev"}'
+        )
+        path.write_text(f"{valid}\nNOT JSON\n")
 
         manager = JsonlDatasetManager()
         with pytest.raises(ValueError, match="Line 2: invalid JSON"):
