@@ -21,7 +21,7 @@ def _example(id: str, route: str = "gpt-4o") -> Example:
     """Create a minimal Example with expected route."""
     return Example(
         id=id,
-        input={"query": f"q-{id}"},
+        input=f"q-{id}",
         expected={
             "route": route,
             "routes": {
@@ -30,6 +30,7 @@ def _example(id: str, route: str = "gpt-4o") -> Example:
                 "haiku": {"cost": 0.002, "quality_score": 0.72},
             },
         },
+        split="dev",
     )
 
 
@@ -259,8 +260,9 @@ def _cost_quality_example(id: str, route: str, routes: dict[str, dict[str, float
     """Create an Example with explicit per-class cost/quality."""
     return Example(
         id=id,
-        input={"query": f"q-{id}"},
+        input=f"q-{id}",
         expected={"route": route, "routes": routes},
+        split="dev",
     )
 
 

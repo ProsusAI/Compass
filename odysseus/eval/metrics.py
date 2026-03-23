@@ -75,7 +75,7 @@ def compute_accuracy(results: list[EvalResult], examples: list[Example]) -> dict
     correct = sum(
         1
         for r, ex in zip(results, examples, strict=True)
-        if r.output is not None and r.output["route"] == ex.expected["route"]
+        if r.output is not None and r.output["route"] == ex.expected.route
     )
     return {"accuracy": correct / len(results)}
 
@@ -88,7 +88,7 @@ def compute_confusion(results: list[EvalResult], examples: list[Example]) -> dic
     classes: set[str] = set()
     pairs: list[tuple[str, str]] = []
     for r, ex in zip(results, examples, strict=True):
-        true_class = ex.expected["route"]
+        true_class = ex.expected.route
         pred_class = r.output["route"] if r.output else ""
         classes.add(true_class)
         classes.add(pred_class)
@@ -143,7 +143,7 @@ def compute_cost_quality_reduction(
     counted = 0
 
     for r, ex in zip(results, examples, strict=True):
-        routes = ex.expected["routes"]
+        routes = ex.expected.routes
         pred_route = r.output["route"] if r.output else None
 
         # Skip hallucinated routes
@@ -155,14 +155,14 @@ def compute_cost_quality_reduction(
             )
             continue
 
-        oracle_route = ex.expected["route"]
+        oracle_route = ex.expected.route
 
-        baseline_cost += routes[baseline_class]["cost"]
-        baseline_quality += routes[baseline_class]["quality_score"]
-        predicted_cost += routes[pred_route]["cost"] if pred_route else 0.0
-        predicted_quality += routes[pred_route]["quality_score"] if pred_route else 0.0
-        oracle_cost += routes[oracle_route]["cost"]
-        oracle_quality += routes[oracle_route]["quality_score"]
+        baseline_cost += routes[baseline_class].cost
+        baseline_quality += routes[baseline_class].quality_score
+        predicted_cost += routes[pred_route].cost if pred_route else 0.0
+        predicted_quality += routes[pred_route].quality_score if pred_route else 0.0
+        oracle_cost += routes[oracle_route].cost
+        oracle_quality += routes[oracle_route].quality_score
         counted += 1
 
     if counted == 0:
@@ -186,8 +186,8 @@ def _select_baseline_class(examples: list[Example]) -> str:
     quality_counts: dict[str, int] = {}
 
     for ex in examples:
-        for cls, data in ex.expected["routes"].items():
-            quality_sums[cls] = quality_sums.get(cls, 0.0) + data["quality_score"]
+        for cls, data in ex.expected.routes.items():
+            quality_sums[cls] = quality_sums.get(cls, 0.0) + data.quality_score
             quality_counts[cls] = quality_counts.get(cls, 0) + 1
 
     # Highest mean quality; tie-break by alphabetically first class name
@@ -216,7 +216,7 @@ def compute_f1(results: list[EvalResult], examples: list[Example]) -> dict[str, 
     true_labels: list[str] = []
     pred_labels: list[str] = []
     for r, ex in zip(results, examples, strict=True):
-        true_cls = ex.expected["route"]
+        true_cls = ex.expected.route
         pred_cls = r.output["route"] if r.output else ""
         classes.add(true_cls)
         classes.add(pred_cls)
