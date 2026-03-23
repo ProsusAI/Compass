@@ -25,10 +25,7 @@ def _load_text(relative_path: str) -> str:
     """
     path = _PROJECT_ROOT / relative_path
     if not path.is_file():
-        raise FileNotFoundError(
-            f"Required prompt file not found: {path} "
-            f"(resolved from project root {_PROJECT_ROOT})"
-        )
+        raise FileNotFoundError(f"Required prompt file not found: {path} (resolved from project root {_PROJECT_ROOT})")
     return path.read_text()
 
 
