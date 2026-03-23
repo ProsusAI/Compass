@@ -1,5 +1,5 @@
-{"id": "1", "input": {"query": "What is 2+2?"}}
-{"id": "2", "input": {"query": "Explain quantum entanglement in detail with examples"}}
-{"id": "3", "input": {"query": "Translate 'hello' to French"}}
-{"id": "4", "input": {"query": "Write a nuanced essay on the ethics of AI regulation"}}
-{"id": "5", "input": {"query": "Summarize this paragraph in one sentence"}}
+{"id": "1", "input": "What is 2+2?"}
+{"id": "2", "input": "Explain quantum entanglement in detail with examples"}
+{"id": "3", "input": "Translate 'hello' to French"}
+{"id": "4", "input": "Write a nuanced essay on the ethics of AI regulation"}
+{"id": "5", "input": "Summarize this paragraph in one sentence"}
