@@ -63,9 +63,7 @@ class TestDefaultsStructure:
 
     def test_has_propagation_section(self) -> None:
         content = DEFAULTS_PATH.read_text()
-        assert "propagation" in content.lower() or "downstream" in content.lower(), (
-            "Missing propagation documentation"
-        )
+        assert "propagation" in content.lower() or "downstream" in content.lower(), "Missing propagation documentation"
 
 
 class TestDefaultValues:

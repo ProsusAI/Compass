@@ -8,8 +8,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import yaml
-from odysseus.agents.eval_runner import EvalRunnerAgent
 
+from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.eval.models import (
     EvalResult,
     MetricConfig,

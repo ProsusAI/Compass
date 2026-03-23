@@ -42,25 +42,33 @@ class TestComputeMetricDiffs:
 class TestComputeOverheadDiff:
     def test_cost_and_duration_changed(self) -> None:
         result = compute_overhead_diff(
-            old_cost=0.05, old_duration=12.0,
-            new_cost=0.04, new_duration=10.0,
+            old_cost=0.05,
+            old_duration=12.0,
+            new_cost=0.04,
+            new_duration=10.0,
         )
         assert result == OverheadDiff(
-            old_cost=0.05, new_cost=0.04,
-            old_duration=12.0, new_duration=10.0,
+            old_cost=0.05,
+            new_cost=0.04,
+            old_duration=12.0,
+            new_duration=10.0,
         )
 
     def test_no_change_returns_none(self) -> None:
         result = compute_overhead_diff(
-            old_cost=0.05, old_duration=12.0,
-            new_cost=0.05, new_duration=12.0,
+            old_cost=0.05,
+            old_duration=12.0,
+            new_cost=0.05,
+            new_duration=12.0,
         )
         assert result is None
 
     def test_only_cost_changed(self) -> None:
         result = compute_overhead_diff(
-            old_cost=0.05, old_duration=12.0,
-            new_cost=0.04, new_duration=12.0,
+            old_cost=0.05,
+            old_duration=12.0,
+            new_cost=0.04,
+            new_duration=12.0,
         )
         assert result is not None
         assert result.old_cost == 0.05

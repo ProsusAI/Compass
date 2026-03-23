@@ -248,6 +248,7 @@ class ScoreReport(BaseModel):
     errors: list[ErrorBreakdown]
     diff: RunDiff | None
     report_path: str
+    results_path: str
 
     @classmethod
     def from_run_report(
@@ -255,6 +256,7 @@ class ScoreReport(BaseModel):
         report: RunReport,
         *,
         report_path: str,
+        results_path: str,
         previous_report: RunReport | None = None,
     ) -> ScoreReport:
         """Build a ScoreReport from a RunReport and optional previous run."""
@@ -285,4 +287,5 @@ class ScoreReport(BaseModel):
             errors=errors,
             diff=diff,
             report_path=report_path,
+            results_path=results_path,
         )

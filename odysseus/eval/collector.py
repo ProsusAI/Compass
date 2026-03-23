@@ -40,9 +40,7 @@ class JsonResultsCollector:
 
             old_summary = previous.get("summary")
             if old_summary is not None:
-                self._log_overhead_diff(
-                    old_summary, report.summary.total_cost, report.summary.duration_seconds
-                )
+                self._log_overhead_diff(old_summary, report.summary.total_cost, report.summary.duration_seconds)
 
     @staticmethod
     def _read_previous_report(path: str) -> dict[str, Any] | None:

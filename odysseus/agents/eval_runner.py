@@ -90,6 +90,7 @@ class EvalRunnerAgent(BaseAgent):
         score_report = ScoreReport.from_run_report(
             report,
             report_path=config.output.report_path,
+            results_path=config.output.results_path,
             previous_report=previous_report,
         )
         return {ScoreReport.CONTEXT_KEY: score_report}

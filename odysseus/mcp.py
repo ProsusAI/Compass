@@ -1,25 +1,19 @@
-"""MCP server entrypoint for Odysseus."""
+"""MCP server entrypoint for Odysseus.
+
+Thin adapter layer — each tool delegates to an agent class that owns
+all business logic.  The MCP layer only translates between tool
+parameters/return values and agent context dicts.
+"""
 
 import json
-from pathlib import Path
 
-import yaml
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
-from pydantic import ValidationError
-
-from odysseus.eval import controller
-from odysseus.eval.backends.registry import BackendRegistry
-from odysseus.eval.collector import JsonResultsCollector
-from odysseus.eval.dataset import JsonlDatasetManager
-from odysseus.eval.metrics import create_default_engine
-from odysseus.eval.models import RunConfig
-from odysseus.eval.protocols import RunDependencies
-from odysseus.prompts.manager import FilePromptManager
+from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.eval.models import ScoreReport
 
 mcp = FastMCP("odysseus")
-
 
 
 @mcp.tool()
@@ -80,58 +74,27 @@ async def run_eval(
         JSON object with report_path and results_path pointing to
         the full evaluation output on disk.
     """
-    try:
-        # Load stable config from YAML
-        with open(config_path) as f:
-            config_data: dict = yaml.safe_load(f) or {}
+    agent = EvalRunnerAgent()
+    result = await agent.run(
+        {
+            "prompt_version": prompt_version,
+            "data_source": data_source,
+            "backend": backend,
+            "config_path": config_path,
+        }
+    )
 
-        # Overlay agent-controlled parameters (tool params override YAML)
-        config_data["backend"] = backend
-        config_data["prompt_version"] = prompt_version
-        config_data["data_source"] = data_source
-        config_data["data_split"] = "dev"  # Always dev; holdout requires separate tool (THP-115)
+    if "error" in result:
+        err = result["error"]
+        raise ToolError(f"run_eval failed: [{err['category']}] {err['detail']}")
 
-        # Read optional directory overrides before validating RunConfig
-        backends_dir = Path(config_data.pop("backends_dir", "backends"))
-        prompts_dir = Path(config_data.pop("prompts_dir", "prompts"))
-
-        config = RunConfig.model_validate(config_data)
-
-        # Wire dependencies
-        registry = BackendRegistry.from_directory(backends_dir)
-        profile = registry.get_profile(backend)
-        backend_instance = registry.create_backend(backend)
-
-        deps = RunDependencies(
-            backend=backend_instance,
-            prompt_manager=FilePromptManager(prompts_dir=prompts_dir),
-            dataset_manager=JsonlDatasetManager(),
-            metrics_engine=create_default_engine(),
-            results_collector=JsonResultsCollector(),
-            requests_per_minute=profile.requests_per_minute,
-            tokens_per_minute=profile.tokens_per_minute,
-        )
-
-        # Execute
-        await controller.run(config, deps)
-
-        return json.dumps(
-            {
-                "report_path": config.output.report_path,
-                "results_path": config.output.results_path,
-            }
-        )
-
-    except FileNotFoundError as e:
-        return json.dumps({"error": "not_found", "detail": str(e)})
-    except (ValueError, ValidationError) as e:
-        return json.dumps({"error": "validation_error", "detail": str(e)})
-    except KeyError as e:
-        return json.dumps({"error": "not_found", "detail": str(e)})
-    except PermissionError as e:
-        return json.dumps({"error": "permission_denied", "detail": str(e)})
-    except Exception as e:
-        raise ToolError(f"run_eval failed unexpectedly: {e}") from e
+    score_report: ScoreReport = result[ScoreReport.CONTEXT_KEY]
+    return json.dumps(
+        {
+            "report_path": score_report.report_path,
+            "results_path": score_report.results_path,
+        }
+    )
 
 
 def main() -> None:

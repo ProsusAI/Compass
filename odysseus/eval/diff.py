@@ -25,9 +25,7 @@ class OverheadDiff(BaseModel):
     new_duration: float
 
 
-def compute_metric_diffs(
-    old: dict[str, float], new: dict[str, float]
-) -> list[MetricDiff]:
+def compute_metric_diffs(old: dict[str, float], new: dict[str, float]) -> list[MetricDiff]:
     """Compare two metric dicts. Returns only changed/added/removed entries, sorted by key."""
     all_keys = sorted(set(old) | set(new))
     diffs: list[MetricDiff] = []
