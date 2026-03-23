@@ -209,3 +209,53 @@ def test_json_results_collector_satisfies_protocol():
     """JsonResultsCollector is a valid ResultsCollector."""
     collector = JsonResultsCollector()
     assert isinstance(collector, ResultsCollector)
+
+
+def test_append_result(tmp_path):
+    """append_result appends a single line without overwriting."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "results.jsonl")
+
+    r1 = _make_result("ex-1")
+    r2 = _make_result("ex-2")
+
+    collector.append_result(r1, path)
+    collector.append_result(r2, path)
+
+    lines = [line for line in (tmp_path / "results.jsonl").read_text().splitlines() if line.strip()]
+    assert len(lines) == 2
+    assert json.loads(lines[0])["example_id"] == "ex-1"
+    assert json.loads(lines[1])["example_id"] == "ex-2"
+
+
+def test_read_completed_ids(tmp_path):
+    """read_completed_ids returns IDs from a partial results file."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "results.jsonl")
+
+    r1 = _make_result("ex-1")
+    r2 = _make_result("ex-2")
+    collector.append_result(r1, path)
+    collector.append_result(r2, path)
+
+    ids = collector.read_completed_ids(path)
+    assert ids == {"ex-1", "ex-2"}
+
+
+def test_read_completed_ids_missing_file(tmp_path):
+    """read_completed_ids returns empty set for nonexistent file."""
+    collector = JsonResultsCollector()
+    ids = collector.read_completed_ids(str(tmp_path / "nope.jsonl"))
+    assert ids == set()
+
+
+def test_read_completed_ids_skips_malformed_lines(tmp_path):
+    """read_completed_ids skips truncated/malformed lines."""
+    collector = JsonResultsCollector()
+    path = tmp_path / "results.jsonl"
+
+    r1 = _make_result("ex-1")
+    path.write_text(r1.model_dump_json() + "\n" + '{"truncated": tru\n')
+
+    ids = collector.read_completed_ids(str(path))
+    assert ids == {"ex-1"}

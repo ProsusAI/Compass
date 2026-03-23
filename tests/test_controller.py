@@ -16,6 +16,7 @@ from odysseus.eval.dataset import JsonlDatasetManager
 from odysseus.eval.metrics import create_default_engine
 from odysseus.eval.models import (
     ConcurrencyConfig,
+    EvalResult,
     Example,
     MetricConfig,
     OutputConfig,
@@ -431,3 +432,147 @@ async def test_token_accounting_post_call():
     )
 
     assert consumed == [15], f"Expected [15] tokens consumed, got {consumed}"
+
+
+# --- Tests: streaming and resume ---
+
+
+async def test_streaming_writes_incrementally(tmp_path: Path):
+    """Each result is appended to the JSONL file as it completes."""
+    appended: list[str] = []
+
+    from odysseus.eval.collector import JsonResultsCollector
+
+    class TrackingCollector(JsonResultsCollector):
+        def append_result(self, result: EvalResult, path: str) -> None:
+            appended.append(result.example_id)
+            super().append_result(result, path)
+
+    examples = _make_examples(3)
+    _write_jsonl(tmp_path / "data.jsonl", examples)
+
+    deps = RunDependencies(
+        backend=MockBackend(),
+        prompt_manager=_setup_prompt_dir(tmp_path),
+        dataset_manager=JsonlDatasetManager(),
+        metrics_engine=create_default_engine(),
+        results_collector=TrackingCollector(),
+        requests_per_minute=10000,
+        tokens_per_minute=1_000_000,
+    )
+    config = _make_config(tmp_path)
+    report = await run(config, deps)
+
+    # All 3 examples should have been appended individually
+    assert len(appended) == 3
+    assert set(appended) == {ex.id for ex in examples}
+    # Final report should still have all results
+    assert report.summary.total == 3
+    assert report.summary.succeeded == 3
+
+
+async def test_resume_from_partial_results(tmp_path: Path):
+    """Run resumes from a partial results file, skipping completed examples."""
+    examples = _make_examples(5)
+    _write_jsonl(tmp_path / "data.jsonl", examples)
+
+    # Simulate a partial run: write results for the first 3 examples
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    partial_path = outputs_dir / "results.jsonl"
+    with open(partial_path, "w") as f:
+        for ex in examples[:3]:
+            result = EvalResult(
+                example_id=ex.id,
+                model="test-model",
+                output={"route": ex.expected.route},
+                error=None,
+                latency_ms=50.0,
+                retries=0,
+                token_usage=TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5),
+                cost=None,
+            )
+            f.write(result.model_dump_json() + "\n")
+
+    # Track which examples the backend actually processes
+    processed: list[str] = []
+
+    class TrackingBackend(MockBackend):
+        async def call(self, prompt, example):
+            processed.append(example.id)
+            return await super().call(prompt, example)
+
+    deps = RunDependencies(
+        backend=TrackingBackend(),
+        prompt_manager=_setup_prompt_dir(tmp_path),
+        dataset_manager=JsonlDatasetManager(),
+        metrics_engine=create_default_engine(),
+        results_collector=JsonResultsCollector(),
+        requests_per_minute=10000,
+        tokens_per_minute=1_000_000,
+    )
+    config = _make_config(tmp_path)
+    report = await run(config, deps)
+
+    # Only the last 2 examples should have been sent to the backend
+    assert set(processed) == {examples[3].id, examples[4].id}
+    # But the final report should contain all 5
+    assert report.summary.total == 5
+    assert report.summary.succeeded == 5
+
+
+async def test_resume_with_no_partial_results(tmp_path: Path):
+    """When no partial results file exists, all examples are evaluated."""
+    deps = _make_deps(tmp_path)
+    config = _make_config(tmp_path)
+    report = await run(config, deps)
+
+    assert report.summary.total == 5
+    assert report.summary.succeeded == 5
+
+
+async def test_resume_all_completed(tmp_path: Path):
+    """When all examples are already in the partial file, no backend calls are made."""
+    examples = _make_examples(3)
+    _write_jsonl(tmp_path / "data.jsonl", examples)
+
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    partial_path = outputs_dir / "results.jsonl"
+    with open(partial_path, "w") as f:
+        for ex in examples:
+            result = EvalResult(
+                example_id=ex.id,
+                model="test-model",
+                output={"route": ex.expected.route},
+                error=None,
+                latency_ms=50.0,
+                retries=0,
+                token_usage=TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5),
+                cost=None,
+            )
+            f.write(result.model_dump_json() + "\n")
+
+    call_count = 0
+
+    class CountingBackend(MockBackend):
+        async def call(self, prompt, example):
+            nonlocal call_count
+            call_count += 1
+            return await super().call(prompt, example)
+
+    deps = RunDependencies(
+        backend=CountingBackend(),
+        prompt_manager=_setup_prompt_dir(tmp_path),
+        dataset_manager=JsonlDatasetManager(),
+        metrics_engine=create_default_engine(),
+        results_collector=JsonResultsCollector(),
+        requests_per_minute=10000,
+        tokens_per_minute=1_000_000,
+    )
+    config = _make_config(tmp_path)
+    report = await run(config, deps)
+
+    assert call_count == 0
+    assert report.summary.total == 3
+    assert report.summary.succeeded == 3

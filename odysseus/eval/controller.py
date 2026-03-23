@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from datetime import UTC, datetime
@@ -50,23 +51,43 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     Path(config.output.results_path).parent.mkdir(parents=True, exist_ok=True)
     Path(config.output.report_path).parent.mkdir(parents=True, exist_ok=True)
 
-    # 3. Evaluate
+    # 3. Resume: check for partial results from a previous interrupted run
+    completed_ids = deps.results_collector.read_completed_ids(config.output.results_path)
+    if completed_ids:
+        logger.info("Resuming: found %d completed examples from previous run", len(completed_ids))
+    remaining_examples = [ex for ex in examples if ex.id not in completed_ids]
+
+    # 4. Evaluate remaining examples, streaming results to disk
     rate_limiter = TokenBucketRateLimiter(
         requests_per_minute=deps.requests_per_minute,
         tokens_per_minute=deps.tokens_per_minute,
     )
     semaphore = asyncio.Semaphore(config.concurrency.max_concurrent_requests)
 
-    tasks = [
-        _eval_with_retry(deps.backend, prompt, example, config.retry, rate_limiter, semaphore, deps.backend.pricing)
-        for example in examples
-    ]
-    results = await asyncio.gather(*tasks)
+    # Map futures back to examples for ordering
+    future_to_example: dict[asyncio.Task[EvalResult], Example] = {}
+    for example in remaining_examples:
+        task = asyncio.create_task(
+            _eval_with_retry(deps.backend, prompt, example, config.retry, rate_limiter, semaphore, deps.backend.pricing)
+        )
+        future_to_example[task] = example
 
-    # 4. Compute metrics
-    metrics = deps.metrics_engine.compute(list(results), examples, config.metrics)
+    new_results: list[EvalResult] = []
+    for coro in asyncio.as_completed(future_to_example):
+        result = await coro
+        new_results.append(result)
+        deps.results_collector.append_result(result, config.output.results_path)
 
-    # 5. Build report
+    # 5. Reconstruct full results list (resumed + new) in original example order
+    new_results_by_id = {r.example_id: r for r in new_results}
+    resumed_results = _load_resumed_results(config.output.results_path, completed_ids)
+    results_by_id = {**{r.example_id: r for r in resumed_results}, **new_results_by_id}
+    results = [results_by_id[ex.id] for ex in examples if ex.id in results_by_id]
+
+    # 6. Compute metrics
+    metrics = deps.metrics_engine.compute(results, examples, config.metrics)
+
+    # 7. Build report
     end_time = datetime.now(UTC)
     succeeded = sum(1 for r in results if r.error is None)
     failed = len(results) - succeeded
@@ -97,11 +118,32 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
         summary.duration_seconds,
     )
 
-    # 6. Write outputs
-    deps.results_collector.write_results(list(results), config.output.results_path)
+    # 8. Write final outputs (overwrites the streaming file with canonical order)
+    deps.results_collector.write_results(results, config.output.results_path)
     deps.results_collector.write_report(report, config.output.report_path)
 
     return report
+
+
+def _load_resumed_results(results_path: str, completed_ids: set[str]) -> list[EvalResult]:
+    """Load EvalResults for previously completed examples from the partial results file."""
+    if not completed_ids:
+        return []
+    results: list[EvalResult] = []
+    p = Path(results_path)
+    if not p.exists():
+        return results
+    for line in p.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+            if record.get("example_id") in completed_ids:
+                results.append(EvalResult.model_validate(record))
+        except (json.JSONDecodeError, Exception):
+            continue
+    return results
 
 
 async def _eval_with_retry(

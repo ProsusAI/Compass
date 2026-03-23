@@ -64,6 +64,10 @@ class ResultsCollector(Protocol):
 
     def write_report(self, report: RunReport, path: str) -> None: ...
 
+    def append_result(self, result: EvalResult, path: str) -> None: ...
+
+    def read_completed_ids(self, path: str) -> set[str]: ...
+
 
 @dataclasses.dataclass
 class RunDependencies:

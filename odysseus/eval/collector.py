@@ -22,6 +22,34 @@ class JsonResultsCollector:
             for result in results:
                 f.write(result.model_dump_json() + "\n")
 
+    def append_result(self, result: EvalResult, path: str) -> None:
+        """Append a single EvalResult as a JSON line to *path*."""
+        with open(path, "a") as f:
+            f.write(result.model_dump_json() + "\n")
+
+    def read_completed_ids(self, path: str) -> set[str]:
+        """Read example IDs from a partial results file.
+
+        Returns an empty set if the file does not exist or is empty.
+        Skips malformed lines (e.g. from a truncated write).
+        """
+        p = Path(path)
+        if not p.exists():
+            return set()
+        ids: set[str] = set()
+        for line in p.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                eid = record.get("example_id")
+                if eid is not None:
+                    ids.add(eid)
+            except json.JSONDecodeError:
+                logger.warning("Skipping malformed line in partial results: %s", path)
+        return ids
+
     def write_report(self, report: RunReport, path: str) -> None:
         """Write the full RunReport as pretty-printed JSON to *path*.
 

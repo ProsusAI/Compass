@@ -55,6 +55,12 @@ class StubResultsCollector:
     def write_report(self, report: RunReport, path: str) -> None:
         pass
 
+    def append_result(self, result: EvalResult, path: str) -> None:
+        pass
+
+    def read_completed_ids(self, path: str) -> set[str]:
+        return set()
+
 
 def _check_protocol(obj: object, protocol: type) -> bool:
     """Verify an object structurally conforms to a protocol via isinstance."""
