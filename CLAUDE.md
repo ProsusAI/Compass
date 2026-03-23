@@ -35,6 +35,8 @@ data/                  # Dataset files (JSONL)
 outputs/               # Run outputs and reports
 prompts/               # Versioned prompt files
 tests/                 # Test suite
+  scenarios/           # MCP integration test scenarios (runbooks)
+  fixtures/integration/# Eval runner integration fixtures
 pyproject.toml         # Project config (uv)
 ```
 
@@ -46,3 +48,17 @@ pyproject.toml         # Project config (uv)
 - Environment variables for API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) — never hardcode secrets
 - JSONL for data interchange between pipeline stages
 - Versioned prompts in YAML/JSON format
+
+## Integration Testing
+
+Agent integration tests are MCP scenario runbooks in `tests/scenarios/`. Each scenario is a Markdown file executed by a Claude Code instance with the Odysseus MCP server configured.
+
+**When adding a new agent**, add integration test scenarios following this pattern:
+
+1. Create scenario files in `tests/scenarios/` numbered sequentially (e.g. `13_data_validation_clean_dataset.md`)
+2. Add test datasets in `tests/scenarios/data/` as JSONL files
+3. Each scenario file has four sections: `## Setup`, `## Scenario Description`, `## User Simulator`, `## Verification Criteria`
+4. A User Simulator sub-agent plays the user role; a Verification Agent checks pass/fail criteria against the transcript
+5. Update `tests/scenarios/README.md` with the new scenarios in the index table
+
+See `tests/scenarios/README.md` for the full runbook protocol and existing scenarios.

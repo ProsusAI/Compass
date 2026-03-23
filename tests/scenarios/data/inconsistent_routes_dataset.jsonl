@@ -1,0 +1,5 @@
+{"id": "1", "input": "What is 2+2?", "expected": {"route": "haiku", "routes": {"haiku": {"cost": 0.002, "quality_score": 0.95}, "sonnet": {"cost": 0.01, "quality_score": 0.95}, "opus": {"cost": 0.05, "quality_score": 0.95}}}, "split": "dev"}
+{"id": "2", "input": "Explain quantum physics", "expected": {"route": "opus", "routes": {"haiku": {"cost": 0.002, "quality_score": 0.55}, "sonnet": {"cost": 0.01, "quality_score": 0.78}, "opus": {"cost": 0.05, "quality_score": 0.98}}}, "split": "dev"}
+{"id": "3", "input": "Summarize this document", "expected": {"route": "gpt4", "routes": {"gpt4": {"cost": 0.03, "quality_score": 0.90}, "gpt35": {"cost": 0.005, "quality_score": 0.75}}}, "split": "dev"}
+{"id": "4", "input": "Write a short poem", "expected": {"route": "gpt4", "routes": {"gpt4": {"cost": 0.03, "quality_score": 0.88}, "gpt35": {"cost": 0.005, "quality_score": 0.70}}}, "split": "dev"}
+{"id": "5", "input": "Translate hello to Spanish", "expected": {"route": "haiku", "routes": {"haiku": {"cost": 0.002, "quality_score": 0.92}, "sonnet": {"cost": 0.01, "quality_score": 0.90}, "opus": {"cost": 0.05, "quality_score": 0.88}}}, "split": "dev"}
