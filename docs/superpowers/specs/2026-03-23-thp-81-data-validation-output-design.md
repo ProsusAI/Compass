@@ -30,14 +30,12 @@ The data quality report has four sections, produced in this order.
 
 ### Section 1 — Dataset Summary
 
-A natural-language paragraph written by the agent (not code-generated) summarizing:
+Natural-language text written by the agent (not code-generated) covering two paragraphs:
 
-- Total record count and number of routing tiers.
-- Tier names and their distribution (e.g., "3 tiers: opus (42%), sonnet (35%), haiku (23%)").
-- Any issues found — schema violations, volume gaps, imbalanced tiers.
-- Overall verdict: ready for downstream processing or blocked on issues.
+1. **Data description** — what the dataset contains: the routing problem domain, what kinds of queries are represented, and what the routing tiers correspond to (e.g., "a customer support routing dataset mapping user queries to three model tiers — opus for complex reasoning, sonnet for moderate tasks, haiku for simple lookups").
+2. **Validation summary** — total record count, number of routing tiers, tier names and their distribution (e.g., "3 tiers: opus (42%), sonnet (35%), haiku (23%)"), any issues found (schema violations, volume gaps, imbalanced tiers), and overall verdict: ready for downstream processing or blocked on issues.
 
-This section exists so downstream agents (THP-74) can read just this paragraph and understand what they are working with, without parsing the structured sections.
+This section exists so downstream agents (THP-74) can read just these paragraphs and understand both *what* they are working with and *whether* the data is ready, without parsing the structured sections.
 
 **Producer:** The agent writes this based on the outputs of the three check functions. Instructions for generating it are defined in THP-106 (system prompt).
 
