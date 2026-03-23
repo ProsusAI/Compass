@@ -24,7 +24,7 @@ Write two paragraphs:
 
 ### 2. Schema Consistency Findings
 
-Present the `schema_findings` from the tool output. For each finding with status `"fail"`, explain the violation and list the affected row indices. Group passing checks into a single summary line.
+Present the `schema_findings` from the tool output. Each finding includes a `severity` field (`"critical"`, `"warning"`, or `"info"`). For each finding with status `"fail"`, state its severity, explain the violation, and list the affected row indices. Group passing checks into a single summary line.
 
 ### 3. Label Distribution Stats
 
@@ -40,10 +40,13 @@ Present the `query_length` stats from the tool output: min, max, mean, and p95 c
 
 ## Decision rules
 
-- If any schema finding has status `"fail"` with violation on required keys or types: the dataset is **blocked**. Flag these as critical issues in the report.
-- If volume adequacy overall verdict is `"fail"`: flag this as a **warning** — the dataset can proceed but results may be unreliable for under-covered tiers.
+Use the `severity` field on each schema finding to determine how to present it:
+
+- **Critical** (`severity: "critical"`, checks: `required_keys`, `types`, `unique_ids`, `consistent_model_set`): the dataset is **blocked**. These must be fixed before evaluation can proceed.
+- **Warning** (`severity: "warning"`, checks: `route_in_routes`, `non_empty_routes`, `null_fields`): flag in the report but do not block. The dataset can proceed with noted warnings.
+- If volume adequacy overall verdict is `"fail"`: flag as a **warning** — the dataset can proceed but results may be unreliable for under-covered tiers.
 - If label distribution has imbalanced tiers: flag as **informational** — note which tiers are underrepresented.
-- If all checks pass: the dataset is **ready** for downstream processing.
+- If all checks pass and volume is adequate: the dataset is **ready** for downstream processing.
 
 ## Available tools
 

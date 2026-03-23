@@ -267,6 +267,36 @@ Non-blocking gaps (e.g. missing metadata fields, unbalanced classes) are flagged
 
 ---
 
+## Testing
+
+### Unit tests
+
+```bash
+uv run pytest
+```
+
+### MCP integration tests (scenario runbooks)
+
+Agent integration tests live in `tests/scenarios/`. Each scenario is a Markdown runbook executed by a Claude Code instance with the Odysseus MCP server connected.
+
+To run a scenario, tell Claude Code:
+
+> Run the integration test in `tests/scenarios/01_complete_submission.md`
+
+Claude Code will spin up a User Simulator sub-agent and the agent under test, broker a multi-turn conversation, and verify the outcome against the scenario's checklist.
+
+| Range | Agent | Count |
+|-------|-------|-------|
+| 01–12 | User Input Agent | 12 scenarios |
+| 13–18 | Data Validation Agent | 6 scenarios |
+| 19–22 | Input → Data Validation integration | 4 scenarios |
+
+See `tests/scenarios/README.md` for the full protocol, safety valves, and how to add new scenarios.
+
+**Adding scenarios for a new agent:** Create numbered `.md` files in `tests/scenarios/` following the standard four-section template (`Setup`, `Scenario Description`, `User Simulator`, `Verification Criteria`). Add test datasets as JSONL files in `tests/scenarios/data/`. Update the README index.
+
+---
+
 ## Output
 
 The pipeline produces:

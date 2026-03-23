@@ -45,14 +45,19 @@ def _valid_row(**overrides) -> dict:
 
 class TestSchemaFinding:
     def test_pass_finding(self) -> None:
-        f = SchemaFinding(field="input", status="pass")
+        f = SchemaFinding(field="input", status="pass", severity="info")
         assert f.status == "pass"
+        assert f.severity == "info"
         assert f.violation is None
         assert f.row_indices == []
 
     def test_fail_finding(self) -> None:
-        f = SchemaFinding(field="input", status="fail", violation="missing key", row_indices=[0, 2])
+        f = SchemaFinding(
+            field="input", status="fail", severity="critical",
+            violation="missing key", row_indices=[0, 2],
+        )
         assert f.status == "fail"
+        assert f.severity == "critical"
         assert f.violation == "missing key"
         assert f.row_indices == [0, 2]
 
@@ -105,7 +110,7 @@ class TestDataQualityReport:
     def test_full_construction(self) -> None:
         report = DataQualityReport(
             summary="All checks passed.",
-            schema_findings=[SchemaFinding(field="input", status="pass")],
+            schema_findings=[SchemaFinding(field="input", status="pass", severity="info")],
             label_distribution=LabelDistribution(
                 tiers=[TierDistribution(tier="opus", count=10, percentage=1.0, imbalanced=False)],
                 total_records=10,

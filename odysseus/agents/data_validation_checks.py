@@ -24,6 +24,7 @@ class SchemaFinding(BaseModel):
 
     field: str
     status: Literal["pass", "fail"]
+    severity: Literal["critical", "warning", "info"]
     violation: str | None = None
     row_indices: list[int] = Field(default_factory=list)
 
@@ -248,6 +249,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="required_keys",
             status="fail" if required_fail_indices else "pass",
+            severity="critical",
             violation="Missing or null required keys" if required_fail_indices else None,
             row_indices=required_fail_indices,
         )
@@ -256,6 +258,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="types",
             status="fail" if type_fail_indices else "pass",
+            severity="critical",
             violation="Incorrect field types" if type_fail_indices else None,
             row_indices=type_fail_indices,
         )
@@ -264,6 +267,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="route_in_routes",
             status="fail" if route_in_routes_fail_indices else "pass",
+            severity="warning",
             violation="expected.route not found in expected.routes keys" if route_in_routes_fail_indices else None,
             row_indices=route_in_routes_fail_indices,
         )
@@ -272,6 +276,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="non_empty_routes",
             status="fail" if non_empty_routes_fail_indices else "pass",
+            severity="warning",
             violation="expected.routes is empty" if non_empty_routes_fail_indices else None,
             row_indices=non_empty_routes_fail_indices,
         )
@@ -280,6 +285,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="consistent_model_set",
             status="fail" if consistent_fail_indices else "pass",
+            severity="critical",
             violation="Inconsistent route keys across records" if consistent_fail_indices else None,
             row_indices=consistent_fail_indices,
         )
@@ -288,6 +294,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="unique_ids",
             status="fail" if duplicate_id_indices else "pass",
+            severity="critical",
             violation="Duplicate id values" if duplicate_id_indices else None,
             row_indices=duplicate_id_indices,
         )
@@ -296,6 +303,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="null_fields",
             status="fail" if null_field_indices else "pass",
+            severity="warning",
             violation="Null values detected in non-required fields" if null_field_indices else None,
             row_indices=null_field_indices,
         )
@@ -452,7 +460,7 @@ def run_all_checks(rows: list[dict]) -> DataQualityReport:
     """Run all validation checks and assemble a DataQualityReport.
 
     The ``summary`` field is set to an empty string — the calling LLM
-    writes the narrative summary using the structured results.
+    agent writes the narrative summary using the structured results.
     """
     return DataQualityReport(
         summary="",
