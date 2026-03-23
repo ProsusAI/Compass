@@ -50,7 +50,11 @@ Claude Code reads scenario MD
   ← receives pass/fail results
 ```
 
-The conversation terminates when the User Input Agent produces a message containing `# Validated Input Report`. Claude Code detects this marker and transitions to verification.
+The conversation terminates when the User Input Agent produces a message containing `# Validated Input Report` anywhere in its response. The agent may include conversational text before or after the report (e.g., mentioning assumed defaults) — Claude Code scans the full response for the heading.
+
+### Safety valve
+
+The orchestration loop has a maximum of **20 turns**. If the conversation has not produced a validated input report within 20 turns, the test fails with "conversation did not converge." This prevents infinite loops when the simulator and agent talk past each other.
 
 ### Preconditions
 
@@ -79,6 +83,9 @@ Instructions for the sub-agent playing the user:
 - How they should behave (reactive, not scripted)
 - For multi-turn scenarios: what they know but haven't shared yet
 
+**Opening message:** The exact first message the simulator sends to the User Input Agent.
+This anchors the conversation start — subsequent messages are generated reactively.
+
 ## Verification Criteria
 Checklist for the verification agent — each item is a pass/fail assertion:
 - [ ] Criterion 1
@@ -87,6 +94,14 @@ Checklist for the verification agent — each item is a pass/fail assertion:
 ```
 
 The User Simulator section gives the agent a **character with knowledge**, not a script. It responds naturally to whatever the User Input Agent asks, which tests real conversational dynamics.
+
+### Verification Agent input format
+
+The Verification Agent receives:
+
+1. **Conversation transcript** — interleaved `User:` / `Agent:` messages, one per turn, in chronological order. MCP tool calls made by the agent are included inline as `[Tool call: tool_name(args)]` / `[Tool result: ...]` blocks within the agent's turn.
+2. **Final validated input report** — extracted from the agent's final message (the Markdown content after `# Validated Input Report`).
+3. **Verification criteria** — the `## Verification Criteria` section from the scenario MD.
 
 ## File layout
 
@@ -105,6 +120,8 @@ tests/scenarios/
   08_ambiguous_tiers.md
   09_contradictory_metrics.md
   10_domain_mismatch.md
+  11_persistent_clarification.md
+  12_natural_language_answers.md
 ```
 
 ### Synthetic test data
@@ -152,7 +169,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 **Verification Criteria:**
 - [ ] Report status is `proceed_with_defaults`
 - [ ] Confirmed Inputs contains dataset path and problem description
-- [ ] Confirmed Inputs does NOT have subsections for Evaluation Threshold, Data Split Ratio, or Max Iterations
+- [ ] Confirmed Inputs does NOT have subsections for Target Metrics, Evaluation Threshold, Data Split Ratio, or Max Iterations (these were all defaulted, so they belong in Assumed Defaults)
 - [ ] Gap Report lists `target_metrics` as `non-blocking` with default `["f1/macro"]`
 - [ ] Gap Report lists `evaluation_threshold` as `non-blocking` with default `0.80`
 - [ ] Gap Report lists `data_split_ratio` as `non-blocking` with default `0.20`
@@ -183,7 +200,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 **Verification Criteria:**
 - [ ] Agent did NOT dump both gaps in a single message
 - [ ] Agent asked about the problem description before the dataset (priority order)
-- [ ] Each turn contained exactly one question
+- [ ] Each turn focused on a single gap (not multiple unrelated questions)
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Confirmed Inputs contains both the problem description and dataset path
 
@@ -213,7 +230,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final report references the corrected dataset path
 - [ ] Final report status is `proceed_with_defaults`
 
-**Note:** This scenario depends on the Data Validation agent (THP-73), which is not yet implemented. The system prompt notes this: "Until then, accept the dataset path as-is." This test should be marked as expected-to-fail until THP-73 is complete, or adapted to test whatever validation the agent can currently perform (e.g., if Claude reads the file and notices the issue independently).
+**Note:** This scenario depends on the Data Validation agent (THP-73), which is not yet implemented. The system prompt says: "Until then, accept the dataset path as-is." **This scenario is deferred until THP-73 is complete.** The agent will currently accept the malformed dataset without flagging issues, so the test would not produce meaningful results. When THP-73 lands, un-defer this scenario and verify the full fix flow.
 
 ### 7. Vague problem description — needs refinement
 
@@ -265,6 +282,33 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent either helped reframe the problem as routing or clearly explained why this isn't a routing problem
 - [ ] If reframed: final report has a valid routing problem description
 - [ ] If not reframed: no report was produced, conversation ended with a clear explanation
+
+### 11. Persistent clarification — unhelpful answers
+
+**What it tests:** The agent persists when the user gives unhelpful or off-topic answers — it never gives up or produces a premature report.
+
+**User Simulator:** A user who wants to optimize routing but gives vague, off-topic, or unhelpful answers for the first 2-3 turns (e.g., "just make it work", "I don't know, figure it out"). Eventually provides a real problem description and dataset path when the agent rephrases its question.
+
+**Verification Criteria:**
+- [ ] Agent did not give up after unhelpful answers
+- [ ] Agent did not produce a report without the required fields
+- [ ] Agent rephrased or approached the question differently after each unhelpful answer
+- [ ] Agent remained conversational and patient — not robotic or repetitive
+- [ ] Final report was eventually produced with status `proceed_with_defaults`
+- [ ] Conversation took at least 4 turns
+
+### 12. Natural language answers — non-standard format
+
+**What it tests:** The agent accepts information provided in natural, conversational language rather than requiring structured field values.
+
+**User Simulator:** A user who provides all required information but in a rambling, conversational way. For example: "So basically we have this JSONL file at tests/scenarios/data/valid_dataset.jsonl and what we're trying to do is figure out which queries should go to the cheap model and which ones need the expensive one, you know? Like simple stuff goes to haiku and the hard questions go to opus. Oh and we care about accuracy, like at least 90%."
+
+**Verification Criteria:**
+- [ ] Agent extracted the dataset path from the conversational message
+- [ ] Agent extracted the problem description from the natural language
+- [ ] Agent extracted the metric spec (`accuracy >= 0.90`) from informal phrasing
+- [ ] Agent did not ask the user to reformat or re-provide information already given
+- [ ] Final report contains the extracted information in clean, structured form
 
 ## Out of scope
 
