@@ -58,7 +58,7 @@ class QueryLengthDistribution(BaseModel):
 
 **`run_all_checks(rows: list[dict]) -> DataQualityReport`** in `data_validation_checks.py`:
 - Calls all four check functions: `check_schema_conformance`, `check_label_distribution`, `check_volume_adequacy`, `check_query_length_distribution`
-- Uses sensible defaults for thresholds (`min_tier_percentage=10.0`, `min_per_tier=5`) — these are intentional defaults, not magic numbers; comment them as such
+- Uses sensible defaults for thresholds (`min_tier_percentage=0.10`, `min_per_tier=5`) — these are intentional defaults, not magic numbers; comment them as such
 - Sets `summary=""` (the calling LLM writes the narrative summary separately)
 - Assembles and returns a `DataQualityReport`
 
