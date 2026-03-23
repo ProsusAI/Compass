@@ -207,6 +207,60 @@ class TestInputAgentResources:
         assert "Default" in content
 
 
+class TestSubmitInputReport:
+    """Tests for the submit_input_report stub tool."""
+
+    async def test_tool_registered(self):
+        """submit_input_report is listed as an MCP tool."""
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "submit_input_report" in tool_names
+
+    async def test_stub_returns_confirmation(self):
+        """Stub returns a confirmation message."""
+        from odysseus.mcp import submit_input_report
+
+        result = await submit_input_report(
+            report="# Validated Input Report\n**Status:** proceed",
+            dataset_path="/data/routing.jsonl",
+            problem_description="Route support queries to tiers.",
+        )
+        assert "received" in result.lower()
+
+    async def test_empty_report_raises_tool_error(self):
+        """Empty report raises ToolError."""
+        from odysseus.mcp import submit_input_report
+
+        with pytest.raises(ToolError, match="report is empty"):
+            await submit_input_report(
+                report="",
+                dataset_path="/data/routing.jsonl",
+                problem_description="Route queries.",
+            )
+
+    async def test_empty_dataset_path_raises_tool_error(self):
+        """Empty dataset_path raises ToolError."""
+        from odysseus.mcp import submit_input_report
+
+        with pytest.raises(ToolError, match="dataset_path is empty"):
+            await submit_input_report(
+                report="# Report",
+                dataset_path="",
+                problem_description="Route queries.",
+            )
+
+    async def test_empty_problem_description_raises_tool_error(self):
+        """Empty problem_description raises ToolError."""
+        from odysseus.mcp import submit_input_report
+
+        with pytest.raises(ToolError, match="problem_description is empty"):
+            await submit_input_report(
+                report="# Report",
+                dataset_path="/data/routing.jsonl",
+                problem_description="",
+            )
+
+
 class TestLoadText:
     """Tests for the _load_text file loader helper."""
 

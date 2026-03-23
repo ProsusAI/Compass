@@ -139,6 +139,38 @@ async def run_eval(
     )
 
 
+@mcp.tool()
+async def submit_input_report(
+    report: str,
+    dataset_path: str,
+    problem_description: str,
+) -> str:
+    """Submit a validated input report to the pipeline.
+
+    Called after the input agent conversation completes and
+    the validated input report has been produced. Triggers
+    the next pipeline stage.
+
+    Args:
+        report: The full validated input report (Markdown).
+        dataset_path: Absolute filesystem path to the JSONL routing dataset.
+        problem_description: The validated problem description.
+
+    Returns:
+        Confirmation or next-stage result.
+    """
+    # TODO: Wire to next pipeline agent.
+    # Expected: save report to disk, build pipeline context,
+    # and dispatch the next agent (e.g. Data Validation or Analysis).
+    if not report.strip():
+        raise ToolError("submit_input_report failed: report is empty")
+    if not dataset_path.strip():
+        raise ToolError("submit_input_report failed: dataset_path is empty")
+    if not problem_description.strip():
+        raise ToolError("submit_input_report failed: problem_description is empty")
+    return "Input report received. Next pipeline stage not yet implemented."
+
+
 def main() -> None:
     """Run the MCP server."""
     mcp.run()
