@@ -62,7 +62,7 @@ class MockBackend:
             if self._attempt_counts[example.id] <= self._fail_count:
                 raise RuntimeError(f"Simulated failure for {example.id}")
 
-            route = example.expected.get("route", "default")
+            route = example.expected.route
             usage = TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5)
             return {"route": route}, usage
         finally:
@@ -123,14 +123,25 @@ class FailOnceBackend:
 
 
 def _make_examples(n: int) -> list[Example]:
-    return [Example(id=f"ex-{i}", input={"question": f"q{i}"}, expected={"route": f"class-{i % 3}"}) for i in range(n)]
+    return [
+        Example(
+            id=f"ex-{i}",
+            input=f"q{i}",
+            expected={
+                "route": f"class-{i % 3}",
+                "routes": {f"class-{j}": {"cost": 0.01, "quality_score": 0.8} for j in range(3)},
+            },
+            split="dev",
+        )
+        for i in range(n)
+    ]
 
 
-def _write_jsonl(path: Path, examples: list[Example], split: str = "dev") -> None:
-    """Write examples to a JSONL file with the split field required by JsonlDatasetManager."""
+def _write_jsonl(path: Path, examples: list[Example]) -> None:
+    """Write examples to a JSONL file."""
     with open(path, "w") as f:
         for ex in examples:
-            record = {"id": ex.id, "input": ex.input, "expected": ex.expected, "split": split}
+            record = ex.model_dump()
             f.write(json.dumps(record) + "\n")
 
 
@@ -346,7 +357,7 @@ async def test_backoff_sleeps_outside_semaphore():
         result = await _eval_with_retry(
             FailOnceBackend(),
             "prompt",
-            Example(id="ex-0", input={"q": "1"}, expected={"route": "a"}),
+            Example(id="ex-0", input="q1", expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}, split="dev"),
             RetryConfig(max_attempts=2, backoff_factor=1.0),
             rate_limiter,
             semaphore,
@@ -373,7 +384,7 @@ async def test_timeout_wraps_only_backend_call():
     result = await _eval_with_retry(
         backend,
         "prompt",
-        Example(id="ex-0", input={"q": "1"}, expected={"route": "a"}),
+        Example(id="ex-0", input="q1", expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}, split="dev"),
         RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1),
         rate_limiter,
         semaphore,
@@ -398,7 +409,7 @@ async def test_token_accounting_post_call():
     await _eval_with_retry(
         backend,
         "prompt",
-        Example(id="ex-0", input={"q": "1"}, expected={"route": "a"}),
+        Example(id="ex-0", input="q1", expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}, split="dev"),
         RetryConfig(max_attempts=1, backoff_factor=1.0),
         rate_limiter,
         semaphore,
