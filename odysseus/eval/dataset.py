@@ -58,6 +58,7 @@ class JsonlDatasetManager:
                         id=record["id"],
                         input=record["input"],
                         expected=record["expected"],
+                        split=record_split,
                     )
                 except (KeyError, ValidationError) as e:
                     raise ValueError(f"Line {line_num}: failed to construct Example — {e}") from e

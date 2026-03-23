@@ -17,9 +17,9 @@ def _write_jsonl(path: Path, records: list[dict]) -> None:
 
 
 SAMPLE_RECORDS = [
-    {"id": "1", "input": {"text": "hello"}, "expected": {"label": "greeting"}, "split": "dev"},
-    {"id": "2", "input": {"text": "bye"}, "expected": {"label": "farewell"}, "split": "dev"},
-    {"id": "3", "input": {"text": "secret"}, "expected": {"label": "hidden"}, "split": "holdout"},
+    {"id": "1", "input": "hello", "expected": {"route": "greeting", "routes": {"greeting": {"cost": 0.01, "quality_score": 0.9}, "farewell": {"cost": 0.01, "quality_score": 0.5}}}, "split": "dev"},
+    {"id": "2", "input": "bye", "expected": {"route": "farewell", "routes": {"greeting": {"cost": 0.01, "quality_score": 0.4}, "farewell": {"cost": 0.01, "quality_score": 0.95}}}, "split": "dev"},
+    {"id": "3", "input": "secret", "expected": {"route": "hidden", "routes": {"hidden": {"cost": 0.02, "quality_score": 0.8}}}, "split": "holdout"},
 ]
 
 
@@ -46,8 +46,9 @@ class TestJsonlDatasetManagerDevSplit:
         manager = JsonlDatasetManager()
         examples = manager.load(str(path), "dev")
 
-        assert examples[0].input == {"text": "hello"}
-        assert examples[0].expected == {"label": "greeting"}
+        assert examples[0].input == "hello"
+        assert examples[0].expected.route == "greeting"
+        assert examples[0].split == "dev"
 
     def test_load_returns_empty_list_when_no_matching_split(self, tmp_path: Path):
         from odysseus.eval.dataset import JsonlDatasetManager
@@ -56,7 +57,7 @@ class TestJsonlDatasetManagerDevSplit:
         _write_jsonl(
             path,
             [
-                {"id": "1", "input": {"text": "a"}, "expected": {"label": "b"}, "split": "holdout"},
+                {"id": "1", "input": "a", "expected": {"route": "b", "routes": {"b": {"cost": 0.01, "quality_score": 0.9}}}, "split": "holdout"},
             ],
         )
 
@@ -117,7 +118,7 @@ class TestJsonlDatasetManagerErrors:
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "bad.jsonl"
-        path.write_text('{"id":"1","input":{},"expected":{},"split":"dev"}\nNOT JSON\n')
+        path.write_text('{"id":"1","input":"hi","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},"split":"dev"}\nNOT JSON\n')
 
         manager = JsonlDatasetManager()
         with pytest.raises(ValueError, match="Line 2: invalid JSON"):
@@ -128,7 +129,7 @@ class TestJsonlDatasetManagerErrors:
 
         path = tmp_path / "incomplete.jsonl"
         # Missing "expected" field
-        path.write_text('{"id":"1","input":{"text":"hi"},"split":"dev"}\n')
+        path.write_text('{"id":"1","input":"hi","split":"dev"}\n')
 
         manager = JsonlDatasetManager()
         with pytest.raises(ValueError, match="Line 1: failed to construct Example"):
@@ -139,9 +140,9 @@ class TestJsonlDatasetManagerErrors:
 
         path = tmp_path / "blanks.jsonl"
         path.write_text(
-            '{"id":"1","input":{"text":"a"},"expected":{"label":"b"},"split":"dev"}\n'
+            '{"id":"1","input":"a","expected":{"route":"b","routes":{"b":{"cost":0.01,"quality_score":0.9}}},"split":"dev"}\n'
             "\n"
-            '{"id":"2","input":{"text":"c"},"expected":{"label":"d"},"split":"dev"}\n'
+            '{"id":"2","input":"c","expected":{"route":"d","routes":{"d":{"cost":0.01,"quality_score":0.9}}},"split":"dev"}\n'
         )
 
         manager = JsonlDatasetManager()
