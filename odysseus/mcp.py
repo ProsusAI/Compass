@@ -46,6 +46,18 @@ async def odysseus_routing_input() -> list[Message]:
     return [UserMessage(content=system_prompt)]
 
 
+@mcp.resource("odysseus://agents/input/clarification-guide")
+async def input_clarification_guide() -> str:
+    """Per-field clarification guidance for the input agent."""
+    return _load_text("odysseus/agents/user_input_clarification_guide.md")
+
+
+@mcp.resource("odysseus://agents/input/defaults")
+async def input_defaults() -> str:
+    """Default values and override mechanism for optional fields."""
+    return _load_text("odysseus/agents/user_input_defaults.md")
+
+
 @mcp.tool()
 async def run_holdout_eval(prompt_version: str, data_source: str) -> str:
     """Run evaluation on the holdout split.

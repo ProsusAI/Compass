@@ -175,6 +175,38 @@ class TestOdysseusRoutingInputPrompt:
         assert messages[0].content.text == expected
 
 
+class TestInputAgentResources:
+    """Tests for the input agent MCP resources."""
+
+    async def test_clarification_guide_registered(self):
+        """Clarification guide resource is listed."""
+        resources = await mcp.list_resources()
+        uris = [str(r.uri) for r in resources]
+        assert "odysseus://agents/input/clarification-guide" in uris
+
+    async def test_defaults_registered(self):
+        """Defaults resource is listed."""
+        resources = await mcp.list_resources()
+        uris = [str(r.uri) for r in resources]
+        assert "odysseus://agents/input/defaults" in uris
+
+    async def test_clarification_guide_returns_content(self):
+        """Clarification guide resource returns non-empty content."""
+        from odysseus.mcp import input_clarification_guide
+
+        content = await input_clarification_guide()
+        assert len(content) > 0
+        assert "Clarification" in content
+
+    async def test_defaults_returns_content(self):
+        """Defaults resource returns non-empty content."""
+        from odysseus.mcp import input_defaults
+
+        content = await input_defaults()
+        assert len(content) > 0
+        assert "Default" in content
+
+
 class TestLoadText:
     """Tests for the _load_text file loader helper."""
 
