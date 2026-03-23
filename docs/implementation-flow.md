@@ -112,7 +112,7 @@ Wave 4:            THP-105 (needs all above)
 | 3 | [THP-111](https://prosus-thymo-thesis.atlassian.net/browse/THP-111) Define few-shot examples of reasoning document output | ⬜ To Do | THP-110, THP-85 |
 | 4 | [THP-105](https://prosus-thymo-thesis.atlassian.net/browse/THP-105) Create final prompt (Phase 1 only) | ⬜ To Do | all above |
 
-> Note: THP-82 and THP-84 were reassigned here from THP-73. THP-74 now receives the full dataset (no pre-existing split) and produces two outputs: the routing analysis artifact and a `split_manifest.json`. THP-86 owns both the artifact format spec and the Phase 2 stratified split algorithm. THP-105 covers the Phase 1 prompt only; Phase 2 is deterministic (no prompt required).
+> Note: THP-82 and THP-84 were reassigned here from THP-73. THP-74 now receives the full dataset (no pre-existing split) and produces two outputs: the routing analysis artifact and a `split_manifest.json`. THP-86 owns both the artifact format spec and the Phase 2 stratified split algorithm. Phase 2 produces two separate dataset files (`dev.jsonl` and `holdout.jsonl`) — actual samples, not a flag mapping. THP-105 covers the Phase 1 prompt only; Phase 2 is deterministic (no prompt required).
 
 ---
 
