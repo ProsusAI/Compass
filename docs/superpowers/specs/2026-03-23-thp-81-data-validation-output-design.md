@@ -56,14 +56,14 @@ Each finding:
 
 Checks performed:
 
-1. Required keys present: `id`, `input`, `expected`, `expected.route`, `expected.routes`.
+1. Required keys present and non-null: `id`, `input`, `expected`, `expected.route`, `expected.routes`. A key that exists but has a `null` value is treated as missing.
 2. Correct types: `input` is `str`, `expected` is `dict`, `id` is `str`, `expected.route` is `str`, `expected.routes` values have numeric `cost` and `quality_score`.
 3. Route-in-routes: `expected.route` is a key in `expected.routes` (per record).
 4. Non-empty routes: `expected.routes` has at least one entry (per record).
 5. Consistent model set: all records have the same keys in `expected.routes`.
 6. Unique IDs: no duplicate `id` values across the dataset.
 
-**Not checked:** `split` — assigned by the Routing Analysis Agent downstream per THP-80.
+**Not checked:** `split` — this field is assigned by the Routing Analysis Agent downstream and is not present in user-submitted data. THP-80 defines `split` as required in the *final* pipeline schema; this agent validates the *pre-split* dataset.
 
 **Producer:** `check_schema_conformance()`.
 
@@ -85,8 +85,7 @@ Dataset-level summary:
 | `total_records` | `int` | Total records in the dataset |
 | `num_tiers` | `int` | Number of unique routing tiers |
 | `imbalanced_tiers` | `list[str]` | Tier names flagged as imbalanced |
-
-Imbalance threshold is sourced from THP-69's minimum tier percentage.
+| `min_tier_percentage` | `float` | Imbalance threshold used (from THP-69) |
 
 **Producer:** `check_label_distribution()`.
 
@@ -106,6 +105,7 @@ Dataset-level:
 | Field | Type | Description |
 |---|---|---|
 | `overall_verdict` | `"pass" \| "fail"` | `"pass"` if all tiers adequate, `"fail"` otherwise |
+| `min_per_tier` | `int` | Minimum threshold used (from THP-69) |
 
 **Producer:** `check_volume_adequacy()`.
 
@@ -113,17 +113,27 @@ Dataset-level:
 
 All functions live in `odysseus/agents/data_validation_checks.py`.
 
+**Execution order:** Functions must be called in this order because `check_label_distribution` and `check_volume_adequacy` depend on schema-valid rows:
+
+1. `check_schema_conformance` — runs first on all rows.
+2. `check_label_distribution` — runs on schema-valid rows only.
+3. `check_volume_adequacy` — runs on schema-valid rows only.
+
+**Filtering:** Each function internally skips rows that lack a valid `expected.route` (i.e., rows that would fail schema conformance). The caller passes all rows to every function — no pre-filtering required. Functions that need tier counts compute them independently from valid rows.
+
+**Edge cases:** An empty `rows` list produces empty findings, zero counts, and `overall_verdict: "fail"`. If all rows fail schema conformance, distribution and volume functions report zero records per tier.
+
 ### `check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]`
 
 Iterates all rows and checks each against the THP-80 schema. Returns one `SchemaFinding` per check type (not per row) — `row_indices` collects all failing rows for that check.
 
-### `check_label_distribution(rows: list[dict]) -> LabelDistribution`
+### `check_label_distribution(rows: list[dict], min_tier_percentage: float) -> LabelDistribution`
 
-Counts records per `expected.route` value. Computes percentages and flags tiers below the imbalance threshold. Only operates on rows that passed schema conformance (i.e., have a valid `expected.route`).
+Counts records per `expected.route` value. Computes percentages and flags tiers below the imbalance threshold. Internally skips rows without a valid `expected.route`. The `min_tier_percentage` parameter is passed in from THP-69's configuration.
 
 ### `check_volume_adequacy(rows: list[dict], min_per_tier: int) -> VolumeAssessment`
 
-Compares per-tier counts against `min_per_tier`. Produces a verdict per tier and an overall dataset verdict. The `min_per_tier` parameter is passed in from THP-69's configuration, not hardcoded.
+Compares per-tier counts against `min_per_tier`. Produces a verdict per tier and an overall dataset verdict. Internally skips rows without a valid `expected.route`. The `min_per_tier` parameter is passed in from THP-69's configuration, not hardcoded.
 
 ## Pydantic Models
 
@@ -147,6 +157,7 @@ class LabelDistribution(BaseModel):
     total_records: int
     num_tiers: int
     imbalanced_tiers: list[str]
+    min_tier_percentage: float  # threshold used, for auditability
 
 class TierVolume(BaseModel):
     tier: str
@@ -157,6 +168,14 @@ class TierVolume(BaseModel):
 class VolumeAssessment(BaseModel):
     tiers: list[TierVolume]
     overall_verdict: Literal["pass", "fail"]
+    min_per_tier: int  # threshold used, for auditability
+
+class DataQualityReport(BaseModel):
+    """Top-level report wrapping all four sections."""
+    summary: str  # agent-written natural-language paragraph
+    schema_findings: list[SchemaFinding]
+    label_distribution: LabelDistribution
+    volume_assessment: VolumeAssessment
 ```
 
 ## Scope Boundaries
