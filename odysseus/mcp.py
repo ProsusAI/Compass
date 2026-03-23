@@ -208,9 +208,10 @@ async def validate_dataset(dataset_path: str) -> str:
         raise ToolError(f"Dataset file not found: {dataset_path}")
 
     rows: list[dict] = []
+    line_num = 0
     try:
         text = path.read_text(encoding="utf-8")
-        for line_num, line in enumerate(text.splitlines(), start=1):
+        for line_num, line in enumerate(text.splitlines(), start=1):  # noqa: B007
             stripped = line.strip()
             if not stripped:
                 continue

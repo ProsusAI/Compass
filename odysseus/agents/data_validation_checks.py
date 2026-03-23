@@ -358,15 +358,15 @@ def check_query_length_distribution(
 
     Skips rows where ``input`` is missing or not a string.
     """
-    lengths = [
-        len(row["input"])
-        for row in rows
-        if isinstance(row.get("input"), str)
-    ]
+    lengths = [len(row["input"]) for row in rows if isinstance(row.get("input"), str)]
 
     if not lengths:
         return QueryLengthDistribution(
-            min=0, max=0, mean=0.0, p95=0.0, count=0,
+            min=0,
+            max=0,
+            mean=0.0,
+            p95=0.0,
+            count=0,
         )
 
     lengths_sorted = sorted(lengths)
