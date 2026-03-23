@@ -17,17 +17,17 @@ Produce a reference document covering:
 1. **Routing rationale schema** — 4 fields per routing example:
    - `intent_pattern` — the task type the query represents (e.g. factual-lookup, data-filtering, generation-analysis). Dynamic vocabulary with seed values.
    - `complexity_structure` — the reasoning topology required to answer (e.g. single-hop, multi-hop-chain, sequential-dependency). Dynamic vocabulary with seed values.
-   - `tier_disqualifiers` — why specific tiers are ruled out, as a list of `{tier: int, reason: string}`. Every non-assigned tier must have at least one entry.
+   - `tier_disqualifiers` — why specific routes are ruled out, as a list of `{route: string, reason: string}`. `route` matches THP-80's `expected.route` value. Every non-assigned route must have at least one entry.
    - `ambiguity_tags` — controlled vocabulary labels for examples near routing boundaries. Dynamic with seed values.
 
 2. **Vocabulary registry** — unified expansion mechanism for all 3 dynamic vocabularies:
    - Seed values are suggestions evaluated against the same threshold as new entries.
    - Minimum cluster size: `max(3, ceil(0.05 * dataset_size))`.
-   - Append-only across runs on the same dataset for consistency.
+   - Append-only across runs on the same dataset for consistency. Dataset identity via content hash; use `--inherit-registry-from` when dataset content changes. See design spec for details.
    - New entries require name, definition, example IDs, and justification.
 
 3. **Annotation guidance** — 2 sequential agent skills:
-   - `classify_example`: jointly determines `intent_pattern` + `complexity_structure`.
+   - `classify_example`: jointly determines `intent_pattern` + `complexity_structure`. Optionally outputs `proposed_entries` when no existing vocabulary entry fits.
    - `generate_routing_rationale`: produces `tier_disqualifiers` + proposes `ambiguity_tags`.
    - Post-loop validation prunes below-threshold entries and flags orphaned examples.
 
@@ -43,7 +43,7 @@ Produce a reference document covering:
 
 | Touch point | Detail |
 |---|---|
-| THP-80 | Each annotated record begins with the base fields defined in the data format spec. The rationale card is an annotation layer on top. |
+| THP-80 | Rationale cards are a separate artifact keyed by THP-80 record `id`, not embedded in THP-80 records. The base dataset format is untouched. |
 | THP-81 | Missing signal detection in the output report uses the rationale schema to identify what is absent. |
 | THP-86 | Serialization format builds on this logical schema. The vocabulary registry is persisted as part of THP-86's output artifact. |
 | THP-106 | Final system prompt embeds the 2 annotation skills so the agent can produce structured rationale cards. |

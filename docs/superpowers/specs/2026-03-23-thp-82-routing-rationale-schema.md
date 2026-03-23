@@ -130,7 +130,7 @@ The routing analysis agent populates rationale cards using 2 sequential skills, 
 
 **Purpose:** Jointly determine `intent_pattern` and `complexity_structure`.
 
-**Input:** Query text, ground-truth tier assignment, vocabulary registry.
+**Input:** Query text, ground-truth route assignment, vocabulary registry.
 
 **Process:**
 1. Identify the reasoning topology first — count the hops, check for dependencies between steps, look for source-joining. This determines `complexity_structure`.
@@ -145,12 +145,12 @@ The routing analysis agent populates rationale cards using 2 sequential skills, 
 
 **Purpose:** Produce `tier_disqualifiers` and propose `ambiguity_tags`.
 
-**Input:** Query text, ground-truth tier assignment, `intent_pattern` and `complexity_structure` from Skill 1, vocabulary registries.
+**Input:** Query text, ground-truth route assignment, `intent_pattern` and `complexity_structure` from Skill 1, vocabulary registries.
 
 **Process:**
-1. For each tier *not* assigned to the example, work upward from tier 0: "why not tier 0?" → "why not tier 1?" → "why not tier 2?" as applicable.
+1. For each route *not* assigned to the example, generate a disqualifier. For ordered tiers (e.g., 0/1/2), work upward: "why not 0?" → "why not 1?" → "why not 2?". For unordered routes (e.g., model names), iterate through all non-assigned routes.
 2. Write each disqualifier as a single concise sentence referencing an observable query property.
-3. Evaluate whether ambiguity tags apply: if disqualifiers were hard to write for a particular tier, or if `intent_pattern` and `complexity_structure` pulled toward different tiers, that signals an ambiguity tag.
+3. Evaluate whether ambiguity tags apply: if disqualifiers were hard to write for a particular route, or if `intent_pattern` and `complexity_structure` pulled toward different routes, that signals an ambiguity tag.
 4. Propose applicable tags from the registry. Tags are candidates at this stage — the minimum cluster threshold is enforced during post-loop validation.
 
 **Output:** `tier_disqualifiers` list, `ambiguity_tags` candidate list.
