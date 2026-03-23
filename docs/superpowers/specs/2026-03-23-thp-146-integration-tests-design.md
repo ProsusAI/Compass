@@ -168,7 +168,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 
 **What it tests:** All optional fields omitted — agent applies defaults without asking.
 
-**User Simulator:** A data analyst who provides only the dataset path and problem description. Does not mention metrics, threshold, split ratio, or iterations.
+**User Simulator:** A data analyst who provides only the dataset path and problem description. Does not mention metrics, threshold, split ratio, or iterations. When the agent mentions the assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Report status is `proceed_with_defaults`
@@ -179,14 +179,15 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Gap Report lists `data_split_ratio` as `non-blocking` with default `0.20`
 - [ ] Gap Report lists `max_iterations` as `non-blocking` with default `10`
 - [ ] Assumed Defaults table contains all four defaults with correct values
-- [ ] Agent did NOT ask about any optional fields — applied defaults silently
+- [ ] Agent did NOT ask about optional fields before producing the report — applied defaults rather than treating them as blocking
 - [ ] Agent conversationally mentioned the assumed defaults alongside the report
+- [ ] Agent asked whether the assumed defaults are acceptable or if the user wants to adjust them
 
 ### 3. Missing required field — clarification loop
 
 **What it tests:** Dataset is missing — agent enters clarification loop, asks for it, user provides it.
 
-**User Simulator:** A data analyst who describes their routing problem clearly but forgets to provide the dataset. Does not mention any optional fields (metrics, threshold, split ratio, iterations). When asked about the dataset, provides the path `tests/scenarios/data/valid_dataset.jsonl`.
+**User Simulator:** A data analyst who describes their routing problem clearly but forgets to provide the dataset. Does not mention any optional fields (metrics, threshold, split ratio, iterations). When asked about the dataset, provides the path `tests/scenarios/data/valid_dataset.jsonl`. When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent asked about the dataset (not all gaps at once)
@@ -194,12 +195,13 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Conversation took at least 2 turns before the report was produced
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Confirmed Inputs contains the dataset path provided in the follow-up
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ### 4. Multiple blocking gaps
 
 **What it tests:** Both required fields missing — agent asks one at a time in priority order.
 
-**User Simulator:** A user who only says "I want to optimize my routing" with no dataset and no real problem description. When asked about the problem, describes a model-tier routing setup. When asked about the dataset, provides the path.
+**User Simulator:** A user who only says "I want to optimize my routing" with no dataset and no real problem description. When asked about the problem, describes a model-tier routing setup. When asked about the dataset, provides the path. When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent did NOT dump both gaps in a single message
@@ -207,12 +209,13 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Each turn focused on a single gap (not multiple unrelated questions)
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Confirmed Inputs contains both the problem description and dataset path
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ### 5. Mixed blocking and non-blocking gaps
 
 **What it tests:** One blocking gap (dataset) plus all optional fields missing — agent only asks about the blocking gap.
 
-**User Simulator:** A user who provides a clear problem description but no dataset and no optional fields. Provides dataset when asked.
+**User Simulator:** A user who provides a clear problem description but no dataset and no optional fields. Provides dataset when asked. When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent asked about the dataset (blocking gap)
@@ -220,6 +223,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Gap Report contains both blocking-resolved and non-blocking entries
 - [ ] Assumed Defaults table lists all four optional field defaults
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ### 6. Malformed dataset
 
@@ -240,7 +244,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 
 **What it tests:** Comprehension-first behavior — agent doesn't accept a vague description, asks to understand the routing problem.
 
-**User Simulator:** A user who provides the dataset and says "I want to route stuff to the right place." Has actual context they can share when asked: they're routing customer support queries to haiku/sonnet/opus based on complexity, where cost matters more than perfect accuracy for simple queries.
+**User Simulator:** A user who provides the dataset and says "I want to route stuff to the right place." Has actual context they can share when asked: they're routing customer support queries to haiku/sonnet/opus based on complexity, where cost matters more than perfect accuracy for simple queries. Does not provide optional fields. When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent did not accept "route stuff to the right place" as a valid problem description
@@ -248,24 +252,28 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final report contains a refined, specific problem description — not the original vague input
 - [ ] The refined description mentions concrete tiers or tools
 - [ ] The refined description reflects the information the user provided during clarification
+- [ ] Final report status is `proceed_with_defaults`
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ### 8. Ambiguous tiers — choose question type
 
 **What it tests:** The "choose" question type — agent presents options when input is ambiguous.
 
-**User Simulator:** A user who provides the dataset and says "I need to route queries between my cheap and expensive models." Does not name specific tiers. When presented with options, selects one (e.g., "the first option — haiku and opus").
+**User Simulator:** A user who provides the dataset and says "I need to route queries between my cheap and expensive models." Does not name specific tiers. Does not provide optional fields. When presented with options, selects one (e.g., "the first option — haiku and opus"). When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent recognized the ambiguity in "cheap and expensive models"
 - [ ] Agent presented multiple-choice options (e.g., "Are these tiers like Haiku/Sonnet/Opus, or custom endpoints, or something else?")
 - [ ] Options included a "none of these" or open-ended escape
 - [ ] Final problem description in the report includes the concrete tier names the user selected
+- [ ] Final report status is `proceed_with_defaults`
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ### 9. Contradictory metrics — invalid optimization target
 
 **What it tests:** Agent catches a metric that can't be used as an optimization target.
 
-**User Simulator:** A user who provides dataset, a clear problem description, and says "I want to optimize for the confusion matrix." When the agent explains that confusion is diagnostic only, switches to "okay, then let's go with accuracy, at least 85%."
+**User Simulator:** A user who provides dataset, a clear problem description, and says "I want to optimize for the confusion matrix." Does not provide other optional fields. When the agent explains that confusion is diagnostic only, switches to "okay, then let's go with accuracy, at least 85%." When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent identified that `confusion` is not suitable as an optimization target
@@ -273,6 +281,8 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent suggested valid alternatives
 - [ ] Final report lists a valid optimization metric (not confusion)
 - [ ] Agent handled this conversationally, not as a hard error
+- [ ] Final report status is `proceed_with_defaults`
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ### 10. Domain mismatch — not a routing problem
 
@@ -291,7 +301,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 
 **What it tests:** The agent persists when the user gives unhelpful or off-topic answers — it never gives up or produces a premature report.
 
-**User Simulator:** A user who wants to optimize routing but gives vague, off-topic, or unhelpful answers for the first 2-3 turns (e.g., "just make it work", "I don't know, figure it out"). Eventually provides a real problem description and dataset path when the agent rephrases its question.
+**User Simulator:** A user who wants to optimize routing but gives vague, off-topic, or unhelpful answers for the first 2-3 turns (e.g., "just make it work", "I don't know, figure it out"). Eventually provides a real problem description and dataset path when the agent rephrases its question. When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent did not give up after unhelpful answers
@@ -300,12 +310,13 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent remained conversational and patient — not robotic or repetitive
 - [ ] Final report was eventually produced with status `proceed_with_defaults`
 - [ ] Conversation took at least 4 turns
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ### 12. Natural language answers — non-standard format
 
 **What it tests:** The agent accepts information provided in natural, conversational language rather than requiring structured field values.
 
-**User Simulator:** A user who provides all required information but in a rambling, conversational way. For example: "So basically we have this JSONL file at tests/scenarios/data/valid_dataset.jsonl and what we're trying to do is figure out which queries should go to the cheap model and which ones need the expensive one, you know? Like simple stuff goes to haiku and the hard questions go to opus. Oh and we care about accuracy, like at least 90%."
+**User Simulator:** A user who provides all required information but in a rambling, conversational way. For example: "So basically we have this JSONL file at tests/scenarios/data/valid_dataset.jsonl and what we're trying to do is figure out which queries should go to the cheap model and which ones need the expensive one, you know? Like simple stuff goes to haiku and the hard questions go to opus. Oh and we care about accuracy, like at least 90%." When the agent mentions assumed defaults and asks if they are acceptable, confirms they are fine.
 
 **Verification Criteria:**
 - [ ] Agent extracted the dataset path from the conversational message
@@ -314,6 +325,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent did not ask the user to reformat or re-provide information already given
 - [ ] Final report contains the extracted information in clean, structured form
 - [ ] Final report status is `proceed_with_defaults` (user provided dataset, problem description, and target metric, but not threshold, split ratio, or iterations — those get defaults)
+- [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
 
 ## Out of scope
 
