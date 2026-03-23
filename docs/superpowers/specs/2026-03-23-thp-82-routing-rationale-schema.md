@@ -38,26 +38,26 @@ Each routing example gets annotated with a rationale card containing 4 fields.
 |---|---|---|---|
 | `intent_pattern` | `string` | yes | The task type the query represents. Value drawn from the vocabulary registry. |
 | `complexity_structure` | `string` | yes | The reasoning topology required to answer. Value drawn from the vocabulary registry. |
-| `tier_disqualifiers` | `list[{tier: int, reason: string}]` | yes | Why specific tiers are ruled out for this example. |
+| `tier_disqualifiers` | `list[{route: string, reason: string}]` | yes | Why specific routes are ruled out for this example. `route` matches the `expected.route` value from THP-80 (e.g., `"opus"`, `"sonnet"`, `"haiku"` or `"0"`, `"1"`, `"2"`). |
 | `ambiguity_tags` | `list[string]` | yes | Tags from the ambiguity registry that apply. Empty list if the example is clear-cut. |
 
 ### Constraints
 
-- **Disqualifier coverage:** Every tier *not* assigned to the example must have at least one disqualifier entry. If the example is tier 1, there must be entries for tier 0 and tier 2.
-- **Disqualifier content:** Each `reason` must reference an observable property of the query, not a capability assumption about the model. Write "query requires joining 3 independent sources" not "tier 1 isn't smart enough."
+- **Disqualifier coverage:** Every route *not* assigned to the example must have at least one disqualifier entry. If the example's route is `"1"`, there must be entries for `"0"` and `"2"`.
+- **Disqualifier content:** Each `reason` must reference an observable property of the query, not a capability assumption about the model. Write "query requires joining 3 independent sources" not "this route's model isn't smart enough."
 - **Ambiguity tags:** Only tags present in the finalized (post-pruning) registry are valid.
 
 ### Example
 
 ```yaml
-# Example 20 — Eurostat sequential filtering (tier 2)
+# Example 20 — Eurostat sequential filtering (route "2")
 rationale_card:
   intent_pattern: "data-filtering"
   complexity_structure: "sequential-dependency"
   tier_disqualifiers:
-    - tier: 0
+    - route: "0"
       reason: "query requires precise numerical thresholds (50M tonnes, 20%) not common knowledge"
-    - tier: 1
+    - route: "1"
       reason: "3 sequential filtering steps where each output feeds the next"
   ambiguity_tags:
     - "AMBIGUOUS_COMPLEXITY"
@@ -86,10 +86,10 @@ vocabulary_registry:
     entries:
       - name: "factual-lookup"
         definition: "Query asks for a single factual answer — a name, date, place, or title"
-        example_ids: ["ex_1", "ex_5", "ex_9", "ex_14"]
+        example_ids: ["ex_1", "ex_5", "ex_9", "ex_14"]  # IDs are illustrative
       - name: "data-filtering"
         definition: "Query applies filtering criteria to a named dataset or source"
-        example_ids: ["ex_2", "ex_6", "ex_11", "ex_13"]
+        example_ids: ["ex_2", "ex_6", "ex_11", "ex_13"]  # IDs match dataset record IDs
   complexity_structure:
     entries:
       - name: "single-hop"
@@ -109,7 +109,7 @@ vocabulary_registry:
 3. **New entries require:** a name, a one-sentence definition, the list of example IDs, and a justification for why existing entries don't cover the pattern.
 4. **No semantic overlap:** A new entry must not duplicate an existing one. The agent must explain why existing entries are insufficient before proposing a new entry.
 5. **Append-only across runs:** Subsequent runs on the same dataset receive the previous run's registry as input. Existing entries must be reused. New entries can be added, but existing entries cannot be renamed or removed. This ensures consistency across runs.
-6. **Fresh start per dataset:** A new dataset starts with no inherited registry — only the seed values as suggestions.
+6. **Dataset identity:** By default, dataset identity is determined by content hash — same content produces the same hash and inherits the previous registry. When the dataset changes (examples added, labels corrected), use `--inherit-registry-from <path>` to explicitly chain from a previous run's registry. A dataset with no matching hash and no explicit inheritance starts fresh with only seed values as suggestions.
 7. **Naming convention:** `intent_pattern` and `complexity_structure` use `kebab-case`. `ambiguity_tags` use `SCREAMING_SNAKE_CASE`.
 
 ### Seed Values
@@ -137,7 +137,7 @@ The routing analysis agent populates rationale cards using 2 sequential skills, 
 2. Classify the task type, using `complexity_structure` to disambiguate. A query mentioning multiple data sources with `sequential-dependency` structure is `cross-source-join`, not `data-filtering`.
 3. Check proposed values against the vocabulary registry. If neither existing entries fit, flag the example for potential new vocabulary entry.
 
-**Output:** `intent_pattern` value, `complexity_structure` value.
+**Output:** `intent_pattern` value, `complexity_structure` value. Optionally, a `proposed_entries` list when no existing vocabulary entry fits — each proposal includes a name, one-sentence definition, and justification for why existing entries are insufficient. Proposals are collected across all examples and evaluated against the cluster threshold during post-loop validation.
 
 **Why these fields are grouped:** They inform each other — intent classification depends on understanding the complexity structure, and misclassifying one leads to misclassifying the other. Joint reasoning prevents lock-in from a strict sequential approach.
 
@@ -167,8 +167,8 @@ Runs once after all examples in the dataset are annotated. Not a skill — a val
 |---|---|
 | Required fields present | All 4 fields must exist on every card |
 | Vocabulary membership | `intent_pattern` and `complexity_structure` values must exist in the registry |
-| Disqualifier coverage | Every tier ≠ assigned tier has at least one disqualifier entry |
-| Disqualifier format | Each entry has `tier` (int) and `reason` (non-empty string) |
+| Disqualifier coverage | Every route ≠ assigned route has at least one disqualifier entry |
+| Disqualifier format | Each entry has `route` (string, matching a valid `expected.route` value) and `reason` (non-empty string) |
 | Ambiguity tag membership | All tags on the card must exist in the finalized registry |
 
 **Dataset-level checks:**
@@ -177,8 +177,8 @@ Runs once after all examples in the dataset are annotated. Not a skill — a val
 |---|---|
 | Cluster threshold | Every registry entry across all 3 vocabularies meets `max(3, ceil(0.05 * dataset_size))` |
 | Pruning cleanup | Cards referencing pruned entries have those values removed |
-| Orphaned examples | If pruning removes a vocabulary entry from `intent_pattern` or `complexity_structure`, affected examples are flagged for reclassification into a surviving entry (manual fix, not automatic reassignment) |
-| Registry consistency | No two entries in the same vocabulary have identical or near-identical definitions |
+| Orphaned examples | If pruning removes a vocabulary entry from `intent_pattern` or `complexity_structure`, the agent automatically re-runs Skill 1 (`classify_example`) on affected examples using the pruned registry. This is a retry, not a human-in-the-loop step. If reclassification fails (no surviving entry fits), the example is flagged for human review. |
+| Registry consistency | No two entries in the same vocabulary have identical or near-identical definitions. This is an LLM-judgment check: the agent compares each pair of definitions within a vocabulary and flags any that describe the same observable pattern using different wording. Not automated via embedding similarity — the agent reads the definitions and decides. |
 
 ### Common Annotation Mistakes
 
@@ -207,9 +207,9 @@ None — Wave 1 task.
 
 | Touch point | Detail |
 |---|---|
-| THP-80 | Each annotated record begins with the base fields defined in the data format spec. The rationale card is an annotation layer on top of THP-80 records. |
+| THP-80 | Rationale cards are a **separate artifact** keyed by THP-80 record `id`, not embedded in THP-80 records. The base dataset format is untouched; rationale cards reference records by ID. |
 | THP-81 | Missing signal detection in the output report uses the rationale schema to identify what is absent (e.g., no examples with `cross-source-join` intent). |
-| THP-86 | Serialization format builds on this logical schema. The vocabulary registry is persisted as part of THP-86's output artifact. |
+| THP-86 | Serialization format builds on this logical schema. The vocabulary registry is persisted as part of THP-86's output artifact. THP-86 owns the formal machine-readable schema (JSON Schema / Pydantic model); THP-82 is the logical-level spec. |
 | THP-106 | Final system prompt embeds the 2 annotation skills so the agent can produce structured rationale cards. |
 | THP-74 | Rationale cards feed into Phase 1 (clustering, boundary analysis) and Phase 2 (stratified splitting via ambiguity tags). |
 
