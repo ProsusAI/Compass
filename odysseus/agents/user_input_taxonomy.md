@@ -23,6 +23,6 @@ whether to proceed, apply defaults, or request clarification.
 
 Based on the gaps identified, set the `status` field in the validated input report:
 
-1. **Any blocking gap present** → `clarification_required` — halt pipeline, request missing fields.
+1. **Any blocking gap present** → the agent continues conversing with the user until the gaps are resolved. No report is produced until all blocking gaps are filled.
 2. **Only non-blocking gaps present** → `proceed_with_defaults` — apply defaults from table above, note them in the report.
 3. **No gaps** → `proceed` — all fields present, continue pipeline.

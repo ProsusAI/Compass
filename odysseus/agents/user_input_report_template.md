@@ -10,7 +10,7 @@
 
 # Validated Input Report
 
-**Status:** proceed | proceed_with_defaults | clarification_required
+**Status:** proceed | proceed_with_defaults
 
 ## Confirmed Inputs
 
@@ -38,7 +38,7 @@ _(Optional field subsections — Evaluation Threshold, Data Split Ratio, Max Ite
 ## Gap Report
 
 ### <field_identifier>
-- **Classification:** blocking | non-blocking
+- **Classification:** non-blocking
 - **Rationale:** <why this classification>
 - **Default Applied:** <value, or "N/A" if blocking>
 - **Clarification Request:** <template text if blocking, or "N/A">
@@ -58,13 +58,12 @@ _(Section omitted entirely if status is `proceed`.)_
 ## Rules
 
 1. **Status line** is always the first bold field after the H1 heading.
-2. **Confirmed Inputs** is always present, even when `clarification_required` (partial inputs are still recorded).
+2. **Confirmed Inputs** is always present.
 3. **Gap Report** is omitted entirely if no gaps are detected.
 4. **Assumed Defaults** is omitted entirely if no defaults were applied (i.e., status is `proceed`).
-5. Blocking gap entries include the clarification request text from THP-109 templates.
-6. Non-blocking gap entries include the default value applied and a user-facing note.
-7. Gap Report headings use the exact field identifier from THP-69 (e.g., `### evaluation_threshold`, not "Evaluation Threshold").
-8. Confirmed Inputs headings use title-case display names (e.g., `### Routing Dataset`).
+5. Non-blocking gap entries include the default value applied and a user-facing note.
+6. Gap Report headings use the exact field identifier from THP-69 (e.g., `### evaluation_threshold`, not "Evaluation Threshold").
+7. Confirmed Inputs headings use title-case display names (e.g., `### Routing Dataset`).
 
 ## Status Values
 
@@ -72,7 +71,6 @@ _(Section omitted entirely if status is `proceed`.)_
 |---|---|
 | `proceed` | All required fields present; no defaults needed. |
 | `proceed_with_defaults` | All required fields present; one or more optional fields defaulted. |
-| `clarification_required` | At least one blocking gap detected. |
 
 ## Field Reference
 
@@ -81,7 +79,7 @@ _(Section omitted entirely if status is `proceed`.)_
 - `problem_description` — free-text description
 
 **Optional (non-blocking, defaulted if absent):**
-- `target_metrics` — default: `["accuracy"]` with no threshold
+- `target_metrics` — default: `["f1/macro"]`
 - `evaluation_threshold` — default: `0.80`
 - `data_split_ratio` — default: `0.20`
 - `max_iterations` — default: `10`
