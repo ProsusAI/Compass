@@ -8,11 +8,13 @@ from pydantic import ValidationError
 from odysseus.agents.data_validation_checks import (
     DataQualityReport,
     LabelDistribution,
+    QueryLengthDistribution,
     SchemaFinding,
     TierDistribution,
     TierVolume,
     VolumeAssessment,
     check_label_distribution,
+    check_query_length_distribution,
     check_schema_conformance,
     check_volume_adequacy,
 )
@@ -379,3 +381,79 @@ class TestCheckVolumeAdequacy:
         result = check_volume_adequacy(rows, min_per_tier=5)
         assert result.overall_verdict == "fail"
         assert result.tiers == []
+
+
+# ---------------------------------------------------------------------------
+# QueryLengthDistribution model tests
+# ---------------------------------------------------------------------------
+
+
+class TestQueryLengthDistribution:
+    def test_model_construction(self) -> None:
+        qld = QueryLengthDistribution(min=5, max=100, mean=42.5, p95=90.0, count=10)
+        assert qld.min == 5
+        assert qld.max == 100
+        assert qld.mean == 42.5
+        assert qld.p95 == 90.0
+        assert qld.count == 10
+
+
+# ---------------------------------------------------------------------------
+# check_query_length_distribution tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckQueryLengthDistribution:
+    def test_known_distribution(self) -> None:
+        """Verify stats against hand-calculated values."""
+        rows = [
+            _valid_row(id="ex-1", input="a" * 10),
+            _valid_row(id="ex-2", input="b" * 20),
+            _valid_row(id="ex-3", input="c" * 30),
+            _valid_row(id="ex-4", input="d" * 40),
+            _valid_row(id="ex-5", input="e" * 50),
+        ]
+        result = check_query_length_distribution(rows)
+        assert result.count == 5
+        assert result.min == 10
+        assert result.max == 50
+        assert result.mean == pytest.approx(30.0)
+        # p95 of [10, 20, 30, 40, 50] with linear interpolation:
+        # rank = 0.95 * (5-1) = 3.8, lower=3, upper=4, frac=0.8
+        # p95 = 40 + 0.8 * (50 - 40) = 48.0
+        assert result.p95 == pytest.approx(48.0)
+
+    def test_skips_missing_input(self) -> None:
+        rows = [
+            _valid_row(id="ex-1", input="hello"),
+            {"id": "ex-2", "expected": {}},  # no input field
+        ]
+        result = check_query_length_distribution(rows)
+        assert result.count == 1
+        assert result.min == 5
+        assert result.max == 5
+
+    def test_skips_non_string_input(self) -> None:
+        rows = [
+            _valid_row(id="ex-1", input="hello"),
+            _valid_row(id="ex-2", input=42),
+        ]
+        result = check_query_length_distribution(rows)
+        assert result.count == 1
+
+    def test_empty_rows(self) -> None:
+        result = check_query_length_distribution([])
+        assert result.count == 0
+        assert result.min == 0
+        assert result.max == 0
+        assert result.mean == 0.0
+        assert result.p95 == 0.0
+
+    def test_single_row(self) -> None:
+        rows = [_valid_row(id="ex-1", input="hello world")]
+        result = check_query_length_distribution(rows)
+        assert result.count == 1
+        assert result.min == 11
+        assert result.max == 11
+        assert result.mean == pytest.approx(11.0)
+        assert result.p95 == pytest.approx(11.0)

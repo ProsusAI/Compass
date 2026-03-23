@@ -64,13 +64,24 @@ class VolumeAssessment(BaseModel):
     min_per_tier: int
 
 
+class QueryLengthDistribution(BaseModel):
+    """Character length distribution of query inputs."""
+
+    min: int
+    max: int
+    mean: float
+    p95: float
+    count: int
+
+
 class DataQualityReport(BaseModel):
-    """Top-level report wrapping all four sections."""
+    """Top-level report wrapping all validation check sections."""
 
     summary: str
     schema_findings: list[SchemaFinding]
     label_distribution: LabelDistribution
     volume_assessment: VolumeAssessment
+    query_length: QueryLengthDistribution | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +348,44 @@ def check_label_distribution(
         num_tiers=len(counts),
         imbalanced_tiers=imbalanced,
         min_tier_percentage=min_tier_percentage,
+    )
+
+
+def check_query_length_distribution(
+    rows: list[dict],
+) -> QueryLengthDistribution:
+    """Compute character length distribution of the input field.
+
+    Skips rows where ``input`` is missing or not a string.
+    """
+    lengths = [
+        len(row["input"])
+        for row in rows
+        if isinstance(row.get("input"), str)
+    ]
+
+    if not lengths:
+        return QueryLengthDistribution(
+            min=0, max=0, mean=0.0, p95=0.0, count=0,
+        )
+
+    lengths_sorted = sorted(lengths)
+    count = len(lengths_sorted)
+    total = sum(lengths_sorted)
+
+    # p95 via linear interpolation (matches numpy default)
+    rank = 0.95 * (count - 1)
+    lower = int(rank)
+    upper = min(lower + 1, count - 1)
+    fraction = rank - lower
+    p95 = lengths_sorted[lower] + fraction * (lengths_sorted[upper] - lengths_sorted[lower])
+
+    return QueryLengthDistribution(
+        min=lengths_sorted[0],
+        max=lengths_sorted[-1],
+        mean=total / count,
+        p95=p95,
+        count=count,
     )
 
 
