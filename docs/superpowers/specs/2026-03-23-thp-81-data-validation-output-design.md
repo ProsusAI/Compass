@@ -22,7 +22,7 @@ Prose companion defining the report structure and referencing the Python module.
 
 ### 2. Validation checks — `odysseus/agents/data_validation_checks.py`
 
-Python module with three functions operating on raw parsed JSONL rows (list of dicts). Importable by THP-145 (validation logic). Uses only `pandas`, `json`, and `collections` from the standard library plus pandas.
+Python module with three functions operating on raw parsed JSONL rows (list of dicts). Importable by THP-145 (validation logic). Uses only the Python standard library (`collections.Counter`) — no external dependencies.
 
 ## Report Structure
 
