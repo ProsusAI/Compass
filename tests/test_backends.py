@@ -259,7 +259,15 @@ class TestBackendRegistry:
 # LiteLLMBackend
 # ---------------------------------------------------------------------------
 
-EXAMPLE = Example(id="ex1", input={"text": "hello"}, expected={"label": "greeting"})
+EXAMPLE = Example(
+    id="ex1",
+    input="hello",
+    expected={
+        "route": "greeting",
+        "routes": {"greeting": {"cost": 0.01, "quality_score": 0.9}},
+    },
+    split="dev",
+)
 
 
 def _make_mock_response(
