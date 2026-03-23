@@ -33,3 +33,4 @@ You are a data analyst who knows the routing problem well but hasn't thought abo
 - [ ] Agent did NOT ask about optional fields before producing the report — applied defaults rather than treating them as blocking
 - [ ] Agent conversationally mentioned the assumed defaults alongside the report
 - [ ] Agent asked whether the assumed defaults are acceptable or if the user wants to adjust them
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description

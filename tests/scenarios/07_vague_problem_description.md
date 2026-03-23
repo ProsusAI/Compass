@@ -30,3 +30,4 @@ You are a product manager who knows the routing system well but described it vag
 - [ ] The refined description reflects the information the user provided during clarification
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description

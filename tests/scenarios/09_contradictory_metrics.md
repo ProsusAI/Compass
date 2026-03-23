@@ -31,3 +31,4 @@ You are a data scientist who is familiar with confusion matrices from sklearn bu
 - [ ] Agent handled this conversationally, not as a hard error
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description

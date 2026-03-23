@@ -30,3 +30,5 @@ You are a product analyst who confused this tool with a general ML classifier. Y
 - [ ] Agent either helped reframe the problem as routing or clearly explained why this isn't a routing problem
 - [ ] If reframed: final report has a valid routing problem description
 - [ ] If not reframed: no report was produced, conversation ended with a clear explanation
+- [ ] If reframed: agent called `submit_input_report` tool with the report, dataset path, and problem description
+- [ ] If not reframed: agent did NOT call `submit_input_report`

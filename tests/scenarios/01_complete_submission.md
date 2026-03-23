@@ -30,3 +30,4 @@ You are a data analyst at a tech company. You are setting up a routing optimizat
 - [ ] No `## Gap Report` heading appears in the report
 - [ ] No `## Assumed Defaults` heading appears in the report
 - [ ] Single turn — agent produced the report without asking clarification questions
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description

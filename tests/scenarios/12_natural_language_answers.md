@@ -30,3 +30,4 @@ You are a chatty colleague who explains everything in a stream-of-consciousness 
 - [ ] Final report contains the extracted information in clean, structured form
 - [ ] Final report status is `proceed_with_defaults` (user provided dataset, problem description, and target metric, but not threshold, split ratio, or iterations — those get defaults)
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description

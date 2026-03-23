@@ -6,7 +6,7 @@ Integration tests for the User Input agent that run as real multi-turn conversat
 
 ## Context
 
-The User Input agent (THP-107) is not a Python class — it is an LLM agent defined by its system prompt (`prompts/user_input_system.md`). An MCP client loads the system prompt and becomes the agent. This means traditional unit tests with mocked method calls cannot test the actual agent behavior. Instead, we test the agent by running real conversations and verifying the outcomes.
+The User Input agent (THP-107) is not a Python class — it is an LLM agent defined by its system prompt (`prompts/user_input_system.md`), loaded via the `odysseus_routing_input` MCP prompt. An MCP client activates the prompt and becomes the agent, with access to MCP tools including `submit_input_report` for pipeline handoff. This means traditional unit tests with mocked method calls cannot test the actual agent behavior. Instead, we test the agent by running real conversations and verifying the outcomes.
 
 ### Dependencies
 
@@ -25,7 +25,7 @@ The User Input agent (THP-107) is not a Python class — it is an LLM agent defi
 
 Each test scenario is executed by three sub-agents orchestrated by Claude Code:
 
-**User Input Agent** — The agent under test. Loaded with `prompts/user_input_system.md` as its system prompt. Has access to the pre-configured Odysseus MCP tools. Receives user messages, reasons about completeness, asks clarifications, and eventually produces a validated input report.
+**User Input Agent** — The agent under test. Activated via the `odysseus_routing_input` MCP prompt (which loads `prompts/user_input_system.md`). Has access to the pre-configured Odysseus MCP tools including `submit_input_report` for pipeline handoff. Receives user messages, reasons about completeness, asks clarifications, and eventually produces a validated input report and calls `submit_input_report` to hand off to the next pipeline stage.
 
 **User Simulator** — Plays the role of a user described in the scenario. Given a persona, available information, and behavioral constraints. Responds naturally to whatever the User Input Agent asks — not scripted, reactive. Has no MCP connection.
 
@@ -36,13 +36,14 @@ Each test scenario is executed by three sub-agents orchestrated by Claude Code:
 ```
 Claude Code reads scenario MD
   → spins up User Simulator (## User Simulator section)
-  → spins up User Input Agent (prompts/user_input_system.md + MCP)
+  → spins up User Input Agent (odysseus_routing_input MCP prompt + MCP tools)
   → gets initial user message from simulator
 
   LOOP:
     → passes user message to User Input Agent
     ← receives agent response
-    → if response contains "# Validated Input Report" → exit loop
+    → if agent called submit_input_report tool → exit loop (primary signal)
+    → if response contains "# Validated Input Report" → exit loop (fallback)
     → passes agent response to User Simulator
     ← receives simulator's next message
 
@@ -50,7 +51,7 @@ Claude Code reads scenario MD
   ← receives pass/fail results
 ```
 
-The conversation terminates when the User Input Agent produces a message containing `# Validated Input Report` anywhere in its response. The agent may include conversational text before or after the report (e.g., mentioning assumed defaults) — Claude Code scans the full response for the heading.
+The conversation terminates when the User Input Agent calls the `submit_input_report` MCP tool (the primary completion signal). The system prompt instructs the agent to call this tool after producing the validated input report and getting user confirmation. As a fallback, the orchestration also exits if it detects `# Validated Input Report` in the agent's response. The agent may include conversational text before or after the report (e.g., mentioning assumed defaults) — Claude Code scans the full response.
 
 ### Safety valve
 
@@ -163,6 +164,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] No `## Gap Report` heading appears in the report
 - [ ] No `## Assumed Defaults` heading appears in the report
 - [ ] Single turn — agent produced the report without asking clarification questions
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 2. Missing optional fields — proceed with defaults
 
@@ -182,6 +184,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent did NOT ask about optional fields before producing the report — applied defaults rather than treating them as blocking
 - [ ] Agent conversationally mentioned the assumed defaults alongside the report
 - [ ] Agent asked whether the assumed defaults are acceptable or if the user wants to adjust them
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 3. Missing required field — clarification loop
 
@@ -196,6 +199,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Confirmed Inputs contains the dataset path provided in the follow-up
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 4. Multiple blocking gaps
 
@@ -210,6 +214,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Confirmed Inputs contains both the problem description and dataset path
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 5. Mixed blocking and non-blocking gaps
 
@@ -224,6 +229,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Gap Report contains both blocking-resolved and non-blocking entries
 - [ ] Assumed Defaults table lists all four optional field defaults
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 6. Malformed dataset
 
@@ -237,6 +243,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent did not reject the submission outright — guided the user to fix it
 - [ ] Final report references the corrected dataset path
 - [ ] Final report status is `proceed_with_defaults`
+- [ ] Agent called `submit_input_report` tool with the report, corrected dataset path, and problem description
 
 **Note:** This scenario depends on the Data Validation agent (THP-73), which is not yet implemented. The system prompt says: "Until then, accept the dataset path as-is." **This scenario is deferred until THP-73 is complete.** The agent will currently accept the malformed dataset without flagging issues, so the test would not produce meaningful results. When THP-73 lands, un-defer this scenario and verify the full fix flow.
 
@@ -254,6 +261,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] The refined description reflects the information the user provided during clarification
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 8. Ambiguous tiers — choose question type
 
@@ -268,6 +276,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final problem description in the report includes the concrete tier names the user selected
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 9. Contradictory metrics — invalid optimization target
 
@@ -283,6 +292,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent handled this conversationally, not as a hard error
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 10. Domain mismatch — not a routing problem
 
@@ -296,6 +306,8 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Agent either helped reframe the problem as routing or clearly explained why this isn't a routing problem
 - [ ] If reframed: final report has a valid routing problem description
 - [ ] If not reframed: no report was produced, conversation ended with a clear explanation
+- [ ] If reframed: agent called `submit_input_report` tool with the report, dataset path, and problem description
+- [ ] If not reframed: agent did NOT call `submit_input_report`
 
 ### 11. Persistent clarification — unhelpful answers
 
@@ -311,6 +323,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final report was eventually produced with status `proceed_with_defaults`
 - [ ] Conversation took at least 4 turns
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ### 12. Natural language answers — non-standard format
 
@@ -326,6 +339,7 @@ Simple queries route to the cheap tier (haiku), complex ones to the expensive ti
 - [ ] Final report contains the extracted information in clean, structured form
 - [ ] Final report status is `proceed_with_defaults` (user provided dataset, problem description, and target metric, but not threshold, split ratio, or iterations — those get defaults)
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
 
 ## Out of scope
 

@@ -32,3 +32,4 @@ You are a busy executive who wants results but doesn't want to spend time on det
 - [ ] Final report was eventually produced with status `proceed_with_defaults`
 - [ ] Conversation took at least 4 turns
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description

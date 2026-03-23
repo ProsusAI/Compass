@@ -17,15 +17,18 @@ Claude Code will:
 
 1. Read the scenario file and parse its sections.
 2. Spin up a **User Simulator** sub-agent with the `## User Simulator` section as its instructions.
-3. Spin up a **User Input Agent** sub-agent with `prompts/user_input_system.md` as its system prompt, connected to the MCP tools.
+3. Spin up a **User Input Agent** sub-agent using the `odysseus_routing_input` MCP prompt (which loads `prompts/user_input_system.md`), connected to the Odysseus MCP tools.
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
    - Pass user message → User Input Agent
    - Receive agent response
-   - If response contains `# Validated Input Report` → conversation done, go to step 6
+   - If the agent calls the `submit_input_report` tool → conversation done, go to step 6
+   - If response contains `# Validated Input Report` (fallback) → conversation done, go to step 6
    - Otherwise pass agent response → User Simulator → get next message → loop
 6. Spin up a **Verification Agent** with the transcript, report, and criteria.
 7. Report pass/fail results.
+
+The primary conversation completion signal is the `submit_input_report` tool call — the system prompt instructs the agent to call this tool after producing the validated input report. The `# Validated Input Report` heading check is a fallback for robustness.
 
 ## Safety valve
 
@@ -44,7 +47,7 @@ The Verification Agent receives:
    User: <next message>
    ...
    ```
-2. **Final validated input report** — the Markdown content after `# Validated Input Report` in the agent's final message.
+2. **Final validated input report** — the Markdown content from the `report` argument of the `submit_input_report` tool call (or extracted from the agent's final message if the tool call is absent).
 3. **Verification criteria** — the `## Verification Criteria` checklist from the scenario file.
 
 A scenario passes only if **all** verification criteria pass. The Verification Agent reports each criterion individually with pass/fail and reasoning, plus an overall verdict.

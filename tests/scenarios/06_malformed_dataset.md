@@ -29,3 +29,4 @@ You are a data analyst who accidentally exported the dataset without the label c
 - [ ] Agent did not reject the submission outright — guided the user to fix it
 - [ ] Final report references the corrected dataset path `tests/scenarios/data/valid_dataset.jsonl`
 - [ ] Final report status is `proceed_with_defaults`
+- [ ] Agent called `submit_input_report` tool with the report, corrected dataset path, and problem description

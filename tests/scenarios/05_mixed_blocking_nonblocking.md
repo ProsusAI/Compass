@@ -29,3 +29,4 @@ You are a data scientist who has the routing problem well understood but forgot 
 - [ ] Gap Report contains both blocking-resolved and non-blocking entries
 - [ ] Assumed Defaults table lists all four optional field defaults
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description

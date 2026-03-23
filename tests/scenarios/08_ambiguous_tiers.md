@@ -28,3 +28,4 @@ You are a developer who thinks in terms of "cheap model" and "expensive model" b
 - [ ] Final problem description in the report includes the concrete tier names the user selected
 - [ ] Final report status is `proceed_with_defaults`
 - [ ] Agent mentioned the assumed defaults and asked whether they are acceptable
+- [ ] Agent called `submit_input_report` tool with the report, dataset path, and problem description
