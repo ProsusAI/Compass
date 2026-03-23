@@ -12,7 +12,9 @@ from odysseus.agents.data_validation_checks import (
     TierDistribution,
     TierVolume,
     VolumeAssessment,
+    check_label_distribution,
     check_schema_conformance,
+    check_volume_adequacy,
 )
 
 
@@ -250,3 +252,105 @@ class TestCheckSchemaConformance:
         rir_finding = next(f for f in findings if f.field == "route_in_routes")
         assert rir_finding.status == "fail"
         assert 2 in rir_finding.row_indices
+
+
+# ---------------------------------------------------------------------------
+# check_label_distribution tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckLabelDistribution:
+    def test_balanced_two_tiers(self) -> None:
+        rows = [
+            _valid_row(id="ex-1", expected={"route": "opus", "routes": {"opus": {}, "haiku": {}}}),
+            _valid_row(id="ex-2", expected={"route": "haiku", "routes": {"opus": {}, "haiku": {}}}),
+        ]
+        result = check_label_distribution(rows, min_tier_percentage=0.1)
+        assert result.total_records == 2
+        assert result.num_tiers == 2
+        assert result.imbalanced_tiers == []
+        for td in result.tiers:
+            assert td.percentage == pytest.approx(0.5)
+            assert td.imbalanced is False
+
+    def test_imbalanced_tier_flagged(self) -> None:
+        rows = [_valid_row(id=f"ex-{i}", expected={"route": "opus", "routes": {}}) for i in range(9)]
+        rows.append(_valid_row(id="ex-9", expected={"route": "haiku", "routes": {}}))
+        result = check_label_distribution(rows, min_tier_percentage=0.15)
+        assert result.num_tiers == 2
+        assert "haiku" in result.imbalanced_tiers
+        assert "opus" not in result.imbalanced_tiers
+        haiku_tier = next(t for t in result.tiers if t.tier == "haiku")
+        assert haiku_tier.percentage == pytest.approx(0.1)
+        assert haiku_tier.imbalanced is True
+
+    def test_skips_rows_without_valid_route(self) -> None:
+        rows = [
+            _valid_row(id="ex-1"),
+            {"id": "ex-2", "input": "no expected field"},
+        ]
+        result = check_label_distribution(rows, min_tier_percentage=0.1)
+        assert result.total_records == 1
+
+    def test_empty_rows(self) -> None:
+        result = check_label_distribution([], min_tier_percentage=0.1)
+        assert result.total_records == 0
+        assert result.tiers == []
+        assert result.num_tiers == 0
+
+    def test_all_rows_schema_invalid(self) -> None:
+        rows = [{"id": "ex-1", "input": "hello"}, {"id": "ex-2", "input": "world"}]
+        result = check_label_distribution(rows, min_tier_percentage=0.1)
+        assert result.total_records == 0
+        assert result.tiers == []
+
+
+# ---------------------------------------------------------------------------
+# check_volume_adequacy tests
+# ---------------------------------------------------------------------------
+
+
+class TestCheckVolumeAdequacy:
+    def test_all_tiers_adequate(self) -> None:
+        rows = [_valid_row(id=f"ex-o{i}", expected={"route": "opus", "routes": {}}) for i in range(5)]
+        rows += [_valid_row(id=f"ex-h{i}", expected={"route": "haiku", "routes": {}}) for i in range(5)]
+        result = check_volume_adequacy(rows, min_per_tier=5)
+        assert result.overall_verdict == "pass"
+        assert all(tv.verdict == "adequate" for tv in result.tiers)
+
+    def test_insufficient_tier(self) -> None:
+        rows = [_valid_row(id=f"ex-{i}", expected={"route": "opus", "routes": {}}) for i in range(3)]
+        result = check_volume_adequacy(rows, min_per_tier=5)
+        assert result.overall_verdict == "fail"
+        opus_tier = next(tv for tv in result.tiers if tv.tier == "opus")
+        assert opus_tier.verdict == "insufficient"
+        assert opus_tier.actual_count == 3
+
+    def test_insufficient_tiers_from_mixed_data(self) -> None:
+        rows = [
+            _valid_row(id="ex-1", expected={"route": "opus", "routes": {}}),
+            _valid_row(id="ex-2", expected={"route": "haiku", "routes": {}}),
+        ]
+        result = check_volume_adequacy(rows, min_per_tier=5)
+        assert result.overall_verdict == "fail"
+        assert all(tv.verdict == "insufficient" for tv in result.tiers)
+
+    def test_skips_rows_without_valid_route(self) -> None:
+        rows = [
+            _valid_row(id="ex-1"),
+            {"id": "ex-2", "input": "no expected field"},
+        ]
+        result = check_volume_adequacy(rows, min_per_tier=1)
+        assert result.overall_verdict == "pass"
+        assert len(result.tiers) == 1
+
+    def test_empty_rows(self) -> None:
+        result = check_volume_adequacy([], min_per_tier=5)
+        assert result.overall_verdict == "fail"
+        assert result.tiers == []
+
+    def test_all_rows_schema_invalid(self) -> None:
+        rows = [{"id": "ex-1", "input": "hello"}, {"id": "ex-2", "input": "world"}]
+        result = check_volume_adequacy(rows, min_per_tier=5)
+        assert result.overall_verdict == "fail"
+        assert result.tiers == []

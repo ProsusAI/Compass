@@ -9,6 +9,7 @@ See: docs/superpowers/specs/2026-03-23-thp-81-data-validation-output-design.md
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -251,3 +252,99 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
     )
 
     return findings
+
+
+def check_label_distribution(
+    rows: list[dict],
+    min_tier_percentage: float,
+) -> LabelDistribution:
+    """Compute label distribution stats per routing tier.
+
+    Internally skips rows without a valid expected.route.
+    """
+    routes = [r for row in rows if (r := _extract_route(row)) is not None]
+    total = len(routes)
+
+    if total == 0:
+        return LabelDistribution(
+            tiers=[],
+            total_records=0,
+            num_tiers=0,
+            imbalanced_tiers=[],
+            min_tier_percentage=min_tier_percentage,
+        )
+
+    counts = Counter(routes)
+    tier_dists: list[TierDistribution] = []
+    imbalanced: list[str] = []
+
+    for tier, count in sorted(counts.items()):
+        pct = count / total
+        is_imbalanced = pct < min_tier_percentage
+        if is_imbalanced:
+            imbalanced.append(tier)
+        tier_dists.append(
+            TierDistribution(
+                tier=tier,
+                count=count,
+                percentage=pct,
+                imbalanced=is_imbalanced,
+            )
+        )
+
+    return LabelDistribution(
+        tiers=tier_dists,
+        total_records=total,
+        num_tiers=len(counts),
+        imbalanced_tiers=imbalanced,
+        min_tier_percentage=min_tier_percentage,
+    )
+
+
+def check_volume_adequacy(
+    rows: list[dict],
+    min_per_tier: int,
+) -> VolumeAssessment:
+    """Assess volume adequacy per routing tier.
+
+    Internally skips rows without a valid expected.route.
+    """
+    routes = [r for row in rows if (r := _extract_route(row)) is not None]
+    counts = Counter(routes)
+
+    if not counts:
+        return VolumeAssessment(
+            tiers=[],
+            overall_verdict="fail",
+            min_per_tier=min_per_tier,
+        )
+
+    tier_volumes: list[TierVolume] = []
+    all_adequate = True
+
+    # Note: Counter only contains tiers with count > 0, so "absent"
+    # is not reachable here. It exists in the model for cases where
+    # the expected tier set is known externally (e.g. from the
+    # consistent model set check). Callers with that information
+    # can construct TierVolume with verdict="absent" directly.
+    for tier, count in sorted(counts.items()):
+        if count >= min_per_tier:
+            verdict: Literal["adequate", "insufficient", "absent"] = "adequate"
+        else:
+            verdict = "insufficient"
+            all_adequate = False
+
+        tier_volumes.append(
+            TierVolume(
+                tier=tier,
+                verdict=verdict,
+                actual_count=count,
+                minimum_required=min_per_tier,
+            )
+        )
+
+    return VolumeAssessment(
+        tiers=tier_volumes,
+        overall_verdict="pass" if all_adequate else "fail",
+        min_per_tier=min_per_tier,
+    )
