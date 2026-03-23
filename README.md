@@ -151,9 +151,25 @@ odysseus/agents/*.py     ← all business logic lives here
 odysseus/eval/           ← evaluation engine, metrics, backends
 ```
 
-## MCP Server Deployment
+## Quick Start
 
-### Installation
+### One-command install for Claude Code
+
+```bash
+claude mcp add odysseus -- uv run --directory /path/to/project-odysseus python -m odysseus.mcp
+```
+
+Replace `/path/to/project-odysseus` with the absolute path to your clone. This registers the MCP server so Claude Code can use it immediately.
+
+To verify it's connected:
+
+```bash
+claude mcp list
+```
+
+Then in Claude Code, use the `odysseus_routing_input` prompt to start a routing optimization conversation — or just say "help me with this routing problem" and the assistant will suggest it.
+
+### Install from source
 
 ```bash
 git clone https://github.com/your-org/project-odysseus.git
@@ -161,32 +177,61 @@ cd project-odysseus
 uv sync
 ```
 
-### Running the MCP Server
+### Running the MCP server standalone
 
 ```bash
 uv run python -m odysseus.mcp
 ```
 
-Or with `uvx`:
+### Client configuration
+
+Add the server to any MCP-compatible client's config file:
+
+**Claude Code** (`claude mcp add`):
 
 ```bash
-uvx odysseus
+claude mcp add odysseus -- uv run --directory /absolute/path/to/project-odysseus python -m odysseus.mcp
 ```
 
-### MCP Client Configuration
-
-Add the server to your MCP client config (e.g. `claude_desktop_config.json`):
+**Claude Desktop** (`claude_desktop_config.json`):
 
 ```json
 {
   "mcpServers": {
     "odysseus": {
-      "command": "python",
-      "args": ["-m", "odysseus.mcp"],
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/project-odysseus", "python", "-m", "odysseus.mcp"],
       "env": {
         "ANTHROPIC_API_KEY": "<your-key>",
         "OPENAI_API_KEY": "<your-key>"
       }
+    }
+  }
+}
+```
+
+**Cursor / Windsurf** (`.cursor/mcp.json` or equivalent):
+
+```json
+{
+  "mcpServers": {
+    "odysseus": {
+      "command": "uv",
+      "args": ["run", "--directory", "/absolute/path/to/project-odysseus", "python", "-m", "odysseus.mcp"]
+    }
+  }
+}
+```
+
+**Project-local** (`.mcp.json` in repo root — already included):
+
+```json
+{
+  "mcpServers": {
+    "odysseus": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "odysseus.mcp"],
+      "cwd": "/absolute/path/to/project-odysseus"
     }
   }
 }
