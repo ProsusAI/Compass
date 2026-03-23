@@ -17,6 +17,7 @@ from odysseus.agents.data_validation_checks import (
     check_query_length_distribution,
     check_schema_conformance,
     check_volume_adequacy,
+    run_all_checks,
 )
 
 
@@ -457,3 +458,41 @@ class TestCheckQueryLengthDistribution:
         assert result.max == 11
         assert result.mean == pytest.approx(11.0)
         assert result.p95 == pytest.approx(11.0)
+
+
+# ---------------------------------------------------------------------------
+# run_all_checks tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunAllChecks:
+    def test_returns_complete_report(self) -> None:
+        """All four check sections are populated."""
+        rows = [
+            _valid_row(id="ex-1"),
+            _valid_row(id="ex-2", expected={"route": "haiku", "routes": {"opus": {}, "haiku": {}}}),
+        ]
+        report = run_all_checks(rows)
+        assert isinstance(report, DataQualityReport)
+        assert report.summary == ""
+        assert len(report.schema_findings) > 0
+        assert report.label_distribution.total_records > 0
+        assert report.volume_assessment.min_per_tier == 5
+        assert report.query_length is not None
+        assert report.query_length.count == 2
+
+    def test_empty_rows(self) -> None:
+        report = run_all_checks([])
+        assert isinstance(report, DataQualityReport)
+        assert report.label_distribution.total_records == 0
+        assert report.volume_assessment.overall_verdict == "fail"
+        assert report.query_length is not None
+        assert report.query_length.count == 0
+
+    def test_default_thresholds(self) -> None:
+        """Verify the intentional default thresholds are applied."""
+        rows = [_valid_row(id=f"ex-{i}") for i in range(10)]
+        report = run_all_checks(rows)
+        # Intentional defaults (fraction, not percentage)
+        assert report.label_distribution.min_tier_percentage == 0.10
+        assert report.volume_assessment.min_per_tier == 5

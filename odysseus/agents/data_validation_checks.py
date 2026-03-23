@@ -436,3 +436,28 @@ def check_volume_adequacy(
         overall_verdict="pass" if all_adequate else "fail",
         min_per_tier=min_per_tier,
     )
+
+
+# ---------------------------------------------------------------------------
+# Orchestration
+# ---------------------------------------------------------------------------
+
+# Intentional defaults — not magic numbers. These are reasonable starting
+# thresholds; downstream agents may override via pipeline config.
+_DEFAULT_MIN_TIER_PERCENTAGE = 0.10
+_DEFAULT_MIN_PER_TIER = 5
+
+
+def run_all_checks(rows: list[dict]) -> DataQualityReport:
+    """Run all validation checks and assemble a DataQualityReport.
+
+    The ``summary`` field is set to an empty string — the calling LLM
+    writes the narrative summary using the structured results.
+    """
+    return DataQualityReport(
+        summary="",
+        schema_findings=check_schema_conformance(rows),
+        label_distribution=check_label_distribution(rows, _DEFAULT_MIN_TIER_PERCENTAGE),
+        volume_assessment=check_volume_adequacy(rows, _DEFAULT_MIN_PER_TIER),
+        query_length=check_query_length_distribution(rows),
+    )
