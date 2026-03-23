@@ -8,7 +8,7 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.eval.models import RunSummary, ScoreReport
-from odysseus.mcp import mcp
+from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
 
@@ -148,3 +148,22 @@ class TestRunEval:
                     data_source="data/test.jsonl",
                     backend="test-backend",
                 )
+
+
+class TestLoadText:
+    """Tests for the _load_text file loader helper."""
+
+    def test_loads_existing_file(self):
+        """_load_text returns content of an existing file."""
+        content = _load_text("prompts/user_input_system.md")
+        assert len(content) > 0
+        assert "User Input" in content
+
+    def test_missing_file_raises_file_not_found(self):
+        """_load_text raises FileNotFoundError for missing files."""
+        with pytest.raises(FileNotFoundError, match="not found"):
+            _load_text("nonexistent/file.md")
+
+    def test_project_root_points_to_repo(self):
+        """_PROJECT_ROOT resolves to the directory containing pyproject.toml."""
+        assert (_PROJECT_ROOT / "pyproject.toml").is_file()

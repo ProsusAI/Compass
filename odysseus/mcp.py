@@ -6,12 +6,30 @@ parameters/return values and agent context dicts.
 """
 
 import json
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.eval.models import ScoreReport
+
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_text(relative_path: str) -> str:
+    """Load a text file relative to the project root.
+
+    Raises FileNotFoundError with a clear message if the file is missing.
+    """
+    path = _PROJECT_ROOT / relative_path
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"Required prompt file not found: {path} "
+            f"(resolved from project root {_PROJECT_ROOT})"
+        )
+    return path.read_text()
+
 
 mcp = FastMCP("odysseus")
 
