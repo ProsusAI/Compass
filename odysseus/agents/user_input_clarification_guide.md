@@ -39,7 +39,7 @@ Data validation issues inherit the dataset's priority.
 
 Ask about one gap at a time. When the user responds, validate the answer. If sufficient, move to the next gap. If insufficient, explain what's still needed and ask again.
 
-If the user cannot provide a blocking field after two attempts, summarize what is still missing, explain the pipeline cannot proceed without it, and stop. Do not loop indefinitely.
+Keep asking until the user provides the required information. There is no attempt limit — the agent continues the conversation until all blocking gaps are resolved.
 
 ### Step 4: Re-submission
 

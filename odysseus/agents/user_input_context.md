@@ -16,10 +16,9 @@ A fully-described routing problem consists of three required components and seve
 
 - **Routing dataset** — labeled examples in JSONL format. Each record contains an input (the request to be routed) and the expected routing decision (the correct tier or tool label). This is used for both training the prompt and holdout evaluation.
 - **Problem description** — free-text explaining the routing context: what types of requests are being routed, what the available tiers or tools are, and which trade-offs matter most (e.g. cost sensitivity, latency, quality floor).
-- **Target metrics** — at least one target metric the user wants to optimize for, optionally with a numeric threshold (e.g. `accuracy >= 0.85`).
-
 **Optional (defaults apply if omitted):**
 
+- **Target metrics** — at least one target metric the user wants to optimize for, optionally with a numeric threshold (e.g. `accuracy >= 0.85`). Default: `["f1/macro"]`.
 - Evaluation threshold — the overall pass/fail threshold for the pipeline exit check.
 - Data split ratio — fraction of data reserved for holdout evaluation.
 - Max iterations — maximum number of refinement loop rounds.
