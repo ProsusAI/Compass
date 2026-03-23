@@ -12,6 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.prompts.base import Message, UserMessage
 
+from odysseus.agents.data_validation_checks import run_all_checks
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.eval.models import ScoreReport
 
@@ -43,6 +44,17 @@ async def odysseus_routing_input() -> list[Message]:
     return [UserMessage(content=system_prompt)]
 
 
+@mcp.prompt()
+async def odysseus_data_validation() -> list[Message]:
+    """Activate the Odysseus data validation agent.
+
+    Use after the input agent has produced a validated input report.
+    Validates the routing dataset and produces a data quality report.
+    """
+    system_prompt = _load_text("prompts/data_validation_system.md")
+    return [UserMessage(content=system_prompt)]
+
+
 @mcp.resource("odysseus://agents/input/clarification-guide")
 async def input_clarification_guide() -> str:
     """Per-field clarification guidance for the input agent."""
@@ -53,6 +65,18 @@ async def input_clarification_guide() -> str:
 async def input_defaults() -> str:
     """Default values and override mechanism for optional fields."""
     return _load_text("odysseus/agents/user_input_defaults.md")
+
+
+@mcp.resource("odysseus://agents/data-validation/format-spec")
+async def data_validation_format_spec() -> str:
+    """Data format specification (THP-80) for the data validation agent."""
+    return _load_text("odysseus/agents/data_validation_format.md")
+
+
+@mcp.resource("odysseus://agents/data-validation/output-spec")
+async def data_validation_output_spec() -> str:
+    """Output format specification (THP-81) for the data validation agent."""
+    return _load_text("odysseus/agents/data_validation_output.md")
 
 
 @mcp.tool()
@@ -166,6 +190,36 @@ async def submit_input_report(
     if not problem_description.strip():
         raise ToolError("submit_input_report failed: problem_description is empty")
     return "Input report received. Next pipeline stage not yet implemented."
+
+
+@mcp.tool()
+async def validate_dataset(dataset_path: str) -> str:
+    """Run all validation checks against a JSONL routing dataset.
+
+    Args:
+        dataset_path: Absolute path to the JSONL dataset file.
+
+    Returns:
+        JSON-serialized DataQualityReport with schema findings,
+        label distribution, volume adequacy, and query length stats.
+    """
+    path = Path(dataset_path)
+    if not path.is_file():
+        raise ToolError(f"Dataset file not found: {dataset_path}")
+
+    rows: list[dict] = []
+    try:
+        text = path.read_text(encoding="utf-8")
+        for line_num, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            rows.append(json.loads(stripped))
+    except json.JSONDecodeError as exc:
+        raise ToolError(f"Malformed JSONL at line {line_num}: {exc}") from exc
+
+    report = run_all_checks(rows)
+    return report.model_dump_json(indent=2)
 
 
 def main() -> None:
