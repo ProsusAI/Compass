@@ -127,25 +127,47 @@ output:
 
 ---
 
-## MCP Server Deployment
+## Architecture
 
-This project is deployed as an MCP server, exposing the optimization pipeline as callable tools to any MCP-compatible client (Claude Desktop, Cursor, etc.).
+The project follows a **thin-adapter** pattern:
+
+- **Agent classes** (`odysseus/agents/`) contain all business logic — config loading, dependency wiring, error handling, and pipeline orchestration. Each agent is an async Python class that can be tested and used independently.
+- **MCP server** (`odysseus/mcp.py`) is a thin adapter layer that translates between MCP tool parameters and agent context dicts. It delegates to agent classes and serializes their results — no business logic lives here.
+
+This means Odysseus works as both:
+1. **An MCP plugin** for any MCP-compatible client (Claude Code, Claude Desktop, Cursor, etc.)
+2. **A Python library** where agent classes can be imported and called directly
+
+```
+MCP Client (Claude Code / Cursor / ...)
+    │
+    ▼
+odysseus/mcp.py          ← thin adapter: params → context dict → agent → JSON
+    │
+    ▼
+odysseus/agents/*.py     ← all business logic lives here
+    │
+    ▼
+odysseus/eval/           ← evaluation engine, metrics, backends
+```
+
+## MCP Server Deployment
 
 ### Installation
 
 ```bash
 git clone https://github.com/your-org/project-odysseus.git
 cd project-odysseus
-pip install -e .
+uv sync
 ```
 
 ### Running the MCP Server
 
 ```bash
-python -m odysseus.mcp
+uv run python -m odysseus.mcp
 ```
 
-Or with `uvx` / `uv`:
+Or with `uvx`:
 
 ```bash
 uvx odysseus

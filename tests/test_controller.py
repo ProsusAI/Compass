@@ -123,10 +123,7 @@ class FailOnceBackend:
 
 
 def _make_examples(n: int) -> list[Example]:
-    return [
-        Example(id=f"ex-{i}", input={"question": f"q{i}"}, expected={"route": f"class-{i % 3}"})
-        for i in range(n)
-    ]
+    return [Example(id=f"ex-{i}", input={"question": f"q{i}"}, expected={"route": f"class-{i % 3}"}) for i in range(n)]
 
 
 def _write_jsonl(path: Path, examples: list[Example], split: str = "dev") -> None:

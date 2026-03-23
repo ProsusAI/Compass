@@ -1,18 +1,16 @@
 """Smoke tests for the MCP server."""
 
 import json
-from datetime import datetime
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
-from pydantic import ValidationError
 
-from odysseus.eval.models import MetricConfig, RunConfig, RunReport, RunSummary
-from odysseus.mcp import mcp
+from odysseus.eval.models import RunSummary, ScoreReport
+from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp
 
-FIXTURES = Path(__file__).parent / "fixtures"
+AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
 
 
 async def test_server_has_tools():
@@ -27,25 +25,6 @@ async def test_run_holdout_eval_is_stub():
 
     result = await run_holdout_eval(prompt_version="v1", data_source="data/test.jsonl")
     assert "stub" in result
-
-
-def test_run_eval_does_not_construct_holdout_config():
-    """run_eval's hardcoded split must be 'dev', never 'holdout'.
-
-    This is the spec's 'internal misuse' guard (Section 2): verify that
-    only run_holdout_eval constructs a holdout RunConfig.
-    """
-    import ast
-    import inspect
-
-    from odysseus.mcp import run_eval
-
-    source = inspect.getsource(run_eval)
-    tree = ast.parse(source)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.keyword) and node.arg == "data_split":
-            assert isinstance(node.value, ast.Constant)
-            assert node.value.value == "dev", "run_eval must hardcode data_split='dev'"
 
 
 async def test_run_eval_tool_registered():
@@ -78,142 +57,224 @@ async def test_run_holdout_eval_does_not_expose_data_split():
     assert "data_split" not in schema_properties, "data_split must not be exposed as a tool parameter"
 
 
-def _make_stub_report() -> RunReport:
-    """Create a minimal RunReport for testing."""
-    return RunReport(
-        config=RunConfig(
-            backend="test",
-            data_source="data/test.jsonl",
-            data_split="dev",
-            metrics=[MetricConfig(name="accuracy")],
-        ),
+def _make_stub_score_report() -> ScoreReport:
+    """Create a minimal ScoreReport for testing."""
+    return ScoreReport(
         metrics={"accuracy": 0.95},
-        results=[],
         summary=RunSummary(
             total=10,
             succeeded=10,
             failed=0,
             total_cost=0.01,
-            start_time=datetime(2026, 1, 1),
-            end_time=datetime(2026, 1, 1),
+            start_time=datetime(2026, 1, 1, tzinfo=UTC),
+            end_time=datetime(2026, 1, 1, tzinfo=UTC),
             duration_seconds=5.0,
         ),
+        errors=[],
+        diff=None,
+        report_path="outputs/report.json",
+        results_path="outputs/results.jsonl",
     )
 
 
 class TestRunEval:
     """Integration tests for the run_eval MCP tool."""
 
-    async def test_success_returns_paths(self, tmp_path):
+    async def test_success_returns_paths(self):
         """Successful run returns JSON with report_path and results_path."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("metrics:\n  - name: accuracy")
+        score_report = _make_stub_score_report()
 
-        mock_report = _make_stub_report()
-        mock_profile = MagicMock()
-        mock_profile.requests_per_minute = 100
-        mock_profile.tokens_per_minute = 100000
-        mock_registry = MagicMock()
-        mock_registry.create_backend.return_value = MagicMock()
-        mock_registry.get_profile.return_value = mock_profile
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
-        with (
-            patch("odysseus.mcp.controller.run", new_callable=AsyncMock, return_value=mock_report),
-            patch("odysseus.mcp.BackendRegistry.from_directory", return_value=mock_registry),
-            patch("odysseus.mcp.FilePromptManager"),
-            patch("odysseus.mcp.JsonlDatasetManager"),
-            patch("odysseus.mcp.create_default_engine"),
-            patch("odysseus.mcp.JsonResultsCollector"),
-        ):
             from odysseus.mcp import run_eval
 
             result = await run_eval(
                 prompt_version="v1",
                 data_source="data/test.jsonl",
                 backend="test-backend",
-                config_path=str(config_file),
             )
 
         parsed = json.loads(result)
         assert parsed["report_path"] == "outputs/report.json"
         assert parsed["results_path"] == "outputs/results.jsonl"
 
-    async def test_missing_config_returns_not_found(self):
-        """Missing config file returns structured not_found error."""
-        from odysseus.mcp import run_eval
+    async def test_agent_receives_correct_context(self):
+        """MCP tool passes all parameters to agent context."""
+        score_report = _make_stub_score_report()
 
-        result = await run_eval(
-            prompt_version="v1",
-            data_source="data/test.jsonl",
-            backend="test-backend",
-            config_path="nonexistent/config.yaml",
-        )
-        parsed = json.loads(result)
-        assert parsed["error"] == "not_found"
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
-    async def test_missing_backend_profile_returns_not_found(self, tmp_path):
-        """Missing backend profile (KeyError) returns structured not_found error."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("metrics:\n  - name: accuracy")
-
-        mock_registry = MagicMock()
-        mock_registry.create_backend.side_effect = KeyError("no-such-backend")
-
-        with patch("odysseus.mcp.BackendRegistry.from_directory", return_value=mock_registry):
             from odysseus.mcp import run_eval
 
-            result = await run_eval(
-                prompt_version="v1",
-                data_source="data/test.jsonl",
-                backend="no-such-backend",
-                config_path=str(config_file),
+            await run_eval(
+                prompt_version="v3",
+                data_source="data/routing.jsonl",
+                backend="openai",
+                config_path="custom/config.yaml",
             )
 
-        parsed = json.loads(result)
-        assert parsed["error"] == "not_found"
+        context = mock_run.call_args.args[0]
+        assert context["prompt_version"] == "v3"
+        assert context["data_source"] == "data/routing.jsonl"
+        assert context["backend"] == "openai"
+        assert context["config_path"] == "custom/config.yaml"
 
-    async def test_validation_error_returns_validation_error(self, tmp_path):
-        """Invalid config returns structured validation_error."""
-        bad_config = tmp_path / "bad.yaml"
-        bad_config.write_text("concurrency:\n  max_concurrent_requests: -1\nmetrics:\n  - name: accuracy")
+    async def test_agent_error_raises_tool_error(self):
+        """Agent error dict is translated to ToolError."""
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {"error": {"category": "not_found", "detail": "config missing"}}
 
-        from odysseus.mcp import run_eval
-
-        result = await run_eval(
-            prompt_version="v1",
-            data_source="data/test.jsonl",
-            backend="test-backend",
-            config_path=str(bad_config),
-        )
-        parsed = json.loads(result)
-        assert parsed["error"] == "validation_error"
-
-    async def test_unexpected_error_propagates(self, tmp_path):
-        """Unexpected exceptions propagate to FastMCP's ToolError wrapping."""
-        config_file = tmp_path / "config.yaml"
-        config_file.write_text("metrics:\n  - name: accuracy")
-
-        mock_profile = MagicMock()
-        mock_profile.requests_per_minute = 100
-        mock_profile.tokens_per_minute = 100000
-        mock_registry = MagicMock()
-        mock_registry.create_backend.return_value = MagicMock()
-        mock_registry.get_profile.return_value = mock_profile
-
-        with (
-            patch("odysseus.mcp.controller.run", new_callable=AsyncMock, side_effect=RuntimeError("boom")),
-            patch("odysseus.mcp.BackendRegistry.from_directory", return_value=mock_registry),
-            patch("odysseus.mcp.FilePromptManager"),
-            patch("odysseus.mcp.JsonlDatasetManager"),
-            patch("odysseus.mcp.create_default_engine"),
-            patch("odysseus.mcp.JsonResultsCollector"),
-        ):
             from odysseus.mcp import run_eval
 
-            with pytest.raises(ToolError, match="boom"):
+            with pytest.raises(ToolError, match="not_found"):
                 await run_eval(
                     prompt_version="v1",
                     data_source="data/test.jsonl",
                     backend="test-backend",
-                    config_path=str(config_file),
                 )
+
+    async def test_validation_error_raises_tool_error(self):
+        """Agent validation error is translated to ToolError."""
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = {"error": {"category": "validation_error", "detail": "bad config"}}
+
+            from odysseus.mcp import run_eval
+
+            with pytest.raises(ToolError, match="validation_error"):
+                await run_eval(
+                    prompt_version="v1",
+                    data_source="data/test.jsonl",
+                    backend="test-backend",
+                )
+
+
+class TestOdysseusRoutingInputPrompt:
+    """Tests for the odysseus_routing_input MCP prompt."""
+
+    async def test_prompt_registered(self):
+        """odysseus_routing_input is listed as an MCP prompt."""
+        prompts = await mcp.list_prompts()
+        prompt_names = [p.name for p in prompts]
+        assert "odysseus_routing_input" in prompt_names
+
+    async def test_prompt_returns_messages(self):
+        """Prompt returns a non-empty list of messages."""
+        from odysseus.mcp import odysseus_routing_input
+
+        messages = await odysseus_routing_input()
+        assert len(messages) >= 1
+
+    async def test_prompt_content_matches_system_prompt(self):
+        """Prompt content matches the user_input_system.md file."""
+        from odysseus.mcp import odysseus_routing_input
+
+        messages = await odysseus_routing_input()
+        expected = _load_text("prompts/user_input_system.md")
+        assert messages[0].content.text == expected
+
+
+class TestInputAgentResources:
+    """Tests for the input agent MCP resources."""
+
+    async def test_clarification_guide_registered(self):
+        """Clarification guide resource is listed."""
+        resources = await mcp.list_resources()
+        uris = [str(r.uri) for r in resources]
+        assert "odysseus://agents/input/clarification-guide" in uris
+
+    async def test_defaults_registered(self):
+        """Defaults resource is listed."""
+        resources = await mcp.list_resources()
+        uris = [str(r.uri) for r in resources]
+        assert "odysseus://agents/input/defaults" in uris
+
+    async def test_clarification_guide_returns_content(self):
+        """Clarification guide resource returns non-empty content."""
+        from odysseus.mcp import input_clarification_guide
+
+        content = await input_clarification_guide()
+        assert len(content) > 0
+        assert "Clarification" in content
+
+    async def test_defaults_returns_content(self):
+        """Defaults resource returns non-empty content."""
+        from odysseus.mcp import input_defaults
+
+        content = await input_defaults()
+        assert len(content) > 0
+        assert "Default" in content
+
+
+class TestSubmitInputReport:
+    """Tests for the submit_input_report stub tool."""
+
+    async def test_tool_registered(self):
+        """submit_input_report is listed as an MCP tool."""
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "submit_input_report" in tool_names
+
+    async def test_stub_returns_confirmation(self):
+        """Stub returns a confirmation message."""
+        from odysseus.mcp import submit_input_report
+
+        result = await submit_input_report(
+            report="# Validated Input Report\n**Status:** proceed",
+            dataset_path="/data/routing.jsonl",
+            problem_description="Route support queries to tiers.",
+        )
+        assert "received" in result.lower()
+
+    async def test_empty_report_raises_tool_error(self):
+        """Empty report raises ToolError."""
+        from odysseus.mcp import submit_input_report
+
+        with pytest.raises(ToolError, match="report is empty"):
+            await submit_input_report(
+                report="",
+                dataset_path="/data/routing.jsonl",
+                problem_description="Route queries.",
+            )
+
+    async def test_empty_dataset_path_raises_tool_error(self):
+        """Empty dataset_path raises ToolError."""
+        from odysseus.mcp import submit_input_report
+
+        with pytest.raises(ToolError, match="dataset_path is empty"):
+            await submit_input_report(
+                report="# Report",
+                dataset_path="",
+                problem_description="Route queries.",
+            )
+
+    async def test_empty_problem_description_raises_tool_error(self):
+        """Empty problem_description raises ToolError."""
+        from odysseus.mcp import submit_input_report
+
+        with pytest.raises(ToolError, match="problem_description is empty"):
+            await submit_input_report(
+                report="# Report",
+                dataset_path="/data/routing.jsonl",
+                problem_description="",
+            )
+
+
+class TestLoadText:
+    """Tests for the _load_text file loader helper."""
+
+    def test_loads_existing_file(self):
+        """_load_text returns content of an existing file."""
+        content = _load_text("prompts/user_input_system.md")
+        assert len(content) > 0
+        assert "User Input" in content
+
+    def test_missing_file_raises_file_not_found(self):
+        """_load_text raises FileNotFoundError for missing files."""
+        with pytest.raises(FileNotFoundError, match="not found"):
+            _load_text("nonexistent/file.md")
+
+    def test_project_root_points_to_repo(self):
+        """_PROJECT_ROOT resolves to the directory containing pyproject.toml."""
+        assert (_PROJECT_ROOT / "pyproject.toml").is_file()

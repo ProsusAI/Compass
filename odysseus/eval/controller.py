@@ -58,9 +58,7 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     semaphore = asyncio.Semaphore(config.concurrency.max_concurrent_requests)
 
     tasks = [
-        _eval_with_retry(
-            deps.backend, prompt, example, config.retry, rate_limiter, semaphore, deps.backend.pricing
-        )
+        _eval_with_retry(deps.backend, prompt, example, config.retry, rate_limiter, semaphore, deps.backend.pricing)
         for example in examples
     ]
     results = await asyncio.gather(*tasks)
