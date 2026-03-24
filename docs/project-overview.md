@@ -88,7 +88,7 @@ The pipeline is structured as five sequential zones, with a parallel-build phase
 | **Output** | Validated input package + gap report |
 | **Blocking gaps** | → Clarification request back to user |
 | **Non-blocking gaps** | → Flagged with assumed defaults, pipeline proceeds |
-| **Key open work** | Define gap taxonomy (THP-108), clarification templates (THP-109), static agent context (THP-69), validated input report schema (THP-72) |
+| **Key open work** | Define gap taxonomy (THP-108), clarification templates (THP-109) |
 
 ---
 
@@ -280,7 +280,7 @@ The system exposes a `run_eval` MCP tool that wraps the Run Controller, enabling
 
 ---
 
-## 9. Tech Stack
+## 8. Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -296,7 +296,7 @@ The system exposes a `run_eval` MCP tool that wraps the Run Controller, enabling
 
 ---
 
-## 10. Repository Structure
+## 9. Repository Structure
 
 ```
 odysseus/

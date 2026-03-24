@@ -93,7 +93,7 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 | `odysseus/` | Main Python package: MCP server, agents, eval engine, prompt manager |
 | `odysseus/agents/` | Agent implementations, domain models, validation logic, and registry operations |
 | `odysseus/agents/prompts/` | Agent system prompts (Markdown) surfaced via MCP |
-| `odysseus/eval/` | Evaluation engine: controller, backends, metrics, dataset loading, result collection ([README](../odysseus/eval/docs/README.md)) |
+| `odysseus/eval/` | Evaluation engine: controller, backends, metrics, dataset loading, result collection ([README](../odysseus/eval/README.md)) |
 | `prompts/` | Versioned routing prompt store (consumed by `FilePromptManager`) |
 | `data/` | Dataset files (JSONL) |
 | `outputs/` | Run outputs, reports, and config files |
