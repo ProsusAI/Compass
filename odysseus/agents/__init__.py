@@ -40,11 +40,6 @@ from odysseus.agents.routing_rationale_models import (
     VocabularyEntry,
     VocabularyRegistry,
 )
-from odysseus.agents.stratified_split import (
-    SplitMismatchError,
-    SplitReport,
-    stratified_split,
-)
 from odysseus.agents.routing_rationale_registry import (
     RegistryMergeError,
     compute_dataset_hash,
@@ -54,6 +49,11 @@ from odysseus.agents.routing_rationale_registry import (
     prune_registry,
     resolve_registry,
     save_registry,
+)
+from odysseus.agents.stratified_split import (
+    SplitMismatchError,
+    SplitReport,
+    stratified_split,
 )
 from odysseus.agents.user_input_report import (
     CONTEXT_KEY as USER_INPUT_REPORT_CONTEXT_KEY,

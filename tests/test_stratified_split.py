@@ -202,14 +202,12 @@ def test_stratified_split_degenerate_single_example():
 
 def test_stratified_split_preserves_route_balance():
     """Both dev and holdout have examples from each route."""
-    examples = (
-        [make_example(f"a-{i}", f"query-a-{i}", "route-a") for i in range(10)]
-        + [make_example(f"b-{i}", f"query-b-{i}", "route-b") for i in range(10)]
-    )
-    cards = (
-        [make_card(f"a-{i}", "route-a", "data-analysis", "single-step") for i in range(10)]
-        + [make_card(f"b-{i}", "route-b", "code-generation", "multi-step") for i in range(10)]
-    )
+    examples = [make_example(f"a-{i}", f"query-a-{i}", "route-a") for i in range(10)] + [
+        make_example(f"b-{i}", f"query-b-{i}", "route-b") for i in range(10)
+    ]
+    cards = [make_card(f"a-{i}", "route-a", "data-analysis", "single-step") for i in range(10)] + [
+        make_card(f"b-{i}", "route-b", "code-generation", "multi-step") for i in range(10)
+    ]
     card_set = make_card_set(cards)
 
     dev, holdout, report = stratified_split(examples, card_set)
@@ -242,12 +240,15 @@ def test_split_report_ambiguity_tag_distribution():
 
 def test_public_api_exports():
     """Key names are importable from odysseus.agents."""
-    from odysseus.agents import SplitMismatchError as _E
-    from odysseus.agents import SplitReport as _R
-    from odysseus.agents import stratified_split as _fn
-    assert _E is not None
-    assert _R is not None
-    assert _fn is not None
+    from odysseus.agents import (
+        SplitMismatchError,  # noqa: F811
+        SplitReport,  # noqa: F811
+        stratified_split,  # noqa: F811
+    )
+
+    assert SplitMismatchError is not None
+    assert SplitReport is not None
+    assert stratified_split is not None
 
 
 def test_stratified_split_empty_dataset():
