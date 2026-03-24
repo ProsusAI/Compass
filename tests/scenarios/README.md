@@ -1,6 +1,6 @@
 # Integration Test Scenarios
 
-Test scenarios for the User Input agent and Data Validation agent. Each `.md` file in this directory is a self-contained test scenario executed by Claude Code.
+Test scenarios for the User Input agent, Data Validation agent, and Routing Analysis agent. Each `.md` file in this directory is a self-contained test scenario executed by Claude Code.
 
 ## Scenario index
 
@@ -41,6 +41,19 @@ Test scenarios for the User Input agent and Data Validation agent. Each `.md` fi
 | 21 | Fix and Revalidate | Type errors detected → user fixes → revalidation passes |
 | 22 | Nonexistent File | Missing dataset file handled gracefully |
 
+### Routing Analysis Agent — Annotation Skills (23–28)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 23 | Classify Simple Queries | classify-example on 3 single-hop haiku queries, empty registry |
+| 24 | Classify Complex Queries | classify-example on 3 multi-step opus queries, pre-populated registry |
+| 25 | Rationale Clear-Cut | generate-routing-rationale on obvious haiku + opus examples, no ambiguity |
+| 26 | Rationale Ambiguous | generate-routing-rationale on boundary sonnet examples, ambiguity expected |
+| 27 | Classify Mid-Tier | classify-example on 2 sonnet queries, full registry, mid-complexity |
+| 28 | Full Pipeline | Both skills sequentially on one example (classify → generate) |
+
+**Note on routing analysis scenarios (23–28):** These scenarios test LLM-consumed annotation skills. The agent's classifications and rationales are not deterministic — exact vocabulary names and phrasing will vary across runs. Verification criteria focus on structural correctness, reasoning quality, and adherence to the skill procedure rather than exact string matches. The Verification Agent evaluates whether outputs are reasonable, and the transcript serves as a human-readable log for manual review.
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
@@ -60,6 +73,7 @@ Claude Code will:
    - **Scenarios 01–12, 19–21:** User Input Agent using the `odysseus_routing_input` MCP prompt, connected to the Odysseus MCP tools.
    - **Scenarios 13–18, 22:** Data Validation Agent using the `odysseus_data_validation` MCP prompt, connected to the Odysseus MCP tools.
    - **Scenarios 06, 19–21:** Both agents run in sequence — User Input Agent first, then Data Validation Agent on the submitted dataset.
+   - **Scenarios 23–28:** Routing Analysis Agent — the agent reads SKILL.md files and follows the annotation procedures. No MCP tools are called; the agent produces structured text output evaluated by the Verification Agent.
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
    - Pass user message → active Agent
@@ -117,5 +131,6 @@ Test datasets live in `tests/scenarios/data/`:
 | `duplicate_ids_dataset.jsonl` | 5 rows with duplicate IDs |
 | `type_errors_dataset.jsonl` | Numeric id, numeric input, string costs, null values |
 | `small_dataset.jsonl` | 2 rows, below minimum volume per tier |
+| `rationale_test_dataset.jsonl` | 10 rows, 3 tiers (haiku/sonnet/opus), mixed complexity for annotation skill testing |
 
 See the design spec at `docs/superpowers/specs/2026-03-23-thp-146-integration-tests-design.md` for full details.
