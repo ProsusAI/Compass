@@ -50,6 +50,11 @@ from odysseus.agents.routing_rationale_registry import (
     resolve_registry,
     save_registry,
 )
+from odysseus.agents.stratified_split import (
+    SplitMismatchError,
+    SplitReport,
+    stratified_split,
+)
 from odysseus.agents.user_input_report import (
     CONTEXT_KEY as USER_INPUT_REPORT_CONTEXT_KEY,
 )
@@ -71,6 +76,8 @@ __all__ = [
     "RationaleCheckResult",
     "RegistryMergeError",
     "SchemaFinding",
+    "SplitMismatchError",
+    "SplitReport",
     "STATUS_PROCEED",
     "STATUS_PROCEED_WITH_DEFAULTS",
     "RouteDefinition",
@@ -107,5 +114,6 @@ __all__ = [
     "resolve_registry",
     "run_all_checks",
     "save_registry",
+    "stratified_split",
     "validate_rationale_card_set",
 ]
