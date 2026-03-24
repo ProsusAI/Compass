@@ -53,8 +53,6 @@ class RouteExclusion(BaseModel):
         return v.strip()
 
 
-# Backwards-compatibility alias (removed in subsequent task updating __init__.py)
-TierDisqualifier = RouteExclusion
 
 
 # ---------------------------------------------------------------------------
