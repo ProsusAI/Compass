@@ -171,7 +171,7 @@ class TestOdysseusRoutingInputPrompt:
         from odysseus.mcp import odysseus_routing_input
 
         messages = await odysseus_routing_input()
-        expected = _load_text("prompts/user_input_system.md")
+        expected = _load_text("odysseus/agents/prompts/user_input_system.md")
         assert messages[0].content.text == expected
 
 
@@ -266,7 +266,7 @@ class TestLoadText:
 
     def test_loads_existing_file(self):
         """_load_text returns content of an existing file."""
-        content = _load_text("prompts/user_input_system.md")
+        content = _load_text("odysseus/agents/prompts/user_input_system.md")
         assert len(content) > 0
         assert "User Input" in content
 

@@ -40,7 +40,7 @@ async def odysseus_routing_input() -> list[Message]:
     Use when a user wants help with a routing optimization problem.
     Guides the user through providing a complete problem specification.
     """
-    system_prompt = _load_text("prompts/user_input_system.md")
+    system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
     return [UserMessage(content=system_prompt)]
 
 
@@ -51,7 +51,7 @@ async def odysseus_data_validation() -> list[Message]:
     Use after the input agent has produced a validated input report.
     Validates the routing dataset and produces a data quality report.
     """
-    system_prompt = _load_text("prompts/data_validation_system.md")
+    system_prompt = _load_text("odysseus/agents/prompts/data_validation_system.md")
     return [UserMessage(content=system_prompt)]
 
 

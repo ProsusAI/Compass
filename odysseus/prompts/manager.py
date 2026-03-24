@@ -10,7 +10,7 @@ from watchfiles import awatch
 logger = logging.getLogger(__name__)
 
 # Extensions recognized as prompt files, in priority order.
-PROMPT_EXTENSIONS = (".yaml", ".yml", ".txt")
+PROMPT_EXTENSIONS = (".yaml", ".yml", ".txt", ".md")
 
 
 class FilePromptManager:

@@ -122,7 +122,7 @@ class EvalRunnerAgent(BaseAgent):
 
         return RunDependencies(
             backend=backend_instance,
-            prompt_manager=FilePromptManager(prompts_dir=Path("prompts")),
+            prompt_manager=FilePromptManager(prompts_dir=Path("odysseus/agents/prompts")),
             dataset_manager=JsonlDatasetManager(),
             metrics_engine=create_default_engine(),
             results_collector=JsonResultsCollector(),
