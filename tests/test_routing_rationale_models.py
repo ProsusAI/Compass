@@ -12,6 +12,11 @@ from odysseus.agents.routing_rationale_models import (
     SCREAMING_SNAKE_RE,
     RationaleCard,
     RationaleCardSet,
+    RouteDefinition,
+    RouteOrdering,
+    RoutingContext,
+    RoutingDimension,
+    SeedVocabulary,
     TierDisqualifier,
     VocabularyEntry,
     VocabularyRegistry,
@@ -358,3 +363,99 @@ def test_rationale_card_set_json_serialization():
     card_set2 = RationaleCardSet.model_validate_json(json_str)
     assert card_set2.dataset_hash == card_set.dataset_hash
     assert card_set2.created_at == card_set.created_at
+
+
+class TestRouteDefinition:
+    def test_valid(self):
+        rd = RouteDefinition(name="haiku", description="Fast model")
+        assert rd.name == "haiku"
+        assert rd.description == "Fast model"
+
+    def test_empty_name_rejected(self):
+        with pytest.raises(ValidationError):
+            RouteDefinition(name="", description="Fast model")
+
+    def test_empty_description_rejected(self):
+        with pytest.raises(ValidationError):
+            RouteDefinition(name="haiku", description="")
+
+
+class TestRoutingDimension:
+    def test_valid_lower(self):
+        rd = RoutingDimension(name="cost", direction="lower_is_better", description="Per-query cost")
+        assert rd.direction == "lower_is_better"
+
+    def test_valid_higher(self):
+        rd = RoutingDimension(name="quality", direction="higher_is_better", description="Response quality")
+        assert rd.direction == "higher_is_better"
+
+    def test_invalid_direction_rejected(self):
+        with pytest.raises(ValidationError):
+            RoutingDimension(name="cost", direction="ascending", description="Per-query cost")
+
+
+class TestRouteOrdering:
+    def test_valid(self):
+        ro = RouteOrdering(dimension="quality", order=["haiku", "sonnet", "opus"])
+        assert ro.order == ["haiku", "sonnet", "opus"]
+
+    def test_empty_order_rejected(self):
+        with pytest.raises(ValidationError):
+            RouteOrdering(dimension="quality", order=[])
+
+
+class TestSeedVocabulary:
+    def test_defaults_to_empty(self):
+        sv = SeedVocabulary()
+        assert sv.intent_pattern == []
+        assert sv.complexity_structure == []
+        assert sv.ambiguity_tags == []
+
+    def test_with_entries(self):
+        entry = VocabularyEntry(name="factual-lookup", definition="Simple fact retrieval", example_ids=["ex-1"])
+        sv = SeedVocabulary(intent_pattern=[entry])
+        assert len(sv.intent_pattern) == 1
+
+
+class TestRoutingContext:
+    def test_minimal_valid(self):
+        ctx = RoutingContext(
+            domain="LLM tier routing. Queries span general knowledge.",
+            routes=[RouteDefinition(name="haiku", description="Fast model")],
+            routing_dimensions=[RoutingDimension(name="cost", direction="lower_is_better", description="Cost")],
+        )
+        assert ctx.route_ordering is None
+        assert ctx.seed_vocabulary is None
+
+    def test_full_valid(self):
+        ctx = RoutingContext(
+            domain="LLM tier routing. Queries span general knowledge.",
+            routes=[
+                RouteDefinition(name="haiku", description="Fast model"),
+                RouteDefinition(name="opus", description="Capable model"),
+            ],
+            routing_dimensions=[
+                RoutingDimension(name="cost", direction="lower_is_better", description="Cost"),
+                RoutingDimension(name="quality", direction="higher_is_better", description="Quality"),
+            ],
+            route_ordering=RouteOrdering(dimension="quality", order=["haiku", "opus"]),
+            seed_vocabulary=SeedVocabulary(),
+        )
+        assert ctx.route_ordering is not None
+        assert ctx.seed_vocabulary is not None
+
+    def test_empty_routes_rejected(self):
+        with pytest.raises(ValidationError):
+            RoutingContext(
+                domain="Test",
+                routes=[],
+                routing_dimensions=[RoutingDimension(name="cost", direction="lower_is_better", description="Cost")],
+            )
+
+    def test_empty_dimensions_rejected(self):
+        with pytest.raises(ValidationError):
+            RoutingContext(
+                domain="Test",
+                routes=[RouteDefinition(name="haiku", description="Fast")],
+                routing_dimensions=[],
+            )
