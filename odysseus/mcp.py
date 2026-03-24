@@ -55,10 +55,10 @@ async def odysseus_data_validation() -> list[Message]:
     return [UserMessage(content=system_prompt)]
 
 
-@mcp.resource("odysseus://agents/input/clarification-guide")
-async def input_clarification_guide() -> str:
-    """Per-field clarification guidance for the input agent."""
-    return _load_text("odysseus/agents/user_input_clarification_guide.md")
+@mcp.resource("odysseus://agents/input/clarification-skill")
+async def input_clarification_skill() -> str:
+    """Structured clarification skill — conversational strategy for the input agent."""
+    return _load_text("odysseus/agents/skills/structured-clarification.md")
 
 
 @mcp.resource("odysseus://agents/input/defaults")

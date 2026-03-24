@@ -81,7 +81,7 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 
 | URI | Purpose | Backing File |
 |---|---|---|
-| `odysseus://agents/input/clarification-guide` | Per-field clarification guidance for the input agent | [`odysseus/agents/user_input_clarification_guide.md`](../odysseus/agents/user_input_clarification_guide.md) |
+| `odysseus://agents/input/clarification-skill` | Structured clarification skill — conversational strategy for the input agent | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
 | `odysseus://agents/input/defaults` | Default values and override mechanism for optional fields | [`odysseus/agents/user_input_defaults.md`](../odysseus/agents/user_input_defaults.md) |
 | `odysseus://agents/data-validation/format-spec` | Data format specification (THP-80) | [`odysseus/agents/data_validation_format.md`](../odysseus/agents/data_validation_format.md) |
 | `odysseus://agents/data-validation/output-spec` | Output format specification (THP-81) | [`odysseus/agents/data_validation_output.md`](../odysseus/agents/data_validation_output.md) |
