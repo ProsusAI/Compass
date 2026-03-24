@@ -15,13 +15,13 @@ User Simulator: [Provides rt-4 with classification, notes small quality gap]
 
 Agent:
 
-**Step 1 — Write tier_disqualifiers**
+**Step 1 — Write route_exclusions**
 
-Disqualifier for haiku (straightforward):
+Exclusion for haiku (straightforward):
 - route: haiku
   reason: "Query demands a two-phase output — extractive summarization across three financial dimensions followed by generating three original follow-up questions — requiring sequential-dependency coordination."
 
-Disqualifier for opus (harder — small gap):
+Exclusion for opus (harder — small gap):
 The agent explicitly stated: "This is harder. The quality scores show sonnet at 0.88 and opus at 0.92 — a gap of only 0.04."
 
 After deliberation on observable properties:
@@ -32,15 +32,15 @@ Agent acknowledged: "the argument is not fully decisive"
 
 **Step 2 — Assess ambiguity**
 
-- Haiku disqualifier was clear and easy
-- Opus disqualifier "required considerable deliberation"
+- Haiku exclusion was clear and easy
+- Opus exclusion "required considerable deliberation"
 - Sequential-dependency + domain specificity could push toward opus
-- Meets ambiguity criterion: "disqualifiers were difficult to write because the query sits near a routing boundary"
+- Meets ambiguity criterion: "exclusions were difficult to write because the query sits near a routing boundary"
 
 Proposed: **BOUNDARY_CASE**
 
 **Output:**
-tier_disqualifiers:
+route_exclusions:
   - route: haiku
     reason: "Query demands a two-phase output — extractive summarization across three financial dimensions followed by generating three original follow-up questions — requiring sequential-dependency coordination."
   - route: opus
@@ -53,13 +53,13 @@ User Simulator: [Provides rt-9, notes 0.02 gap and haiku arguability]
 
 Agent:
 
-**Step 1 — Write tier_disqualifiers**
+**Step 1 — Write route_exclusions**
 
-Disqualifier for haiku (moderately confident):
+Exclusion for haiku (moderately confident):
 - route: haiku
   reason: "Query requires editorial judgment to distinguish key points from expendable detail during the conciseness rewrite, not merely mechanical shortening."
 
-Disqualifier for opus (narrow structural argument):
+Exclusion for opus (narrow structural argument):
 - route: opus
   reason: "Query specifies a single-paragraph transformation with a bounded objective — conciseness — involving no multi-step reasoning or open-ended analytical judgment."
 
@@ -69,10 +69,10 @@ Two sources of ambiguity detected:
 
 1. **AMBIGUOUS_COMPLEXITY**: Complexity signals conflict — single-hop structure suggests simpler route, but editorial quality judgment exceeds mechanical rewriting. Tension between structural complexity (low) and output quality complexity (high).
 
-2. **BOUNDARY_CASE**: Sonnet-opus gap of 0.02 is negligible. Opus disqualifier relies on narrow structural observation.
+2. **BOUNDARY_CASE**: Sonnet-opus gap of 0.02 is negligible. Opus exclusion relies on narrow structural observation.
 
 **Output:**
-tier_disqualifiers:
+route_exclusions:
   - route: haiku
     reason: "Query requires editorial judgment to distinguish key points from expendable detail during the conciseness rewrite, not merely mechanical shortening."
   - route: opus
@@ -87,10 +87,10 @@ ambiguity_tags:
 ## Verification Results
 
 All 17 criteria PASS. Key highlights:
-- Both examples have complete disqualifier coverage
-- No disqualifiers reference model capabilities
+- Both examples have complete exclusion coverage
+- No exclusions reference model capabilities
 - rt-4 flagged with BOUNDARY_CASE (gap 0.04)
 - rt-9 flagged with AMBIGUOUS_COMPLEXITY + BOUNDARY_CASE (gap 0.02, conflicting complexity signals)
-- Agent reasoning traces ambiguity back to disqualifier-writing difficulty
-- Visible confidence differential: haiku disqualifiers "straightforward"/"moderately confident" vs opus disqualifiers "harder"/"narrow observation"
+- Agent reasoning traces ambiguity back to exclusion-writing difficulty
+- Visible confidence differential: haiku exclusions "straightforward"/"moderately confident" vs opus exclusions "harder"/"narrow observation"
 - Tag justifications substantive — not just "scores are close"

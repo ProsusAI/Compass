@@ -46,28 +46,28 @@ User Simulator: [Provides rt-3 with classification from Turn 1: intent_pattern=f
 
 Agent:
 
-**Step 1 — Write tier_disqualifiers**
+**Step 1 — Write route_exclusions**
 
 Using classification: intent_pattern = factual-lookup, complexity_structure = single-hop (from Turn 1 output).
 
-Disqualifier for sonnet:
+Exclusion for sonnet:
 - route: sonnet
   reason: "The query asks for a single common-phrase translation requiring no multi-step reasoning or elaboration."
 
-Disqualifier for opus:
+Exclusion for opus:
 - route: opus
   reason: "The query contains one short phrase with an unambiguous target language and no constraints requiring synthesis or extended analysis."
 
 **Step 2 — Assess ambiguity**
 
-- Disqualifiers straightforward to write
+- Exclusions straightforward to write
 - Classification signals (factual-lookup + single-hop) consistently point to simplest route
 - Quality scores (haiku=0.96, sonnet=0.95, opus=0.94) — all similar but task is definitively simple
 
 No ambiguity conditions apply.
 
 **Output:**
-tier_disqualifiers:
+route_exclusions:
   - route: sonnet
     reason: "The query asks for a single common-phrase translation requiring no multi-step reasoning or elaboration."
   - route: opus
@@ -77,7 +77,7 @@ ambiguity_tags: []
 **Combined RationaleCard for rt-3:**
 intent_pattern: factual-lookup
 complexity_structure: single-hop
-tier_disqualifiers:
+route_exclusions:
   - route: sonnet
     reason: "The query asks for a single common-phrase translation requiring no multi-step reasoning or elaboration."
   - route: opus
@@ -93,7 +93,7 @@ All 18 criteria PASS. Key highlights:
 - **Pipeline handoff correct**: Classification values (factual-lookup, single-hop) from Turn 1 used verbatim in Turn 2
 - **No drift**: Same values in both turns
 - **Full RationaleCard assembled**: All 4 fields present, parseable into valid model
-- **Disqualifiers reference observable properties**: single phrase, no multi-step reasoning, unambiguous target
+- **Exclusions reference observable properties**: single phrase, no multi-step reasoning, unambiguous target
 - **No model capability references**
 - **Clear-cut assessment correct**: No ambiguity tags (quality scores close but task definitively simple)
 - **Full reasoning chain traceable**: complexity → intent → disqualifiers → ambiguity
