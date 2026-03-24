@@ -130,7 +130,7 @@ def test_stratified_split_basic_80_20():
     cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(10)]
     card_set = make_card_set(cards)
 
-    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.8)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set, dev_ratio=0.8)
 
     assert len(dev) == 8
     assert len(holdout) == 2
@@ -151,7 +151,7 @@ def test_stratified_split_singleton_goes_to_dev():
     ]
     card_set = make_card_set(cards)
 
-    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.8)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set, dev_ratio=0.8)
 
     dev_ids = {ex.id for ex in dev}
     assert "ex-solo" in dev_ids
@@ -167,8 +167,8 @@ def test_stratified_split_deterministic():
     cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(20)]
     card_set = make_card_set(cards)
 
-    dev1, holdout1, _ = stratified_split(examples, card_set)
-    dev2, holdout2, _ = stratified_split(list(reversed(examples)), card_set)
+    dev1, holdout1, _, _, _ = stratified_split(examples, card_set)
+    dev2, holdout2, _, _, _ = stratified_split(list(reversed(examples)), card_set)
 
     assert sorted(e.id for e in dev1) == sorted(e.id for e in dev2)
     assert sorted(e.id for e in holdout1) == sorted(e.id for e in holdout2)
@@ -180,7 +180,7 @@ def test_stratified_split_rounding_favors_dev():
     cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(7)]
     card_set = make_card_set(cards)
 
-    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.8)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set, dev_ratio=0.8)
 
     assert len(dev) >= len(holdout)
     assert len(dev) + len(holdout) == 7
@@ -194,7 +194,7 @@ def test_stratified_split_degenerate_single_example():
     cards = [make_card("ex-0", "route-a", "data-analysis", "single-step")]
     card_set = make_card_set(cards)
 
-    dev, holdout, report = stratified_split(examples, card_set)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set)
 
     assert len(dev) == 1
     assert len(holdout) == 0
@@ -210,7 +210,7 @@ def test_stratified_split_preserves_route_balance():
     ]
     card_set = make_card_set(cards)
 
-    dev, holdout, report = stratified_split(examples, card_set)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set)
 
     dev_routes = {ex.expected.route for ex in dev}
     holdout_routes = {ex.expected.route for ex in holdout}
@@ -231,7 +231,7 @@ def test_split_report_ambiguity_tag_distribution():
         cards.append(card)
     card_set = make_card_set(cards)
 
-    _, _, report = stratified_split(examples, card_set)
+    _, _, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set)
 
     tags = report.distributions["ambiguity_tags"]
     total_boundary = tags["dev"].get("BOUNDARY_CASE", 0) + tags["holdout"].get("BOUNDARY_CASE", 0)
@@ -255,7 +255,7 @@ def test_stratified_split_empty_dataset():
     """Empty dataset: both outputs empty."""
     card_set = make_card_set([])
 
-    dev, holdout, report = stratified_split([], card_set)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split([], card_set)
 
     assert len(dev) == 0
     assert len(holdout) == 0
@@ -276,7 +276,7 @@ def test_stratified_split_all_singletons_empty_holdout():
     ]
     card_set = make_card_set(cards)
 
-    dev, holdout, report = stratified_split(examples, card_set)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set)
 
     assert len(dev) == 3
     assert len(holdout) == 0
@@ -289,7 +289,7 @@ def test_stratified_split_custom_ratio():
     cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(10)]
     card_set = make_card_set(cards)
 
-    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.5)
+    dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set, dev_ratio=0.5)
 
     assert len(dev) == 5
     assert len(holdout) == 5

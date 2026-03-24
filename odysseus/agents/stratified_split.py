@@ -69,7 +69,7 @@ def stratified_split(
     examples: list[Example],
     card_set: RationaleCardSet,
     dev_ratio: float = 0.8,
-) -> tuple[list[Example], list[Example], SplitReport]:
+) -> tuple[list[Example], list[Example], RationaleCardSet, RationaleCardSet, SplitReport]:
     """Split annotated examples into dev and holdout sets.
 
     Uses hierarchical priority stratification on
@@ -81,7 +81,7 @@ def stratified_split(
         dev_ratio: Proportion allocated to dev set. Default 0.8.
 
     Returns:
-        (dev_examples, holdout_examples, report)
+        (dev_examples, holdout_examples, dev_card_set, holdout_card_set, report)
 
     Raises:
         SplitMismatchError: If examples and cards don't match by ID.
@@ -132,8 +132,8 @@ def _build_result(
     card_set: RationaleCardSet,
     dev_ratio: float,
     singleton_strata_count: int = 0,
-) -> tuple[list[Example], list[Example], SplitReport]:
-    """Construct the split result with report."""
+) -> tuple[list[Example], list[Example], RationaleCardSet, RationaleCardSet, SplitReport]:
+    """Construct the split result with report and partitioned card sets."""
     dataset_hash = compute_dataset_hash(all_examples)
 
     # Build strata report
@@ -141,6 +141,7 @@ def _build_result(
         lambda: {"total": 0, "dev": 0, "holdout": 0}
     )
     dev_ids = {ex.id for ex in dev}
+    holdout_ids = {ex.id for ex in holdout}
     for ex in all_examples:
         card = card_set.cards[ex.id]
         key = (card.assigned_route, card.intent_pattern, card.complexity_structure)
@@ -168,7 +169,24 @@ def _build_result(
         strata=strata_report,
         distributions=distributions,
     )
-    return dev, holdout, report
+
+    # Partition card set — each split gets only its own example cards
+    dev_card_set = RationaleCardSet(
+        cards={eid: card_set.cards[eid] for eid in dev_ids},
+        dataset_hash=card_set.dataset_hash,
+        registry=card_set.registry,
+        created_at=card_set.created_at,
+        inherited_from=card_set.inherited_from,
+    )
+    holdout_card_set = RationaleCardSet(
+        cards={eid: card_set.cards[eid] for eid in holdout_ids},
+        dataset_hash=card_set.dataset_hash,
+        registry=card_set.registry,
+        created_at=card_set.created_at,
+        inherited_from=card_set.inherited_from,
+    )
+
+    return dev, holdout, dev_card_set, holdout_card_set, report
 
 
 def _compute_distributions(
