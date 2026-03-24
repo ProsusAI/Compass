@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from odysseus.agents.routing_rationale_models import (
     RationaleCard,
     RationaleCardSet,
+    RoutingContext,
     VocabularyRegistry,
 )
 
@@ -309,7 +310,7 @@ async def check_registry_consistency(
 
 async def validate_rationale_card_set(
     card_set: RationaleCardSet,
-    available_routes: set[str],
+    routing_context: RoutingContext,
     dataset_size: int,
     judge_fn: Callable[[str, str], Awaitable[bool]],
 ) -> list[RationaleCheckResult]:
@@ -337,6 +338,7 @@ async def validate_rationale_card_set(
     results.append(await check_registry_consistency(card_set.registry, judge_fn))
 
     # --- Per-card checks ---
+    available_routes = {r.name for r in routing_context.routes}
     for card in card_set.cards.values():
         results.append(check_required_fields(card, card_set.registry))
         results.append(check_vocabulary_membership(card, card_set.registry))

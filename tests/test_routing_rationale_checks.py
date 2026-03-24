@@ -9,7 +9,10 @@ import pytest
 from odysseus.agents.routing_rationale_models import (
     RationaleCard,
     RationaleCardSet,
+    RouteDefinition,
     RouteExclusion,
+    RoutingContext,
+    RoutingDimension,
     VocabularyEntry,
     VocabularyRegistry,
 )
@@ -78,6 +81,18 @@ def _make_card_set(
 
 
 AVAILABLE_ROUTES = {"claude-haiku", "claude-sonnet", "claude-opus"}
+
+_TEST_ROUTING_CONTEXT = RoutingContext(
+    domain="LLM tier routing. Queries span general knowledge.",
+    routes=[
+        RouteDefinition(name="haiku", description="Fast model"),
+        RouteDefinition(name="sonnet", description="Balanced model"),
+        RouteDefinition(name="opus", description="Capable model"),
+    ],
+    routing_dimensions=[
+        RoutingDimension(name="cost", direction="lower_is_better", description="Cost"),
+    ],
+)
 
 
 # A judge_fn that never finds overlap (for non-overlap tests)
@@ -644,10 +659,10 @@ class TestCheckRegistryConsistency:
 class TestValidateRationaleCardSet:
     async def test_clean_card_set_all_pass(self) -> None:
         card = _make_card(
-            assigned_route="claude-sonnet",
+            assigned_route="sonnet",
             route_exclusions=[
-                RouteExclusion(route="claude-haiku", reason="Too weak"),
-                RouteExclusion(route="claude-opus", reason="Overkill"),
+                RouteExclusion(route="haiku", reason="Too weak"),
+                RouteExclusion(route="opus", reason="Overkill"),
             ],
             ambiguity_tags=["AMBIGUOUS_SCOPE"],
         )
@@ -661,7 +676,7 @@ class TestValidateRationaleCardSet:
 
         results = await validate_rationale_card_set(
             card_set=card_set,
-            available_routes=AVAILABLE_ROUTES,
+            routing_context=_TEST_ROUTING_CONTEXT,
             dataset_size=100,
             judge_fn=_no_overlap_judge,
         )
@@ -675,7 +690,7 @@ class TestValidateRationaleCardSet:
         card_set = _make_card_set()
         results = await validate_rationale_card_set(
             card_set=card_set,
-            available_routes=AVAILABLE_ROUTES,
+            routing_context=_TEST_ROUTING_CONTEXT,
             dataset_size=20,
             judge_fn=_no_overlap_judge,
         )
@@ -689,7 +704,7 @@ class TestValidateRationaleCardSet:
         card_set = _make_card_set()
         results = await validate_rationale_card_set(
             card_set=card_set,
-            available_routes=AVAILABLE_ROUTES,
+            routing_context=_TEST_ROUTING_CONTEXT,
             dataset_size=20,
             judge_fn=_no_overlap_judge,
         )
@@ -735,7 +750,7 @@ class TestValidateRationaleCardSet:
         card_set = _make_card_set(cards={"ex-001": card}, registry=registry)
         results = await validate_rationale_card_set(
             card_set=card_set,
-            available_routes=AVAILABLE_ROUTES,
+            routing_context=_TEST_ROUTING_CONTEXT,
             dataset_size=20,
             judge_fn=_no_overlap_judge,
         )
