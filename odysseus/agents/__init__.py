@@ -28,6 +28,9 @@ from odysseus.agents.routing_rationale_checks import (
     find_orphaned_examples,
     validate_rationale_card_set,
 )
+from odysseus.agents.routing_rationale_checks_deterministic import (
+    validate_deterministic,
+)
 from odysseus.agents.routing_rationale_models import (
     RationaleCard,
     RationaleCardSet,
@@ -115,5 +118,6 @@ __all__ = [
     "run_all_checks",
     "save_registry",
     "stratified_split",
+    "validate_deterministic",
     "validate_rationale_card_set",
 ]
