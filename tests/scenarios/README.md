@@ -54,6 +54,13 @@ Test scenarios for the User Input agent, Data Validation agent, and Routing Anal
 
 **Note on routing analysis scenarios (23–28):** These scenarios test LLM-consumed annotation skills. The agent's classifications and rationales are not deterministic — exact vocabulary names and phrasing will vary across runs. Verification criteria focus on structural correctness, reasoning quality, and adherence to the skill procedure rather than exact string matches. The Verification Agent evaluates whether outputs are reasonable, and the transcript serves as a human-readable log for manual review.
 
+### Routing Analysis Agent — Full Pipeline (29–30)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 29 | Startup & Input Validation | Agent reads context dict inputs, initializes registry, fails on missing input |
+| 30 | Full Pipeline | All 4 phases end-to-end: classify → rationale → validate → split |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
