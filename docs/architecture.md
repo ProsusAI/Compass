@@ -36,9 +36,10 @@ graph TD
 | `validated_input_report_path` | `str` | User Input Agent | Data Validation Agent | Filesystem path to the Markdown input report |
 | `eval_score_report` | `ScoreReport` | Eval Runner Agent | Review Agent | Metrics, summary, error breakdown, and run-over-run diff |
 | `prompt_version` | `str` | Prompt Builder Agent / MCP tool param | Eval Runner Agent | Prompt version identifier (e.g. `"v3"`, `"latest"`) |
-| `data_source` | `str` | User Input Agent / MCP tool param | Eval Runner Agent, Data Validation Agent | Path to the JSONL dataset file |
+| `data_source` | `str` | MCP tool param | Eval Runner Agent, Data Validation Agent | Path to the JSONL dataset file |
 | `backend` | `str` | MCP tool param | Eval Runner Agent | Backend label matching a profile in `backends/` |
 | `config_path` | `str` | MCP tool param | Eval Runner Agent | Path to YAML run config (default `outputs/run_config.yaml`) |
+| `routing_context` | `RoutingContext` | Data Validation Agent | Routing Analysis Agent | Domain-agnostic routing config: routes, dimensions, ordering, seed vocabulary |
 
 ## 4. Shared Models
 
@@ -52,7 +53,7 @@ A `RationaleCardSet` maps `example_id` to `RationaleCard` and bundles a `Vocabul
 Dynamic registry of `VocabularyEntry` items across three dimensions: `intent_pattern`, `complexity_structure`, and `ambiguity_tags`. Naming conventions are enforced by cross-field validators. Registry persistence and merge/prune operations live in [`routing_rationale_registry.py`](../odysseus/agents/routing_rationale_registry.py).
 
 **`RoutingContext`** ([`odysseus/agents/routing_rationale_models.py`](../odysseus/agents/routing_rationale_models.py))
-Domain-agnostic routing configuration holding `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the User Input Agent and consumed by the Routing Analysis Agent to scope annotation.
+Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Routing Analysis Agent to scope annotation.
 
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
