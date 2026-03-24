@@ -25,15 +25,19 @@ uv run python -m odysseus.mcp  # Run MCP server locally
 
 ## Project Structure
 
+For detailed architecture, see [`docs/architecture.md`](docs/architecture.md).
+
 ```
 odysseus/              # Main package
   mcp.py               # MCP server entrypoint
-  agents/              # Agent implementations
-  eval/                # Evaluation engine
-  prompts/             # Prompt management
+  agents/              # Domain models, validation, registry ops (see agents/README.md)
+    prompts/           # Agent system prompts (Markdown, surfaced via MCP)
+  eval/                # Evaluation engine (see eval/README.md)
+    docs/              # Eval engine detailed documentation
+  prompts/             # Prompt management (FilePromptManager)
 data/                  # Dataset files (JSONL)
 outputs/               # Run outputs and reports
-prompts/               # Versioned prompt files
+prompts/               # Routing prompt store — versioned prompts (see prompts/README.md)
 tests/                 # Test suite
   scenarios/           # MCP integration test scenarios (runbooks)
   fixtures/integration/# Eval runner integration fixtures
@@ -42,7 +46,7 @@ pyproject.toml         # Project config (uv)
 
 ## Conventions
 
-- All agents are async Python classes
+- Agents are primarily LLM-driven (system prompts in `odysseus/agents/prompts/` surfaced via MCP); `EvalRunnerAgent` is the one code-driven exception
 - Use `pyproject.toml` for project metadata and dependencies (no `requirements.txt`)
 - Keep `uv.lock` committed for reproducibility
 - Environment variables for API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) — never hardcode secrets
