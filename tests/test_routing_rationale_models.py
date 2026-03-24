@@ -17,7 +17,7 @@ from odysseus.agents.routing_rationale_models import (
     RoutingContext,
     RoutingDimension,
     SeedVocabulary,
-    TierDisqualifier,
+    RouteExclusion,
     VocabularyEntry,
     VocabularyRegistry,
 )
@@ -67,40 +67,40 @@ def test_screaming_snake_re_rejects_invalid():
 
 
 # ---------------------------------------------------------------------------
-# TierDisqualifier
+# RouteExclusion
 # ---------------------------------------------------------------------------
 
 
 def test_tier_disqualifier_valid():
-    td = TierDisqualifier(route="claude-haiku", reason="Too simple for haiku tier")
+    td = RouteExclusion(route="claude-haiku", reason="Too simple for haiku tier")
     assert td.route == "claude-haiku"
     assert td.reason == "Too simple for haiku tier"
 
 
 def test_tier_disqualifier_empty_route_rejected():
     with pytest.raises(ValidationError, match="route must be non-empty"):
-        TierDisqualifier(route="", reason="some reason")
+        RouteExclusion(route="", reason="some reason")
 
 
 def test_tier_disqualifier_whitespace_route_rejected():
     with pytest.raises(ValidationError, match="route must be non-empty"):
-        TierDisqualifier(route="   ", reason="some reason")
+        RouteExclusion(route="   ", reason="some reason")
 
 
 def test_tier_disqualifier_empty_reason_rejected():
     with pytest.raises(ValidationError, match="reason must be non-empty"):
-        TierDisqualifier(route="claude-haiku", reason="")
+        RouteExclusion(route="claude-haiku", reason="")
 
 
 def test_tier_disqualifier_whitespace_reason_rejected():
     with pytest.raises(ValidationError, match="reason must be non-empty"):
-        TierDisqualifier(route="claude-haiku", reason="   ")
+        RouteExclusion(route="claude-haiku", reason="   ")
 
 
 def test_tier_disqualifier_round_trip():
-    td = TierDisqualifier(route="claude-haiku", reason="Not capable enough")
+    td = RouteExclusion(route="claude-haiku", reason="Not capable enough")
     data = td.model_dump()
-    td2 = TierDisqualifier(**data)
+    td2 = RouteExclusion(**data)
     assert td2 == td
 
 
@@ -115,8 +115,8 @@ def _make_rationale_card(**overrides) -> RationaleCard:
         assigned_route="claude-sonnet",
         intent_pattern="data-analysis",
         complexity_structure="multi-step-reasoning",
-        tier_disqualifiers=[
-            TierDisqualifier(route="claude-haiku", reason="Requires nuanced reasoning")
+        route_exclusions=[
+            RouteExclusion(route="claude-haiku", reason="Requires nuanced reasoning")
         ],
         ambiguity_tags=["AMBIGUOUS_SCOPE"],
     )
@@ -130,7 +130,7 @@ def test_rationale_card_valid():
     assert card.assigned_route == "claude-sonnet"
     assert card.intent_pattern == "data-analysis"
     assert card.complexity_structure == "multi-step-reasoning"
-    assert len(card.tier_disqualifiers) == 1
+    assert len(card.route_exclusions) == 1
     assert card.ambiguity_tags == ["AMBIGUOUS_SCOPE"]
 
 
@@ -175,8 +175,8 @@ def test_rationale_card_empty_ambiguity_tags_allowed():
 
 
 def test_rationale_card_empty_tier_disqualifiers_allowed():
-    card = _make_rationale_card(tier_disqualifiers=[])
-    assert card.tier_disqualifiers == []
+    card = _make_rationale_card(route_exclusions=[])
+    assert card.route_exclusions == []
 
 
 def test_rationale_card_round_trip():

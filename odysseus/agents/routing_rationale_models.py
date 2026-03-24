@@ -23,12 +23,12 @@ SCREAMING_SNAKE_RE: re.Pattern[str] = re.compile(r"^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$
 
 
 # ---------------------------------------------------------------------------
-# TierDisqualifier
+# RouteExclusion
 # ---------------------------------------------------------------------------
 
 
-class TierDisqualifier(BaseModel):
-    """A single route disqualification record for a rationale card.
+class RouteExclusion(BaseModel):
+    """A single route exclusion record for a rationale card.
 
     Fields:
         route: The route identifier that was ruled out (non-empty).
@@ -53,6 +53,10 @@ class TierDisqualifier(BaseModel):
         return v.strip()
 
 
+# Backwards-compatibility alias (removed in subsequent task updating __init__.py)
+TierDisqualifier = RouteExclusion
+
+
 # ---------------------------------------------------------------------------
 # RationaleCard
 # ---------------------------------------------------------------------------
@@ -66,7 +70,7 @@ class RationaleCard(BaseModel):
         assigned_route: The route this example is assigned to (non-empty).
         intent_pattern: Task type the query represents (kebab-case).
         complexity_structure: Reasoning topology required (kebab-case).
-        tier_disqualifiers: Why specific routes are ruled out.
+        route_exclusions: Why specific routes are ruled out.
         ambiguity_tags: Controlled vocabulary labels for boundary examples
             (each must be SCREAMING_SNAKE_CASE).
     """
@@ -75,7 +79,7 @@ class RationaleCard(BaseModel):
     assigned_route: str
     intent_pattern: str
     complexity_structure: str
-    tier_disqualifiers: list[TierDisqualifier]
+    route_exclusions: list[RouteExclusion]
     ambiguity_tags: list[str]
 
     @field_validator("example_id")
