@@ -58,7 +58,7 @@ def check_required_fields(
         missing.append("intent_pattern")
     if not card.complexity_structure or not card.complexity_structure.strip():
         missing.append("complexity_structure")
-    # tier_disqualifiers and ambiguity_tags may be [] — that is not a failure
+    # route_exclusions and ambiguity_tags may be [] — that is not a failure
 
     passed = len(missing) == 0
     return RationaleCheckResult(
@@ -98,45 +98,45 @@ def check_vocabulary_membership(
     )
 
 
-def check_disqualifier_coverage(
+def check_exclusion_coverage(
     card: RationaleCard,
     available_routes: set[str],
 ) -> RationaleCheckResult:
-    """Check that every route other than assigned_route has a tier disqualifier."""
-    routes_needing_disqualifier = available_routes - {card.assigned_route}
-    covered_routes = {d.route for d in card.tier_disqualifiers}
-    missing_routes = routes_needing_disqualifier - covered_routes
+    """Check that every route other than assigned_route has a route exclusion."""
+    routes_needing_exclusion = available_routes - {card.assigned_route}
+    covered_routes = {d.route for d in card.route_exclusions}
+    missing_routes = routes_needing_exclusion - covered_routes
 
     passed = len(missing_routes) == 0
     return RationaleCheckResult(
         passed=passed,
-        check_name="check_disqualifier_coverage",
+        check_name="check_exclusion_coverage",
         severity="critical",
         details=(
-            "All non-assigned routes have a tier disqualifier."
+            "All non-assigned routes have a route exclusion."
             if passed
-            else f"Routes missing disqualifier: {', '.join(sorted(missing_routes))}"
+            else f"Routes missing exclusion: {', '.join(sorted(missing_routes))}"
         ),
         affected_ids=[] if passed else [card.example_id],
     )
 
 
-def check_disqualifier_format(card: RationaleCard) -> RationaleCheckResult:
-    """Check that each tier disqualifier has a non-empty route and reason."""
+def check_exclusion_format(card: RationaleCard) -> RationaleCheckResult:
+    """Check that each route exclusion has a non-empty route and reason."""
     bad_indices: list[int] = []
-    for i, d in enumerate(card.tier_disqualifiers):
+    for i, d in enumerate(card.route_exclusions):
         if not d.route or not d.route.strip() or not d.reason or not d.reason.strip():
             bad_indices.append(i)
 
     passed = len(bad_indices) == 0
     return RationaleCheckResult(
         passed=passed,
-        check_name="check_disqualifier_format",
+        check_name="check_exclusion_format",
         severity="critical",
         details=(
-            "All tier disqualifiers have non-empty route and reason."
+            "All route exclusions have non-empty route and reason."
             if passed
-            else f"Malformed disqualifiers at indices: {bad_indices}"
+            else f"Malformed exclusions at indices: {bad_indices}"
         ),
         affected_ids=[] if passed else [card.example_id],
     )
@@ -325,7 +325,7 @@ async def validate_rationale_card_set(
     3. find_orphaned_examples
     4. check_registry_consistency
     5. Per-card: check_required_fields, check_vocabulary_membership,
-       check_disqualifier_coverage, check_disqualifier_format,
+       check_exclusion_coverage, check_exclusion_format,
        check_ambiguity_tag_membership (one result per card per check)
     """
     results: list[RationaleCheckResult] = []
@@ -340,8 +340,8 @@ async def validate_rationale_card_set(
     for card in card_set.cards.values():
         results.append(check_required_fields(card, card_set.registry))
         results.append(check_vocabulary_membership(card, card_set.registry))
-        results.append(check_disqualifier_coverage(card, available_routes))
-        results.append(check_disqualifier_format(card))
+        results.append(check_exclusion_coverage(card, available_routes))
+        results.append(check_exclusion_format(card))
         results.append(check_ambiguity_tag_membership(card, card_set.registry))
 
     return results

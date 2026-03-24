@@ -9,7 +9,7 @@ import pytest
 from odysseus.agents.routing_rationale_models import (
     RationaleCard,
     RationaleCardSet,
-    TierDisqualifier,
+    RouteExclusion,
     VocabularyEntry,
     VocabularyRegistry,
 )
@@ -43,20 +43,20 @@ def _make_card(
     assigned_route: str = "claude-sonnet",
     intent_pattern: str = "data-analysis",
     complexity_structure: str = "multi-step-reasoning",
-    tier_disqualifiers: list[TierDisqualifier] | None = None,
+    route_exclusions: list[RouteExclusion] | None = None,
     ambiguity_tags: list[str] | None = None,
 ) -> RationaleCard:
-    if tier_disqualifiers is None:
-        tier_disqualifiers = [
-            TierDisqualifier(route="claude-haiku", reason="Requires nuanced reasoning"),
-            TierDisqualifier(route="claude-opus", reason="Overkill for this task"),
+    if route_exclusions is None:
+        route_exclusions = [
+            RouteExclusion(route="claude-haiku", reason="Requires nuanced reasoning"),
+            RouteExclusion(route="claude-opus", reason="Overkill for this task"),
         ]
     return RationaleCard(
         example_id=example_id,
         assigned_route=assigned_route,
         intent_pattern=intent_pattern,
         complexity_structure=complexity_structure,
-        tier_disqualifiers=tier_disqualifiers,
+        route_exclusions=route_exclusions,
         ambiguity_tags=ambiguity_tags or ["AMBIGUOUS_SCOPE"],
     )
 
@@ -98,8 +98,8 @@ from odysseus.agents.routing_rationale_checks import (  # noqa: E402
     RationaleCheckResult,
     check_ambiguity_tag_membership,
     check_cluster_thresholds,
-    check_disqualifier_coverage,
-    check_disqualifier_format,
+    check_exclusion_coverage,
+    check_exclusion_format,
     check_pruning_cleanup,
     check_registry_consistency,
     check_required_fields,
@@ -186,7 +186,7 @@ class TestCheckRequiredFields:
             assigned_route="",
             intent_pattern="data-analysis",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         result = check_required_fields(card, registry)
@@ -200,7 +200,7 @@ class TestCheckRequiredFields:
             assigned_route="claude-sonnet",
             intent_pattern="",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         result = check_required_fields(card, registry)
@@ -213,7 +213,7 @@ class TestCheckRequiredFields:
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         result = check_required_fields(card, registry)
@@ -247,7 +247,7 @@ class TestCheckVocabularyMembership:
             assigned_route="claude-sonnet",
             intent_pattern="unknown-pattern",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         result = check_vocabulary_membership(card, registry)
@@ -261,7 +261,7 @@ class TestCheckVocabularyMembership:
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="nonexistent-structure",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         result = check_vocabulary_membership(card, registry)
@@ -274,7 +274,7 @@ class TestCheckVocabularyMembership:
             assigned_route="claude-sonnet",
             intent_pattern="foo",
             complexity_structure="bar",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         result = check_vocabulary_membership(card, registry)
@@ -282,95 +282,95 @@ class TestCheckVocabularyMembership:
 
 
 # ---------------------------------------------------------------------------
-# check_disqualifier_coverage
+# check_exclusion_coverage
 # ---------------------------------------------------------------------------
 
 
-class TestCheckDisqualifierCoverage:
+class TestCheckExclusionCoverage:
     def test_full_coverage_passes(self) -> None:
         card = _make_card(
             assigned_route="claude-sonnet",
-            tier_disqualifiers=[
-                TierDisqualifier(route="claude-haiku", reason="Too weak"),
-                TierDisqualifier(route="claude-opus", reason="Overkill"),
+            route_exclusions=[
+                RouteExclusion(route="claude-haiku", reason="Too weak"),
+                RouteExclusion(route="claude-opus", reason="Overkill"),
             ],
         )
-        result = check_disqualifier_coverage(card, AVAILABLE_ROUTES)
+        result = check_exclusion_coverage(card, AVAILABLE_ROUTES)
         assert result.passed is True
         assert result.severity == "critical"
 
-    def test_missing_disqualifier_fails(self) -> None:
+    def test_missing_exclusion_fails(self) -> None:
         card = _make_card(
             assigned_route="claude-sonnet",
             # Only covers haiku, not opus
-            tier_disqualifiers=[
-                TierDisqualifier(route="claude-haiku", reason="Too weak"),
+            route_exclusions=[
+                RouteExclusion(route="claude-haiku", reason="Too weak"),
             ],
         )
-        result = check_disqualifier_coverage(card, AVAILABLE_ROUTES)
+        result = check_exclusion_coverage(card, AVAILABLE_ROUTES)
         assert result.passed is False
         assert card.example_id in result.affected_ids
 
-    def test_no_disqualifiers_needed_when_single_route(self) -> None:
-        """If assigned route is the only route, no disqualifiers needed."""
+    def test_no_exclusions_needed_when_single_route(self) -> None:
+        """If assigned route is the only route, no exclusions needed."""
         card = _make_card(
             assigned_route="claude-sonnet",
-            tier_disqualifiers=[],
+            route_exclusions=[],
         )
-        result = check_disqualifier_coverage(card, {"claude-sonnet"})
+        result = check_exclusion_coverage(card, {"claude-sonnet"})
         assert result.passed is True
 
     def test_empty_available_routes_passes(self) -> None:
-        """Edge case: no available routes means nothing to disqualify."""
-        card = _make_card(assigned_route="claude-sonnet", tier_disqualifiers=[])
-        result = check_disqualifier_coverage(card, set())
+        """Edge case: no available routes means nothing to exclude."""
+        card = _make_card(assigned_route="claude-sonnet", route_exclusions=[])
+        result = check_exclusion_coverage(card, set())
         assert result.passed is True
 
 
 # ---------------------------------------------------------------------------
-# check_disqualifier_format
+# check_exclusion_format
 # ---------------------------------------------------------------------------
 
 
-class TestCheckDisqualifierFormat:
-    def test_valid_disqualifiers_pass(self) -> None:
+class TestCheckExclusionFormat:
+    def test_valid_exclusions_pass(self) -> None:
         card = _make_card()
-        result = check_disqualifier_format(card)
+        result = check_exclusion_format(card)
         assert result.passed is True
         assert result.severity == "critical"
 
-    def test_empty_route_in_disqualifier_fails(self) -> None:
+    def test_empty_route_in_exclusion_fails(self) -> None:
         card = RationaleCard.model_construct(
             example_id="ex-001",
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[
-                TierDisqualifier.model_construct(route="", reason="some reason"),
+            route_exclusions=[
+                RouteExclusion.model_construct(route="", reason="some reason"),
             ],
             ambiguity_tags=[],
         )
-        result = check_disqualifier_format(card)
+        result = check_exclusion_format(card)
         assert result.passed is False
         assert "ex-001" in result.affected_ids
 
-    def test_empty_reason_in_disqualifier_fails(self) -> None:
+    def test_empty_reason_in_exclusion_fails(self) -> None:
         card = RationaleCard.model_construct(
             example_id="ex-001",
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[
-                TierDisqualifier.model_construct(route="claude-haiku", reason=""),
+            route_exclusions=[
+                RouteExclusion.model_construct(route="claude-haiku", reason=""),
             ],
             ambiguity_tags=[],
         )
-        result = check_disqualifier_format(card)
+        result = check_exclusion_format(card)
         assert result.passed is False
 
-    def test_no_disqualifiers_passes(self) -> None:
-        card = _make_card(tier_disqualifiers=[])
-        result = check_disqualifier_format(card)
+    def test_no_exclusions_passes(self) -> None:
+        card = _make_card(route_exclusions=[])
+        result = check_exclusion_format(card)
         assert result.passed is True
 
 
@@ -394,7 +394,7 @@ class TestCheckAmbiguityTagMembership:
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=["UNKNOWN_TAG"],
         )
         result = check_ambiguity_tag_membership(card, registry)
@@ -417,7 +417,7 @@ class TestCheckAmbiguityTagMembership:
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=["SOME_TAG"],
         )
         result = check_ambiguity_tag_membership(card, registry)
@@ -497,7 +497,7 @@ class TestCheckPruningCleanup:
             assigned_route="claude-sonnet",
             intent_pattern="code-generation",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         card_set = _make_card_set(cards={"ex-001": card}, registry=registry)
@@ -512,7 +512,7 @@ class TestCheckPruningCleanup:
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="unknown-structure",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=[],
         )
         card_set = _make_card_set(cards={"ex-001": card}, registry=registry)
@@ -526,7 +526,7 @@ class TestCheckPruningCleanup:
             assigned_route="claude-sonnet",
             intent_pattern="data-analysis",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[],
+            route_exclusions=[],
             ambiguity_tags=["DELETED_TAG"],
         )
         card_set = _make_card_set(cards={"ex-001": card}, registry=registry)
@@ -645,9 +645,9 @@ class TestValidateRationaleCardSet:
     async def test_clean_card_set_all_pass(self) -> None:
         card = _make_card(
             assigned_route="claude-sonnet",
-            tier_disqualifiers=[
-                TierDisqualifier(route="claude-haiku", reason="Too weak"),
-                TierDisqualifier(route="claude-opus", reason="Overkill"),
+            route_exclusions=[
+                RouteExclusion(route="claude-haiku", reason="Too weak"),
+                RouteExclusion(route="claude-opus", reason="Overkill"),
             ],
             ambiguity_tags=["AMBIGUOUS_SCOPE"],
         )
@@ -702,8 +702,8 @@ class TestValidateRationaleCardSet:
         per_card_checks = {
             "check_required_fields",
             "check_vocabulary_membership",
-            "check_disqualifier_coverage",
-            "check_disqualifier_format",
+            "check_exclusion_coverage",
+            "check_exclusion_format",
             "check_ambiguity_tag_membership",
         }
         result_names = [r.check_name for r in results]
@@ -726,9 +726,9 @@ class TestValidateRationaleCardSet:
             assigned_route="claude-sonnet",
             intent_pattern="nonexistent",
             complexity_structure="multi-step-reasoning",
-            tier_disqualifiers=[
-                TierDisqualifier(route="claude-haiku", reason="Too weak"),
-                TierDisqualifier(route="claude-opus", reason="Overkill"),
+            route_exclusions=[
+                RouteExclusion(route="claude-haiku", reason="Too weak"),
+                RouteExclusion(route="claude-opus", reason="Overkill"),
             ],
             ambiguity_tags=[],
         )
