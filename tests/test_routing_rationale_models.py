@@ -171,7 +171,7 @@ def test_rationale_card_empty_ambiguity_tags_allowed():
     assert card.ambiguity_tags == []
 
 
-def test_rationale_card_empty_tier_disqualifiers_allowed():
+def test_rationale_card_empty_route_exclusions_allowed():
     card = _make_rationale_card(route_exclusions=[])
     assert card.route_exclusions == []
 
