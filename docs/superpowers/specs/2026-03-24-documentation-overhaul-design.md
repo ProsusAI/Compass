@@ -83,7 +83,7 @@ Length: as long as the module warrants. The agents directory has significant com
 
 #### `odysseus/eval/README.md`
 
-**Note:** `odysseus/eval/docs/` already contains `README.md`, `architecture.md`, and `backends.md` with substantial coverage. The approach: create a root-level `odysseus/eval/README.md` as the entry point that summarizes the eval engine and links to the existing `docs/` subdirectory for deep dives. Do not duplicate content — the root README orients, the `docs/` subdirectory details.
+**Note:** `odysseus/eval/docs/` already contains `README.md`, `architecture.md`, and `backends.md` with substantial coverage. The approach: create a new root-level `odysseus/eval/README.md` (distinct from `odysseus/eval/docs/README.md`) as the entry point that summarizes the eval engine and links to the existing `docs/` subdirectory for deep dives. The root README orients; `docs/` details. Do not duplicate content between them.
 
 - **How the eval engine works:** Controller orchestrates backends, dataset, metrics, collector.
 - **Protocol-based DI:** How `RunDependencies` wires implementations to protocols, enabling test doubles.
@@ -104,12 +104,12 @@ Length: as long as the module warrants. The agents directory has significant com
 Move from top-level `prompts/` to `odysseus/agents/prompts/`:
 - `user_input_system.md`
 - `eval_runner_system.md`
-- `eval_runner_system.txt` (duplicate variant — consolidate with `.md` version during move)
+- `eval_runner_system.txt` (duplicate variant — keep `.md`, delete `.txt`, update test to use `.md`)
 - `data_validation_system.md`
 
 Update live code references:
 - `odysseus/mcp.py` — loads `prompts/user_input_system.md` and `prompts/data_validation_system.md` via `_load_text()`. Update paths to `odysseus/agents/prompts/`.
-- `odysseus/agents/eval_runner.py` — constructs `FilePromptManager(prompts_dir=Path("prompts"))` to load `eval_runner_system`. After relocation, this must point to `odysseus/agents/prompts/` instead. Note: `FilePromptManager` is designed for the routing prompt store; using it to load agent prompts is a convenience, not a semantic fit. For now, update the path. If this becomes awkward later, agent prompt loading can be simplified to direct file reads.
+- `odysseus/agents/eval_runner.py` — constructs `FilePromptManager(prompts_dir=Path("prompts"))` to load `eval_runner_system`. After relocation, this must point to `odysseus/agents/prompts/` instead. Note: `FilePromptManager` resolves paths relative to `_PROJECT_ROOT` — verify this during implementation, as a bare `Path("prompts")` resolved from CWD could break. `FilePromptManager` is designed for the routing prompt store; using it to load agent prompts is a convenience, not a semantic fit. For now, update the path. If this becomes awkward later, agent prompt loading can be simplified to direct file reads.
 - `tests/test_eval_runner_prompt.py` — resolves `PROMPTS_DIR` as project root `prompts/` and also uses `FilePromptManager`. Update both.
 - `CLAUDE.md` — if it references prompt locations.
 
