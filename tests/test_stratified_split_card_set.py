@@ -72,14 +72,8 @@ def _make_card_set(examples, cards, registry):
 
 def test_split_returns_five_elements():
     """stratified_split returns (dev, holdout, dev_cards, holdout_cards, report)."""
-    examples = [
-        _make_example(f"ex{i}", f"query {i}", "route-a")
-        for i in range(1, 5)
-    ]
-    cards = {
-        ex.id: _make_card(ex.id, "route-a", "direct-question", "single-step")
-        for ex in examples
-    }
+    examples = [_make_example(f"ex{i}", f"query {i}", "route-a") for i in range(1, 5)]
+    cards = {ex.id: _make_card(ex.id, "route-a", "direct-question", "single-step") for ex in examples}
     registry = _make_registry()
     card_set = _make_card_set(examples, cards, registry)
 
@@ -93,20 +87,12 @@ def test_split_returns_five_elements():
 
 def test_split_card_sets_match_examples():
     """Dev/holdout card sets contain exactly the cards for their examples."""
-    examples = [
-        _make_example(f"ex{i}", f"query {i}", "route-a")
-        for i in range(1, 11)
-    ]
-    cards = {
-        ex.id: _make_card(ex.id, "route-a", "direct-question", "single-step")
-        for ex in examples
-    }
+    examples = [_make_example(f"ex{i}", f"query {i}", "route-a") for i in range(1, 11)]
+    cards = {ex.id: _make_card(ex.id, "route-a", "direct-question", "single-step") for ex in examples}
     registry = _make_registry()
     card_set = _make_card_set(examples, cards, registry)
 
-    dev_ex, holdout_ex, dev_cards, holdout_cards, report = stratified_split(
-        examples, card_set
-    )
+    dev_ex, holdout_ex, dev_cards, holdout_cards, report = stratified_split(examples, card_set)
 
     dev_ids = {ex.id for ex in dev_ex}
     holdout_ids = {ex.id for ex in holdout_ex}
@@ -117,14 +103,8 @@ def test_split_card_sets_match_examples():
 
 def test_split_card_sets_share_registry():
     """Both dev and holdout card sets have the same registry."""
-    examples = [
-        _make_example(f"ex{i}", f"query {i}", "route-a")
-        for i in range(1, 5)
-    ]
-    cards = {
-        ex.id: _make_card(ex.id, "route-a", "direct-question", "single-step")
-        for ex in examples
-    }
+    examples = [_make_example(f"ex{i}", f"query {i}", "route-a") for i in range(1, 5)]
+    cards = {ex.id: _make_card(ex.id, "route-a", "direct-question", "single-step") for ex in examples}
     registry = _make_registry()
     card_set = _make_card_set(examples, cards, registry)
 
@@ -141,9 +121,7 @@ def test_degenerate_single_example_all_to_dev():
     registry = _make_registry()
     card_set = _make_card_set(examples, cards, registry)
 
-    dev_ex, holdout_ex, dev_cards, holdout_cards, _ = stratified_split(
-        examples, card_set
-    )
+    dev_ex, holdout_ex, dev_cards, holdout_cards, _ = stratified_split(examples, card_set)
 
     assert len(dev_ex) == 1
     assert len(holdout_ex) == 0
