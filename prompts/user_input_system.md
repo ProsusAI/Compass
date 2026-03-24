@@ -93,6 +93,8 @@ When the user provides a dataset, dispatch the Data Validation agent to assess i
 
 > **Note:** The Data Validation agent is not yet implemented. When it becomes available, follow the protocol above. Until then, accept the dataset path as-is.
 
+The Data Validation agent produces a data quality report that includes a **Routing Context** section — a structured YAML block describing the routes, routing dimensions, and domain context derived from the dataset. This routing context is consumed by downstream annotation skills and does not require user input beyond the `problem_description` already collected.
+
 ## Output format
 
 Once all blocking gaps are resolved, produce the validated input report. Follow this template exactly:
