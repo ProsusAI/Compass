@@ -1,12 +1,12 @@
-# Disqualifier Writing Guidelines
+# Route Exclusion Writing Guidelines
 
-A `tier_disqualifier` explains why a specific route was not assigned to a query. Every disqualifier must reference observable properties of the query itself — not what any route target is capable of.
+A `route_exclusion` explains why a specific route was not assigned to a query. Every exclusion must reference observable properties of the query itself — not what any route target is capable of.
 
 ---
 
 ## DO: Reference Observable Query Properties
 
-Disqualifiers must be grounded in what is visible in the query text.
+Exclusions must be grounded in what is visible in the query text.
 
 | Good | Why it works |
 |---|---|
@@ -19,20 +19,20 @@ Disqualifiers must be grounded in what is visible in the query text.
 
 ## DON'T: Reference Route Target Capabilities
 
-Disqualifiers must not explain a route's limitations or internal workings.
+Exclusions must not explain a route's limitations or internal workings.
 
 | Bad | Why it fails |
 |---|---|
-| "This route's model cannot handle multi-step reasoning." | Describes the route, not the query. |
-| "That tier lacks web access." | States a capability gap, not a query property. |
+| "This route cannot handle multi-step reasoning." | Describes the route, not the query. |
+| "That route lacks web access." | States a capability gap, not a query property. |
 | "The assigned route is better at creative tasks." | Explains the winner, not the loser. |
-| "Route X is too expensive for this simple query." | Cost or resource reasoning is not a query property. |
+| "This route is too expensive for this simple query." | Cost or resource reasoning is not a query property. |
 
 ---
 
 ## Route Field Requirements
 
-- The `route` field must be copied verbatim from the dataset's expected route values.
+- The `route` field must be copied verbatim from `routing_context.routes`.
 - Do not paraphrase, abbreviate, or translate route identifiers. They are opaque strings.
 
 **Correct:**
@@ -53,7 +53,7 @@ route: "Search-Grounded"   # wrong: wrong case
 
 - Each `reason` is a **single sentence** — no conjunctions that create compound sentences.
 - Each `reason` is **non-empty** — a blank or placeholder string is an annotation error.
-- **Coverage**: every route in `all_routes` that is not the `ground_truth_route` must have at least one disqualifier entry.
+- **Coverage**: every route in `routing_context.routes` that is not the `ground_truth_route` must have at least one exclusion entry.
 
 **Correct (one route, one reason):**
 ```yaml
