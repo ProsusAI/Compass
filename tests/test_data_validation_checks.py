@@ -53,8 +53,11 @@ class TestSchemaFinding:
 
     def test_fail_finding(self) -> None:
         f = SchemaFinding(
-            field="input", status="fail", severity="critical",
-            violation="missing key", row_indices=[0, 2],
+            field="input",
+            status="fail",
+            severity="critical",
+            violation="missing key",
+            row_indices=[0, 2],
         )
         assert f.status == "fail"
         assert f.severity == "critical"

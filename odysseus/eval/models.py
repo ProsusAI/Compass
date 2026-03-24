@@ -172,8 +172,8 @@ class RunConfig(BaseModel):
 class ModelCostQuality(BaseModel):
     """Per-model cost and quality data for a routing option."""
 
-    cost: float
-    quality_score: float
+    cost: float | None = None
+    quality_score: float | None = None
 
 
 class Expected(BaseModel):
@@ -183,11 +183,9 @@ class Expected(BaseModel):
     routes: dict[str, ModelCostQuality]
 
     @model_validator(mode="after")
-    def route_must_be_in_routes(self) -> Expected:
+    def validate_routes_not_empty(self) -> Expected:
         if not self.routes:
             raise ValueError("routes must contain at least one entry")
-        if self.route not in self.routes:
-            raise ValueError(f"route {self.route!r} must be a key in routes, got keys: {list(self.routes.keys())}")
         return self
 
 

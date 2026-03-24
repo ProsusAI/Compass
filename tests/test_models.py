@@ -242,6 +242,7 @@ def test_example_config_round_trip():
 class TestModelCostQuality:
     def test_valid_cost_quality(self):
         from odysseus.eval.models import ModelCostQuality
+
         m = ModelCostQuality(cost=0.05, quality_score=0.98)
         assert m.cost == 0.05
         assert m.quality_score == 0.98
@@ -249,6 +250,7 @@ class TestModelCostQuality:
     def test_negative_cost_allowed(self):
         """No range constraints per spec — normalization is conversational."""
         from odysseus.eval.models import ModelCostQuality
+
         m = ModelCostQuality(cost=-1.0, quality_score=2.0)
         assert m.cost == -1.0
         assert m.quality_score == 2.0
@@ -257,6 +259,7 @@ class TestModelCostQuality:
 class TestExpected:
     def test_valid_expected(self):
         from odysseus.eval.models import Expected
+
         e = Expected(
             route="opus",
             routes={
@@ -267,16 +270,20 @@ class TestExpected:
         assert e.route == "opus"
         assert e.routes["opus"].cost == 0.05
 
-    def test_route_must_be_in_routes(self):
+    def test_route_not_in_routes_is_accepted(self):
+        """route_in_routes mismatch is a validation warning, not a model error."""
         from odysseus.eval.models import Expected
-        with pytest.raises(ValueError, match="route .* must be a key in routes"):
-            Expected(
-                route="gpt-4o",
-                routes={"opus": {"cost": 0.05, "quality_score": 0.98}},
-            )
+
+        e = Expected(
+            route="gpt-4o",
+            routes={"opus": {"cost": 0.05, "quality_score": 0.98}},
+        )
+        assert e.route == "gpt-4o"
+        assert "opus" in e.routes
 
     def test_routes_must_be_non_empty(self):
         from odysseus.eval.models import Expected
+
         with pytest.raises(ValueError, match="routes must contain at least one entry"):
             Expected(route="opus", routes={})
 
@@ -284,6 +291,7 @@ class TestExpected:
 class TestExampleNewSchema:
     def test_valid_example_string_input(self):
         from odysseus.eval.models import Example
+
         ex = Example(
             id="ex-1",
             input="Explain quantum entanglement",
@@ -302,6 +310,7 @@ class TestExampleNewSchema:
 
     def test_split_must_be_dev_or_holdout(self):
         from odysseus.eval.models import Example
+
         with pytest.raises(ValueError):
             Example(
                 id="ex-1",

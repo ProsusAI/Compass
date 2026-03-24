@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from odysseus.eval.backends.litellm_backend import LiteLLMBackend
 from odysseus.eval.backends.profile import BackendProfile
+
+if TYPE_CHECKING:
+    from odysseus.eval.protocols import Backend
 
 
 class BackendRegistry:
@@ -27,13 +30,24 @@ class BackendRegistry:
             raise KeyError(f"Unknown backend profile: '{label}'. Available: {list(self._profiles.keys())}")
         return self._profiles[label]
 
-    def create_backend(self, label: str) -> LiteLLMBackend:
+    def create_backend(self, label: str) -> Backend:
         profile = self.get_profile(label)
-        if profile.type == "mock_echo":
+        if profile.provider == "mock_echo":
             from odysseus.eval.backends.mock_echo import MockEchoBackend
 
-            return MockEchoBackend(profile)  # type: ignore[return-value]
-        return LiteLLMBackend(profile)
+            return MockEchoBackend(profile)
+        elif profile.provider == "openai":
+            from odysseus.eval.backends.openai_backend import OpenAIBackend
+
+            return OpenAIBackend(profile)
+        elif profile.provider == "bedrock":
+            from odysseus.eval.backends.bedrock_backend import BedrockBackend
+
+            return BedrockBackend(profile)
+        else:
+            from odysseus.eval.backends.anthropic_backend import AnthropicBackend
+
+            return AnthropicBackend(profile)
 
     def list_profiles(self) -> list[str]:
         return list(self._profiles.keys())

@@ -1,24 +1,32 @@
-"""LiteLLM backend — unified client for all LLM providers."""
+"""Anthropic backend — direct SDK client for Anthropic API."""
 
 from __future__ import annotations
 
 import os
 from typing import Any
 
-import litellm
-from pydantic import SecretStr
+import anthropic
 
 from odysseus.eval.backends.profile import BackendProfile
 from odysseus.eval.models import Example, TokenUsage
 from odysseus.eval.pricing import ModelPricing
 
 
-class LiteLLMBackend:
+class AnthropicBackend:
     def __init__(self, profile: BackendProfile) -> None:
         self._profile = profile
-        self._api_key: SecretStr | None = None
+        api_key: str | None = None
         if profile.api_key_env:
-            self._api_key = SecretStr(os.environ[profile.api_key_env])
+            api_key = os.environ[profile.api_key_env]
+
+        client_kwargs: dict[str, Any] = {}
+        if api_key:
+            client_kwargs["api_key"] = api_key
+        if profile.api_base:
+            client_kwargs["base_url"] = profile.api_base
+        client_kwargs.update(profile.provider_params)
+
+        self._client = anthropic.AsyncAnthropic(**client_kwargs)
 
     @property
     def model_name(self) -> str:
@@ -30,20 +38,15 @@ class LiteLLMBackend:
 
     async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
         kwargs: dict[str, Any] = {}
-
-        if self._api_key:
-            kwargs["api_key"] = self._api_key.get_secret_value()
-        if self._profile.api_base:
-            kwargs["base_url"] = self._profile.api_base
         if self._profile.max_tokens is not None:
             kwargs["max_tokens"] = self._profile.max_tokens
+        else:
+            kwargs["max_tokens"] = 1024
         if self._profile.temperature is not None:
             kwargs["temperature"] = self._profile.temperature
-
-        kwargs.update(self._profile.provider_params)
         kwargs.update(self._profile.extra_params)
 
-        response = await litellm.acompletion(
+        response = await self._client.messages.create(
             model=self._profile.model,
             messages=[{"role": "user", "content": prompt}],
             **kwargs,
@@ -51,9 +54,9 @@ class LiteLLMBackend:
 
         usage = response.usage
         token_usage = TokenUsage(
-            input_tokens=usage.prompt_tokens,
+            input_tokens=usage.input_tokens,
             cached_tokens=getattr(usage, "cache_read_input_tokens", 0),
-            output_tokens=usage.completion_tokens,
+            output_tokens=usage.output_tokens,
         )
-        output = {"content": response.choices[0].message.content}
+        output = {"content": response.content[0].text}
         return output, token_usage

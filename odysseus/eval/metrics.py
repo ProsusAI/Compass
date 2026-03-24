@@ -157,12 +157,12 @@ def compute_cost_quality_reduction(
 
         oracle_route = ex.expected.route
 
-        baseline_cost += routes[baseline_class].cost
-        baseline_quality += routes[baseline_class].quality_score
-        predicted_cost += routes[pred_route].cost if pred_route else 0.0
-        predicted_quality += routes[pred_route].quality_score if pred_route else 0.0
-        oracle_cost += routes[oracle_route].cost
-        oracle_quality += routes[oracle_route].quality_score
+        baseline_cost += routes[baseline_class].cost or 0.0
+        baseline_quality += routes[baseline_class].quality_score or 0.0
+        predicted_cost += (routes[pred_route].cost or 0.0) if pred_route else 0.0
+        predicted_quality += (routes[pred_route].quality_score or 0.0) if pred_route else 0.0
+        oracle_cost += routes[oracle_route].cost or 0.0
+        oracle_quality += routes[oracle_route].quality_score or 0.0
         counted += 1
 
     if counted == 0:
@@ -187,7 +187,7 @@ def _select_baseline_class(examples: list[Example]) -> str:
 
     for ex in examples:
         for cls, data in ex.expected.routes.items():
-            quality_sums[cls] = quality_sums.get(cls, 0.0) + data.quality_score
+            quality_sums[cls] = quality_sums.get(cls, 0.0) + (data.quality_score or 0.0)
             quality_counts[cls] = quality_counts.get(cls, 0) + 1
 
     # Highest mean quality; tie-break by alphabetically first class name

@@ -15,7 +15,7 @@ class BackendProfile(BaseModel):
     """Validated backend configuration loaded from YAML."""
 
     model: str
-    type: Literal["litellm", "mock_echo"] = "litellm"
+    provider: Literal["anthropic", "openai", "bedrock", "mock_echo"] = "anthropic"
     pricing: ModelPricing | None = None
     api_key_env: str | None = None
     api_base: str | None = None
