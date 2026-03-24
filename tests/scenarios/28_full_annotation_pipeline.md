@@ -8,6 +8,34 @@
   - `odysseus/skills/generate-routing-rationale/SKILL.md`
   - `odysseus/skills/generate-routing-rationale/references/disqualifier-guidelines.md`
 
+```yaml
+routing_context:
+  domain: >
+    LLM model tier routing for query complexity. Queries span general
+    knowledge, mathematics, creative writing, and simple computation.
+  routes:
+    - name: "haiku"
+      description: "Handles simple factual lookups and single-step tasks"
+    - name: "sonnet"
+      description: "Handles moderate tasks requiring multi-step reasoning"
+    - name: "opus"
+      description: "Handles complex analysis with sequential dependencies"
+  routing_dimensions:
+    - name: cost
+      direction: lower_is_better
+      description: "Per-query inference cost"
+    - name: quality_score
+      direction: higher_is_better
+      description: "Response quality rating"
+  route_ordering:
+    dimension: quality_score
+    order: ["haiku", "sonnet", "opus"]
+  seed_vocabulary:
+    intent_pattern: []
+    complexity_structure: []
+    ambiguity_tags: []
+```
+
 ## Scenario Description
 End-to-end annotation of a single example (rt-3: "Translate 'good morning' to Spanish" → haiku) through both skills sequentially. First classify-example determines intent_pattern and complexity_structure, then generate-routing-rationale uses that classification to produce disqualifiers and assess ambiguity. This tests that the two skills chain together correctly — the output of skill 1 feeds into skill 2.
 
@@ -113,7 +141,7 @@ Please follow the generate-routing-rationale skill procedure."
 - [ ] If tags are proposed, the reasoning is documented for human review
 
 ### Full rationale card assembly
-- [ ] The combined output from both skills contains all 4 fields needed for a RationaleCard: intent_pattern, complexity_structure, tier_disqualifiers, ambiguity_tags
+- [ ] The combined output from both skills contains all 4 fields needed for a RationaleCard: intent_pattern, complexity_structure, route_exclusions, ambiguity_tags
 - [ ] The output could be parsed into a valid RationaleCard (kebab-case names, SCREAMING_SNAKE tags, non-empty reasons)
 
 ### Human review log

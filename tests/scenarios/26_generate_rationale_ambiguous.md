@@ -5,6 +5,34 @@
 - Skill: `odysseus/skills/generate-routing-rationale/SKILL.md`
 - Reference: `odysseus/skills/generate-routing-rationale/references/disqualifier-guidelines.md`
 
+```yaml
+routing_context:
+  domain: >
+    LLM model tier routing for query complexity. Queries span general
+    knowledge, mathematics, creative writing, and simple computation.
+  routes:
+    - name: "haiku"
+      description: "Handles simple factual lookups and single-step tasks"
+    - name: "sonnet"
+      description: "Handles moderate tasks requiring multi-step reasoning"
+    - name: "opus"
+      description: "Handles complex analysis with sequential dependencies"
+  routing_dimensions:
+    - name: cost
+      direction: lower_is_better
+      description: "Per-query inference cost"
+    - name: quality_score
+      direction: higher_is_better
+      description: "Response quality rating"
+  route_ordering:
+    dimension: quality_score
+    order: ["haiku", "sonnet", "opus"]
+  seed_vocabulary:
+    intent_pattern: []
+    complexity_structure: []
+    ambiguity_tags: []
+```
+
 ## Scenario Description
 The generate-routing-rationale skill is run on two examples that sit near routing boundaries: rt-4 (summarize + draft questions → sonnet, but close to opus) and rt-9 (rewrite for conciseness → sonnet, but close to haiku). These examples have small quality score gaps between adjacent tiers, making the routing decision genuinely ambiguous. The agent should produce disqualifiers and SHOULD flag at least one ambiguity tag for at least one of these examples.
 

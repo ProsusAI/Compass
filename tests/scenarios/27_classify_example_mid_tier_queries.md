@@ -5,6 +5,34 @@
 - Skill: `odysseus/skills/classify-example/SKILL.md`
 - Reference: `odysseus/skills/classify-example/references/vocabulary-registry-rules.md`
 
+```yaml
+routing_context:
+  domain: >
+    LLM model tier routing for query complexity. Queries span general
+    knowledge, mathematics, creative writing, and simple computation.
+  routes:
+    - name: "haiku"
+      description: "Handles simple factual lookups and single-step tasks"
+    - name: "sonnet"
+      description: "Handles moderate tasks requiring multi-step reasoning"
+    - name: "opus"
+      description: "Handles complex analysis with sequential dependencies"
+  routing_dimensions:
+    - name: cost
+      direction: lower_is_better
+      description: "Per-query inference cost"
+    - name: quality_score
+      direction: higher_is_better
+      description: "Response quality rating"
+  route_ordering:
+    dimension: quality_score
+    order: ["haiku", "sonnet", "opus"]
+  seed_vocabulary:
+    intent_pattern: []
+    complexity_structure: []
+    ambiguity_tags: []
+```
+
 ## Scenario Description
 The classify-example skill is run on the two sonnet-routed examples: rt-4 (summarize + draft questions) and rt-9 (rewrite for conciseness). These sit between simple lookups and complex multi-step analysis. The agent must determine where they fall on the complexity spectrum and assign intent patterns that reflect their task types. A registry with entries from both simple and complex queries is provided.
 

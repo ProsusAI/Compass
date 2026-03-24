@@ -5,6 +5,34 @@
 - Skill: `odysseus/skills/classify-example/SKILL.md`
 - Reference: `odysseus/skills/classify-example/references/vocabulary-registry-rules.md`
 
+```yaml
+routing_context:
+  domain: >
+    LLM model tier routing for query complexity. Queries span general
+    knowledge, mathematics, creative writing, and simple computation.
+  routes:
+    - name: "haiku"
+      description: "Handles simple factual lookups and single-step tasks"
+    - name: "sonnet"
+      description: "Handles moderate tasks requiring multi-step reasoning"
+    - name: "opus"
+      description: "Handles complex analysis with sequential dependencies"
+  routing_dimensions:
+    - name: cost
+      direction: lower_is_better
+      description: "Per-query inference cost"
+    - name: quality_score
+      direction: higher_is_better
+      description: "Response quality rating"
+  route_ordering:
+    dimension: quality_score
+    order: ["haiku", "sonnet", "opus"]
+  seed_vocabulary:
+    intent_pattern: []
+    complexity_structure: []
+    ambiguity_tags: []
+```
+
 ## Scenario Description
 The classify-example skill is run on three complex queries routed to opus (rt-2: economic policy comparison, rt-6: persuasive essay with counterarguments, rt-8: customer support pattern analysis). These represent multi-step reasoning tasks. The agent should identify higher complexity structures and distinct intent patterns compared to the simple queries. A pre-populated registry from scenario 23 is provided so the agent must decide whether existing entries fit or new ones are needed.
 
