@@ -220,3 +220,21 @@ def test_stratified_split_preserves_route_balance():
     assert "route-b" in dev_routes
     assert "route-a" in holdout_routes
     assert "route-b" in holdout_routes
+
+
+def test_split_report_ambiguity_tag_distribution():
+    """Report includes raw counts for ambiguity tags across dev/holdout."""
+    examples = [make_example(f"ex-{i}", f"query-{i}", "route-a") for i in range(10)]
+    cards = []
+    for i in range(10):
+        card = make_card(f"ex-{i}", "route-a", "data-analysis", "single-step")
+        if i < 3:
+            card = card.model_copy(update={"ambiguity_tags": ["BOUNDARY_CASE"]})
+        cards.append(card)
+    card_set = make_card_set(cards)
+
+    _, _, report = stratified_split(examples, card_set)
+
+    tags = report.distributions["ambiguity_tags"]
+    total_boundary = tags["dev"].get("BOUNDARY_CASE", 0) + tags["holdout"].get("BOUNDARY_CASE", 0)
+    assert total_boundary == 3
