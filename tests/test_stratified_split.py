@@ -13,7 +13,12 @@ from odysseus.agents.routing_rationale_models import (
     VocabularyEntry,
     VocabularyRegistry,
 )
-from odysseus.agents.stratified_split import SplitMismatchError, SplitReport, validate_split_inputs
+from odysseus.agents.stratified_split import (
+    SplitMismatchError,
+    SplitReport,
+    stratified_split,
+    validate_split_inputs,
+)
 from odysseus.eval.models import Example, Expected, ModelCostQuality
 
 
@@ -117,3 +122,101 @@ def test_validate_split_inputs_extra_card():
     card_set = make_card_set(cards)
     with pytest.raises(SplitMismatchError, match="ex-2"):
         validate_split_inputs(examples, card_set)
+
+
+def test_stratified_split_basic_80_20():
+    """10 examples in one stratum: 8 dev, 2 holdout."""
+    examples = [make_example(f"ex-{i}", f"query-{i}", "route-a") for i in range(10)]
+    cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(10)]
+    card_set = make_card_set(cards)
+
+    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.8)
+
+    assert len(dev) == 8
+    assert len(holdout) == 2
+    assert report.dev_count == 8
+    assert report.holdout_count == 2
+    assert report.total_examples == 10
+
+
+def test_stratified_split_singleton_goes_to_dev():
+    """A stratum with 1 member goes to dev; larger strata still split."""
+    examples = [
+        *[make_example(f"ex-{i}", f"query-{i}", "route-a") for i in range(10)],
+        make_example("ex-solo", "query-solo", "route-b"),
+    ]
+    cards = [
+        *[make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(10)],
+        make_card("ex-solo", "route-b", "code-generation", "multi-step"),
+    ]
+    card_set = make_card_set(cards)
+
+    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.8)
+
+    dev_ids = {ex.id for ex in dev}
+    assert "ex-solo" in dev_ids
+    assert report.singleton_strata_count == 1
+    assert len(holdout) > 0
+    holdout_ids = {ex.id for ex in holdout}
+    assert "ex-solo" not in holdout_ids
+
+
+def test_stratified_split_deterministic():
+    """Same inputs in different order produce same split."""
+    examples = [make_example(f"ex-{i}", f"query-{i}", "route-a") for i in range(20)]
+    cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(20)]
+    card_set = make_card_set(cards)
+
+    dev1, holdout1, _ = stratified_split(examples, card_set)
+    dev2, holdout2, _ = stratified_split(list(reversed(examples)), card_set)
+
+    assert sorted(e.id for e in dev1) == sorted(e.id for e in dev2)
+    assert sorted(e.id for e in holdout1) == sorted(e.id for e in holdout2)
+
+
+def test_stratified_split_rounding_favors_dev():
+    """When stratum size doesn't divide cleanly, dev gets the extra."""
+    examples = [make_example(f"ex-{i}", f"query-{i}", "route-a") for i in range(7)]
+    cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(7)]
+    card_set = make_card_set(cards)
+
+    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.8)
+
+    assert len(dev) >= len(holdout)
+    assert len(dev) + len(holdout) == 7
+    assert report.dev_count == 6
+    assert report.holdout_count == 1
+
+
+def test_stratified_split_degenerate_single_example():
+    """Dataset with 1 example: all to dev, empty holdout."""
+    examples = [make_example("ex-0", "query-0", "route-a")]
+    cards = [make_card("ex-0", "route-a", "data-analysis", "single-step")]
+    card_set = make_card_set(cards)
+
+    dev, holdout, report = stratified_split(examples, card_set)
+
+    assert len(dev) == 1
+    assert len(holdout) == 0
+
+
+def test_stratified_split_preserves_route_balance():
+    """Both dev and holdout have examples from each route."""
+    examples = (
+        [make_example(f"a-{i}", f"query-a-{i}", "route-a") for i in range(10)]
+        + [make_example(f"b-{i}", f"query-b-{i}", "route-b") for i in range(10)]
+    )
+    cards = (
+        [make_card(f"a-{i}", "route-a", "data-analysis", "single-step") for i in range(10)]
+        + [make_card(f"b-{i}", "route-b", "code-generation", "multi-step") for i in range(10)]
+    )
+    card_set = make_card_set(cards)
+
+    dev, holdout, report = stratified_split(examples, card_set)
+
+    dev_routes = {ex.expected.route for ex in dev}
+    holdout_routes = {ex.expected.route for ex in holdout}
+    assert "route-a" in dev_routes
+    assert "route-b" in dev_routes
+    assert "route-a" in holdout_routes
+    assert "route-b" in holdout_routes
