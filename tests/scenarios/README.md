@@ -61,6 +61,28 @@ Test scenarios for the User Input agent, Data Validation agent, and Routing Anal
 | 29 | Startup & Input Validation | Agent reads context dict inputs, initializes registry, fails on missing input |
 | 30 | Full Pipeline | All 4 phases end-to-end: classify → rationale → validate → split |
 
+### Validation → Routing Analysis Integration (31–36)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 31 | Happy Path | Clean validation → all 4 routing analysis phases complete |
+| 32 | Small Dataset + Degenerate Split | Volume warnings propagated, stratified_split on 5 rows |
+| 33 | Imbalanced Tiers | 9:1 haiku:opus skew, split constraints on single-example tier |
+| 34 | Two-Route Dataset | Binary routing (haiku + opus only), reduced exclusions and strata |
+| 35 | Warnings Don't Block | Non-critical null_fields and route_in_routes warnings propagate without blocking |
+| 36 | Borderline Examples | Ambiguous queries, potential semantic overlap → validation loop |
+
+### Full Pipeline — Input → Validation → Routing Analysis (37–42)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 37 | Full Happy Path | All 3 stages succeed sequentially, complete output contract |
+| 38 | Fix and Revalidate | Broken dataset → user fixes → re-validation → full analysis |
+| 39 | Defaults Cascade | Minimal input, defaults propagate to split ratio in Phase 4 |
+| 40 | Vague Description | Weak problem description → data-derived routing context |
+| 41 | Re-Validation Changes Context | Dataset switch changes routing_context (2 routes → 3 routes) |
+| 42 | Volume Warning Proceed | Tiny dataset (2 rows), user proceeds despite warning |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
@@ -81,6 +103,8 @@ Claude Code will:
    - **Scenarios 13–18, 22:** Data Validation Agent using the `odysseus_data_validation` MCP prompt, connected to the Odysseus MCP tools.
    - **Scenarios 06, 19–21:** Both agents run in sequence — User Input Agent first, then Data Validation Agent on the submitted dataset.
    - **Scenarios 23–28:** Routing Analysis Agent — the agent reads SKILL.md files and follows the annotation procedures. No MCP tools are called; the agent produces structured text output evaluated by the Verification Agent.
+   - **Scenarios 31–36:** Data Validation Agent first (via `odysseus_data_validation` prompt), then Routing Analysis Agent (via `odysseus_routing_analysis` prompt with skills and MCP tools). Context dict drives handoff between stages.
+   - **Scenarios 37–42:** All three agents run in sequence — User Input Agent first (via `odysseus_routing_input` prompt), then Data Validation Agent (via `odysseus_data_validation` prompt), then Routing Analysis Agent (via `odysseus_routing_analysis` prompt with skills and MCP tools).
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
    - Pass user message → active Agent
@@ -139,5 +163,8 @@ Test datasets live in `tests/scenarios/data/`:
 | `type_errors_dataset.jsonl` | Numeric id, numeric input, string costs, null values |
 | `small_dataset.jsonl` | 2 rows, below minimum volume per tier |
 | `rationale_test_dataset.jsonl` | 10 rows, 3 tiers (haiku/sonnet/opus), mixed complexity for annotation skill testing |
+| `two_route_dataset.jsonl` | 8 rows, 2 tiers (haiku/opus), binary routing |
+| `warnings_dataset.jsonl` | 10 rows, 3 tiers, null values in non-required fields (triggers null_fields warning) |
+| `borderline_dataset.jsonl` | 10 rows, 3 tiers, ambiguous tier-boundary queries for semantic overlap testing |
 
 See the design spec at `docs/superpowers/specs/2026-03-23-thp-146-integration-tests-design.md` for full details.
