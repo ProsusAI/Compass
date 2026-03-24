@@ -38,6 +38,18 @@ Present the `volume_assessment` from the tool output. Show per-tier verdicts. St
 
 Present the `query_length` stats from the tool output: min, max, mean, and p95 character lengths.
 
+### 6. Routing Context
+
+Synthesize a `routing_context` block for downstream annotation skills. Derive it from the dataset and the user's problem description:
+
+- **`domain`**: Two sentences. First: what the routing system decides (from the problem description and dataset structure). Second: what topics and domains the queries cover (sample queries across routes and summarize the topic clusters you observe).
+- **`routes`**: One entry per route found in the `consistent_model_set`. For each route, examine a few example queries assigned to it and write a one-sentence description of what that route typically handles.
+- **`routing_dimensions`**: One entry per numeric field in `expected.routes` (e.g., `cost`, `quality_score`). Infer `direction` from the field semantics (`cost` → `lower_is_better`, `quality_score` → `higher_is_better`).
+- **`route_ordering`**: If routes have a natural ordering along one dimension (e.g., capability tiers), include it. If routes are unordered (e.g., specialized tools), omit this field.
+- **`seed_vocabulary`**: Leave all lists empty unless a prior annotation run's vocabulary is available.
+
+Present the routing context as a fenced YAML code block. This block will be consumed verbatim by the routing analysis agent.
+
 ## Decision rules
 
 Use the `severity` field on each schema finding to determine how to present it:
@@ -47,6 +59,7 @@ Use the `severity` field on each schema finding to determine how to present it:
 - If volume adequacy overall verdict is `"fail"`: flag as a **warning** — the dataset can proceed but results may be unreliable for under-covered tiers.
 - If label distribution has imbalanced tiers: flag as **informational** — note which tiers are underrepresented.
 - If all checks pass and volume is adequate: the dataset is **ready** for downstream processing.
+- The **Routing Context** section is always included, even when the dataset has critical issues. Downstream agents need the routing context to understand the domain even when re-validation is required.
 
 ## Available tools
 
