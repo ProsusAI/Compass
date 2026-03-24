@@ -12,14 +12,14 @@ Design for the Routing Analysis Agent system prompt that unifies the annotation 
 
 The agent reads all inputs from context dict keys at startup:
 
-| Key | Source | Description |
-|-----|--------|-------------|
-| `validated_input_report_path` | Input Agent | Markdown report with confirmed problem description, metrics, thresholds, split ratio |
-| `data_quality_report_path` | Data Validation Agent | `DataQualityReport` JSON — schema findings, label distribution, volume assessment |
-| `routing_context_path` | Data Validation Agent | `RoutingContext` YAML — domain, routes, dimensions, ordering, seed vocabulary |
-| `dataset_path` | Data Validation Agent | Path to the validated JSONL dataset |
+| Key | Type | Source | Description |
+|-----|------|--------|-------------|
+| `validated_input_report_path` | `str` (file path) | Input Agent | Markdown report with confirmed problem description, metrics, thresholds, split ratio |
+| `data_quality_report` | `DataQualityReport` | Data Validation Agent | Schema findings, label distribution, volume assessment (returned via tool, not a file path) |
+| `routing_context` | `RoutingContext` | Data Validation Agent | Domain, routes, dimensions, ordering, seed vocabulary |
+| `dataset_path` | `str` (file path) | Data Validation Agent | Path to the validated JSONL dataset |
 
-If any input is missing or unreadable, the agent fails immediately with a clear message — no partial processing.
+Key naming follows the existing architecture doc convention: objects are passed directly (no `_path` suffix), file references use `_path`. If any input is missing or unreadable, the agent fails immediately with a clear message — no partial processing.
 
 ## MCP Tools
 
@@ -30,9 +30,14 @@ Code-driven, deterministic operations exposed as MCP tools:
 | `create_seed_registry()` | Initialize vocabulary registry with 4 canonical ambiguity tags | Phase 1 |
 | `resolve_registry(dataset_hash)` | Check if a prior registry exists for this dataset | Phase 1 |
 | `validate_rationale_card_set(card_set, routing_context, dataset_size)` | Run deterministic per-card + dataset-level checks (no LLM judge) | Phase 3 |
+| `prune_registry(registry, dataset_size)` | Remove entries below cluster threshold; returns `(pruned_registry, removed_entries_map)` | Phase 3 |
 | `stratified_split(examples, card_set, dev_ratio)` | Split examples + card set into dev/holdout matched pairs | Phase 4 |
 
-The `stratified_split` function is extended to also partition the `RationaleCardSet` by `example_id`, returning `dev_card_set` and `holdout_card_set` alongside the example splits.
+**Implementation notes:**
+
+- **`validate_rationale_card_set`**: The existing Python function requires a `judge_fn` parameter for the async LLM-judged `check_registry_consistency` call. The MCP tool wrapper calls the deterministic sub-checks directly (skipping `check_registry_consistency`), rather than invoking the top-level function with a no-op judge. Semantic overlap is handled separately by the `check-semantic-overlap` skill.
+- **`resolve_registry`**: The underlying function takes `(dataset_hash, registry_dir, inherit_from)`. The MCP tool supplies a default `registry_dir` based on the run's output path.
+- **`stratified_split`** (to be extended): Currently returns `tuple[list[Example], list[Example], SplitReport]`. Must be extended to also partition the `RationaleCardSet` by `example_id`, returning `tuple[list[Example], list[Example], RationaleCardSet, RationaleCardSet, SplitReport]` (dev examples, holdout examples, dev card set, holdout card set, split report).
 
 ## Skills
 
@@ -67,11 +72,12 @@ Located at `odysseus/skills/check-semantic-overlap/SKILL.md`. Created following 
 
 ### Phase 3 — Validation & Fix Loop (max 5 retries)
 
-1. Call `validate_rationale_card_set()` tool (deterministic checks)
-2. Activate `check-semantic-overlap` skill (LLM-judged overlap)
-3. If all checks pass → proceed to Phase 4
-4. If failures → auto-fix affected cards/registry, write checkpoint, retry
-5. If still failing after 5 retries → surface to user with detailed error report
+1. Prune registry entries below cluster threshold (`prune_registry`)
+2. Call `validate_rationale_card_set()` tool (deterministic checks on post-pruning state)
+3. Activate `check-semantic-overlap` skill (LLM-judged overlap)
+4. If all checks pass → proceed to Phase 4
+5. If failures → auto-fix affected cards/registry, write checkpoint, retry
+6. If still failing after 5 retries → surface to user with detailed error report
 
 ### Phase 4 — Split & Output
 
@@ -92,7 +98,7 @@ For large datasets, the agent may use a two-pass internal strategy (survey first
 
 ## Checkpointing & Scratch Space
 
-**Scratch directory:** `scratch/<run_id>/` (where `run_id` = dataset hash + timestamp)
+**Scratch directory:** `scratch/<run_id>/` (where `run_id` = dataset content hash, deterministic for a given dataset)
 
 | Checkpoint | Written after | Contents |
 |------------|--------------|----------|
@@ -104,7 +110,7 @@ For large datasets, the agent may use a two-pass internal strategy (survey first
 
 **Cleanup:** On successful Phase 4 completion, the entire `scratch/<run_id>/` directory is deleted. Final artifacts live in `outputs/` only.
 
-**Recovery:** If an existing `scratch/<run_id>/` directory is detected on startup (same dataset hash), the agent reads the latest checkpoint and resumes from that phase.
+**Recovery:** If an existing `scratch/<run_id>/` directory is detected on startup (same dataset hash), the agent reads the latest checkpoint and resumes from that phase. Recovery only applies when the dataset hash matches. A changed dataset produces a new `run_id` and starts fresh.
 
 ## Error Handling
 
@@ -136,7 +142,7 @@ Outputs are partitioned to prevent information leakage between dev and holdout s
 | `dev_jsonl_path` | Dev split examples |
 | `vocabulary_registry_path` | Full vocabulary registry |
 | `split_report_path` | Split statistics and distribution report |
-| `routing_context_path` | Routing context (passed through) |
+| `routing_context` | `RoutingContext` object (passed through from input) |
 
 ### To Final Reporting Agent only
 
@@ -146,6 +152,8 @@ Outputs are partitioned to prevent information leakage between dev and holdout s
 | `holdout_jsonl_path` | Holdout split examples |
 
 The holdout card set and examples are never sent to the Prompt Builder Agent.
+
+Dataset provenance (`dataset_hash`) is embedded in the `RationaleCardSet` and `SplitReport` artifacts, allowing downstream agents to verify they're operating on the correct dataset.
 
 ## System Prompt Structure
 
@@ -160,6 +168,15 @@ The system prompt file (`odysseus/agents/prompts/routing_analysis_system.md`) fo
 7. **Validation & Error Handling** — Fix strategies by check type, 5-attempt retry cap
 8. **Output Contract** — Context dict keys split by downstream consumer
 9. **Constraints** — Information leakage prevention, deterministic split guarantees
+
+## Required Documentation Updates
+
+The following changes to `docs/architecture.md` must accompany implementation (per project rules):
+
+- Add `data_quality_report` and `dataset_path` to the Context Dict Reference table (set by Data Validation Agent)
+- Update the Data Validation Agent's "Writes to Context" column to include `data_quality_report` and `dataset_path` as named context keys
+- Add all output context keys (`dev_rationale_card_set_path`, `dev_jsonl_path`, `vocabulary_registry_path`, `split_report_path`, `holdout_rationale_card_set_path`, `holdout_jsonl_path`) to the Context Dict Reference
+- Update the Routing Analysis Agent row with input/output keys and status
 
 ## Design Decisions
 
