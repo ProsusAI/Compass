@@ -18,26 +18,31 @@ All other fields (`model`, `api_key_env`, `api_base`, `pricing`, `requests_per_m
 
 ## Provider Backend Classes
 
-Three new files in `odysseus/eval/backends/`, each implementing the `Backend` protocol:
+Three new files in `odysseus/eval/backends/`, each implementing the `Backend` protocol.
+
+**Common behavior**: The `prompt` string is sent as a single user message (`{"role": "user", "content": prompt}`) for all providers. No system message is used — the eval engine's prompt already contains all instructions inline. `provider_params` are passed to **client construction**, `extra_params` are splatted into the **SDK call**. Exceptions propagate unchanged to the caller (no wrapping or translation).
 
 ### `anthropic_backend.py`
 
-- Client: `anthropic.AsyncAnthropic(api_key=..., base_url=...)`
-- Call: `client.messages.create(model=..., messages=[...], **kwargs)`
-- Token mapping: `usage.input_tokens`, `usage.cache_read_input_tokens` (fallback 0), `usage.output_tokens`
+- Client: `anthropic.AsyncAnthropic(api_key=..., base_url=..., **provider_params)`
+- Call: `client.messages.create(model=..., max_tokens=..., messages=[{"role": "user", "content": prompt}], **extra_params)`
+- Response content: `response.content[0].text`
+- Token mapping: `response.usage.input_tokens`, `getattr(response.usage, "cache_read_input_tokens", 0)`, `response.usage.output_tokens`
 
 ### `openai_backend.py`
 
-- Client: `openai.AsyncOpenAI(api_key=..., base_url=...)`
-- Call: `client.chat.completions.create(model=..., messages=[...], **kwargs)`
-- Token mapping: `usage.prompt_tokens` → `input_tokens`, `usage.prompt_tokens_details.cached_tokens` (fallback 0) → `cached_tokens`, `usage.completion_tokens` → `output_tokens`
+- Client: `openai.AsyncOpenAI(api_key=..., base_url=..., **provider_params)`
+- Call: `client.chat.completions.create(model=..., messages=[{"role": "user", "content": prompt}], **extra_params)`
+- Response content: `response.choices[0].message.content`
+- Token mapping: `usage.prompt_tokens` → `input_tokens`, `getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) or 0` → `cached_tokens`, `usage.completion_tokens` → `output_tokens`
 
 ### `bedrock_backend.py`
 
-- Client: `anthropic.AsyncAnthropicBedrock(aws_session=boto3.Session(), aws_region=...)` — uses the Anthropic SDK's native Bedrock support
-- Authentication: `boto3.Session()` with standard AWS credential chain
+- Client: `anthropic.AsyncAnthropicBedrock(aws_session=boto3.Session(), aws_region=...)` — uses the Anthropic SDK's native Bedrock support. Session and client created once in `__init__`.
+- Authentication: `boto3.Session(**provider_params)` with standard AWS credential chain
 - Region: from `provider_params.get("region_name")` or boto3 default
-- Call and token mapping: same as `anthropic_backend.py`
+- Call, response content extraction, and token mapping: same as `anthropic_backend.py`
+- `extra_params` splatted into `messages.create()` call
 
 ### Deleted
 
@@ -62,7 +67,7 @@ All imports are lazy (inside dispatch branches) to avoid importing unused SDKs.
 |---|---|
 | Remove | `litellm>=1.50.0` |
 | Add | `boto3>=1.34.0` |
-| Keep | `anthropic>=0.40.0`, `openai>=1.0.0` |
+| Keep | `anthropic>=0.40.0` (includes `AsyncAnthropicBedrock`), `openai>=1.40.0` (includes `prompt_tokens_details`) |
 
 ## Test Changes
 
