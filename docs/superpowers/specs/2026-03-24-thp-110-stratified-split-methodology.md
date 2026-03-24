@@ -32,10 +32,17 @@ The original THP-110 spec included methodology selection, embedding model declar
 
 ## Inputs
 
-| Input | Source | Description |
+The split function receives two separate data structures and joins them internally:
+
+| Input | Python type | Description |
 |---|---|---|
-| Annotated dataset | Output of `classify-example` + `generate-routing-rationale` | Each example has: `id`, `query`, `route`, `intent_pattern`, `complexity_structure`, `route_exclusions`, `ambiguity_tags` |
-| Split ratio | Pipeline config | Default `0.8` dev / `0.2` holdout |
+| Original examples | `list[Example]` | Raw dataset examples with `id`, `input` (query text), and `expected.route` |
+| Rationale card set | `RationaleCardSet` | Annotation output keyed by `example_id`, with `assigned_route`, `intent_pattern`, `complexity_structure`, `route_exclusions`, `ambiguity_tags` |
+| Split ratio | `float` | Dev set proportion. Default `0.8` (holdout = `1 - dev_ratio`) |
+
+The function joins examples with their rationale cards by `example_id`. Output records contain both the original example fields and the annotation fields.
+
+**Precondition:** The dataset must contain ≥ 2 examples. If fewer than 2 examples, emit all to `dev.jsonl` and an empty `holdout.jsonl` (degenerate case — no meaningful holdout is possible).
 
 ---
 
@@ -68,10 +75,10 @@ The split is not an LLM skill. It is a code step the agent delegates to entirely
 
 ### Step 1 — Build stratum key
 
-For each example, compute:
+For each example, compute the stratum key from the joined record:
 
 ```
-stratum_key = (route, intent_pattern, complexity_structure)
+stratum_key = (assigned_route, intent_pattern, complexity_structure)
 ```
 
 Group all examples by stratum key.
@@ -85,9 +92,11 @@ Group all examples by stratum key.
 
 For each stratum with ≥ 2 members, assign examples to dev and holdout at the target ratio (default 80/20).
 
-Shuffling is deterministic: the random seed is derived from the dataset hash (computed by `compute_dataset_hash()` in `odysseus.agents.routing_rationale_registry`). Same dataset → same split.
+Shuffling is deterministic: the random seed is derived from the dataset hash (computed by `compute_dataset_hash()` from the `list[Example]` input — see `odysseus.agents.routing_rationale_registry`). Use Python's `random.Random(seed)` for the PRNG. Same dataset → same split.
 
-Rounding: when stratum size does not divide cleanly, round **in favor of dev**. Dev gets the extra example, ensuring holdout is never larger than intended.
+Rounding: when stratum size does not divide cleanly, always round **in favor of dev** regardless of the configured ratio. Dev gets the extra example, ensuring holdout is never larger than intended.
+
+**Edge case:** If all strata are singletons, all examples go to dev and holdout is empty. This is consistent with the algorithm but means holdout evaluation is not possible — the pipeline runner should warn when holdout is empty.
 
 ### Step 4 — Post-hoc ambiguity check
 
@@ -105,7 +114,7 @@ The stratum key dimensions are ordered by importance:
 
 | Priority | Dimension | Rationale |
 |---|---|---|
-| 1 | `route` | Non-negotiable — if dev is missing a route, the optimization loop cannot learn to route to it |
+| 1 | `assigned_route` | Non-negotiable — if dev is missing a route, the optimization loop cannot learn to route to it |
 | 2 | `intent_pattern` | Groups examples by task type within each route — important for few-shot diversity |
 | 3 | `complexity_structure` | Captures reasoning difficulty — useful for balanced evaluation but recoverable if slightly imbalanced |
 
@@ -125,14 +134,14 @@ The stratum key dimensions are ordered by importance:
   "singleton_strata_count": 3,
   "strata": [
     {
-      "key": ["<route>", "<intent_pattern>", "<complexity_structure>"],
+      "key": ["<assigned_route>", "<intent_pattern>", "<complexity_structure>"],
       "total": 12,
       "dev": 10,
       "holdout": 2
     }
   ],
   "distributions": {
-    "route": {
+    "assigned_route": {
       "dev": { "<route>": 0.4 },
       "holdout": { "<route>": 0.42 }
     },
@@ -152,7 +161,7 @@ The stratum key dimensions are ordered by importance:
 }
 ```
 
-The `distributions` section shows normalized proportions for route, intent_pattern, and complexity_structure (for eyeballing divergence) and raw counts for ambiguity_tags (multi-label and sparse).
+The `distributions` section shows normalized proportions for route, intent_pattern, and complexity_structure (for eyeballing divergence) and raw counts for ambiguity_tags (multi-label and sparse — counts may exceed set size since one example can have multiple tags).
 
 ---
 
