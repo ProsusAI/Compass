@@ -1,4 +1,4 @@
 model: mock-echo
-type: mock_echo
+provider: mock_echo
 requests_per_minute: 10000
 tokens_per_minute: 1000000

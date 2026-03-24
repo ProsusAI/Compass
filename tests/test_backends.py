@@ -467,41 +467,53 @@ def _make_run_deps(**overrides: Any) -> RunDependencies:
 
 
 # ---------------------------------------------------------------------------
-# BackendProfile — type field
+# BackendProfile — provider field
 # ---------------------------------------------------------------------------
 
 
-def test_profile_type_defaults_to_litellm(tmp_path: Path):
-    """BackendProfile.type defaults to 'litellm'."""
+def test_profile_provider_defaults_to_anthropic(tmp_path: Path):
+    """BackendProfile.provider defaults to 'anthropic'."""
     profile_path = tmp_path / "default.yaml"
     profile_path.write_text(
         yaml.dump(
             {
-                "model": "gpt-4",
+                "model": "claude-sonnet-4-20250514",
                 "requests_per_minute": 100,
                 "tokens_per_minute": 100000,
             }
         )
     )
     profile = BackendProfile.from_yaml(profile_path)
-    assert profile.type == "litellm"
+    assert profile.provider == "anthropic"
 
 
-def test_profile_type_mock_echo(tmp_path: Path):
-    """BackendProfile.type can be set to 'mock_echo'."""
+def test_profile_provider_mock_echo(tmp_path: Path):
+    """BackendProfile.provider can be set to 'mock_echo'."""
     profile_path = tmp_path / "mock.yaml"
     profile_path.write_text(
         yaml.dump(
             {
                 "model": "mock-echo",
-                "type": "mock_echo",
+                "provider": "mock_echo",
                 "requests_per_minute": 10000,
                 "tokens_per_minute": 1000000,
             }
         )
     )
     profile = BackendProfile.from_yaml(profile_path)
-    assert profile.type == "mock_echo"
+    assert profile.provider == "mock_echo"
+
+
+def test_profile_provider_openai():
+    """BackendProfile.provider can be set to 'openai'."""
+    profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
+    assert profile.provider == "openai"
+
+
+def test_profile_provider_bedrock():
+    """BackendProfile.provider can be set to 'bedrock'."""
+    profile = BackendProfile(model="anthropic.claude-3-sonnet", provider="bedrock", requests_per_minute=100, tokens_per_minute=50000)
+    assert profile.provider == "bedrock"
 
 
 def test_registry_creates_mock_echo_backend(tmp_path: Path):
