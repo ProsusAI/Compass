@@ -238,3 +238,13 @@ def test_split_report_ambiguity_tag_distribution():
     tags = report.distributions["ambiguity_tags"]
     total_boundary = tags["dev"].get("BOUNDARY_CASE", 0) + tags["holdout"].get("BOUNDARY_CASE", 0)
     assert total_boundary == 3
+
+
+def test_public_api_exports():
+    """Key names are importable from odysseus.agents."""
+    from odysseus.agents import SplitMismatchError as _E
+    from odysseus.agents import SplitReport as _R
+    from odysseus.agents import stratified_split as _fn
+    assert _E is not None
+    assert _R is not None
+    assert _fn is not None
