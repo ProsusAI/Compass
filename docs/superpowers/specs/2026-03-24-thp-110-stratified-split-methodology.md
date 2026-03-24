@@ -42,7 +42,9 @@ The split function receives two separate data structures and joins them internal
 
 The function joins examples with their rationale cards by `example_id`. Output records contain both the original example fields and the annotation fields.
 
-**Precondition:** The dataset must contain ≥ 2 examples. If fewer than 2 examples, emit all to `dev.jsonl` and an empty `holdout.jsonl` (degenerate case — no meaningful holdout is possible).
+**Preconditions:**
+- The dataset must contain ≥ 2 examples. If fewer than 2 examples, emit all to `dev.jsonl` and an empty `holdout.jsonl` (degenerate case — no meaningful holdout is possible).
+- Every example must have a corresponding rationale card in `RationaleCardSet.cards`, and vice versa. A mismatch is a pipeline error (raise, do not silently skip) — it means annotation did not complete successfully.
 
 ---
 
@@ -92,7 +94,7 @@ Group all examples by stratum key.
 
 For each stratum with ≥ 2 members, assign examples to dev and holdout at the target ratio (default 80/20).
 
-Shuffling is deterministic: the random seed is derived from the dataset hash (computed by `compute_dataset_hash()` from the `list[Example]` input — see `odysseus.agents.routing_rationale_registry`). Use Python's `random.Random(seed)` for the PRNG. Same dataset → same split.
+Shuffling is deterministic: the random seed is the truncated hex string returned by `compute_dataset_hash()` (from the `list[Example]` input — see `odysseus.agents.routing_rationale_registry`), passed directly as a string to `random.Random(seed)`. Same dataset → same split.
 
 Rounding: when stratum size does not divide cleanly, always round **in favor of dev** regardless of the configured ratio. Dev gets the extra example, ensuring holdout is never larger than intended.
 
@@ -126,7 +128,7 @@ The stratum key dimensions are ordered by importance:
 
 ```json
 {
-  "dataset_hash": "<sha256>",
+  "dataset_hash": "<truncated hex from compute_dataset_hash()>",
   "split_ratio": { "dev": 0.8, "holdout": 0.2 },
   "total_examples": 250,
   "dev_count": 205,
