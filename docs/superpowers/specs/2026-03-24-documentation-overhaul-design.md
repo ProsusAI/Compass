@@ -34,7 +34,7 @@ Layered documentation: a top-level architecture map for 30-second re-entry, modu
 The 30-second re-entry doc. Six sections, all favoring tables and diagrams over prose:
 
 **2.1 Pipeline Overview**
-Mermaid or ASCII diagram showing the full pipeline from user input to final report. Marks each agent's status (done / in progress / planned) and the data flow between them.
+Mermaid diagram showing the full pipeline from user input to final report. Marks each agent's status (done / in progress / planned) and the data flow between them. Mermaid is preferred over ASCII because it renders natively in GitHub and most Markdown viewers.
 
 **2.2 Agent Registry Table**
 One row per agent:
@@ -83,11 +83,11 @@ Length: as long as the module warrants. The agents directory has significant com
 
 #### `odysseus/eval/README.md`
 
+**Note:** `odysseus/eval/docs/` already contains `README.md`, `architecture.md`, and `backends.md` with substantial coverage. The approach: create a root-level `odysseus/eval/README.md` as the entry point that summarizes the eval engine and links to the existing `docs/` subdirectory for deep dives. Do not duplicate content — the root README orients, the `docs/` subdirectory details.
+
 - **How the eval engine works:** Controller orchestrates backends, dataset, metrics, collector.
 - **Protocol-based DI:** How `RunDependencies` wires implementations to protocols, enabling test doubles.
-- **Backend system:** Profiles (YAML), registry, LiteLLM unified client, mock backend.
-- **Rate limiting & resume:** Token-bucket limiter, crash-safe JSONL streaming, resume from partial results.
-- **Results & reporting:** Collector persistence, RunReport/ScoreReport structure, metric diffing.
+- **Links to deep dives:** Point to `docs/architecture.md` for internals and `docs/backends.md` for backend config.
 - **How EvalRunnerAgent wires it:** Config loading, dependency construction, report diffing.
 
 #### `prompts/README.md`
@@ -104,14 +104,18 @@ Length: as long as the module warrants. The agents directory has significant com
 Move from top-level `prompts/` to `odysseus/agents/prompts/`:
 - `user_input_system.md`
 - `eval_runner_system.md`
+- `eval_runner_system.txt` (duplicate variant — consolidate with `.md` version during move)
 - `data_validation_system.md`
 
-Update any references in:
-- MCP server (`odysseus/mcp.py`) — prompt resource paths
-- `CLAUDE.md` — if it references prompt locations
-- Any code that loads these prompts by path
+Update live code references:
+- `odysseus/mcp.py` — loads `prompts/user_input_system.md` and `prompts/data_validation_system.md` via `_load_text()`. Update paths to `odysseus/agents/prompts/`.
+- `odysseus/agents/eval_runner.py` — constructs `FilePromptManager(prompts_dir=Path("prompts"))` to load `eval_runner_system`. After relocation, this must point to `odysseus/agents/prompts/` instead. Note: `FilePromptManager` is designed for the routing prompt store; using it to load agent prompts is a convenience, not a semantic fit. For now, update the path. If this becomes awkward later, agent prompt loading can be simplified to direct file reads.
+- `tests/test_eval_runner_prompt.py` — resolves `PROMPTS_DIR` as project root `prompts/` and also uses `FilePromptManager`. Update both.
+- `CLAUDE.md` — if it references prompt locations.
 
-The top-level `prompts/` becomes unambiguously the routing prompt store.
+Note: `eval_runner_system.md` is not loaded by `mcp.py` (only referenced in historical planning docs). It still moves for consistency.
+
+The top-level `prompts/` becomes the routing prompt store. It will initially be empty after relocation — routing prompts are created during pipeline runs, not checked in. This is expected.
 
 ### 5. `project-overview.md` Update
 
@@ -152,7 +156,8 @@ Add under the existing Project Structure section:
 - `docs/implementation-flow.md` — stays as dev planning artifact
 - `docs/superpowers/specs/*` — stay as historical design records
 - `docs/superpowers/plans/*` — stay as feature planning docs
-- Code, tests, or agent behavior — this is a documentation-only change (except the prompt file relocation)
+- `THP-*.md` files scattered in `odysseus/agents/` and `odysseus/eval/` — historical design tickets, left in place
+- Code, tests, or agent behavior — this is a documentation-only change (except the prompt file relocation and path updates)
 - Integration test scenarios — no changes unless prompt paths are hardcoded in them
 
 ### 9. Content Sourcing
