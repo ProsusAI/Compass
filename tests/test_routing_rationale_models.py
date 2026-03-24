@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -13,15 +13,14 @@ from odysseus.agents.routing_rationale_models import (
     RationaleCard,
     RationaleCardSet,
     RouteDefinition,
+    RouteExclusion,
     RouteOrdering,
     RoutingContext,
     RoutingDimension,
     SeedVocabulary,
-    RouteExclusion,
     VocabularyEntry,
     VocabularyRegistry,
 )
-
 
 # ---------------------------------------------------------------------------
 # Regex constants
@@ -36,12 +35,12 @@ def test_kebab_case_re_matches_valid():
 
 def test_kebab_case_re_rejects_invalid():
     invalid = [
-        "DataAnalysis",   # uppercase
+        "DataAnalysis",  # uppercase
         "data_analysis",  # underscore
         "-leading-dash",  # leading dash
-        "trailing-",      # trailing dash
-        "",               # empty
-        "SCREAMING",      # uppercase
+        "trailing-",  # trailing dash
+        "",  # empty
+        "SCREAMING",  # uppercase
     ]
     for s in invalid:
         assert not KEBAB_CASE_RE.fullmatch(s), f"Expected {s!r} to NOT match KEBAB_CASE_RE"
@@ -115,9 +114,7 @@ def _make_rationale_card(**overrides) -> RationaleCard:
         assigned_route="claude-sonnet",
         intent_pattern="data-analysis",
         complexity_structure="multi-step-reasoning",
-        route_exclusions=[
-            RouteExclusion(route="claude-haiku", reason="Requires nuanced reasoning")
-        ],
+        route_exclusions=[RouteExclusion(route="claude-haiku", reason="Requires nuanced reasoning")],
         ambiguity_tags=["AMBIGUOUS_SCOPE"],
     )
     defaults.update(overrides)
@@ -317,7 +314,7 @@ def _make_card_set(**overrides) -> RationaleCardSet:
         cards={"ex-001": card},
         dataset_hash="abc123def456",
         registry=registry,
-        created_at=datetime(2026, 3, 23, 12, 0, 0, tzinfo=timezone.utc),
+        created_at=datetime(2026, 3, 23, 12, 0, 0, tzinfo=UTC),
     )
     defaults.update(overrides)
     return RationaleCardSet(**defaults)
