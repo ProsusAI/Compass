@@ -370,8 +370,8 @@ async def stratified_split_tool(
     """Split a dataset and card set into dev and holdout partitions.
 
     Writes dev.jsonl, holdout.jsonl, dev_rationale_card_set.json,
-    holdout_rationale_card_set.json, and split_report.json to the same
-    directory as the dataset file.
+    holdout_rationale_card_set.json, and split_report.json to an
+    isolated subdirectory under outputs/ keyed by dataset hash.
 
     Args:
         dataset_path: Absolute path to the JSONL dataset file.
@@ -392,7 +392,8 @@ async def stratified_split_tool(
         examples, card_set, dev_ratio
     )
 
-    output_dir = path.parent
+    output_dir = Path("outputs") / split_report.dataset_hash
+    output_dir.mkdir(parents=True, exist_ok=True)
     dev_path = output_dir / "dev.jsonl"
     holdout_path = output_dir / "holdout.jsonl"
     dev_card_set_path = output_dir / "dev_rationale_card_set.json"

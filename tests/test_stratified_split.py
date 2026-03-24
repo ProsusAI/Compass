@@ -262,8 +262,8 @@ def test_stratified_split_empty_dataset():
     assert report.total_examples == 0
 
 
-def test_stratified_split_all_singletons_empty_holdout():
-    """When every stratum is a singleton, holdout is empty."""
+def test_stratified_split_all_singletons_fallback_to_holdout():
+    """When every stratum is a singleton, fallback redistributes to holdout."""
     examples = [
         make_example("ex-0", "q0", "route-a"),
         make_example("ex-1", "q1", "route-b"),
@@ -278,8 +278,9 @@ def test_stratified_split_all_singletons_empty_holdout():
 
     dev, holdout, _dev_cards, _holdout_cards, report = stratified_split(examples, card_set)
 
-    assert len(dev) == 3
-    assert len(holdout) == 0
+    # Fallback: round(3 * 0.2) = 1 example moved to holdout
+    assert len(dev) == 2
+    assert len(holdout) == 1
     assert report.singleton_strata_count == 3
 
 

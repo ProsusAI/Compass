@@ -270,14 +270,16 @@ class TestExpected:
         assert e.route == "opus"
         assert e.routes["opus"].cost == 0.05
 
-    def test_route_must_be_in_routes(self):
+    def test_route_not_in_routes_is_accepted(self):
+        """route_in_routes mismatch is a validation warning, not a model error."""
         from odysseus.eval.models import Expected
 
-        with pytest.raises(ValueError, match="route .* must be a key in routes"):
-            Expected(
-                route="gpt-4o",
-                routes={"opus": {"cost": 0.05, "quality_score": 0.98}},
-            )
+        e = Expected(
+            route="gpt-4o",
+            routes={"opus": {"cost": 0.05, "quality_score": 0.98}},
+        )
+        assert e.route == "gpt-4o"
+        assert "opus" in e.routes
 
     def test_routes_must_be_non_empty(self):
         from odysseus.eval.models import Expected

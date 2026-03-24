@@ -122,6 +122,16 @@ def stratified_split(
         dev.extend(shuffled[holdout_count:])
         holdout.extend(shuffled[:holdout_count])
 
+    # Fallback: if holdout is empty and there are enough examples,
+    # move some singleton-assigned examples to holdout to avoid a
+    # degenerate split. Uses the same deterministic RNG.
+    target_holdout = round(len(examples) * (1.0 - dev_ratio))
+    if not holdout and target_holdout > 0 and len(dev) > 1:
+        shuffled_dev = sorted(dev, key=lambda ex: ex.id)
+        rng.shuffle(shuffled_dev)
+        holdout = shuffled_dev[:target_holdout]
+        dev = shuffled_dev[target_holdout:]
+
     return _build_result(dev, holdout, examples, card_set, dev_ratio, singleton_count)
 
 
