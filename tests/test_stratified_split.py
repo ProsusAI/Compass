@@ -248,3 +248,48 @@ def test_public_api_exports():
     assert _E is not None
     assert _R is not None
     assert _fn is not None
+
+
+def test_stratified_split_empty_dataset():
+    """Empty dataset: both outputs empty."""
+    card_set = make_card_set([])
+
+    dev, holdout, report = stratified_split([], card_set)
+
+    assert len(dev) == 0
+    assert len(holdout) == 0
+    assert report.total_examples == 0
+
+
+def test_stratified_split_all_singletons_empty_holdout():
+    """When every stratum is a singleton, holdout is empty."""
+    examples = [
+        make_example("ex-0", "q0", "route-a"),
+        make_example("ex-1", "q1", "route-b"),
+        make_example("ex-2", "q2", "route-c"),
+    ]
+    cards = [
+        make_card("ex-0", "route-a", "data-analysis", "single-step"),
+        make_card("ex-1", "route-b", "code-generation", "multi-step"),
+        make_card("ex-2", "route-c", "summarization", "sequential-dependency"),
+    ]
+    card_set = make_card_set(cards)
+
+    dev, holdout, report = stratified_split(examples, card_set)
+
+    assert len(dev) == 3
+    assert len(holdout) == 0
+    assert report.singleton_strata_count == 3
+
+
+def test_stratified_split_custom_ratio():
+    """Custom split ratio is respected."""
+    examples = [make_example(f"ex-{i}", f"q-{i}", "route-a") for i in range(10)]
+    cards = [make_card(f"ex-{i}", "route-a", "data-analysis", "single-step") for i in range(10)]
+    card_set = make_card_set(cards)
+
+    dev, holdout, report = stratified_split(examples, card_set, dev_ratio=0.5)
+
+    assert len(dev) == 5
+    assert len(holdout) == 5
+    assert report.split_ratio == {"dev": 0.5, "holdout": 0.5}
