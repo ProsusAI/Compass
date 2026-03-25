@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -46,7 +47,10 @@ class OpenAIBackend:
 
         response = await self._client.chat.completions.create(
             model=self._profile.model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": example.input},
+            ],
             **kwargs,
         )
 
@@ -60,5 +64,9 @@ class OpenAIBackend:
             cached_tokens=cached,
             output_tokens=usage.completion_tokens or 0,
         )
-        output = {"content": response.choices[0].message.content}
+        content = response.choices[0].message.content or ""
+        try:
+            output: dict[str, Any] = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            output = {"content": content}
         return output, token_usage
