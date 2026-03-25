@@ -1,0 +1,198 @@
+{
+  "cards": {
+    "rt-6": {
+      "example_id": "rt-6",
+      "assigned_route": "opus",
+      "intent_pattern": "analytical-reasoning",
+      "complexity_structure": "complex-multi-step",
+      "route_exclusions": [
+        {
+          "route": "haiku",
+          "reason": "Quality far too low."
+        },
+        {
+          "route": "sonnet",
+          "reason": "Quality insufficient."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-7": {
+      "example_id": "rt-7",
+      "assigned_route": "haiku",
+      "intent_pattern": "factual-lookup",
+      "complexity_structure": "single-step",
+      "route_exclusions": [
+        {
+          "route": "sonnet",
+          "reason": "Equal quality at higher cost."
+        },
+        {
+          "route": "opus",
+          "reason": "Equal quality at highest cost."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-4": {
+      "example_id": "rt-4",
+      "assigned_route": "sonnet",
+      "intent_pattern": "factual-lookup",
+      "complexity_structure": "single-step",
+      "route_exclusions": [
+        {
+          "route": "haiku",
+          "reason": "Quality too low."
+        },
+        {
+          "route": "opus",
+          "reason": "Marginal gain not worth cost."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-5": {
+      "example_id": "rt-5",
+      "assigned_route": "haiku",
+      "intent_pattern": "factual-lookup",
+      "complexity_structure": "single-step",
+      "route_exclusions": [
+        {
+          "route": "sonnet",
+          "reason": "Same quality at higher cost."
+        },
+        {
+          "route": "opus",
+          "reason": "Same quality at highest cost."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-1": {
+      "example_id": "rt-1",
+      "assigned_route": "haiku",
+      "intent_pattern": "factual-lookup",
+      "complexity_structure": "single-step",
+      "route_exclusions": [
+        {
+          "route": "sonnet",
+          "reason": "No quality gain over haiku."
+        },
+        {
+          "route": "opus",
+          "reason": "No quality gain at 25x cost."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-8": {
+      "example_id": "rt-8",
+      "assigned_route": "opus",
+      "intent_pattern": "analytical-reasoning",
+      "complexity_structure": "complex-multi-step",
+      "route_exclusions": [
+        {
+          "route": "haiku",
+          "reason": "Quality far too low."
+        },
+        {
+          "route": "sonnet",
+          "reason": "Quality insufficient."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-3": {
+      "example_id": "rt-3",
+      "assigned_route": "haiku",
+      "intent_pattern": "factual-lookup",
+      "complexity_structure": "single-step",
+      "route_exclusions": [
+        {
+          "route": "sonnet",
+          "reason": "No meaningful quality gain."
+        },
+        {
+          "route": "opus",
+          "reason": "Overkill."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-9": {
+      "example_id": "rt-9",
+      "assigned_route": "sonnet",
+      "intent_pattern": "factual-lookup",
+      "complexity_structure": "single-step",
+      "route_exclusions": [
+        {
+          "route": "haiku",
+          "reason": "Quality too low."
+        },
+        {
+          "route": "opus",
+          "reason": "Marginal gain not worth cost."
+        }
+      ],
+      "ambiguity_tags": []
+    }
+  },
+  "dataset_hash": "sha256-rationale-test-dataset-v1",
+  "registry": {
+    "intent_pattern": [
+      {
+        "name": "factual-lookup",
+        "definition": "Simple factual retrieval, translation, or arithmetic.",
+        "example_ids": [
+          "rt-1",
+          "rt-3",
+          "rt-5",
+          "rt-7",
+          "rt-10",
+          "rt-4",
+          "rt-9"
+        ],
+        "justification": "Covers all simple and moderate queries."
+      },
+      {
+        "name": "analytical-reasoning",
+        "definition": "Multi-faceted analysis, argumentation, or pattern identification.",
+        "example_ids": [
+          "rt-2",
+          "rt-6",
+          "rt-8"
+        ],
+        "justification": "Covers complex analytical tasks."
+      }
+    ],
+    "complexity_structure": [
+      {
+        "name": "single-step",
+        "definition": "A single retrieval or computation step.",
+        "example_ids": [
+          "rt-1",
+          "rt-3",
+          "rt-5",
+          "rt-7",
+          "rt-10",
+          "rt-4",
+          "rt-9"
+        ],
+        "justification": "Simple and moderate tasks."
+      },
+      {
+        "name": "complex-multi-step",
+        "definition": "4+ reasoning steps.",
+        "example_ids": [
+          "rt-2",
+          "rt-6",
+          "rt-8"
+        ],
+        "justification": "Complex analytical tasks."
+      }
+    ],
+    "ambiguity_tags": []
+  },
+  "created_at": "2026-03-24T12:00:00Z",
+  "inherited_from": null
+}

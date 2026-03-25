@@ -171,18 +171,18 @@ class TestOdysseusRoutingInputPrompt:
         from odysseus.mcp import odysseus_routing_input
 
         messages = await odysseus_routing_input()
-        expected = _load_text("prompts/user_input_system.md")
+        expected = _load_text("odysseus/agents/prompts/user_input_system.md")
         assert messages[0].content.text == expected
 
 
 class TestInputAgentResources:
     """Tests for the input agent MCP resources."""
 
-    async def test_clarification_guide_registered(self):
-        """Clarification guide resource is listed."""
+    async def test_clarification_skill_registered(self):
+        """Clarification skill resource is listed."""
         resources = await mcp.list_resources()
         uris = [str(r.uri) for r in resources]
-        assert "odysseus://agents/input/clarification-guide" in uris
+        assert "odysseus://agents/input/clarification-skill" in uris
 
     async def test_defaults_registered(self):
         """Defaults resource is listed."""
@@ -190,11 +190,11 @@ class TestInputAgentResources:
         uris = [str(r.uri) for r in resources]
         assert "odysseus://agents/input/defaults" in uris
 
-    async def test_clarification_guide_returns_content(self):
-        """Clarification guide resource returns non-empty content."""
-        from odysseus.mcp import input_clarification_guide
+    async def test_clarification_skill_returns_content(self):
+        """Clarification skill resource returns non-empty content."""
+        from odysseus.mcp import input_clarification_skill
 
-        content = await input_clarification_guide()
+        content = await input_clarification_skill()
         assert len(content) > 0
         assert "Clarification" in content
 
@@ -266,7 +266,7 @@ class TestLoadText:
 
     def test_loads_existing_file(self):
         """_load_text returns content of an existing file."""
-        content = _load_text("prompts/user_input_system.md")
+        content = _load_text("odysseus/agents/prompts/user_input_system.md")
         assert len(content) > 0
         assert "User Input" in content
 

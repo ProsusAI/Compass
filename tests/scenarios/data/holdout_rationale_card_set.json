@@ -1,0 +1,96 @@
+{
+  "cards": {
+    "rt-10": {
+      "example_id": "rt-10",
+      "assigned_route": "haiku",
+      "intent_pattern": "factual-lookup",
+      "complexity_structure": "single-step",
+      "route_exclusions": [
+        {
+          "route": "sonnet",
+          "reason": "Marginal quality difference."
+        },
+        {
+          "route": "opus",
+          "reason": "Lower quality at highest cost."
+        }
+      ],
+      "ambiguity_tags": []
+    },
+    "rt-2": {
+      "example_id": "rt-2",
+      "assigned_route": "opus",
+      "intent_pattern": "analytical-reasoning",
+      "complexity_structure": "complex-multi-step",
+      "route_exclusions": [
+        {
+          "route": "haiku",
+          "reason": "Quality too low."
+        },
+        {
+          "route": "sonnet",
+          "reason": "Quality insufficient."
+        }
+      ],
+      "ambiguity_tags": []
+    }
+  },
+  "dataset_hash": "sha256-rationale-test-dataset-v1",
+  "registry": {
+    "intent_pattern": [
+      {
+        "name": "factual-lookup",
+        "definition": "Simple factual retrieval, translation, or arithmetic.",
+        "example_ids": [
+          "rt-1",
+          "rt-3",
+          "rt-5",
+          "rt-7",
+          "rt-10",
+          "rt-4",
+          "rt-9"
+        ],
+        "justification": "Covers all simple and moderate queries."
+      },
+      {
+        "name": "analytical-reasoning",
+        "definition": "Multi-faceted analysis, argumentation, or pattern identification.",
+        "example_ids": [
+          "rt-2",
+          "rt-6",
+          "rt-8"
+        ],
+        "justification": "Covers complex analytical tasks."
+      }
+    ],
+    "complexity_structure": [
+      {
+        "name": "single-step",
+        "definition": "A single retrieval or computation step.",
+        "example_ids": [
+          "rt-1",
+          "rt-3",
+          "rt-5",
+          "rt-7",
+          "rt-10",
+          "rt-4",
+          "rt-9"
+        ],
+        "justification": "Simple and moderate tasks."
+      },
+      {
+        "name": "complex-multi-step",
+        "definition": "4+ reasoning steps.",
+        "example_ids": [
+          "rt-2",
+          "rt-6",
+          "rt-8"
+        ],
+        "justification": "Complex analytical tasks."
+      }
+    ],
+    "ambiguity_tags": []
+  },
+  "created_at": "2026-03-24T12:00:00Z",
+  "inherited_from": null
+}

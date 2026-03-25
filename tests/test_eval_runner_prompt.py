@@ -7,7 +7,7 @@ import pytest
 from odysseus.eval.models import ScoreReport
 from odysseus.prompts.manager import FilePromptManager
 
-PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+PROMPTS_DIR = Path(__file__).resolve().parent.parent / "odysseus" / "agents" / "prompts"
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ class TestEvalRunnerPromptExists:
     """The prompt file must exist and be loadable."""
 
     def test_prompt_file_exists(self) -> None:
-        path = PROMPTS_DIR / "eval_runner_system.txt"
+        path = PROMPTS_DIR / "eval_runner_system.md"
         assert path.exists(), f"Expected prompt file at {path}"
 
     def test_prompt_loads_via_manager(self, prompt_manager: FilePromptManager) -> None:

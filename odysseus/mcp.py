@@ -22,6 +22,10 @@ from odysseus.agents.prompt_builder_search_ops import (
     record_eval_result,
     register_candidate,
 )
+from odysseus.agents.routing_rationale_checks_deterministic import validate_deterministic
+from odysseus.agents.routing_rationale_models import RationaleCardSet, RoutingContext, VocabularyRegistry
+from odysseus.agents.routing_rationale_registry import create_seed_registry, prune_registry, resolve_registry
+from odysseus.agents.stratified_split import stratified_split
 from odysseus.eval.models import ScoreReport
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +42,27 @@ def _load_text(relative_path: str) -> str:
     return path.read_text()
 
 
+def _load_examples(path: Path) -> list:
+    """Load Example objects from a JSONL file."""
+    from odysseus.eval.models import Example
+
+    examples = []
+    text = path.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        examples.append(Example.model_validate_json(stripped))
+    return examples
+
+
+def _write_jsonl(path: Path, examples: list) -> None:
+    """Write Example objects to a JSONL file."""
+    with path.open("w", encoding="utf-8") as f:
+        for ex in examples:
+            f.write(ex.model_dump_json() + "\n")
+
+
 mcp = FastMCP("odysseus")
 
 
@@ -48,7 +73,7 @@ async def odysseus_routing_input() -> list[Message]:
     Use when a user wants help with a routing optimization problem.
     Guides the user through providing a complete problem specification.
     """
-    system_prompt = _load_text("prompts/user_input_system.md")
+    system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
     return [UserMessage(content=system_prompt)]
 
 
@@ -59,7 +84,7 @@ async def odysseus_data_validation() -> list[Message]:
     Use after the input agent has produced a validated input report.
     Validates the routing dataset and produces a data quality report.
     """
-    system_prompt = _load_text("prompts/data_validation_system.md")
+    system_prompt = _load_text("odysseus/agents/prompts/data_validation_system.md")
     return [UserMessage(content=system_prompt)]
 
 
@@ -73,10 +98,10 @@ async def odysseus_prompt_builder() -> list[Message]:
     return [UserMessage(content=system_prompt)]
 
 
-@mcp.resource("odysseus://agents/input/clarification-guide")
-async def input_clarification_guide() -> str:
-    """Per-field clarification guidance for the input agent."""
-    return _load_text("odysseus/agents/user_input_clarification_guide.md")
+@mcp.resource("odysseus://agents/input/clarification-skill")
+async def input_clarification_skill() -> str:
+    """Structured clarification skill — conversational strategy for the input agent."""
+    return _load_text("odysseus/agents/skills/structured-clarification.md")
 
 
 @mcp.resource("odysseus://agents/input/defaults")
@@ -414,6 +439,176 @@ async def filter_holdout_dataset_tool(
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     return json.dumps({"filtered_holdout_path": filtered_path})
+
+
+@mcp.prompt()
+async def odysseus_routing_analysis() -> list[Message]:
+    """Activate the Odysseus routing analysis agent.
+
+    Use after the data validation agent has produced a data quality report
+    and routing context. Annotates, validates, and splits the dataset.
+    """
+    system_prompt = _load_text("odysseus/agents/prompts/routing_analysis_system.md")
+    return [UserMessage(content=system_prompt)]
+
+
+@mcp.resource("odysseus://agents/routing-analysis/classify-example-skill")
+async def classify_example_skill() -> str:
+    """Classify-example skill for the Routing Analysis Agent."""
+    return _load_text("odysseus/skills/classify-example/SKILL.md")
+
+
+@mcp.resource("odysseus://agents/routing-analysis/generate-rationale-skill")
+async def generate_rationale_skill() -> str:
+    """Generate-routing-rationale skill for the Routing Analysis Agent."""
+    return _load_text("odysseus/skills/generate-routing-rationale/SKILL.md")
+
+
+@mcp.resource("odysseus://agents/routing-analysis/check-overlap-skill")
+async def check_overlap_skill() -> str:
+    """Check-semantic-overlap skill for the Routing Analysis Agent."""
+    return _load_text("odysseus/skills/check-semantic-overlap/SKILL.md")
+
+
+@mcp.tool()
+async def create_seed_registry_tool() -> str:
+    """Initialize a vocabulary registry with 4 canonical ambiguity tags.
+
+    Returns:
+        JSON-serialized VocabularyRegistry with seed ambiguity tags.
+    """
+    registry = create_seed_registry()
+    return registry.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def resolve_registry_tool(
+    dataset_hash: str,
+    registry_dir: str = "outputs",
+) -> str:
+    """Look up an existing registry by dataset hash.
+
+    Args:
+        dataset_hash: SHA-256 hash (16 hex chars) of the dataset.
+        registry_dir: Directory to search for saved registries. Defaults to "outputs".
+
+    Returns:
+        JSON-serialized VocabularyRegistry if found, or {"found": false, ...}.
+    """
+    registry_path = Path(registry_dir)
+    result = resolve_registry(dataset_hash, registry_path)
+    if result is None:
+        return json.dumps({"found": False, "dataset_hash": dataset_hash, "registry_dir": registry_dir})
+    return result.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def validate_rationale_card_set_tool(
+    card_set_json: str,
+    routing_context_json: str,
+    dataset_size: int,
+) -> str:
+    """Run deterministic validation checks on a rationale card set.
+
+    Does not call an LLM judge; semantic overlap is handled by the
+    check-semantic-overlap skill.
+
+    Args:
+        card_set_json: JSON-serialized RationaleCardSet.
+        routing_context_json: JSON-serialized RoutingContext.
+        dataset_size: Total number of examples in the dataset.
+
+    Returns:
+        JSON array of RationaleCheckResult objects.
+    """
+    card_set = RationaleCardSet.model_validate_json(card_set_json)
+    routing_context = RoutingContext.model_validate_json(routing_context_json)
+    results = validate_deterministic(card_set, routing_context, dataset_size)
+    return json.dumps([r.model_dump() for r in results], indent=2)
+
+
+@mcp.tool()
+async def prune_registry_tool(
+    registry_json: str,
+    dataset_size: int,
+) -> str:
+    """Remove vocabulary entries below the cluster threshold.
+
+    Threshold: max(3, ceil(0.05 * dataset_size)).
+
+    Args:
+        registry_json: JSON-serialized VocabularyRegistry.
+        dataset_size: Total number of examples in the dataset.
+
+    Returns:
+        JSON with pruned_registry and removed_entries.
+    """
+    registry = VocabularyRegistry.model_validate_json(registry_json)
+    pruned_registry, removed_entries = prune_registry(registry, dataset_size)
+    return json.dumps(
+        {
+            "pruned_registry": json.loads(pruned_registry.model_dump_json()),
+            "removed_entries": removed_entries,
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def stratified_split_tool(
+    dataset_path: str,
+    card_set_json: str,
+    dev_ratio: float = 0.8,
+) -> str:
+    """Split a dataset and card set into dev and holdout partitions.
+
+    Writes dev.jsonl, holdout.jsonl, dev_rationale_card_set.json,
+    holdout_rationale_card_set.json, and split_report.json to an
+    isolated subdirectory under outputs/ keyed by dataset hash.
+
+    Args:
+        dataset_path: Absolute path to the JSONL dataset file.
+        card_set_json: JSON-serialized RationaleCardSet.
+        dev_ratio: Proportion allocated to dev set. Defaults to 0.8.
+
+    Returns:
+        JSON with paths to all output files.
+    """
+    path = Path(dataset_path)
+    if not path.is_file():
+        raise ToolError(f"Dataset file not found: {dataset_path}")
+
+    examples = _load_examples(path)
+    card_set = RationaleCardSet.model_validate_json(card_set_json)
+
+    dev_examples, holdout_examples, dev_card_set, holdout_card_set, split_report = stratified_split(
+        examples, card_set, dev_ratio
+    )
+
+    output_dir = Path("outputs") / split_report.dataset_hash
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dev_path = output_dir / "dev.jsonl"
+    holdout_path = output_dir / "holdout.jsonl"
+    dev_card_set_path = output_dir / "dev_rationale_card_set.json"
+    holdout_card_set_path = output_dir / "holdout_rationale_card_set.json"
+    split_report_path = output_dir / "split_report.json"
+
+    _write_jsonl(dev_path, dev_examples)
+    _write_jsonl(holdout_path, holdout_examples)
+    dev_card_set_path.write_text(dev_card_set.model_dump_json(indent=2), encoding="utf-8")
+    holdout_card_set_path.write_text(holdout_card_set.model_dump_json(indent=2), encoding="utf-8")
+    split_report_path.write_text(split_report.model_dump_json(indent=2), encoding="utf-8")
+
+    return json.dumps(
+        {
+            "dev_path": str(dev_path),
+            "holdout_path": str(holdout_path),
+            "dev_card_set_path": str(dev_card_set_path),
+            "holdout_card_set_path": str(holdout_card_set_path),
+            "split_report_path": str(split_report_path),
+        },
+        indent=2,
+    )
 
 
 def main() -> None:

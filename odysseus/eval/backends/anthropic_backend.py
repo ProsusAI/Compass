@@ -1,0 +1,62 @@
+"""Anthropic backend — direct SDK client for Anthropic API."""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import anthropic
+
+from odysseus.eval.backends.profile import BackendProfile
+from odysseus.eval.models import Example, TokenUsage
+from odysseus.eval.pricing import ModelPricing
+
+
+class AnthropicBackend:
+    def __init__(self, profile: BackendProfile) -> None:
+        self._profile = profile
+        api_key: str | None = None
+        if profile.api_key_env:
+            api_key = os.environ[profile.api_key_env]
+
+        client_kwargs: dict[str, Any] = {}
+        if api_key:
+            client_kwargs["api_key"] = api_key
+        if profile.api_base:
+            client_kwargs["base_url"] = profile.api_base
+        client_kwargs.update(profile.provider_params)
+
+        self._client = anthropic.AsyncAnthropic(**client_kwargs)
+
+    @property
+    def model_name(self) -> str:
+        return self._profile.model
+
+    @property
+    def pricing(self) -> ModelPricing | None:
+        return self._profile.pricing
+
+    async def call(self, prompt: str, example: Example) -> tuple[dict[str, Any], TokenUsage]:
+        kwargs: dict[str, Any] = {}
+        if self._profile.max_tokens is not None:
+            kwargs["max_tokens"] = self._profile.max_tokens
+        else:
+            kwargs["max_tokens"] = 1024
+        if self._profile.temperature is not None:
+            kwargs["temperature"] = self._profile.temperature
+        kwargs.update(self._profile.extra_params)
+
+        response = await self._client.messages.create(
+            model=self._profile.model,
+            messages=[{"role": "user", "content": prompt}],
+            **kwargs,
+        )
+
+        usage = response.usage
+        token_usage = TokenUsage(
+            input_tokens=usage.input_tokens,
+            cached_tokens=getattr(usage, "cache_read_input_tokens", 0),
+            output_tokens=usage.output_tokens,
+        )
+        output = {"content": response.content[0].text}
+        return output, token_usage

@@ -1,0 +1,80 @@
+{
+  "dataset_hash": "cda6a91af2714f89",
+  "split_ratio": {
+    "dev": 0.8,
+    "holdout": 0.2
+  },
+  "total_examples": 10,
+  "dev_count": 8,
+  "holdout_count": 2,
+  "singleton_strata_count": 0,
+  "strata": [
+    {
+      "key": [
+        "haiku",
+        "factual-lookup",
+        "single-step"
+      ],
+      "total": 5,
+      "dev": 4,
+      "holdout": 1
+    },
+    {
+      "key": [
+        "opus",
+        "analytical-reasoning",
+        "complex-multi-step"
+      ],
+      "total": 3,
+      "dev": 2,
+      "holdout": 1
+    },
+    {
+      "key": [
+        "sonnet",
+        "factual-lookup",
+        "single-step"
+      ],
+      "total": 2,
+      "dev": 2,
+      "holdout": 0
+    }
+  ],
+  "distributions": {
+    "assigned_route": {
+      "dev": {
+        "haiku": 0.5,
+        "opus": 0.25,
+        "sonnet": 0.25
+      },
+      "holdout": {
+        "haiku": 0.5,
+        "opus": 0.5
+      }
+    },
+    "intent_pattern": {
+      "dev": {
+        "analytical-reasoning": 0.25,
+        "factual-lookup": 0.75
+      },
+      "holdout": {
+        "analytical-reasoning": 0.5,
+        "factual-lookup": 0.5
+      }
+    },
+    "complexity_structure": {
+      "dev": {
+        "complex-multi-step": 0.25,
+        "single-step": 0.75
+      },
+      "holdout": {
+        "complex-multi-step": 0.5,
+        "single-step": 0.5
+      }
+    },
+    "ambiguity_tags": {
+      "dev": {},
+      "holdout": {}
+    }
+  }
+}

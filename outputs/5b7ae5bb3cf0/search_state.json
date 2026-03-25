@@ -1,0 +1,14 @@
+{
+  "search_state_id": "5b7ae5bb3cf0",
+  "backend": "anthropic",
+  "primary_metric_name": null,
+  "round": 0,
+  "pareto_front": [],
+  "round_history": [],
+  "stagnation_count": 0,
+  "stagnation_limit": 3,
+  "convergence_limit": 5,
+  "max_rounds": 50,
+  "mutation_mode": "targeted",
+  "converged": false
+}

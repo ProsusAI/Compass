@@ -10,7 +10,9 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from odysseus.eval.backends.litellm_backend import LiteLLMBackend
+from odysseus.eval.backends.anthropic_backend import AnthropicBackend
+from odysseus.eval.backends.bedrock_backend import BedrockBackend
+from odysseus.eval.backends.openai_backend import OpenAIBackend
 from odysseus.eval.backends.profile import BackendProfile
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import EvalResult, Example, MetricConfig, RunReport, TokenUsage
@@ -32,6 +34,72 @@ def _write_profile(tmp_path: Path, name: str, data: dict) -> Path:
     p = tmp_path / name
     p.write_text(yaml.dump(data))
     return p
+
+
+EXAMPLE = Example(
+    id="ex1",
+    input="hello",
+    expected={
+        "route": "greeting",
+        "routes": {"greeting": {"cost": 0.01, "quality_score": 0.9}},
+    },
+    split="dev",
+)
+
+
+# ---------------------------------------------------------------------------
+# Mock response builders
+# ---------------------------------------------------------------------------
+
+
+def _make_anthropic_mock_response(
+    text: str = "response text",
+    input_tokens: int = 10,
+    output_tokens: int = 20,
+    cache_read_input_tokens: int | None = 5,
+) -> MagicMock:
+    """Build a mock Anthropic response object."""
+    content_block = MagicMock()
+    content_block.text = text
+
+    usage = MagicMock()
+    usage.input_tokens = input_tokens
+    usage.output_tokens = output_tokens
+    if cache_read_input_tokens is not None:
+        usage.cache_read_input_tokens = cache_read_input_tokens
+    else:
+        del usage.cache_read_input_tokens
+
+    resp = MagicMock()
+    resp.content = [content_block]
+    resp.usage = usage
+    return resp
+
+
+def _make_openai_mock_response(
+    content: str = "response text",
+    prompt_tokens: int = 10,
+    completion_tokens: int = 20,
+    cached_tokens: int | None = 5,
+) -> MagicMock:
+    """Build a mock OpenAI response object."""
+    choice = MagicMock()
+    choice.message.content = content
+
+    usage = MagicMock()
+    usage.prompt_tokens = prompt_tokens
+    usage.completion_tokens = completion_tokens
+    if cached_tokens is not None:
+        details = MagicMock()
+        details.cached_tokens = cached_tokens
+        usage.prompt_tokens_details = details
+    else:
+        usage.prompt_tokens_details = None
+
+    resp = MagicMock()
+    resp.choices = [choice]
+    resp.usage = usage
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +261,58 @@ class TestBackendProfileFromYaml:
 
 
 # ---------------------------------------------------------------------------
+# BackendProfile — provider field
+# ---------------------------------------------------------------------------
+
+
+def test_profile_provider_defaults_to_anthropic(tmp_path: Path):
+    """BackendProfile.provider defaults to 'anthropic'."""
+    profile_path = tmp_path / "default.yaml"
+    profile_path.write_text(
+        yaml.dump(
+            {
+                "model": "claude-sonnet-4-20250514",
+                "requests_per_minute": 100,
+                "tokens_per_minute": 100000,
+            }
+        )
+    )
+    profile = BackendProfile.from_yaml(profile_path)
+    assert profile.provider == "anthropic"
+
+
+def test_profile_provider_mock_echo(tmp_path: Path):
+    """BackendProfile.provider can be set to 'mock_echo'."""
+    profile_path = tmp_path / "mock.yaml"
+    profile_path.write_text(
+        yaml.dump(
+            {
+                "model": "mock-echo",
+                "provider": "mock_echo",
+                "requests_per_minute": 10000,
+                "tokens_per_minute": 1000000,
+            }
+        )
+    )
+    profile = BackendProfile.from_yaml(profile_path)
+    assert profile.provider == "mock_echo"
+
+
+def test_profile_provider_openai():
+    """BackendProfile.provider can be set to 'openai'."""
+    profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
+    assert profile.provider == "openai"
+
+
+def test_profile_provider_bedrock():
+    """BackendProfile.provider can be set to 'bedrock'."""
+    profile = BackendProfile(
+        model="anthropic.claude-3-sonnet", provider="bedrock", requests_per_minute=100, tokens_per_minute=50000
+    )
+    assert profile.provider == "bedrock"
+
+
+# ---------------------------------------------------------------------------
 # BackendRegistry
 # ---------------------------------------------------------------------------
 
@@ -247,120 +367,136 @@ class TestBackendRegistry:
         assert reg.list_profiles() == ["custom"]
         assert reg.get_profile("custom") is profile
 
-    def test_registry_create_backend(self) -> None:
-        profile = BackendProfile(**MINIMAL_PROFILE)
-        reg = BackendRegistry(profiles={"gpt": profile})
-        backend = reg.create_backend("gpt")
-        assert isinstance(backend, LiteLLMBackend)
-        assert backend.model_name == "gpt-4o"
+
+# ---------------------------------------------------------------------------
+# Registry — create_backend dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_registry_create_backend_anthropic() -> None:
+    profile = BackendProfile(
+        model="claude-sonnet-4-20250514", provider="anthropic", requests_per_minute=100, tokens_per_minute=50000
+    )
+    reg = BackendRegistry(profiles={"claude": profile})
+    backend = reg.create_backend("claude")
+    assert isinstance(backend, AnthropicBackend)
+    assert backend.model_name == "claude-sonnet-4-20250514"
+
+
+@patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+def test_registry_create_backend_openai(mock_client_cls: MagicMock) -> None:
+    profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
+    reg = BackendRegistry(profiles={"gpt": profile})
+    backend = reg.create_backend("gpt")
+    assert isinstance(backend, OpenAIBackend)
+    assert backend.model_name == "gpt-4o"
+
+
+def test_registry_create_backend_bedrock() -> None:
+    with (
+        patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
+        patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
+    ):
+            profile = BackendProfile(
+                model="anthropic.claude-3-sonnet",
+                provider="bedrock",
+                requests_per_minute=100,
+                tokens_per_minute=50000,
+            )
+            reg = BackendRegistry(profiles={"bedrock": profile})
+            backend = reg.create_backend("bedrock")
+            assert isinstance(backend, BedrockBackend)
+            assert backend.model_name == "anthropic.claude-3-sonnet"
+
+
+def test_registry_create_backend_mock_echo(tmp_path: Path) -> None:
+    """Registry creates MockEchoBackend when profile provider is 'mock_echo'."""
+    backends_dir = tmp_path / "backends"
+    backends_dir.mkdir()
+    (backends_dir / "mock.yaml").write_text(
+        yaml.dump(
+            {
+                "model": "mock-echo",
+                "provider": "mock_echo",
+                "requests_per_minute": 10000,
+                "tokens_per_minute": 1000000,
+            }
+        )
+    )
+    registry = BackendRegistry.from_directory(backends_dir)
+    backend = registry.create_backend("mock")
+
+    from odysseus.eval.backends.mock_echo import MockEchoBackend
+
+    assert isinstance(backend, MockEchoBackend)
 
 
 # ---------------------------------------------------------------------------
-# LiteLLMBackend
+# AnthropicBackend
 # ---------------------------------------------------------------------------
 
-EXAMPLE = Example(
-    id="ex1",
-    input="hello",
-    expected={
-        "route": "greeting",
-        "routes": {"greeting": {"cost": 0.01, "quality_score": 0.9}},
-    },
-    split="dev",
-)
 
-
-def _make_mock_response(
-    content: str = "response text",
-    prompt_tokens: int = 10,
-    completion_tokens: int = 20,
-    cache_read_input_tokens: int | None = 5,
-) -> MagicMock:
-    """Build a mock litellm response object."""
-    choice = MagicMock()
-    choice.message.content = content
-
-    if cache_read_input_tokens is not None:
-        usage = MagicMock()
-        usage.prompt_tokens = prompt_tokens
-        usage.completion_tokens = completion_tokens
-        usage.cache_read_input_tokens = cache_read_input_tokens
-    else:
-        # Simulate usage object that lacks cache_read_input_tokens attr
-        usage = MagicMock(spec=["prompt_tokens", "completion_tokens"])
-        usage.prompt_tokens = prompt_tokens
-        usage.completion_tokens = completion_tokens
-
-    resp = MagicMock()
-    resp.choices = [choice]
-    resp.usage = usage
-    return resp
-
-
-class TestLiteLLMBackend:
+class TestAnthropicBackend:
     def test_backend_model_name(self) -> None:
-        profile = BackendProfile(**MINIMAL_PROFILE)
-        backend = LiteLLMBackend(profile)
-        assert backend.model_name == "gpt-4o"
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514", provider="anthropic", requests_per_minute=100, tokens_per_minute=50000
+        )
+        backend = AnthropicBackend(profile)
+        assert backend.model_name == "claude-sonnet-4-20250514"
 
     def test_backend_pricing_none_by_default(self) -> None:
-        profile = BackendProfile(**MINIMAL_PROFILE)
-        backend = LiteLLMBackend(profile)
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514", provider="anthropic", requests_per_minute=100, tokens_per_minute=50000
+        )
+        backend = AnthropicBackend(profile)
         assert backend.pricing is None
 
     def test_backend_pricing_from_profile(self) -> None:
         pricing = ModelPricing(
-            input_cost_per_million_tokens=2.5,
-            cached_cost_per_million_tokens=1.25,
-            output_cost_per_million_tokens=10.0,
+            input_cost_per_million_tokens=3.0,
+            cached_cost_per_million_tokens=0.3,
+            output_cost_per_million_tokens=15.0,
         )
-        profile = BackendProfile(**{**MINIMAL_PROFILE, "pricing": pricing})
-        backend = LiteLLMBackend(profile)
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            pricing=pricing,
+        )
+        backend = AnthropicBackend(profile)
         assert backend.pricing is pricing
 
     def test_backend_missing_env_var_raises(self) -> None:
-        profile = BackendProfile(**{**MINIMAL_PROFILE, "api_key_env": "NONEXISTENT_KEY_12345"})
-        with pytest.raises(KeyError):
-            LiteLLMBackend(profile)
-
-    def test_backend_api_key_not_in_repr(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("TEST_KEY_SECRET", "sk-super-secret-value")
-        profile = BackendProfile(**{**MINIMAL_PROFILE, "api_key_env": "TEST_KEY_SECRET"})
-        backend = LiteLLMBackend(profile)
-        assert "sk-super-secret-value" not in repr(backend._api_key)
-
-    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
-    async def test_backend_call_passes_kwargs(self, mock_acompletion: AsyncMock) -> None:
-        mock_acompletion.return_value = _make_mock_response()
         profile = BackendProfile(
-            model="gpt-4o",
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
             requests_per_minute=100,
-            tokens_per_minute=50_000,
+            tokens_per_minute=50000,
+            api_key_env="NONEXISTENT_KEY_12345",
+        )
+        with pytest.raises(KeyError):
+            AnthropicBackend(profile)
+
+    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    async def test_backend_call_token_normalisation(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(
+                input_tokens=100,
+                output_tokens=50,
+                cache_read_input_tokens=30,
+            )
+        )
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
             max_tokens=1024,
-            temperature=0.5,
-            api_base="https://custom.api.com",
-            provider_params={"org": "org-1"},
-            extra_params={"top_p": 0.9},
         )
-        backend = LiteLLMBackend(profile)
-        await backend.call("test prompt", EXAMPLE)
-
-        mock_acompletion.assert_called_once()
-        call_kwargs = mock_acompletion.call_args
-        assert call_kwargs.kwargs["model"] == "gpt-4o"
-        assert call_kwargs.kwargs["max_tokens"] == 1024
-        assert call_kwargs.kwargs["temperature"] == 0.5
-        assert call_kwargs.kwargs["base_url"] == "https://custom.api.com"
-        assert call_kwargs.kwargs["org"] == "org-1"
-        assert call_kwargs.kwargs["top_p"] == 0.9
-
-    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
-    async def test_backend_call_token_normalisation(self, mock_acompletion: AsyncMock) -> None:
-        mock_acompletion.return_value = _make_mock_response(
-            prompt_tokens=100, completion_tokens=50, cache_read_input_tokens=30
-        )
-        profile = BackendProfile(**MINIMAL_PROFILE)
-        backend = LiteLLMBackend(profile)
+        backend = AnthropicBackend(profile)
         output, usage = await backend.call("prompt", EXAMPLE)
 
         assert output == {"content": "response text"}
@@ -368,45 +504,292 @@ class TestLiteLLMBackend:
         assert usage.cached_tokens == 30
         assert usage.output_tokens == 50
 
-    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
-    async def test_backend_call_no_cache_tokens(self, mock_acompletion: AsyncMock) -> None:
-        mock_acompletion.return_value = _make_mock_response(
-            prompt_tokens=100, completion_tokens=50, cache_read_input_tokens=None
+    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    async def test_backend_call_no_cache_tokens(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(
+                input_tokens=100,
+                output_tokens=50,
+                cache_read_input_tokens=None,
+            )
         )
-        profile = BackendProfile(**MINIMAL_PROFILE)
-        backend = LiteLLMBackend(profile)
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+        )
+        backend = AnthropicBackend(profile)
         _, usage = await backend.call("prompt", EXAMPLE)
 
         assert usage.cached_tokens == 0
 
-    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
-    async def test_backend_call_minimal_kwargs(self, mock_acompletion: AsyncMock) -> None:
-        mock_acompletion.return_value = _make_mock_response()
-        profile = BackendProfile(**MINIMAL_PROFILE)
-        backend = LiteLLMBackend(profile)
-        await backend.call("prompt", EXAMPLE)
-
-        call_kwargs = mock_acompletion.call_args.kwargs
-        assert "api_key" not in call_kwargs
-        assert "base_url" not in call_kwargs
-        assert "max_tokens" not in call_kwargs
-        assert "temperature" not in call_kwargs
-
-    @patch("odysseus.eval.backends.litellm_backend.litellm.acompletion", new_callable=AsyncMock)
-    async def test_backend_extra_params_overrides_provider_params(self, mock_acompletion: AsyncMock) -> None:
-        mock_acompletion.return_value = _make_mock_response()
+    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    async def test_backend_call_passes_extra_params(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(return_value=_make_anthropic_mock_response())
         profile = BackendProfile(
-            **{
-                **MINIMAL_PROFILE,
-                "provider_params": {"key": "provider_value"},
-                "extra_params": {"key": "extra_value"},
-            }
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+            temperature=0.5,
+            extra_params={"top_p": 0.9},
         )
-        backend = LiteLLMBackend(profile)
-        await backend.call("prompt", EXAMPLE)
+        backend = AnthropicBackend(profile)
+        await backend.call("test prompt", EXAMPLE)
 
-        call_kwargs = mock_acompletion.call_args.kwargs
-        assert call_kwargs["key"] == "extra_value"
+        call_kwargs = mock_client.messages.create.call_args
+        assert call_kwargs.kwargs["model"] == "claude-sonnet-4-20250514"
+        assert call_kwargs.kwargs["max_tokens"] == 1024
+        assert call_kwargs.kwargs["temperature"] == 0.5
+        assert call_kwargs.kwargs["top_p"] == 0.9
+
+    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    async def test_backend_provider_params_passed_to_client(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(return_value=_make_anthropic_mock_response())
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+            provider_params={"default_headers": {"X-Custom": "value"}},
+        )
+        AnthropicBackend(profile)
+
+        mock_client_cls.assert_called_once()
+        call_kwargs = mock_client_cls.call_args.kwargs
+        assert call_kwargs["default_headers"] == {"X-Custom": "value"}
+
+
+# ---------------------------------------------------------------------------
+# OpenAIBackend
+# ---------------------------------------------------------------------------
+
+
+class TestOpenAIBackend:
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    def test_backend_model_name(self, mock_client_cls: MagicMock) -> None:
+        profile = BackendProfile(
+            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
+        )
+        backend = OpenAIBackend(profile)
+        assert backend.model_name == "gpt-4o"
+
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    def test_backend_pricing_none_by_default(self, mock_client_cls: MagicMock) -> None:
+        profile = BackendProfile(
+            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
+        )
+        backend = OpenAIBackend(profile)
+        assert backend.pricing is None
+
+    def test_backend_missing_env_var_raises(self) -> None:
+        profile = BackendProfile(
+            model="gpt-4o",
+            provider="openai",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            api_key_env="NONEXISTENT_KEY_12345",
+        )
+        with pytest.raises(KeyError):
+            OpenAIBackend(profile)
+
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_backend_call_token_normalisation(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_openai_mock_response(
+                prompt_tokens=100,
+                completion_tokens=50,
+                cached_tokens=30,
+            )
+        )
+        profile = BackendProfile(
+            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
+        )
+        backend = OpenAIBackend(profile)
+        output, usage = await backend.call("prompt", EXAMPLE)
+
+        assert output == {"content": "response text"}
+        assert usage.input_tokens == 100
+        assert usage.cached_tokens == 30
+        assert usage.output_tokens == 50
+
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_backend_call_no_cached_tokens(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_openai_mock_response(
+                prompt_tokens=100,
+                completion_tokens=50,
+                cached_tokens=None,
+            )
+        )
+        profile = BackendProfile(
+            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
+        )
+        backend = OpenAIBackend(profile)
+        _, usage = await backend.call("prompt", EXAMPLE)
+
+        assert usage.cached_tokens == 0
+
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_backend_call_passes_extra_params(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_openai_mock_response())
+        profile = BackendProfile(
+            model="gpt-4o",
+            provider="openai",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=2048,
+            temperature=0.5,
+            extra_params={"top_p": 0.9},
+        )
+        backend = OpenAIBackend(profile)
+        await backend.call("test prompt", EXAMPLE)
+
+        call_kwargs = mock_client.chat.completions.create.call_args
+        assert call_kwargs.kwargs["model"] == "gpt-4o"
+        assert call_kwargs.kwargs["max_tokens"] == 2048
+        assert call_kwargs.kwargs["temperature"] == 0.5
+        assert call_kwargs.kwargs["top_p"] == 0.9
+
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_backend_provider_params_passed_to_client(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_openai_mock_response())
+        profile = BackendProfile(
+            model="gpt-4o",
+            provider="openai",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            provider_params={"organization": "org-123"},
+        )
+        OpenAIBackend(profile)
+
+        mock_client_cls.assert_called_once()
+        call_kwargs = mock_client_cls.call_args.kwargs
+        assert call_kwargs["organization"] == "org-123"
+
+
+# ---------------------------------------------------------------------------
+# BedrockBackend
+# ---------------------------------------------------------------------------
+
+
+class TestBedrockBackend:
+    def test_backend_model_name(self) -> None:
+        with (
+            patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
+            patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
+        ):
+                profile = BackendProfile(
+                    model="anthropic.claude-3-sonnet",
+                    provider="bedrock",
+                    requests_per_minute=100,
+                    tokens_per_minute=50000,
+                )
+                backend = BedrockBackend(profile)
+                assert backend.model_name == "anthropic.claude-3-sonnet"
+
+    def test_backend_pricing_none_by_default(self) -> None:
+        with (
+            patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
+            patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
+        ):
+                profile = BackendProfile(
+                    model="anthropic.claude-3-sonnet",
+                    provider="bedrock",
+                    requests_per_minute=100,
+                    tokens_per_minute=50000,
+                )
+                backend = BedrockBackend(profile)
+                assert backend.pricing is None
+
+    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    async def test_backend_call_token_normalisation(
+        self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(
+                input_tokens=100,
+                output_tokens=50,
+                cache_read_input_tokens=30,
+            )
+        )
+        profile = BackendProfile(
+            model="anthropic.claude-3-sonnet",
+            provider="bedrock",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+        )
+        backend = BedrockBackend(profile)
+        output, usage = await backend.call("prompt", EXAMPLE)
+
+        assert output == {"content": "response text"}
+        assert usage.input_tokens == 100
+        assert usage.cached_tokens == 30
+        assert usage.output_tokens == 50
+
+    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    async def test_backend_region_from_provider_params(
+        self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(return_value=_make_anthropic_mock_response())
+        profile = BackendProfile(
+            model="anthropic.claude-3-sonnet",
+            provider="bedrock",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+            provider_params={"region_name": "eu-west-1"},
+        )
+        BedrockBackend(profile)
+
+        mock_client_cls.assert_called_once()
+        call_kwargs = mock_client_cls.call_args.kwargs
+        assert call_kwargs["aws_region"] == "eu-west-1"
+
+    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    async def test_backend_provider_params_forwarded_to_session(
+        self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(return_value=_make_anthropic_mock_response())
+        profile = BackendProfile(
+            model="anthropic.claude-3-sonnet",
+            provider="bedrock",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+            provider_params={"region_name": "eu-west-1", "profile_name": "my-sso-profile"},
+        )
+        BedrockBackend(profile)
+
+        mock_session_cls.assert_called_once_with(profile_name="my-sso-profile")
 
 
 # ---------------------------------------------------------------------------
@@ -464,71 +847,6 @@ def _make_run_deps(**overrides: Any) -> RunDependencies:
     }
     defaults.update(overrides)
     return RunDependencies(**defaults)
-
-
-# ---------------------------------------------------------------------------
-# BackendProfile — type field
-# ---------------------------------------------------------------------------
-
-
-def test_profile_type_defaults_to_litellm(tmp_path: Path):
-    """BackendProfile.type defaults to 'litellm'."""
-    profile_path = tmp_path / "default.yaml"
-    profile_path.write_text(
-        yaml.dump(
-            {
-                "model": "gpt-4",
-                "requests_per_minute": 100,
-                "tokens_per_minute": 100000,
-            }
-        )
-    )
-    profile = BackendProfile.from_yaml(profile_path)
-    assert profile.type == "litellm"
-
-
-def test_profile_type_mock_echo(tmp_path: Path):
-    """BackendProfile.type can be set to 'mock_echo'."""
-    profile_path = tmp_path / "mock.yaml"
-    profile_path.write_text(
-        yaml.dump(
-            {
-                "model": "mock-echo",
-                "type": "mock_echo",
-                "requests_per_minute": 10000,
-                "tokens_per_minute": 1000000,
-            }
-        )
-    )
-    profile = BackendProfile.from_yaml(profile_path)
-    assert profile.type == "mock_echo"
-
-
-def test_registry_creates_mock_echo_backend(tmp_path: Path):
-    """Registry creates MockEchoBackend when profile type is 'mock_echo'."""
-    backends_dir = tmp_path / "backends"
-    backends_dir.mkdir()
-    (backends_dir / "mock.yaml").write_text(
-        yaml.dump(
-            {
-                "model": "mock-echo",
-                "type": "mock_echo",
-                "requests_per_minute": 10000,
-                "tokens_per_minute": 1000000,
-            }
-        )
-    )
-    registry = BackendRegistry.from_directory(backends_dir)
-    backend = registry.create_backend("mock")
-
-    from odysseus.eval.backends.mock_echo import MockEchoBackend
-
-    assert isinstance(backend, MockEchoBackend)
-
-
-# ---------------------------------------------------------------------------
-# RunDependencies validation tests
-# ---------------------------------------------------------------------------
 
 
 def test_run_dependencies_valid():
