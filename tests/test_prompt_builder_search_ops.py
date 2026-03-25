@@ -110,9 +110,7 @@ class TestGetSearchState:
 class TestRegisterCandidate:
     def test_writes_to_pending_candidates_json(self, tmp_path) -> None:
         state = init_search_state("anthropic", output_dir=tmp_path)
-        register_candidate(
-            state.search_state_id, "v1", output_dir=tmp_path
-        )
+        register_candidate(state.search_state_id, "v1", output_dir=tmp_path)
         pending_file = tmp_path / state.search_state_id / "pending_candidates.json"
         assert pending_file.exists()
 
@@ -134,17 +132,13 @@ class TestRegisterCandidate:
 
     def test_parent_version_stored(self, tmp_path) -> None:
         state = init_search_state("anthropic", output_dir=tmp_path)
-        register_candidate(
-            state.search_state_id, "v2", parent_version="v1", output_dir=tmp_path
-        )
+        register_candidate(state.search_state_id, "v2", parent_version="v1", output_dir=tmp_path)
         pending = _load_pending(state.search_state_id, tmp_path)
         assert pending[0].parent_version == "v1"
 
     def test_returns_current_state(self, tmp_path) -> None:
         state = init_search_state("anthropic", output_dir=tmp_path)
-        returned = register_candidate(
-            state.search_state_id, "v1", output_dir=tmp_path
-        )
+        returned = register_candidate(state.search_state_id, "v1", output_dir=tmp_path)
         assert returned.search_state_id == state.search_state_id
 
     def test_duplicate_in_pending_raises(self, tmp_path) -> None:
@@ -155,9 +149,7 @@ class TestRegisterCandidate:
 
     def test_duplicate_in_front_raises(self, tmp_path) -> None:
         state = init_search_state("anthropic", output_dir=tmp_path)
-        _register_and_score(
-            state.search_state_id, "v1", 0.9, 0.01, tmp_path
-        )
+        _register_and_score(state.search_state_id, "v1", 0.9, 0.01, tmp_path)
         advance_round(state.search_state_id, output_dir=tmp_path)
         with pytest.raises(ValueError, match="v1"):
             register_candidate(state.search_state_id, "v1", output_dir=tmp_path)
@@ -165,14 +157,10 @@ class TestRegisterCandidate:
     def test_duplicate_in_history_raises(self, tmp_path) -> None:
         state = init_search_state("anthropic", output_dir=tmp_path)
         # Register v1 and advance — v1 moves to history candidates_evaluated
-        _register_and_score(
-            state.search_state_id, "v1", 0.9, 0.01, tmp_path
-        )
+        _register_and_score(state.search_state_id, "v1", 0.9, 0.01, tmp_path)
         advance_round(state.search_state_id, output_dir=tmp_path)
         # Register v2 (low quality so v1 stays on front), advance again
-        _register_and_score(
-            state.search_state_id, "v2", 0.5, 0.5, tmp_path
-        )
+        _register_and_score(state.search_state_id, "v2", 0.5, 0.5, tmp_path)
         advance_round(state.search_state_id, output_dir=tmp_path)
         # v2 appeared in round_history[1].candidates_evaluated — duplicate
         with pytest.raises(ValueError, match="v2"):
@@ -188,9 +176,7 @@ class TestRecordEvalResult:
     def test_updates_quality_and_cost(self, tmp_path) -> None:
         state = init_search_state("anthropic", output_dir=tmp_path)
         register_candidate(state.search_state_id, "v1", output_dir=tmp_path)
-        record_eval_result(
-            state.search_state_id, "v1", quality_score=0.85, cost=0.02, output_dir=tmp_path
-        )
+        record_eval_result(state.search_state_id, "v1", quality_score=0.85, cost=0.02, output_dir=tmp_path)
         pending = _load_pending(state.search_state_id, tmp_path)
         assert pending[0].quality_score == 0.85
         assert pending[0].cost == 0.02
@@ -198,9 +184,7 @@ class TestRecordEvalResult:
     def test_returns_correct_dict(self, tmp_path) -> None:
         state = init_search_state("anthropic", output_dir=tmp_path)
         register_candidate(state.search_state_id, "v1", output_dir=tmp_path)
-        result = record_eval_result(
-            state.search_state_id, "v1", quality_score=0.9, cost=0.05, output_dir=tmp_path
-        )
+        result = record_eval_result(state.search_state_id, "v1", quality_score=0.9, cost=0.05, output_dir=tmp_path)
         assert result == {"prompt_version": "v1", "quality_score": 0.9, "cost": 0.05}
 
     def test_unknown_version_raises(self, tmp_path) -> None:
@@ -218,9 +202,7 @@ class TestRecordEvalResult:
         state = init_search_state("anthropic", output_dir=tmp_path)
         register_candidate(state.search_state_id, "v1", output_dir=tmp_path)
         register_candidate(state.search_state_id, "v2", output_dir=tmp_path)
-        record_eval_result(
-            state.search_state_id, "v1", quality_score=0.9, cost=0.01, output_dir=tmp_path
-        )
+        record_eval_result(state.search_state_id, "v1", quality_score=0.9, cost=0.01, output_dir=tmp_path)
         pending = _load_pending(state.search_state_id, tmp_path)
         v2 = next(c for c in pending if c.prompt_version == "v2")
         assert v2.quality_score == 0.0
@@ -283,32 +265,24 @@ class TestAdvanceRound:
 
     def test_switches_to_exploratory_at_stagnation_limit(self, tmp_path) -> None:
         # stagnation_limit=3, convergence_limit=5
-        state = init_search_state(
-            "anthropic", output_dir=tmp_path, stagnation_limit=2, convergence_limit=4
-        )
+        state = init_search_state("anthropic", output_dir=tmp_path, stagnation_limit=2, convergence_limit=4)
         # Round 1: seed front
         _register_and_score(state.search_state_id, "v1", 0.9, 0.01, tmp_path)
         advance_round(state.search_state_id, output_dir=tmp_path)
         # Rounds 2-3: no improvement → stagnation_count reaches 2 (== stagnation_limit)
         for i in range(2, 4):
-            _register_and_score(
-                state.search_state_id, f"dominated-v{i}", 0.1, 10.0, tmp_path
-            )
+            _register_and_score(state.search_state_id, f"dominated-v{i}", 0.1, 10.0, tmp_path)
             summary = advance_round(state.search_state_id, output_dir=tmp_path)
         assert summary.mutation_mode == "exploratory"
 
     def test_mutation_mode_resets_to_targeted_after_improvement(self, tmp_path) -> None:
-        state = init_search_state(
-            "anthropic", output_dir=tmp_path, stagnation_limit=2, convergence_limit=4
-        )
+        state = init_search_state("anthropic", output_dir=tmp_path, stagnation_limit=2, convergence_limit=4)
         # Seed
         _register_and_score(state.search_state_id, "v1", 0.9, 0.01, tmp_path)
         advance_round(state.search_state_id, output_dir=tmp_path)
         # Two rounds of stagnation → exploratory
         for i in range(2, 4):
-            _register_and_score(
-                state.search_state_id, f"dominated-{i}", 0.1, 10.0, tmp_path
-            )
+            _register_and_score(state.search_state_id, f"dominated-{i}", 0.1, 10.0, tmp_path)
             advance_round(state.search_state_id, output_dir=tmp_path)
         # Verify exploratory before improvement
         s = get_search_state(state.search_state_id, output_dir=tmp_path)
@@ -320,21 +294,15 @@ class TestAdvanceRound:
 
     def test_converges_at_convergence_limit(self, tmp_path) -> None:
         # convergence_limit=3, stagnation_limit=2
-        state = init_search_state(
-            "anthropic", output_dir=tmp_path, stagnation_limit=2, convergence_limit=3
-        )
+        state = init_search_state("anthropic", output_dir=tmp_path, stagnation_limit=2, convergence_limit=3)
         # Seed front
         _register_and_score(state.search_state_id, "v1", 0.9, 0.01, tmp_path)
         advance_round(state.search_state_id, output_dir=tmp_path)
         # 3 stagnating rounds → convergence_limit reached
         converged_summary = None
         for i in range(2, 5):
-            _register_and_score(
-                state.search_state_id, f"stag-{i}", 0.1, 10.0, tmp_path
-            )
-            converged_summary = advance_round(
-                state.search_state_id, output_dir=tmp_path
-            )
+            _register_and_score(state.search_state_id, f"stag-{i}", 0.1, 10.0, tmp_path)
+            converged_summary = advance_round(state.search_state_id, output_dir=tmp_path)
         assert converged_summary is not None
         updated = get_search_state(state.search_state_id, output_dir=tmp_path)
         assert updated.converged is True

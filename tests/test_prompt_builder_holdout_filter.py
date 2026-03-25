@@ -24,9 +24,7 @@ def _make_example(id_: str) -> dict:
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
-    path.write_text(
-        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8"
-    )
+    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
 
 
 def _read_jsonl(path: Path) -> list[dict]:

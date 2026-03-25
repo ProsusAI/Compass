@@ -232,13 +232,9 @@ def record_eval_result(
             break
 
     if found_index is None:
-        raise ValueError(
-            f"prompt_version '{prompt_version}' not found in pending candidates"
-        )
+        raise ValueError(f"prompt_version '{prompt_version}' not found in pending candidates")
 
-    updated = pending[found_index].model_copy(
-        update={"quality_score": quality_score, "cost": cost}
-    )
+    updated = pending[found_index].model_copy(update={"quality_score": quality_score, "cost": cost})
     pending[found_index] = updated
     _save_pending(search_state_id, pending, output_dir)
 
@@ -298,10 +294,7 @@ def advance_round(
         new_mutation_mode = state.mutation_mode
 
     # Check convergence
-    converged = (
-        new_stagnation_count >= state.convergence_limit
-        or new_round >= state.max_rounds
-    )
+    converged = new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
 
     candidates_evaluated = [c.prompt_version for c in pending]
 

@@ -124,8 +124,7 @@ def update_pareto_front(
 
         # Reject duplicates: identical (quality_score, cost)
         is_duplicate = any(
-            existing.quality_score == candidate.quality_score and existing.cost == candidate.cost
-            for existing in front
+            existing.quality_score == candidate.quality_score and existing.cost == candidate.cost for existing in front
         )
         if is_duplicate:
             continue

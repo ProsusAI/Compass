@@ -1,4 +1,5 @@
 """Smoke tests for Prompt Builder MCP tools."""
+
 from __future__ import annotations
 
 import json
@@ -104,16 +105,13 @@ class TestSearchStateTools:
     async def test_get_search_state_unknown_id_raises_tool_error(self, tmp_path: Path) -> None:
         from mcp.server.fastmcp.exceptions import ToolError
 
-        with patch("odysseus.agents.prompt_builder_search_ops._DEFAULT_OUTPUT_DIR", tmp_path):
-            with pytest.raises(ToolError):
-                await get_search_state_tool("nonexistent-id")
+        with patch("odysseus.agents.prompt_builder_search_ops._DEFAULT_OUTPUT_DIR", tmp_path), pytest.raises(ToolError):
+            await get_search_state_tool("nonexistent-id")
 
     async def test_multiple_rounds_stagnation(self, tmp_path: Path) -> None:
         """Two rounds with same-quality candidates accumulates stagnation."""
         with patch("odysseus.agents.prompt_builder_search_ops._DEFAULT_OUTPUT_DIR", tmp_path):
-            init_result = json.loads(
-                await init_search_state_tool(backend="test", stagnation_limit=2)
-            )
+            init_result = json.loads(await init_search_state_tool(backend="test", stagnation_limit=2))
             sid = init_result["search_state_id"]
 
             # Round 1: new candidate improves front

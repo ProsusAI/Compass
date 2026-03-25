@@ -39,13 +39,9 @@ def filter_holdout_dataset(
 
     exclude_set = set(exclude_ids)
 
-    output_path = input_path.with_name(
-        f"{input_path.stem}_filtered{input_path.suffix}"
-    )
+    output_path = input_path.with_name(f"{input_path.stem}_filtered{input_path.suffix}")
 
-    with input_path.open("r", encoding="utf-8") as fh_in, output_path.open(
-        "w", encoding="utf-8"
-    ) as fh_out:
+    with input_path.open("r", encoding="utf-8") as fh_in, output_path.open("w", encoding="utf-8") as fh_out:
         for line in fh_in:
             stripped = line.strip()
             if not stripped:
