@@ -1083,18 +1083,39 @@ git commit -m "feat(review): add round reports persistence"
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from typing import Any
+
 import pytest
 
 from odysseus.agents.review_preprocessor import build_candidate_comparisons
+
+
+def _make_report_dict(**metric_overrides: float) -> dict[str, Any]:
+    """Build a minimal ScoreReport-compatible dict for preprocessor tests.
+
+    The preprocessor works with dicts internally (loaded from JSON on disk).
+    ScoreReport.model_validate() is called at the CandidateAnalysis boundary.
+    """
+    now = datetime.now(tz=timezone.utc).isoformat()
+    return {
+        "metrics": {"accuracy": 0.80, "cost": 1.0, **metric_overrides},
+        "summary": {
+            "total": 10, "succeeded": 10, "failed": 0, "total_cost": 1.0,
+            "start_time": now, "end_time": now, "duration_seconds": 5.0,
+        },
+        "errors": [],
+        "diff": None,
+        "report_path": "report.json",
+        "results_path": "results.jsonl",
+    }
 
 
 class TestBuildCandidateComparisons:
     def test_single_candidate_no_parent_no_front(self) -> None:
         """First round: one candidate, no parent, empty front."""
         score_reports = {
-            "v1": {
-                "metrics": {"accuracy": 0.80, "cost": 1.50},
-            },
+            "v1": _make_report_dict(accuracy=0.80, cost=1.50),
         }
         mutation_descriptions = {"v1": "Initial compilation"}
         parent_versions = {"v1": None}
@@ -1117,9 +1138,9 @@ class TestBuildCandidateComparisons:
     def test_candidate_with_parent_and_front(self) -> None:
         """Later round: candidate has parent, front has members."""
         score_reports = {
-            "v3": {"metrics": {"accuracy": 0.85, "cost": 1.20}},
-            "v1": {"metrics": {"accuracy": 0.80, "cost": 1.50}},  # front member
-            "v2": {"metrics": {"accuracy": 0.82, "cost": 1.30}},  # parent + front
+            "v3": _make_report_dict(accuracy=0.85, cost=1.20),
+            "v1": _make_report_dict(accuracy=0.80, cost=1.50),  # front member
+            "v2": _make_report_dict(accuracy=0.82, cost=1.30),  # parent + front
         }
         mutation_descriptions = {"v3": "Swapped Example 3"}
         parent_versions = {"v3": "v2"}
@@ -1143,9 +1164,9 @@ class TestBuildCandidateComparisons:
     def test_multiple_candidates(self) -> None:
         """Multiple candidates in one round."""
         score_reports = {
-            "v3": {"metrics": {"accuracy": 0.85, "cost": 1.20}},
-            "v4": {"metrics": {"accuracy": 0.83, "cost": 1.10}},
-            "v2": {"metrics": {"accuracy": 0.82, "cost": 1.30}},
+            "v3": _make_report_dict(accuracy=0.85, cost=1.20),
+            "v4": _make_report_dict(accuracy=0.83, cost=1.10),
+            "v2": _make_report_dict(accuracy=0.82, cost=1.30),
         }
         mutation_descriptions = {
             "v3": "Swapped Example 3",
@@ -1192,6 +1213,7 @@ from odysseus.agents.review_models import (
     FrontComparison,
     MetricDeltas,
 )
+from odysseus.eval.models import ScoreReport
 
 
 def _extract_metric(report: dict[str, Any], metric: str) -> float:
@@ -1275,7 +1297,7 @@ def build_candidate_comparisons(
                 candidate_version=version,
                 parent_version=parent,
                 mutation_description=mutation_descriptions[version],
-                score_report=report,
+                score_report=ScoreReport.model_validate(report),
                 delta_vs_parent=delta_parent,
                 delta_vs_front=delta_front,
             )
@@ -2031,30 +2053,18 @@ class TestBuildReviewBriefing:
             ],
         )
         score_reports = {
-            "v2": {
-                "metrics": {
-                    "accuracy": 0.85,
-                    "cost": 1.20,
-                    "recall/model-a": 0.9,
-                    "support/model-a": 10,
-                    "oracle_cost_reduction": 0.50,
-                    "oracle_quality_reduction": 0.10,
-                    "cost_reduction": 0.35,
-                    "quality_reduction": 0.085,
-                },
-            },
-            "v1": {
-                "metrics": {
-                    "accuracy": 0.80,
-                    "cost": 1.50,
-                    "recall/model-a": 0.85,
-                    "support/model-a": 10,
-                    "oracle_cost_reduction": 0.50,
-                    "oracle_quality_reduction": 0.10,
-                    "cost_reduction": 0.20,
-                    "quality_reduction": 0.05,
-                },
-            },
+            "v2": _make_report_dict(
+                accuracy=0.85, cost=1.20,
+                **{"recall/model-a": 0.9, "support/model-a": 10,
+                   "oracle_cost_reduction": 0.50, "oracle_quality_reduction": 0.10,
+                   "cost_reduction": 0.35, "quality_reduction": 0.085},
+            ),
+            "v1": _make_report_dict(
+                accuracy=0.80, cost=1.50,
+                **{"recall/model-a": 0.85, "support/model-a": 10,
+                   "oracle_cost_reduction": 0.50, "oracle_quality_reduction": 0.10,
+                   "cost_reduction": 0.20, "quality_reduction": 0.05},
+            ),
         }
         historical_reports = {
             1: {
@@ -2510,16 +2520,91 @@ async def record_directive_outcomes_tool(
     return json.dumps({"recorded": len(parsed), "total": len(existing) + len(parsed)})
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run registration test to verify it passes**
 
 Run: `uv run pytest tests/test_mcp.py::test_record_directive_outcomes_tool_registered -v`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Write behavioral test for record_directive_outcomes_tool**
+
+```python
+# Append to tests/test_review_ops.py
+
+import asyncio
+
+from odysseus.agents.review_ops import load_directive_history
+
+
+class TestRecordDirectiveOutcomesToolBehavior:
+    def test_records_and_persists_outcomes(self, tmp_path) -> None:
+        """Verify the MCP tool writes directive outcomes to disk."""
+        from odysseus.mcp import record_directive_outcomes_tool
+
+        outcomes = [
+            {"prior_directive_id": "d-001", "was_attempted": True, "outcome": "improved"},
+            {"prior_directive_id": "d-002", "was_attempted": False, "outcome": "no_effect"},
+        ]
+        # Create the search dir so persistence works
+        (tmp_path / "search-test").mkdir()
+
+        result_json = asyncio.run(
+            record_directive_outcomes_tool(
+                search_state_id="search-test",
+                outcomes=outcomes,
+                output_dir=str(tmp_path),
+            )
+        )
+
+        import json
+        result = json.loads(result_json)
+        assert result["recorded"] == 2
+        assert result["total"] == 2
+
+        # Verify persisted to disk
+        loaded = load_directive_history("search-test", output_dir=tmp_path)
+        assert len(loaded) == 2
+        assert loaded[0].prior_directive_id == "d-001"
+
+    def test_appends_to_existing_history(self, tmp_path) -> None:
+        """Verify the tool appends rather than overwrites."""
+        from odysseus.mcp import record_directive_outcomes_tool
+        from odysseus.agents.review_ops import save_directive_history
+        from odysseus.agents.review_models import DirectiveOutcome
+
+        # Pre-populate with one outcome
+        save_directive_history(
+            "search-test",
+            [DirectiveOutcome(prior_directive_id="d-000", was_attempted=True, outcome="improved")],
+            output_dir=tmp_path,
+        )
+
+        new_outcomes = [
+            {"prior_directive_id": "d-001", "was_attempted": True, "outcome": "regressed"},
+        ]
+        result_json = asyncio.run(
+            record_directive_outcomes_tool(
+                search_state_id="search-test",
+                outcomes=new_outcomes,
+                output_dir=str(tmp_path),
+            )
+        )
+
+        import json
+        result = json.loads(result_json)
+        assert result["recorded"] == 1
+        assert result["total"] == 2
+```
+
+- [ ] **Step 6: Run behavioral tests**
+
+Run: `uv run pytest tests/test_review_ops.py::TestRecordDirectiveOutcomesToolBehavior -v`
+Expected: PASS
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add odysseus/mcp.py tests/test_mcp.py
-git commit -m "feat(review): add record_directive_outcomes_tool to MCP"
+git add odysseus/mcp.py tests/test_mcp.py tests/test_review_ops.py
+git commit -m "feat(review): add record_directive_outcomes_tool to MCP with behavioral tests"
 ```
 
 ### Task 18: MCP Prompt & Resource Registration
