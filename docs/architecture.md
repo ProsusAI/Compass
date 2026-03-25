@@ -26,7 +26,7 @@ graph TD
 | Routing Analysis | LLM-driven | [`odysseus/agents/routing_rationale_models.py`](../odysseus/agents/routing_rationale_models.py), [`odysseus/agents/routing_rationale_checks.py`](../odysseus/agents/routing_rationale_checks.py), [`odysseus/agents/routing_rationale_registry.py`](../odysseus/agents/routing_rationale_registry.py), [`odysseus/agents/stratified_split.py`](../odysseus/agents/stratified_split.py) | Done | `validated_input_report_path`, `data_quality_report`, `routing_context`, `dataset_path` | `dev_rationale_card_set_path`, `dev_jsonl_path`, `vocabulary_registry_path`, `split_report_path`, `routing_context` (passthrough), `holdout_rationale_card_set_path`, `holdout_jsonl_path` |
 | Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `config_path` | `eval_score_report` |
 | Prompt Builder | LLM-driven | (planned) | Planned | `RationaleCardSet`, `RoutingContext` | `prompt_version` |
-| Review | LLM-driven | (planned) | Planned | `eval_score_report` | iterate/accept decision |
+| Review | Hybrid (code + LLM) | [`odysseus/agents/review_models.py`](../odysseus/agents/review_models.py), [`odysseus/agents/review_preprocessor.py`](../odysseus/agents/review_preprocessor.py), [`odysseus/agents/review_ops.py`](../odysseus/agents/review_ops.py), [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) | Done | `eval_score_report`, `review_briefing` | `review_result` |
 | Final Reporting | LLM-driven | (planned) | Planned | `eval_score_report`, full pipeline context | final report |
 
 ## 3. Context Dict Reference
@@ -48,6 +48,8 @@ graph TD
 | `split_report_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Split statistics and distribution report |
 | `holdout_rationale_card_set_path` | `str` | Routing Analysis Agent | Final Reporting Agent | Cards for holdout examples only |
 | `holdout_jsonl_path` | `str` | Routing Analysis Agent | Final Reporting Agent | Holdout split examples path |
+| `review_briefing` | `ReviewBriefing` | Review Agent (pre-processor) | Review Agent (LLM) | Pre-processed round data: candidate analyses, per-class recall, diversity metrics, mutation history, oracle metrics |
+| `review_result` | `ReviewResult` | Review Agent (LLM) | Prompt Builder Agent | Ranked candidates, edit directives, promotion decisions, loop signal, regression guards |
 
 ## 4. Shared Models
 
@@ -62,6 +64,9 @@ Dynamic registry of `VocabularyEntry` items across three dimensions: `intent_pat
 
 **`RoutingContext`** ([`odysseus/agents/routing_rationale_models.py`](../odysseus/agents/routing_rationale_models.py))
 Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Routing Analysis Agent to scope annotation.
+
+**`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review_models.py`](../odysseus/agents/review_models.py))
+`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `MutationHistory`, `OracleMetrics`, per-class recall, and holdout example summaries. `ReviewResult` is the LLM output: `candidate_ranking`, `edit_directives`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, mutation log, round reports) lives in [`review_ops.py`](../odysseus/agents/review_ops.py).
 
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
@@ -82,6 +87,8 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 | `validate_rationale_card_set` | Implemented | Run deterministic validation checks on card set | [`odysseus/agents/routing_rationale_checks.py`](../odysseus/agents/routing_rationale_checks.py) |
 | `prune_registry` | Implemented | Remove entries below cluster threshold | [`odysseus/agents/routing_rationale_registry.py`](../odysseus/agents/routing_rationale_registry.py) |
 | `stratified_split` | Implemented | Split dataset + card set into dev/holdout | [`odysseus/agents/stratified_split.py`](../odysseus/agents/stratified_split.py) |
+| `build_review_briefing_tool` | Planned | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/agents/review_preprocessor.py`](../odysseus/agents/review_preprocessor.py) |
+| `record_directive_outcomes_tool` | Planned | Persist directive outcome tracking after the Review Agent emits a ReviewResult | [`odysseus/agents/review_ops.py`](../odysseus/agents/review_ops.py) |
 
 ### Prompts
 
@@ -90,6 +97,7 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 | `odysseus_routing_input` | Activate the User Input agent conversation | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md) |
 | `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
 | `odysseus_routing_analysis` | Routing Analysis Agent system prompt | [`odysseus/agents/prompts/routing_analysis_system.md`](../odysseus/agents/prompts/routing_analysis_system.md) |
+| `odysseus_review_agent` | Review Agent system prompt — receives ReviewBriefing, emits ReviewResult JSON | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
 
 ### Resources
 
@@ -102,6 +110,7 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 | `odysseus://agents/routing-analysis/classify-example-skill` | Classify-example skill for annotation | [`odysseus/skills/classify-example/SKILL.md`](../odysseus/skills/classify-example/SKILL.md) |
 | `odysseus://agents/routing-analysis/generate-rationale-skill` | Generate-routing-rationale skill for annotation | [`odysseus/skills/generate-routing-rationale/SKILL.md`](../odysseus/skills/generate-routing-rationale/SKILL.md) |
 | `odysseus://agents/routing-analysis/check-overlap-skill` | Check-semantic-overlap skill for validation | [`odysseus/skills/check-semantic-overlap/SKILL.md`](../odysseus/skills/check-semantic-overlap/SKILL.md) |
+| `odysseus://agents/review-agent/guidelines` | Review Agent operational guidelines — scoring criteria, promotion rules, loop exit heuristics | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
 
 ## 6. Directory Guide
 
