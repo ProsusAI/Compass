@@ -215,6 +215,7 @@ class ReviewResult(BaseModel):
 ### Precedence Rules
 
 - `loop_signal` is authoritative for loop continuation. If `loop_signal.action = "refine"` but all candidates are "prune", the Prompt Builder must generate new candidates from the existing Pareto front (not from pruned candidates).
+- If `loop_signal.action = "exit"` and a candidate has `promotion_decisions.decision = "promote"`, the promoted candidate becomes the winner and the loop exits. Exit takes precedence over further refinement.
 - `regression_guards` with `severity="block"` prevent promotion only. A blocked candidate can still be marked "refine" in `promotion_decisions`.
 - `suggested_budget` is a delta: "grant N more rounds beyond what `advance_round` would allow." The orchestrator adds this to the remaining budget, capped by `max_rounds`.
 
@@ -231,7 +232,7 @@ Lives in `odysseus/agents/review_preprocessor.py` — pure functions, no externa
 | `compute_diversity_metrics()` | Prompt texts for front candidates, mutation log | `DiversityMetrics` | Example overlap, prompt similarity (difflib), mutation type distribution. Pairwise comparison is O(N^2) on front size; expected front size is <15 candidates in 2D Pareto, so this is negligible. |
 | `compute_diminishing_returns()` | Score trajectory from SearchState | `DiminishingReturns` | Improvement trend, stagnation flag |
 | `correlate_mutations()` | Mutation log + score history | `MutationHistory` | Which mutation types helped, hurt, or haven't been tried |
-| `compute_oracle_metrics()` | ScoreReport metrics (oracle_cost_reduction, oracle_quality_reduction, cost_reduction, quality_reduction) | `OracleMetrics` | Captured ratios vs theoretical ceiling. Returns `None` for captured ratios if oracle reduction is 0.0 (no routing benefit possible). |
+| `compute_oracle_metrics()` | ScoreReport metrics (oracle_cost_reduction, oracle_quality_reduction, cost_reduction, quality_reduction) | `OracleMetrics` | Captured ratios vs theoretical ceiling. Returns `None` for captured ratios if oracle reduction is 0.0. Raises `ValueError` if oracle metric keys are absent from `ScoreReport.metrics` (indicates missing `cost_quality_reduction` metric config). |
 
 ### Orchestrator
 
@@ -258,7 +259,7 @@ outputs/<search_state_id>/
 ├── directive_history.json      # NEW: list[DirectiveOutcome]
 ├── mutation_log.json           # NEW: list[MutationRecord]
 └── round_reports/              # NEW: historical ScoreReports per round
-    ├── round_1.json            # dict[str, ScoreReport] keyed by version
+    ├── round_1.json            # dict[str, ScoreReport] keyed by version, serialized via model_dump(mode="json")
     ├── round_2.json
     └── ...
 ```
