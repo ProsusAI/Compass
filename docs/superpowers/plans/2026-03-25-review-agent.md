@@ -45,6 +45,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 
 from odysseus.agents.review_models import (
@@ -52,6 +54,24 @@ from odysseus.agents.review_models import (
     FrontComparison,
     MetricDeltas,
 )
+from odysseus.eval.models import RunSummary, ScoreReport
+
+
+def _make_score_report(**metric_overrides: float) -> ScoreReport:
+    """Helper to build a minimal ScoreReport for tests."""
+    return ScoreReport(
+        metrics={"accuracy": 0.80, "cost": 1.0, **metric_overrides},
+        summary=RunSummary(
+            total=10, succeeded=10, failed=0, total_cost=1.0,
+            start_time=datetime.now(tz=timezone.utc),
+            end_time=datetime.now(tz=timezone.utc),
+            duration_seconds=5.0,
+        ),
+        errors=[],
+        diff=None,
+        report_path="report.json",
+        results_path="results.jsonl",
+    )
 
 
 class TestMetricDeltas:
@@ -86,7 +106,7 @@ class TestCandidateAnalysis:
             candidate_version="v5",
             parent_version="v3",
             mutation_description="Swapped Example 3 with hard negative from holdout",
-            score_report={"metrics": {"accuracy": 0.85}},  # simplified for unit test
+            score_report=_make_score_report(accuracy=0.85),
             delta_vs_parent=MetricDeltas(
                 quality_delta=0.05, cost_delta=-0.1, per_class_recall_deltas={}
             ),
@@ -105,7 +125,7 @@ class TestCandidateAnalysis:
             candidate_version="v1",
             parent_version=None,
             mutation_description="Initial compilation",
-            score_report={"metrics": {}},
+            score_report=_make_score_report(),
             delta_vs_parent=MetricDeltas(
                 quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={}
             ),
@@ -130,9 +150,12 @@ See docs/superpowers/specs/2026-03-25-review-agent-design.md for the full spec.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Literal
 
 from pydantic import BaseModel
+
+from odysseus.agents.prompt_builder_search import Candidate
+from odysseus.eval.models import ScoreReport
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +185,7 @@ class CandidateAnalysis(BaseModel):
     candidate_version: str
     parent_version: str | None
     mutation_description: str
-    score_report: dict[str, Any]  # ScoreReport serialized; avoids circular import
+    score_report: ScoreReport
     delta_vs_parent: MetricDeltas
     delta_vs_front: list[FrontComparison]
 ```
@@ -332,12 +355,18 @@ class DiminishingReturns(BaseModel):
     stagnation_flag: bool
 
 
+MutationType = Literal[
+    "example_swap", "rule_edit", "schema_change",
+    "rule_add", "rule_remove", "assembly_policy",
+]
+
+
 class MutationRecord(BaseModel):
     """What the Prompt Builder changed and why."""
 
     child_version: str
     parent_version: str
-    mutation_type: str
+    mutation_type: MutationType
     description: str
     directive_ids: list[str] | None = None
 
@@ -446,7 +475,7 @@ class ReviewBriefing(BaseModel):
 
     round: int
     candidates: list[CandidateAnalysis]
-    pareto_front: list[dict[str, Any]]  # Candidate model serialized
+    pareto_front: list[Candidate]
     per_class_recall: dict[str, ClassRecallEntry]
     diversity_metrics: DiversityMetrics
     diminishing_returns: DiminishingReturns
@@ -633,28 +662,28 @@ class EditDirective(BaseModel):
 
     directive_id: str
     target_version: str
-    block_type: str  # "rule" | "example" | "output_schema" | "assembly_policy"
+    block_type: Literal["rule", "example", "output_schema", "assembly_policy"]
     block_identifier: str  # "Rule 2" | "Example 5" | "Output Schema"
-    granularity: str  # "macro" | "micro"
+    granularity: Literal["macro", "micro"]
     directive: str
-    priority: str  # "high" | "medium" | "low"
+    priority: Literal["high", "medium", "low"]
 
 
 class PromotionDecision(BaseModel):
     """Whether a candidate should be promoted, refined, or pruned."""
 
     version: str
-    decision: str  # "promote" | "prune" | "refine"
+    decision: Literal["promote", "prune", "refine"]
     reason: str
 
 
 class LoopSignal(BaseModel):
     """Whether to continue refining or exit the search loop."""
 
-    action: str  # "refine" | "exit"
+    action: Literal["refine", "exit"]
     reason: str
     suggested_budget: int | None = None
-    suggested_mutation_mode: str | None = None  # "targeted" | "exploratory"
+    suggested_mutation_mode: Literal["targeted", "exploratory"] | None = None
 
 
 class RegressionFlag(BaseModel):
@@ -664,7 +693,7 @@ class RegressionFlag(BaseModel):
     metric: str
     previous_value: float
     current_value: float
-    severity: str  # "warning" | "block"
+    severity: Literal["warning", "block"]
 
 
 class DirectiveOutcome(BaseModel):
@@ -672,7 +701,7 @@ class DirectiveOutcome(BaseModel):
 
     prior_directive_id: str
     was_attempted: bool
-    outcome: str  # "improved" | "no_effect" | "regressed"
+    outcome: Literal["improved", "no_effect", "regressed"]
 
 
 class ReviewResult(BaseModel):
@@ -812,7 +841,7 @@ def save_directive_history(
     path = _directive_history_path(search_state_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = [h.model_dump(mode="json") for h in history]
-    path.write_text(json.dumps(data, indent=2))
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def load_directive_history(
@@ -824,7 +853,7 @@ def load_directive_history(
     path = _directive_history_path(search_state_id, output_dir)
     if not path.exists():
         return []
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     return [DirectiveOutcome.model_validate(d) for d in data]
 ```
 
@@ -851,7 +880,7 @@ git commit -m "feat(review): add directive history persistence"
 ```python
 # Append to tests/test_review_ops.py
 
-from odyssey.agents.review_models import MutationRecord
+from odysseus.agents.review_models import MutationRecord
 from odysseus.agents.review_ops import load_mutation_log, save_mutation_log
 
 
@@ -902,7 +931,7 @@ def save_mutation_log(
     path = _mutation_log_path(search_state_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = [r.model_dump(mode="json") for r in log]
-    path.write_text(json.dumps(data, indent=2))
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def load_mutation_log(
@@ -914,7 +943,7 @@ def load_mutation_log(
     path = _mutation_log_path(search_state_id, output_dir)
     if not path.exists():
         return []
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     return [MutationRecord.model_validate(d) for d in data]
 ```
 
@@ -1005,7 +1034,7 @@ def save_round_report(
     dir_path = _round_reports_dir(search_state_id, output_dir)
     dir_path.mkdir(parents=True, exist_ok=True)
     path = dir_path / f"round_{round_num}.json"
-    path.write_text(json.dumps(reports, indent=2))
+    path.write_text(json.dumps(reports, indent=2), encoding="utf-8")
 
 
 def load_round_reports(
@@ -1020,7 +1049,7 @@ def load_round_reports(
     result: dict[int, dict[str, dict[str, Any]]] = {}
     for path in sorted(dir_path.glob("round_*.json")):
         round_num = int(path.stem.split("_")[1])
-        result[round_num] = json.loads(path.read_text())
+        result[round_num] = json.loads(path.read_text(encoding="utf-8"))
     return result
 ```
 
@@ -1838,7 +1867,10 @@ git commit -m "feat(review): add correlate_mutations pre-processor"
 ```python
 # Append to tests/test_review_preprocessor.py
 
-from odysseus.agents.review_preprocessor import compute_oracle_metrics
+from odysseus.agents.review_preprocessor import (
+    compute_oracle_metrics,
+    compute_oracle_metrics_from_report,
+)
 
 
 class TestComputeOracleMetrics:
@@ -1962,20 +1994,42 @@ git commit -m "feat(review): add compute_oracle_metrics pre-processor"
 ```python
 # Append to tests/test_review_preprocessor.py
 
+from odysseus.agents.prompt_builder_search import Candidate, SearchState
 from odysseus.agents.review_preprocessor import build_review_briefing
 from odysseus.agents.review_models import ExampleSummary, DirectiveOutcome
+
+
+def _make_search_state(**overrides) -> SearchState:
+    """Helper to build a minimal SearchState for tests."""
+    defaults = dict(
+        search_state_id="test-search",
+        backend="anthropic",
+        round=1,
+        pareto_front=[],
+        round_history=[],
+        stagnation_count=0,
+        stagnation_limit=3,
+        convergence_limit=5,
+        max_rounds=50,
+        mutation_mode="targeted",
+        converged=False,
+    )
+    defaults.update(overrides)
+    return SearchState(**defaults)
 
 
 class TestBuildReviewBriefing:
     def test_builds_complete_briefing(self) -> None:
         """Integration test: all components assembled into a ReviewBriefing."""
-        search_state = {
-            "round": 2,
-            "pareto_front": [
-                {"prompt_version": "v1", "quality_score": 0.80, "cost": 1.50},
+        search_state = _make_search_state(
+            round=2,
+            pareto_front=[
+                Candidate(
+                    prompt_version="v1", quality_score=0.80, cost=1.50,
+                    round_introduced=1, dominated=False,
+                ),
             ],
-            "primary_metric_name": None,
-        }
+        )
         score_reports = {
             "v2": {
                 "metrics": {
@@ -2051,6 +2105,7 @@ Expected: FAIL — `ImportError`
 Add to `odysseus/agents/review_preprocessor.py`:
 
 ```python
+from odysseus.agents.prompt_builder_search import Candidate, SearchState
 from odysseus.agents.review_models import (
     DirectiveOutcome,
     ExampleSummary,
@@ -2099,7 +2154,7 @@ def _build_score_history(
 
 def build_review_briefing(
     *,
-    search_state: dict[str, Any],
+    search_state: SearchState,
     score_reports: dict[str, dict[str, Any]],
     historical_reports: dict[int, dict[str, dict[str, Any]]],
     prompt_texts: dict[str, str],
@@ -2113,10 +2168,10 @@ def build_review_briefing(
 
     This is the main orchestrator that calls all computation functions.
     """
-    current_round: int = search_state["round"]
-    primary_metric: str = search_state.get("primary_metric_name") or "accuracy"
-    pareto_front: list[dict[str, Any]] = search_state.get("pareto_front", [])
-    front_versions = [c["prompt_version"] for c in pareto_front]
+    current_round: int = search_state.round
+    primary_metric: str = search_state.primary_metric_name or "accuracy"
+    pareto_front = search_state.pareto_front
+    front_versions = [c.prompt_version for c in pareto_front]
 
     # Mutation descriptions for current candidates
     mutation_descriptions: dict[str, str] = {}
@@ -2281,6 +2336,8 @@ async def build_review_briefing_tool(
     search_state_id: str,
     candidate_versions: list[str],
     parent_versions: dict[str, str | None],
+    report_paths: dict[str, str],
+    holdout_card_set_path: str = "",
     output_dir: str = "outputs",
 ) -> str:
     """Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
@@ -2293,6 +2350,8 @@ async def build_review_briefing_tool(
         search_state_id: The search state to review.
         candidate_versions: Versions evaluated in the current round.
         parent_versions: Mapping of candidate → parent version.
+        report_paths: Mapping of version → path to its ScoreReport JSON.
+        holdout_card_set_path: Path to holdout rationale card set JSON (optional).
         output_dir: Output directory (default "outputs").
 
     Returns:
@@ -2302,6 +2361,7 @@ async def build_review_briefing_tool(
 
     from odysseus.agents.prompt_builder_search_ops import get_search_state
     from odysseus.agents.review_models import ExampleSummary
+    from odysseus.eval.models import ScoreReport
     from odysseus.prompts.manager import FilePromptManager
 
     out = Path(output_dir)
@@ -2313,18 +2373,28 @@ async def build_review_briefing_tool(
     all_versions = set(candidate_versions)
     for c in state.pareto_front:
         all_versions.add(c.prompt_version)
-    # Load from round reports or results files
+
+    # Load historical round reports
     historical = load_round_reports(search_state_id, output_dir=out)
 
-    # Load current round reports from eval output
+    # Load current round reports via ScoreReport.report_path convention
+    # The orchestrator must pass report_paths for each candidate evaluated this round
     score_reports: dict[str, dict[str, Any]] = {}
     for version in all_versions:
-        report_path = out / search_state_id / f"{version}_report.json"
-        if report_path.exists():
-            score_reports[version] = json.loads(report_path.read_text())
+        # Check current round reports first (passed via report_paths param)
+        if version in report_paths:
+            rp = Path(report_paths[version])
+            if rp.exists():
+                score_reports[version] = json.loads(rp.read_text(encoding="utf-8"))
+        # Fall back to historical reports for front members
+        elif version not in score_reports:
+            for round_data in historical.values():
+                if version in round_data:
+                    score_reports[version] = round_data[version]
+                    break
 
     # Load prompt texts
-    prompt_mgr = FilePromptManager()
+    prompt_mgr = FilePromptManager("prompts/")
     prompt_texts: dict[str, str] = {}
     for version in all_versions:
         try:
@@ -2336,15 +2406,28 @@ async def build_review_briefing_tool(
     mutation_log = load_mutation_log(search_state_id, output_dir=out)
     directive_history = load_directive_history(search_state_id, output_dir=out)
 
+    # Load holdout examples from rationale card set if path provided
+    holdout_examples: list[ExampleSummary] = []
+    if holdout_card_set_path:
+        card_set_data = json.loads(Path(holdout_card_set_path).read_text(encoding="utf-8"))
+        for card_id, card in card_set_data.get("cards", {}).items():
+            holdout_examples.append(
+                ExampleSummary(
+                    example_id=card_id,
+                    route=card.get("assigned_route", ""),
+                    ambiguity_tags=card.get("ambiguity_tags", []),
+                )
+            )
+
     # Build briefing
     briefing = build_review_briefing(
-        search_state=state.model_dump(),
+        search_state=state,
         score_reports=score_reports,
         historical_reports=historical,
         prompt_texts=prompt_texts,
         mutation_log=mutation_log,
         directive_history=directive_history,
-        holdout_examples=[],  # Orchestrator provides these via context
+        holdout_examples=holdout_examples,
         candidate_versions=candidate_versions,
         parent_versions=parent_versions,
     )
@@ -2475,13 +2558,13 @@ Following the existing patterns at lines 69-98 (prompts) and 101-140 (resources)
 @mcp.prompt()
 async def odysseus_review_agent() -> list[Message]:
     """System prompt for the Review Agent — supervises the prompt optimization search loop."""
-    return [UserMessage(content=_load_text("agents/prompts/review_agent_system.md"))]
+    return [UserMessage(content=_load_text("odysseus/agents/prompts/review_agent_system.md"))]
 
 
 @mcp.resource("odysseus://agents/review-agent/guidelines")
 async def review_agent_guidelines() -> str:
     """Review criteria and evaluation priority reference for the Review Agent."""
-    return _load_text("agents/prompts/review_agent_system.md")
+    return _load_text("odysseus/agents/prompts/review_agent_system.md")
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
