@@ -90,10 +90,27 @@ Test scenarios for the User Input agent, Data Validation agent, and Routing Anal
 | 43 | Initial Compilation | Read routing analysis artifacts, detect provider, compile prompt, init search state |
 | 44 | Optimization Loop | Receive directives, generate variants, evaluate, update Pareto front, detect stagnation |
 
+### Prompt Builder ↔ Eval Runner Integration (45–47)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 45 | Initial Compilation with Live Eval | Compile v1 → run_eval → ScoreReport → record result → advance round |
+| 46 | Multi-Round Optimization with Live Eval | 2 optimization rounds with real eval (mock-echo), Pareto tracking |
+| 47 | Convergence and Holdout Evaluation | Stagnation → convergence → filter holdout → holdout eval |
+
+### Full Pipeline — Input → Validation → Routing Analysis → Prompt Builder → Eval (48–50)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 48 | Full Pipeline Happy Path (Mock Eval) | All 5 stages with mock-echo, complete context flow |
+| 49 | Full Pipeline (OpenAI) | All 5 stages with live OpenAI API, smoke test |
+| 50 | Full Pipeline Two-Route | Binary routing (haiku + opus only) end-to-end |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
 - Real LLM API calls are made — ensure `ANTHROPIC_API_KEY` is set.
+- For scenario 49 only: `OPENAI_API_KEY` must be set (live OpenAI API smoke test).
 
 ## How to run a scenario
 
@@ -113,6 +130,8 @@ Claude Code will:
    - **Scenarios 31–36:** Data Validation Agent first (via `odysseus_data_validation` prompt), then Routing Analysis Agent (via `odysseus_routing_analysis` prompt with skills and MCP tools). Context dict drives handoff between stages.
    - **Scenarios 37–42:** All three agents run in sequence — User Input Agent first (via `odysseus_routing_input` prompt), then Data Validation Agent (via `odysseus_data_validation` prompt), then Routing Analysis Agent (via `odysseus_routing_analysis` prompt with skills and MCP tools).
    - **Scenarios 43–44:** Prompt Builder Agent using the `odysseus_prompt_builder` MCP prompt, connected to the Odysseus MCP tools.
+   - **Scenarios 45–47:** Prompt Builder Agent (via `odysseus_prompt_builder` prompt) + Eval Runner Agent (code-driven, invoked via `run_eval` tool). No separate agent spin-up for Eval Runner — it is called as a tool by the Prompt Builder.
+   - **Scenarios 48–50:** All five stages in sequence — User Input Agent (via `odysseus_routing_input` prompt), then Data Validation Agent (via `odysseus_data_validation` prompt), then Routing Analysis Agent (via `odysseus_routing_analysis` prompt with skills and MCP tools), then Prompt Builder Agent (via `odysseus_prompt_builder` prompt) which calls Eval Runner via `run_eval` tool.
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
    - Pass user message → active Agent
@@ -174,5 +193,7 @@ Test datasets live in `tests/scenarios/data/`:
 | `two_route_dataset.jsonl` | 8 rows, 2 tiers (haiku/opus), binary routing |
 | `warnings_dataset.jsonl` | 10 rows, 3 tiers, null values in non-required fields (triggers null_fields warning) |
 | `borderline_dataset.jsonl` | 10 rows, 3 tiers, ambiguous tier-boundary queries for semantic overlap testing |
+| `backends/mock-echo.yaml` | Mock echo backend profile for deterministic eval testing |
+| `backends/openai.yaml` | OpenAI backend profile (gpt-4o-mini) for live API smoke test |
 
 See the design spec at `docs/superpowers/specs/2026-03-23-thp-146-integration-tests-design.md` for full details.
