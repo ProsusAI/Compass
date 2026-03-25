@@ -397,16 +397,16 @@ def test_registry_create_backend_bedrock() -> None:
         patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
         patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
     ):
-            profile = BackendProfile(
-                model="anthropic.claude-3-sonnet",
-                provider="bedrock",
-                requests_per_minute=100,
-                tokens_per_minute=50000,
-            )
-            reg = BackendRegistry(profiles={"bedrock": profile})
-            backend = reg.create_backend("bedrock")
-            assert isinstance(backend, BedrockBackend)
-            assert backend.model_name == "anthropic.claude-3-sonnet"
+        profile = BackendProfile(
+            model="anthropic.claude-3-sonnet",
+            provider="bedrock",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+        )
+        reg = BackendRegistry(profiles={"bedrock": profile})
+        backend = reg.create_backend("bedrock")
+        assert isinstance(backend, BedrockBackend)
+        assert backend.model_name == "anthropic.claude-3-sonnet"
 
 
 def test_registry_create_backend_mock_echo(tmp_path: Path) -> None:
@@ -578,17 +578,13 @@ class TestAnthropicBackend:
 class TestOpenAIBackend:
     @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
     def test_backend_model_name(self, mock_client_cls: MagicMock) -> None:
-        profile = BackendProfile(
-            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
-        )
+        profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
         backend = OpenAIBackend(profile)
         assert backend.model_name == "gpt-4o"
 
     @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
     def test_backend_pricing_none_by_default(self, mock_client_cls: MagicMock) -> None:
-        profile = BackendProfile(
-            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
-        )
+        profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
         backend = OpenAIBackend(profile)
         assert backend.pricing is None
 
@@ -614,9 +610,7 @@ class TestOpenAIBackend:
                 cached_tokens=30,
             )
         )
-        profile = BackendProfile(
-            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
-        )
+        profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
         backend = OpenAIBackend(profile)
         output, usage = await backend.call("prompt", EXAMPLE)
 
@@ -636,9 +630,7 @@ class TestOpenAIBackend:
                 cached_tokens=None,
             )
         )
-        profile = BackendProfile(
-            model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000
-        )
+        profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
         backend = OpenAIBackend(profile)
         _, usage = await backend.call("prompt", EXAMPLE)
 
@@ -697,28 +689,28 @@ class TestBedrockBackend:
             patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
             patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
         ):
-                profile = BackendProfile(
-                    model="anthropic.claude-3-sonnet",
-                    provider="bedrock",
-                    requests_per_minute=100,
-                    tokens_per_minute=50000,
-                )
-                backend = BedrockBackend(profile)
-                assert backend.model_name == "anthropic.claude-3-sonnet"
+            profile = BackendProfile(
+                model="anthropic.claude-3-sonnet",
+                provider="bedrock",
+                requests_per_minute=100,
+                tokens_per_minute=50000,
+            )
+            backend = BedrockBackend(profile)
+            assert backend.model_name == "anthropic.claude-3-sonnet"
 
     def test_backend_pricing_none_by_default(self) -> None:
         with (
             patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
             patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
         ):
-                profile = BackendProfile(
-                    model="anthropic.claude-3-sonnet",
-                    provider="bedrock",
-                    requests_per_minute=100,
-                    tokens_per_minute=50000,
-                )
-                backend = BedrockBackend(profile)
-                assert backend.pricing is None
+            profile = BackendProfile(
+                model="anthropic.claude-3-sonnet",
+                provider="bedrock",
+                requests_per_minute=100,
+                tokens_per_minute=50000,
+            )
+            backend = BedrockBackend(profile)
+            assert backend.pricing is None
 
     @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
     @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
