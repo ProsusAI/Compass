@@ -41,6 +41,13 @@ Test scenarios for the User Input agent and Data Validation agent. Each `.md` fi
 | 21 | Fix and Revalidate | Type errors detected → user fixes → revalidation passes |
 | 22 | Nonexistent File | Missing dataset file handled gracefully |
 
+### Prompt Builder Agent (23–24)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 23 | Initial Compilation | Read routing analysis artifacts, detect provider, compile prompt, init search state |
+| 24 | Optimization Loop | Receive directives, generate variants, evaluate, update Pareto front, detect stagnation |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
@@ -60,6 +67,7 @@ Claude Code will:
    - **Scenarios 01–12, 19–21:** User Input Agent using the `odysseus_routing_input` MCP prompt, connected to the Odysseus MCP tools.
    - **Scenarios 13–18, 22:** Data Validation Agent using the `odysseus_data_validation` MCP prompt, connected to the Odysseus MCP tools.
    - **Scenarios 06, 19–21:** Both agents run in sequence — User Input Agent first, then Data Validation Agent on the submitted dataset.
+   - **Scenarios 23–24:** Prompt Builder Agent using the `odysseus_prompt_builder` MCP prompt, connected to the Odysseus MCP tools.
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
    - Pass user message → active Agent
