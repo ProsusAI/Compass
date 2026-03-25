@@ -17,8 +17,8 @@ The Prompt Builder agent receives routing analysis artifacts and compiles an ini
 You are a pipeline orchestrator handing off routing analysis artifacts to the Prompt Builder agent.
 
 **Your knowledge:**
-- Dev dataset: `tests/scenarios/data/dev.jsonl` (8 examples: haiku, sonnet, opus tiers)
-- Holdout dataset: `tests/scenarios/data/holdout.jsonl` (2 examples)
+- Dev dataset: `tests/scenarios/data/dev.jsonl` (2 examples: haiku, opus tiers)
+- Holdout dataset: `tests/scenarios/data/holdout.jsonl` (8 examples: haiku, sonnet, opus tiers)
 - Dev rationale cards: `tests/scenarios/data/dev_rationale_card_set.json`
 - Holdout rationale cards: `tests/scenarios/data/holdout_rationale_card_set.json`
 - Split report: `tests/scenarios/data/split_report.json`

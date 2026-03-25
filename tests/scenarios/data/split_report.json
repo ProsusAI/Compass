@@ -1,12 +1,12 @@
 {
   "dataset_hash": "cda6a91af2714f89",
   "split_ratio": {
-    "dev": 0.8,
-    "holdout": 0.2
+    "dev": 0.2,
+    "holdout": 0.8
   },
   "total_examples": 10,
-  "dev_count": 8,
-  "holdout_count": 2,
+  "dev_count": 2,
+  "holdout_count": 8,
   "singleton_strata_count": 0,
   "strata": [
     {
@@ -16,8 +16,8 @@
         "single-step"
       ],
       "total": 5,
-      "dev": 4,
-      "holdout": 1
+      "dev": 1,
+      "holdout": 4
     },
     {
       "key": [
@@ -26,8 +26,8 @@
         "complex-multi-step"
       ],
       "total": 3,
-      "dev": 2,
-      "holdout": 1
+      "dev": 1,
+      "holdout": 2
     },
     {
       "key": [
@@ -36,40 +36,40 @@
         "single-step"
       ],
       "total": 2,
-      "dev": 2,
-      "holdout": 0
+      "dev": 0,
+      "holdout": 2
     }
   ],
   "distributions": {
     "assigned_route": {
       "dev": {
         "haiku": 0.5,
-        "opus": 0.25,
-        "sonnet": 0.25
+        "opus": 0.5
       },
       "holdout": {
         "haiku": 0.5,
-        "opus": 0.5
+        "opus": 0.25,
+        "sonnet": 0.25
       }
     },
     "intent_pattern": {
       "dev": {
-        "analytical-reasoning": 0.25,
-        "factual-lookup": 0.75
-      },
-      "holdout": {
         "analytical-reasoning": 0.5,
         "factual-lookup": 0.5
+      },
+      "holdout": {
+        "analytical-reasoning": 0.25,
+        "factual-lookup": 0.75
       }
     },
     "complexity_structure": {
       "dev": {
-        "complex-multi-step": 0.25,
-        "single-step": 0.75
-      },
-      "holdout": {
         "complex-multi-step": 0.5,
         "single-step": 0.5
+      },
+      "holdout": {
+        "complex-multi-step": 0.25,
+        "single-step": 0.75
       }
     },
     "ambiguity_tags": {

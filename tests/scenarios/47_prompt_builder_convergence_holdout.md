@@ -21,7 +21,7 @@ You are a pipeline orchestrator in the final phase of prompt optimization.
 - Current round: 4
 - Stagnation count: 4 (convergence_limit is 5)
 - Pareto front: `v3` at quality_score=1.0, cost=0.0
-- Few-shot example IDs used in the current best prompt: `["rt-9", "rt-10"]` (from holdout.jsonl)
+- Few-shot example IDs used in the current best prompt: `["rt-9", "rt-4"]` (from holdout.jsonl)
 - Holdout dataset: `tests/scenarios/data/holdout.jsonl`
 
 **Behavior:**
@@ -29,7 +29,7 @@ You are a pipeline orchestrator in the final phase of prompt optimization.
 2. After the agent completes the round, confirm convergence if asked.
 3. Do NOT provide eval scores — agent must use `run_eval`.
 
-**Opening message:** "We're near convergence. Search state ID: `test-47`. Round 4, stagnation_count=4 (limit is 5). Pareto front: `v3` at quality_score=1.0, cost=0.0. Few-shot examples used: `rt-9`, `rt-10` from holdout. Review directive: try adding an explicit tiebreaker rule for ambiguous queries. Please run one more round — if no improvement, declare convergence and prepare for holdout evaluation. Holdout dataset: `tests/scenarios/data/holdout.jsonl`."
+**Opening message:** "We're near convergence. Search state ID: `test-47`. Round 4, stagnation_count=4 (limit is 5). Pareto front: `v3` at quality_score=1.0, cost=0.0. Few-shot examples used: `rt-9`, `rt-4` from holdout. Review directive: try adding an explicit tiebreaker rule for ambiguous queries. Please run one more round — if no improvement, declare convergence and prepare for holdout evaluation. Holdout dataset: `tests/scenarios/data/holdout.jsonl`."
 
 ## Verification Criteria
 
@@ -37,6 +37,7 @@ You are a pipeline orchestrator in the final phase of prompt optimization.
 - [ ] Agent generated at least one variant
 - [ ] `run_eval` called for the variant(s)
 - [ ] `record_eval_result_tool` and `advance_round_tool` called
+- [ ] `run_eval_holdout` should be used for the holdout eval not `run_eval`
 
 ### Convergence detection
 - [ ] Agent detected convergence (stagnation_count reached limit after no improvement)
@@ -44,6 +45,6 @@ You are a pipeline orchestrator in the final phase of prompt optimization.
 - [ ] Agent did not attempt further optimization rounds after convergence
 
 ### Holdout preparation
-- [ ] `filter_holdout_dataset_tool` called with holdout path and few-shot IDs `["rt-9", "rt-10"]`
+- [ ] `filter_holdout_dataset_tool` called with holdout path and few-shot IDs `["rt-9", "rt-4"]`
 - [ ] Agent reported which prompt version was selected as final
 - [ ] Agent called `run_eval` with the filtered holdout dataset path and the selected final prompt version (`run_holdout_eval` is not yet implemented; `run_eval` with the filtered path is the expected approach)
