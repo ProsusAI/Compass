@@ -15,6 +15,24 @@ from odysseus.agents.data_validation_checks import (
     run_all_checks,
 )
 from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.review_models import (
+    CandidateAnalysis,
+    ClassRecallEntry,
+    DirectiveOutcome,
+    DiversityMetrics,
+    EditDirective,
+    ExampleSummary,
+    LoopSignal,
+    MetricDeltas,
+    MutationHistory,
+    MutationRecord,
+    OracleMetrics,
+    PromotionDecision,
+    RankedCandidate,
+    RegressionFlag,
+    ReviewBriefing,
+    ReviewResult,
+)
 from odysseus.agents.routing_rationale_checks import (
     RationaleCheckResult,
     check_ambiguity_tag_membership,
@@ -70,8 +88,24 @@ from odysseus.agents.user_input_report import (
 )
 
 __all__ = [
+    "CandidateAnalysis",
+    "ClassRecallEntry",
     "DataQualityReport",
+    "DirectiveOutcome",
+    "DiversityMetrics",
+    "EditDirective",
     "EvalRunnerAgent",
+    "ExampleSummary",
+    "LoopSignal",
+    "MetricDeltas",
+    "MutationHistory",
+    "MutationRecord",
+    "OracleMetrics",
+    "PromotionDecision",
+    "RankedCandidate",
+    "RegressionFlag",
+    "ReviewBriefing",
+    "ReviewResult",
     "LabelDistribution",
     "QueryLengthDistribution",
     "RationaleCard",

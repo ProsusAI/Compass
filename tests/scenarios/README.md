@@ -106,6 +106,14 @@ Test scenarios for the User Input agent, Data Validation agent, and Routing Anal
 | 49 | Full Pipeline (OpenAI) | All 5 stages with live OpenAI API, smoke test |
 | 50 | Full Pipeline Two-Route | Binary routing (haiku + opus only) end-to-end |
 
+### Review Agent (51–53)
+
+| # | Scenario | Focus |
+|---|----------|-------|
+| 51 | Basic Review | `build_review_briefing_tool` → review agent prompt → ReviewResult with ranking, directives, loop signal |
+| 52 | Regression Guard | Candidate improves accuracy but drops rare-class recall → `severity="block"` flag, `decision="refine"` |
+| 53 | Loop Exit | Oracle captured ratios >0.9 and diversity collapsing → `action="exit"` with dominance threshold reason |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
@@ -132,6 +140,7 @@ Claude Code will:
    - **Scenarios 43–44:** Prompt Builder Agent using the `odysseus_prompt_builder` MCP prompt, connected to the Odysseus MCP tools.
    - **Scenarios 45–47:** Prompt Builder Agent (via `odysseus_prompt_builder` prompt) + Eval Runner Agent (code-driven, invoked via `run_eval` tool). No separate agent spin-up for Eval Runner — it is called as a tool by the Prompt Builder.
    - **Scenarios 48–50:** All five stages in sequence — User Input Agent (via `odysseus_routing_input` prompt), then Data Validation Agent (via `odysseus_data_validation` prompt), then Routing Analysis Agent (via `odysseus_routing_analysis` prompt with skills and MCP tools), then Prompt Builder Agent (via `odysseus_prompt_builder` prompt) which calls Eval Runner via `run_eval` tool.
+   - **Scenarios 51–53:** Review Agent using the `odysseus_review_agent` MCP prompt. The orchestrator calls `build_review_briefing_tool` first, then passes the resulting `ReviewBriefing` to the agent. The agent emits a `ReviewResult` JSON which the Verification Agent inspects.
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
    - Pass user message → active Agent
@@ -196,5 +205,9 @@ Test datasets live in `tests/scenarios/data/`:
 | `borderline_dataset.jsonl` | 10 rows, 3 tiers, ambiguous tier-boundary queries for semantic overlap testing |
 | `backends/mock-echo.yaml` | Mock echo backend profile for deterministic eval testing |
 | `backends/openai.yaml` | OpenAI backend profile (gpt-5.2) for live API smoke test |
+| `review/abc123/` | Scenario 51 fixtures: search state, score reports, mutation log for basic review |
+| `review/def456/` | Scenario 52 fixtures: search state, score reports, round reports, mutation log for regression guard |
+| `review/ghi789/` | Scenario 53 fixtures: search state, score reports, 4 round reports, mutation log for loop exit |
+| `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data |
 
 See the design spec at `docs/superpowers/specs/2026-03-23-thp-146-integration-tests-design.md` for full details.

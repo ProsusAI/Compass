@@ -7,6 +7,7 @@ parameters/return values and agent context dicts.
 
 import json
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -609,6 +610,156 @@ async def stratified_split_tool(
         },
         indent=2,
     )
+
+
+@mcp.prompt()
+async def odysseus_review_agent() -> list[Message]:
+    """System prompt for the Review Agent — supervises the prompt optimization search loop."""
+    return [UserMessage(content=_load_text("odysseus/agents/prompts/review_agent_system.md"))]
+
+
+@mcp.resource("odysseus://agents/review-agent/guidelines")
+async def review_agent_guidelines() -> str:
+    """Review criteria and evaluation priority reference for the Review Agent."""
+    return _load_text("odysseus/agents/prompts/review_agent_system.md")
+
+
+@mcp.tool()
+async def build_review_briefing_tool(
+    search_state_id: str,
+    candidate_versions: list[str],
+    parent_versions: dict[str, str | None],
+    report_paths: dict[str, str],
+    holdout_card_set_path: str = "",
+    output_dir: str = "outputs",
+) -> str:
+    """Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
+
+    Loads search state, score reports, prompt texts, mutation log, and directive
+    history, then computes candidate comparisons, per-class recall, diversity
+    metrics, diminishing returns, mutation correlation, and oracle metrics.
+
+    Args:
+        search_state_id: The search state to review.
+        candidate_versions: Versions evaluated in the current round.
+        parent_versions: Mapping of candidate → parent version.
+        report_paths: Mapping of version → path to its ScoreReport JSON.
+        holdout_card_set_path: Path to holdout rationale card set JSON (optional).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON-serialized ReviewBriefing.
+    """
+    from odysseus.agents.prompt_builder_search_ops import get_search_state
+    from odysseus.agents.review_models import ExampleSummary
+    from odysseus.agents.review_ops import (
+        load_directive_history,
+        load_mutation_log,
+        load_round_reports,
+        save_round_report,
+    )
+    from odysseus.agents.review_preprocessor import build_review_briefing
+    from odysseus.prompts.manager import FilePromptManager
+
+    out = Path(output_dir)
+
+    # Load search state
+    state = get_search_state(search_state_id, output_dir=out)
+
+    # Load score reports for current candidates + front + parents
+    all_versions: set[str] = set(candidate_versions)
+    for c in state.pareto_front:
+        all_versions.add(c.prompt_version)
+    for parent in parent_versions.values():
+        if parent is not None:
+            all_versions.add(parent)
+
+    # Load historical round reports
+    historical = load_round_reports(search_state_id, output_dir=out)
+
+    # Load current round reports via report_paths param; fall back to historical for front members
+    score_reports: dict[str, Any] = {}
+    for version in all_versions:
+        if version in report_paths:
+            rp = Path(report_paths[version])
+            if rp.exists():
+                score_reports[version] = json.loads(rp.read_text(encoding="utf-8"))
+        elif version not in score_reports:
+            for round_data in historical.values():
+                if version in round_data:
+                    score_reports[version] = round_data[version]
+                    break
+
+    # Load prompt texts
+    import contextlib
+
+    prompt_mgr = FilePromptManager("prompts/")
+    prompt_texts: dict[str, str] = {}
+    for version in all_versions:
+        with contextlib.suppress(FileNotFoundError):
+            prompt_texts[version] = prompt_mgr.load(version)
+
+    # Load mutation log and directive history
+    mutation_log = load_mutation_log(search_state_id, output_dir=out)
+    directive_history = load_directive_history(search_state_id, output_dir=out)
+
+    # Load holdout examples from rationale card set if path provided
+    holdout_examples: list[ExampleSummary] = []
+    if holdout_card_set_path:
+        card_set_data = json.loads(Path(holdout_card_set_path).read_text(encoding="utf-8"))
+        for card_id, card in card_set_data.get("cards", {}).items():
+            holdout_examples.append(
+                ExampleSummary(
+                    example_id=card_id,
+                    route=card.get("assigned_route", ""),
+                    ambiguity_tags=card.get("ambiguity_tags", []),
+                )
+            )
+
+    # Build briefing
+    briefing = build_review_briefing(
+        search_state=state,
+        score_reports=score_reports,
+        historical_reports=historical,
+        prompt_texts=prompt_texts,
+        mutation_log=mutation_log,
+        directive_history=directive_history,
+        holdout_examples=holdout_examples,
+        candidate_versions=candidate_versions,
+        parent_versions=parent_versions,
+    )
+
+    # Save current round's reports for future historical access
+    current_round_reports = {v: score_reports[v] for v in candidate_versions if v in score_reports}
+    save_round_report(search_state_id, state.round, current_round_reports, output_dir=out)
+
+    return briefing.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def record_directive_outcomes_tool(
+    search_state_id: str,
+    outcomes: list[dict[str, Any]],
+    output_dir: str = "outputs",
+) -> str:
+    """Record the outcomes of prior Review Agent directives.
+
+    Args:
+        search_state_id: ID of the search state these outcomes belong to.
+        outcomes: List of DirectiveOutcome dicts to record.
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON object with recorded count and new total.
+    """
+    from odysseus.agents.review_models import DirectiveOutcome
+    from odysseus.agents.review_ops import load_directive_history, save_directive_history
+
+    out = Path(output_dir)
+    parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
+    existing = load_directive_history(search_state_id, output_dir=out)
+    save_directive_history(search_state_id, existing + parsed, output_dir=out)
+    return json.dumps({"recorded": len(parsed), "total": len(existing) + len(parsed)})
 
 
 def main() -> None:

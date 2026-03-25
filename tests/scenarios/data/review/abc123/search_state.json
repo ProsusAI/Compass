@@ -1,0 +1,23 @@
+{
+  "search_state_id": "abc123",
+  "backend": "anthropic",
+  "primary_metric_name": "accuracy",
+  "round": 1,
+  "pareto_front": [
+    {
+      "prompt_version": "v1",
+      "parent_version": null,
+      "quality_score": 0.72,
+      "cost": 0.002,
+      "round_introduced": 1,
+      "dominated": false
+    }
+  ],
+  "round_history": [],
+  "stagnation_count": 0,
+  "stagnation_limit": 3,
+  "convergence_limit": 5,
+  "max_rounds": 50,
+  "mutation_mode": "targeted",
+  "converged": false
+}

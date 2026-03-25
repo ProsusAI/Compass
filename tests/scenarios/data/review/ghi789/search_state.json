@@ -1,0 +1,23 @@
+{
+  "search_state_id": "ghi789",
+  "backend": "anthropic",
+  "primary_metric_name": "accuracy",
+  "round": 5,
+  "pareto_front": [
+    {
+      "prompt_version": "v6",
+      "parent_version": "v5",
+      "quality_score": 0.89,
+      "cost": 0.0021,
+      "round_introduced": 5,
+      "dominated": false
+    }
+  ],
+  "round_history": [],
+  "stagnation_count": 2,
+  "stagnation_limit": 3,
+  "convergence_limit": 5,
+  "max_rounds": 50,
+  "mutation_mode": "targeted",
+  "converged": false
+}

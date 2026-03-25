@@ -1,0 +1,37 @@
+[
+  {
+    "child_version": "v2",
+    "parent_version": "v1",
+    "mutation_type": "example_swap",
+    "description": "replaced haiku example with sonnet boundary case",
+    "directive_ids": null
+  },
+  {
+    "child_version": "v3",
+    "parent_version": "v2",
+    "mutation_type": "rule_edit",
+    "description": "added explicit opus trigger conditions",
+    "directive_ids": null
+  },
+  {
+    "child_version": "v4",
+    "parent_version": "v3",
+    "mutation_type": "rule_add",
+    "description": "added cost-awareness rule for haiku preference",
+    "directive_ids": null
+  },
+  {
+    "child_version": "v5",
+    "parent_version": "v4",
+    "mutation_type": "example_swap",
+    "description": "swapped opus example for ambiguity-tagged boundary case",
+    "directive_ids": null
+  },
+  {
+    "child_version": "v6",
+    "parent_version": "v5",
+    "mutation_type": "rule_edit",
+    "description": "micro-edit \u2014 rephrased haiku instruction",
+    "directive_ids": null
+  }
+]
