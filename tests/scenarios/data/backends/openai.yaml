@@ -1,0 +1,5 @@
+model: gpt-4o-mini
+provider: openai
+requests_per_minute: 500
+tokens_per_minute: 100000
+api_key_env: OPENAI_API_KEY
