@@ -200,6 +200,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+.cursor/
 
 # Marimo
 marimo/_static/
@@ -210,3 +211,18 @@ docs/superpowers/
 
 # Integration test outputs (generated at runtime)
 tests/fixtures/integration/outputs/
+
+# Pipeline runtime outputs
+outputs/
+scratch/
+
+# Generated routing prompt versions (created by pipeline runs)
+prompts/*.txt
+prompts/*.yaml
+prompts/*.yml
+# Keep README and .gitkeep
+!prompts/README.md
+!prompts/.gitkeep
+
+# Generated test artifacts
+tests/scenarios/data/holdout_filtered.jsonl

@@ -1,0 +1,9 @@
+model: gpt-5.2
+provider: openai
+requests_per_minute: 500
+tokens_per_minute: 100000
+api_key_env: OPENAI_API_KEY
+pricing:
+  input_cost_per_million_tokens: 1.0
+  cached_cost_per_million_tokens: 0.25
+  output_cost_per_million_tokens: 4.0

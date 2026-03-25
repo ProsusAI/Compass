@@ -122,7 +122,7 @@ class EvalRunnerAgent(BaseAgent):
 
         return RunDependencies(
             backend=backend_instance,
-            prompt_manager=FilePromptManager(prompts_dir=Path(__file__).resolve().parent / "prompts"),
+            prompt_manager=FilePromptManager(prompts_dir=Path("prompts")),
             dataset_manager=JsonlDatasetManager(),
             metrics_engine=create_default_engine(),
             results_collector=JsonResultsCollector(),

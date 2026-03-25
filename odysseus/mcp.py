@@ -14,6 +14,14 @@ from mcp.server.fastmcp.prompts.base import Message, UserMessage
 
 from odysseus.agents.data_validation_checks import run_all_checks
 from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.prompt_builder_holdout_filter import filter_holdout_dataset
+from odysseus.agents.prompt_builder_search_ops import (
+    advance_round,
+    get_search_state,
+    init_search_state,
+    record_eval_result,
+    register_candidate,
+)
 from odysseus.agents.routing_rationale_checks_deterministic import validate_deterministic
 from odysseus.agents.routing_rationale_models import RationaleCardSet, RoutingContext, VocabularyRegistry
 from odysseus.agents.routing_rationale_registry import create_seed_registry, prune_registry, resolve_registry
@@ -80,6 +88,16 @@ async def odysseus_data_validation() -> list[Message]:
     return [UserMessage(content=system_prompt)]
 
 
+@mcp.prompt()
+async def odysseus_prompt_builder() -> list[Message]:
+    """Activate the Odysseus prompt builder agent.
+
+    Use after the routing analysis agent has produced annotated and split datasets.
+    """
+    system_prompt = _load_text("odysseus/agents/prompts/prompt_builder_system.md")
+    return [UserMessage(content=system_prompt)]
+
+
 @mcp.resource("odysseus://agents/input/clarification-skill")
 async def input_clarification_skill() -> str:
     """Structured clarification skill — conversational strategy for the input agent."""
@@ -102,6 +120,24 @@ async def data_validation_format_spec() -> str:
 async def data_validation_output_spec() -> str:
     """Output format specification (THP-81) for the data validation agent."""
     return _load_text("odysseus/agents/data_validation_output.md")
+
+
+@mcp.resource("odysseus://agents/prompt-builder/best-practices")
+async def prompt_builder_best_practices() -> str:
+    """General prompt engineering principles for routing prompts."""
+    return _load_text("odysseus/agents/prompt_builder_best_practices.md")
+
+
+@mcp.resource("odysseus://agents/prompt-builder/conventions-claude")
+async def prompt_builder_conventions_claude() -> str:
+    """Claude conventions and Anthropic cookbook patterns for routing prompts."""
+    return _load_text("odysseus/agents/prompt_builder_conventions_claude.md")
+
+
+@mcp.resource("odysseus://agents/prompt-builder/conventions-openai")
+async def prompt_builder_conventions_openai() -> str:
+    """OpenAI conventions and cookbook patterns for routing prompts."""
+    return _load_text("odysseus/agents/prompt_builder_conventions_openai.md")
 
 
 @mcp.tool()
@@ -246,6 +282,163 @@ async def validate_dataset(dataset_path: str) -> str:
 
     report = run_all_checks(rows)
     return report.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def init_search_state_tool(
+    backend: str,
+    max_rounds: int = 50,
+    stagnation_limit: int = 3,
+    convergence_limit: int = 5,
+    primary_metric_name: str | None = None,
+) -> str:
+    """Initialise a new prompt-builder search state.
+
+    Args:
+        backend: Backend identifier (e.g. "anthropic", "openai").
+        max_rounds: Maximum number of search rounds before forced convergence.
+        stagnation_limit: Stagnation rounds before switching to exploratory mode.
+        convergence_limit: Stagnation rounds that trigger convergence.
+        primary_metric_name: Optional name of the primary quality metric.
+
+    Returns:
+        JSON-serialized SearchState for the new search run.
+    """
+    state = init_search_state(
+        backend=backend,
+        max_rounds=max_rounds,
+        stagnation_limit=stagnation_limit,
+        convergence_limit=convergence_limit,
+        primary_metric_name=primary_metric_name,
+    )
+    return state.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def register_candidate_tool(
+    search_state_id: str,
+    prompt_version: str,
+    parent_version: str | None = None,
+) -> str:
+    """Register a new candidate prompt version for the current search round.
+
+    Args:
+        search_state_id: ID of the search state to update.
+        prompt_version: Unique version identifier for the new prompt candidate.
+        parent_version: Parent prompt version, if any.
+
+    Returns:
+        JSON object confirming the registered prompt version.
+    """
+    try:
+        register_candidate(
+            search_state_id=search_state_id,
+            prompt_version=prompt_version,
+            parent_version=parent_version,
+        )
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return json.dumps({"registered": prompt_version})
+
+
+@mcp.tool()
+async def record_eval_result_tool(
+    search_state_id: str,
+    prompt_version: str,
+    quality_score: float,
+    cost: float,
+) -> str:
+    """Record evaluation results for a pending candidate.
+
+    Args:
+        search_state_id: ID of the search state to update.
+        prompt_version: Version identifier of the candidate being evaluated.
+        quality_score: Evaluation quality score.
+        cost: Evaluation cost.
+
+    Returns:
+        JSON object with prompt_version, quality_score, and cost.
+    """
+    try:
+        result = record_eval_result(
+            search_state_id=search_state_id,
+            prompt_version=prompt_version,
+            quality_score=quality_score,
+            cost=cost,
+        )
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return json.dumps(result)
+
+
+@mcp.tool()
+async def advance_round_tool(search_state_id: str) -> str:
+    """Advance the search loop by one round.
+
+    Processes all pending candidates, updates the Pareto front, adjusts
+    stagnation tracking, and checks for convergence.
+
+    Args:
+        search_state_id: ID of the search state to advance.
+
+    Returns:
+        JSON-serialized RoundSummary for the completed round.
+    """
+    try:
+        summary = advance_round(search_state_id=search_state_id)
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    return summary.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def get_search_state_tool(search_state_id: str) -> str:
+    """Load and return the current search state.
+
+    Args:
+        search_state_id: ID of the search state to retrieve.
+
+    Returns:
+        JSON-serialized SearchState.
+    """
+    try:
+        state = get_search_state(search_state_id=search_state_id)
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    return state.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def filter_holdout_dataset_tool(
+    holdout_jsonl_path: str,
+    exclude_ids: list[str],
+) -> str:
+    """Filter a holdout JSONL dataset by removing rows with specified IDs.
+
+    Removes few-shot examples from the holdout set to prevent data
+    contamination before final evaluation.
+
+    Args:
+        holdout_jsonl_path: Path to the holdout JSONL dataset file.
+        exclude_ids: List of row IDs to exclude from the output.
+
+    Returns:
+        JSON object with filtered_holdout_path pointing to the output file.
+    """
+    try:
+        filtered_path = filter_holdout_dataset(
+            holdout_jsonl_path=holdout_jsonl_path,
+            exclude_ids=exclude_ids,
+        )
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    return json.dumps({"filtered_holdout_path": filtered_path})
 
 
 @mcp.prompt()
