@@ -1,4 +1,4 @@
-model: gpt-4o-mini
+model: gpt-5.2
 provider: openai
 requests_per_minute: 500
 tokens_per_minute: 100000
