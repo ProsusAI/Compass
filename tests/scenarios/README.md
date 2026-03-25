@@ -190,10 +190,11 @@ Test datasets live in `tests/scenarios/data/`:
 | `type_errors_dataset.jsonl` | Numeric id, numeric input, string costs, null values |
 | `small_dataset.jsonl` | 2 rows, below minimum volume per tier |
 | `rationale_test_dataset.jsonl` | 10 rows, 3 tiers (haiku/sonnet/opus), mixed complexity for annotation skill testing |
+| `full_pipeline_dataset.jsonl` | 100 rows, 3 tiers (50 haiku/30 sonnet/20 opus), full pipeline integration testing |
 | `two_route_dataset.jsonl` | 8 rows, 2 tiers (haiku/opus), binary routing |
 | `warnings_dataset.jsonl` | 10 rows, 3 tiers, null values in non-required fields (triggers null_fields warning) |
 | `borderline_dataset.jsonl` | 10 rows, 3 tiers, ambiguous tier-boundary queries for semantic overlap testing |
 | `backends/mock-echo.yaml` | Mock echo backend profile for deterministic eval testing |
-| `backends/openai.yaml` | OpenAI backend profile (gpt-4o-mini) for live API smoke test |
+| `backends/openai.yaml` | OpenAI backend profile (gpt-5.2) for live API smoke test |
 
 See the design spec at `docs/superpowers/specs/2026-03-23-thp-146-integration-tests-design.md` for full details.
