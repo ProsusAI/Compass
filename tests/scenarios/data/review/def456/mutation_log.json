@@ -1,0 +1,16 @@
+[
+  {
+    "child_version": "v2",
+    "parent_version": "v1",
+    "mutation_type": "example_swap",
+    "description": "added second sonnet example",
+    "directive_ids": null
+  },
+  {
+    "child_version": "v3",
+    "parent_version": "v2",
+    "mutation_type": "rule_edit",
+    "description": "tightened haiku/sonnet boundary rule",
+    "directive_ids": null
+  }
+]

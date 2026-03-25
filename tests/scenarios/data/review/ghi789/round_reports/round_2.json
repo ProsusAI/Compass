@@ -1,0 +1,31 @@
+{
+  "v2": {
+    "metrics": {
+      "accuracy": 0.878,
+      "cost": 0.0023,
+      "oracle_cost_reduction": 0.003,
+      "oracle_quality_reduction": 0.15,
+      "cost_reduction": 0.0019549999999999997,
+      "quality_reduction": 0.11414,
+      "recall/haiku": 0.89,
+      "recall/sonnet": 0.77,
+      "recall/opus": 0.79,
+      "support/haiku": 10,
+      "support/sonnet": 7,
+      "support/opus": 3
+    },
+    "summary": {
+      "total": 20,
+      "succeeded": 20,
+      "failed": 0,
+      "total_cost": 0.0023,
+      "start_time": "2026-03-25T12:00:00+00:00",
+      "end_time": "2026-03-25T12:00:05+00:00",
+      "duration_seconds": 5.0
+    },
+    "errors": [],
+    "diff": null,
+    "report_path": "tests/scenarios/data/review/ghi789/v2_score_report.json",
+    "results_path": "tests/scenarios/data/review/ghi789/v2_results.jsonl"
+  }
+}

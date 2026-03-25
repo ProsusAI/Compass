@@ -666,10 +666,13 @@ async def build_review_briefing_tool(
     # Load search state
     state = get_search_state(search_state_id, output_dir=out)
 
-    # Load score reports for current candidates + front
+    # Load score reports for current candidates + front + parents
     all_versions: set[str] = set(candidate_versions)
     for c in state.pareto_front:
         all_versions.add(c.prompt_version)
+    for parent in parent_versions.values():
+        if parent is not None:
+            all_versions.add(parent)
 
     # Load historical round reports
     historical = load_round_reports(search_state_id, output_dir=out)

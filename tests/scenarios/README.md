@@ -205,5 +205,9 @@ Test datasets live in `tests/scenarios/data/`:
 | `borderline_dataset.jsonl` | 10 rows, 3 tiers, ambiguous tier-boundary queries for semantic overlap testing |
 | `backends/mock-echo.yaml` | Mock echo backend profile for deterministic eval testing |
 | `backends/openai.yaml` | OpenAI backend profile (gpt-5.2) for live API smoke test |
+| `review/abc123/` | Scenario 51 fixtures: search state, score reports, mutation log for basic review |
+| `review/def456/` | Scenario 52 fixtures: search state, score reports, round reports, mutation log for regression guard |
+| `review/ghi789/` | Scenario 53 fixtures: search state, score reports, 4 round reports, mutation log for loop exit |
+| `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data |
 
 See the design spec at `docs/superpowers/specs/2026-03-23-thp-146-integration-tests-design.md` for full details.

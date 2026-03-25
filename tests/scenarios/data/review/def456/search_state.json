@@ -1,0 +1,23 @@
+{
+  "search_state_id": "def456",
+  "backend": "anthropic",
+  "primary_metric_name": "accuracy",
+  "round": 2,
+  "pareto_front": [
+    {
+      "prompt_version": "v2",
+      "parent_version": "v1",
+      "quality_score": 0.78,
+      "cost": 0.0025,
+      "round_introduced": 1,
+      "dominated": false
+    }
+  ],
+  "round_history": [],
+  "stagnation_count": 0,
+  "stagnation_limit": 3,
+  "convergence_limit": 5,
+  "max_rounds": 50,
+  "mutation_mode": "targeted",
+  "converged": false
+}

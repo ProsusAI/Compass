@@ -1,0 +1,29 @@
+{
+  "metrics": {
+    "accuracy": 0.78,
+    "cost": 0.0025,
+    "oracle_cost_reduction": 0.003,
+    "oracle_quality_reduction": 0.15,
+    "cost_reduction": 0.0018,
+    "quality_reduction": 0.09,
+    "recall/haiku": 0.85,
+    "recall/sonnet": 0.7,
+    "recall/opus": 0.75,
+    "support/haiku": 10,
+    "support/sonnet": 7,
+    "support/opus": 3
+  },
+  "summary": {
+    "total": 20,
+    "succeeded": 20,
+    "failed": 0,
+    "total_cost": 0.0025,
+    "start_time": "2026-03-25T12:00:00+00:00",
+    "end_time": "2026-03-25T12:00:05+00:00",
+    "duration_seconds": 5.0
+  },
+  "errors": [],
+  "diff": null,
+  "report_path": "tests/scenarios/data/review/def456/v2_score_report.json",
+  "results_path": "tests/scenarios/data/review/def456/v2_results.jsonl"
+}
