@@ -261,6 +261,30 @@ class TestSubmitInputReport:
             )
 
 
+def test_build_review_briefing_tool_registered() -> None:
+    """Verify build_review_briefing_tool is a registered MCP tool."""
+    from odysseus.mcp import mcp
+
+    tool_names = [t.name for t in mcp._tool_manager.list_tools()]
+    assert "build_review_briefing_tool" in tool_names
+
+
+def test_record_directive_outcomes_tool_registered() -> None:
+    """Verify record_directive_outcomes_tool is a registered MCP tool."""
+    from odysseus.mcp import mcp
+
+    tool_names = [t.name for t in mcp._tool_manager.list_tools()]
+    assert "record_directive_outcomes_tool" in tool_names
+
+
+def test_review_agent_prompt_registered() -> None:
+    """Verify odysseus_review_agent is a registered MCP prompt."""
+    from odysseus.mcp import mcp
+
+    prompt_names = [p.name for p in mcp._prompt_manager.list_prompts()]
+    assert "odysseus_review_agent" in prompt_names
+
+
 class TestLoadText:
     """Tests for the _load_text file loader helper."""
 
