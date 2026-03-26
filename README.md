@@ -305,7 +305,7 @@ uv run python -m odysseus.mcp
 
 The pipeline expects:
 
-- **Routing dataset** — JSONL file where each line contains a `query`, a `routing_decision` (ground truth), and optional `metadata`
+- **Routing dataset** — JSONL file where each line contains a `query`, a `routing_decision` (ground truth), and per-model cost/quality data
 - **Problem description** — natural language description of the routing task and what each tier/class means
 - **Target metrics** — the metrics and thresholds that define success (e.g. accuracy ≥ 0.90, F1 ≥ 0.85 per class)
 
@@ -315,7 +315,7 @@ The pipeline expects:
 - A stated problem description (routing task context)
 - At least one target metric
 
-Non-blocking gaps (e.g. missing metadata fields, unbalanced classes) are flagged with assumed defaults and included in the data quality report.
+Non-blocking gaps (e.g. unbalanced classes) are flagged with assumed defaults and included in the data quality report.
 
 ---
 

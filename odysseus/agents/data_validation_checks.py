@@ -195,17 +195,11 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
             if isinstance(routes, dict) and len(routes) > 0:
                 route_key_sets.append((idx, frozenset(routes.keys())))
 
-        # --- Check: null field detection (optional fields + expected.*) ---
+        # --- Check: null field detection (expected.*) ---
         has_null = False
-        # Optional top-level fields only — required fields (id, input)
-        # are already covered by the required_keys check above.
-        for key in ("metadata",):
-            if key in row and row[key] is None:
-                has_null = True
-                break
 
         # expected.* fields
-        if not has_null and isinstance(row.get("expected"), dict):
+        if isinstance(row.get("expected"), dict):
             exp = row["expected"]
             for key in ("route", "routes"):
                 if key in exp and exp[key] is None:
