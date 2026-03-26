@@ -476,8 +476,8 @@ async def save_routing_context(run_id: str, routing_context_json: str) -> str:
 
 
 @mcp.tool()
-async def detect_and_parse_dataset(dataset_path: str) -> str:
-    """Detect the format of a dataset file and parse its schema.
+async def detect_and_parse_dataset(dataset_path: str, run_id: str) -> str:
+    """[Stage 2: Data Validation] Detect the format of a dataset file and parse its schema.
 
     Supports CSV, JSON (array of objects), and JSONL formats.
     Returns column names, sample rows, and nested field paths
