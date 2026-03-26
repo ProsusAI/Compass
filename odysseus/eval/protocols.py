@@ -11,6 +11,7 @@ from odysseus.eval.models import (  # noqa: TC001
     EvalResult,
     Example,
     MetricConfig,
+    RunFingerprint,
     RunReport,
     TokenUsage,
 )
@@ -60,13 +61,17 @@ class MetricsEngine(Protocol):
 class ResultsCollector(Protocol):
     """Persists evaluation results and reports to disk."""
 
-    def write_results(self, results: list[EvalResult], path: str) -> None: ...
+    def write_results(self, results: list[EvalResult], path: str, fingerprint: RunFingerprint | None = None) -> None: ...
 
     def write_report(self, report: RunReport, path: str) -> None: ...
 
     def append_result(self, result: EvalResult, path: str) -> None: ...
 
     def read_completed_ids(self, path: str) -> set[str]: ...
+
+    def write_fingerprint(self, fingerprint: RunFingerprint, path: str) -> None: ...
+
+    def read_fingerprint(self, path: str) -> RunFingerprint | None: ...
 
 
 @dataclasses.dataclass
