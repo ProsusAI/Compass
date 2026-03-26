@@ -34,7 +34,7 @@ When the trigger fires, `run_eval` returns early with:
 }
 ```
 
-`available_backends` is populated by scanning `/backends/*.yaml` filenames (without extension). The orchestrating agent (Review Agent) routes the user through the `odysseus_backend_setup` MCP prompt, then re-calls `run_eval` with the confirmed backend label.
+`available_backends` is populated via `BackendRegistry.from_directory()` which already provides a `list_profiles()` method. The orchestrating agent (Review Agent) routes the user through the `odysseus_backend_setup` MCP prompt, then re-calls `run_eval` with the confirmed backend label.
 
 ## Field Taxonomy
 
@@ -86,7 +86,7 @@ When the trigger fires, `run_eval` returns early with:
 
 ## Default Pricing Table
 
-A `DEFAULT_PRICING` dict in `odysseus/eval/backends/pricing.py`, keyed by `(provider, model)` tuples mapping to `ModelPricing` instances. Populated with current rates for common models.
+A `DEFAULT_PRICING` dict in `odysseus/eval/pricing.py` (alongside the existing `ModelPricing` class), keyed by `(provider, model)` tuples mapping to `ModelPricing` instances. Populated with current rates for common models.
 
 Example entries:
 
@@ -117,25 +117,29 @@ reasoning_level: str | None = None
 
 ### Backend Implementations
 
-Pass `reasoning_level` to API calls where supported:
-- **AnthropicBackend:** Map to `thinking` budget parameter
-- **OpenAIBackend:** Map to `reasoning_effort` parameter
-- **BedrockBackend:** Pass through if supported by the underlying model
-- **MockEchoBackend:** Ignore
+Pass `reasoning_level` to API calls where supported. Valid values: `"low"`, `"medium"`, `"high"`.
+
+| Backend | API Parameter | Mapping |
+|---------|--------------|---------|
+| **AnthropicBackend** | `thinking.budget_tokens` | `"low"` → 1024, `"medium"` → 4096, `"high"` → 16384. `None` → omit thinking parameter entirely. |
+| **OpenAIBackend** | `reasoning_effort` | Pass through directly (`"low"`, `"medium"`, `"high"`). `None` → omit parameter. |
+| **BedrockBackend** | Depends on underlying model | Same mapping as Anthropic for Claude models; same as OpenAI for OpenAI models. |
+| **MockEchoBackend** | N/A | Ignore. |
 
 ### `run_eval` MCP Tool (`odysseus/mcp.py`)
 
-Add `search_state_id: str | None = None` parameter. When provided:
+Add `search_state_id: str | None = None` parameter. The pre-flight check lives in the MCP tool function (before calling `EvalRunnerAgent.run()`). This is intentionally in the MCP layer rather than the agent because it's a routing decision — the MCP tool decides whether to dispatch to the eval runner or signal the orchestrator to collect backend info first. The eval runner itself remains a pure execution agent.
 
 ```python
 if search_state_id:
-    state = get_search_state(search_state_id)
+    state = get_search_state(search_state_id=search_state_id)
     if state.round == 0 and len(state.round_history) == 0:
-        available = [p.stem for p in project_dir.glob("backends/*.yaml")]
+        project_dir = get_project_dir()
+        registry = BackendRegistry.from_directory(project_dir / "backends")
         return json.dumps({
             "action_required": "backend_setup",
             "search_state_id": search_state_id,
-            "available_backends": available,
+            "available_backends": list(registry.list_profiles()),
         })
 ```
 
@@ -164,15 +168,22 @@ def odysseus_backend_setup() -> list[PromptMessage]:
 | `odysseus/agents/prompts/backend_setup_system.md` | System prompt for backend setup agent |
 | `odysseus/agents/backend_setup_taxonomy.md` | Field taxonomy (blocking/non-blocking classification) |
 | `odysseus/agents/backend_setup_defaults.md` | Defaults table with pricing lookup reference |
-| `odysseus/eval/backends/pricing.py` | `DEFAULT_PRICING` dict with known model pricing |
+
+
+Note: `DEFAULT_PRICING` is added to the existing `odysseus/eval/pricing.py` (no new file needed).
 
 ## Handoff
 
-The backend setup agent writes the YAML file to `/backends/<label>.yaml` and returns the label. No new MCP tool is needed — the agent writes the file directly. The `BackendRegistry.from_directory()` picks it up on the next `run_eval` call.
+The backend setup agent is an LLM-driven agent invoked via MCP prompt. It writes the YAML file to `/backends/<label>.yaml` using the host environment's filesystem access (e.g., Claude Code's `Write` tool, Cursor's file editing). No new MCP tool is needed for file creation — MCP clients already have file write capabilities. The `BackendRegistry.from_directory()` picks it up on the next `run_eval` call.
 
 ## Testing
 
-- Unit test for pre-flight check: round 0 + no history triggers `action_required`; round > 0 proceeds normally
-- Unit test for `DEFAULT_PRICING` lookup: known models resolve, unknown models return `None`
-- Unit test for `BackendProfile` with `reasoning_level` field
-- Integration test scenario in `tests/scenarios/`: full flow from `run_eval` → backend setup clarification → YAML written → `run_eval` succeeds
+Unit tests in `tests/`:
+
+| Test File | What It Covers |
+|-----------|---------------|
+| `tests/test_run_eval_tool.py` | Pre-flight check: round 0 + no history triggers `action_required`; round > 0 proceeds normally |
+| `tests/test_pricing.py` | `DEFAULT_PRICING` lookup: known models resolve; unknown models return `None` |
+| `tests/test_backends.py` | `BackendProfile` with `reasoning_level` field; reasoning level mapping per backend |
+
+Integration test scenarios in `tests/scenarios/`: full flow from `run_eval` → backend setup clarification → YAML written → `run_eval` succeeds.
