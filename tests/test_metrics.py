@@ -289,7 +289,9 @@ def test_cost_quality_default_baseline():
     # Predicted (claude-sonnet): cost = 0.01*2 = 0.02, quality = 0.88*2 = 1.76
     # Oracle: ex-0=claude-sonnet(0.01, 0.88), ex-1=haiku(0.002, 0.72)
     #   cost = 0.012, quality = 1.60
+    # Routing overhead = 0 (cost=None on both results)
     assert out["cost_reduction"] == pytest.approx((0.02 - 0.06) / 0.06)
+    assert out["cost_reduction_with_overhead"] == pytest.approx((0.02 - 0.06) / 0.06)
     assert out["quality_reduction"] == pytest.approx((1.76 - 1.90) / 1.90)
     assert out["oracle_cost_reduction"] == pytest.approx((0.012 - 0.06) / 0.06)
     assert out["oracle_quality_reduction"] == pytest.approx((1.60 - 1.90) / 1.90)
@@ -319,6 +321,7 @@ def test_cost_quality_all_match_baseline():
     out = compute_cost_quality_reduction(results, examples, baseline_class="gpt-4o")
 
     assert out["cost_reduction"] == 0.0
+    assert out["cost_reduction_with_overhead"] == 0.0
     assert out["quality_reduction"] == 0.0
 
 
@@ -363,9 +366,49 @@ def test_cost_quality_baseline_tiebreak_alphabetical():
 def test_cost_quality_empty_results():
     out = compute_cost_quality_reduction([], [])
     assert out["cost_reduction"] == 0.0
+    assert out["cost_reduction_with_overhead"] == 0.0
     assert out["quality_reduction"] == 0.0
     assert out["oracle_cost_reduction"] == 0.0
     assert out["oracle_quality_reduction"] == 0.0
+
+
+def test_cost_quality_with_routing_overhead():
+    """Routing overhead is included in cost_reduction_with_overhead but not cost_reduction."""
+    examples = [
+        _cost_quality_example("ex-0", route="claude-sonnet", routes=_ROUTES),
+        _cost_quality_example("ex-1", route="haiku", routes=_ROUTES),
+    ]
+    # Each routing call costs 0.005
+    results = [
+        EvalResult(
+            example_id="ex-0",
+            model="test-model",
+            output={"route": "claude-sonnet"},
+            error=None,
+            latency_ms=100.0,
+            retries=0,
+            token_usage=None,
+            cost=0.005,
+        ),
+        EvalResult(
+            example_id="ex-1",
+            model="test-model",
+            output={"route": "claude-sonnet"},
+            error=None,
+            latency_ms=100.0,
+            retries=0,
+            token_usage=None,
+            cost=0.005,
+        ),
+    ]
+
+    out = compute_cost_quality_reduction(results, examples)
+
+    # Baseline (gpt-4o): cost = 0.03*2 = 0.06
+    # Predicted (claude-sonnet): cost = 0.01*2 = 0.02
+    # Routing overhead: 0.005*2 = 0.01
+    assert out["cost_reduction"] == pytest.approx((0.02 - 0.06) / 0.06)
+    assert out["cost_reduction_with_overhead"] == pytest.approx((0.02 + 0.01 - 0.06) / 0.06)
 
 
 # --- create_default_engine tests ---

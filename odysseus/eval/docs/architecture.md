@@ -287,7 +287,8 @@ Output keys:
 
 | Key | Description |
 |-----|-------------|
-| `cost_reduction` | `(predicted_cost − baseline_cost) / baseline_cost` |
+| `cost_reduction` | `(predicted_cost − baseline_cost) / baseline_cost` (model cost only, excludes routing overhead) |
+| `cost_reduction_with_overhead` | `(predicted_cost + routing_overhead − baseline_cost) / baseline_cost` (includes routing call cost) |
 | `quality_reduction` | `(predicted_quality − baseline_quality) / baseline_quality` |
 | `oracle_cost_reduction` | Same ratio for the ground-truth optimal route |
 | `oracle_quality_reduction` | Same ratio for the ground-truth optimal route |

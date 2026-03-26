@@ -41,11 +41,12 @@ Full confusion matrix showing which classes get misrouted to which other classes
 
 **cost_quality_reduction**
 
-Measures the percentage change in cost and quality compared to a baseline tier or tool, assuming the router's decisions were applied uniformly. Outputs four keys:
+Measures the percentage change in cost and quality compared to a baseline tier or tool, assuming the router's decisions were applied uniformly. Outputs five keys:
 
-- `cost_reduction` — percentage cost change versus the baseline (negative values mean savings; e.g. -0.30 means 30% cheaper).
+- `cost_reduction` — percentage cost change versus the baseline, excluding routing overhead (negative values mean savings; e.g. -0.30 means 30% cheaper).
+- `cost_reduction_with_overhead` — same as `cost_reduction` but includes the cost of the routing call itself. Use this for threshold targets to reflect true realized savings.
 - `quality_reduction` — percentage quality change versus the baseline (negative values mean quality loss).
 - `oracle_cost_reduction` — theoretical best-case cost change if every request were routed perfectly.
 - `oracle_quality_reduction` — theoretical best-case quality change under perfect routing.
 
-Sign convention: negative values indicate savings (cost) or loss (quality) relative to always using the baseline. An optional `baseline_class` parameter specifies which route class to treat as the baseline; if omitted, the highest-quality class is selected automatically. Suitable as an optimization target. Example: `cost_reduction <= -0.30` (at least 30% cost savings).
+Sign convention: negative values indicate savings (cost) or loss (quality) relative to always using the baseline. An optional `baseline_class` parameter specifies which route class to treat as the baseline; if omitted, the highest-quality class is selected automatically. Suitable as an optimization target. Example: `cost_reduction_with_overhead <= -0.30` (at least 30% cost savings including routing overhead).
