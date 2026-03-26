@@ -153,7 +153,30 @@ odysseus/eval/           ← evaluation engine, metrics, backends
 
 ## Quick Start
 
-### Install from source
+### Install from GitHub (recommended for users)
+
+Add Odysseus to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "odysseus": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/your-org/project-odysseus", "odysseus"]
+    }
+  }
+}
+```
+
+Then scaffold the required project directories:
+
+```bash
+odysseus init
+```
+
+This creates `outputs/`, `prompts/`, and `backends/` with starter files. Add your backend configs, routing prompts, and you're ready to go.
+
+### Install from source (for development)
 
 ```bash
 git clone https://github.com/your-org/project-odysseus.git
@@ -176,18 +199,18 @@ The MCP server reads these at runtime via the `api_key_env` field in backend pro
 ### One-command install for Claude Code
 
 ```bash
-claude mcp add odysseus -- uv run --directory /path/to/project-odysseus python -m odysseus.mcp
+claude mcp add odysseus -- uvx --from git+https://github.com/your-org/project-odysseus odysseus
 ```
 
-Replace `/path/to/project-odysseus` with the absolute path to your clone. The server inherits your shell environment variables, so if you've exported your API keys as shown above, no extra configuration is needed.
+The server inherits your shell environment variables, so if you've exported your API keys as shown above, no extra configuration is needed.
 
-If you prefer not to set global environment variables, you can pass keys directly to the MCP server:
+If you prefer not to set global environment variables, you can pass keys directly:
 
 ```bash
 claude mcp add odysseus \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e OPENAI_API_KEY=sk-... \
-  -- uv run --directory /path/to/project-odysseus python -m odysseus.mcp
+  -- uvx --from git+https://github.com/your-org/project-odysseus odysseus
 ```
 
 To verify it's connected:
@@ -208,8 +231,8 @@ Add the server to any MCP-compatible client's config file. API keys are picked u
 {
   "mcpServers": {
     "odysseus": {
-      "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/project-odysseus", "python", "-m", "odysseus.mcp"]
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/your-org/project-odysseus", "odysseus"]
     }
   }
 }
@@ -221,8 +244,8 @@ Add the server to any MCP-compatible client's config file. API keys are picked u
 {
   "mcpServers": {
     "odysseus": {
-      "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/project-odysseus", "python", "-m", "odysseus.mcp"],
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/your-org/project-odysseus", "odysseus"],
       "env": {
         "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}"
@@ -234,19 +257,33 @@ Add the server to any MCP-compatible client's config file. API keys are picked u
 
 Cursor does not inherit your shell environment, so you need to explicitly forward your API keys via the `env` block. The `${VAR}` syntax references variables from your shell — make sure they are exported in your shell profile before launching Cursor. Alternatively, you can set the keys directly in Cursor's settings under **Settings > Environment Variables**.
 
-**Project-local** (`.mcp.json` in repo root — already included):
+**For local development** (`.mcp.json` in repo root — already included):
 
 ```json
 {
   "mcpServers": {
     "odysseus": {
       "command": "uv",
-      "args": ["run", "python", "-m", "odysseus.mcp"],
-      "cwd": "/absolute/path/to/project-odysseus"
+      "args": ["run", "python", "-m", "odysseus.mcp"]
     }
   }
 }
 ```
+
+### Project initialization
+
+After installing, run `odysseus init` in your project directory to scaffold the required directories:
+
+```bash
+odysseus init
+```
+
+This creates:
+- `backends/` — LLM backend configs (a `mock-echo.yaml` starter is included)
+- `prompts/` — versioned routing prompts
+- `outputs/` — run outputs, reports, and config (`run_config.yaml` starter included)
+
+The command is idempotent and will not overwrite existing files.
 
 ### Running the MCP server standalone
 
@@ -260,9 +297,7 @@ uv run python -m odysseus.mcp
 |---|---|
 | `ANTHROPIC_API_KEY` | Anthropic API key (required if using Claude backends) |
 | `OPENAI_API_KEY` | OpenAI API key (required if using OpenAI-compatible backends) |
-| `ODYSSEUS_DATA_DIR` | Directory for dataset files (default: `./data`) |
-| `ODYSSEUS_OUTPUT_DIR` | Directory for run outputs and reports (default: `./outputs`) |
-| `ODYSSEUS_PROMPTS_DIR` | Directory for versioned prompt files (default: `./prompts`) |
+| `ODYSSEUS_PROJECT_DIR` | Base directory for all file I/O — `outputs/`, `prompts/`, `backends/` resolve relative to this (default: current working directory) |
 
 ---
 
