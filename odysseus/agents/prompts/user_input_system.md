@@ -60,6 +60,15 @@ The evaluation framework supports four metrics. Use this to guide users toward a
 - **confusion** — Full confusion matrix. Diagnostic only — not suitable as an optimization target.
 - **cost_quality_reduction** — Percentage change in cost/quality vs. a baseline tier. Outputs `cost_reduction` (model cost only), `cost_reduction_with_overhead` (includes routing call cost), `quality_reduction`, `oracle_cost_reduction`, `oracle_quality_reduction`. Use `cost_reduction_with_overhead` for threshold targets. Example: `cost_reduction_with_overhead <= -0.30`.
 
+## Pipeline Discovery
+
+Before collecting the problem spec, check if previous pipeline runs exist by calling `get_pipeline_status`. If previous runs exist, ask the user:
+
+> "I found existing pipeline runs. Would you like to start fresh, or bootstrap from an existing run's prompt?"
+
+- **Start fresh:** proceed normally with problem specification
+- **Bootstrap:** the user picks a run, and `submit_input_report` is called with `bootstrap_from_run_id` to copy the seed prompt into the new run
+
 ## Pipeline handoff
 
 Once you have produced the validated input report and the user has confirmed it, call the `submit_input_report` tool with:
@@ -136,6 +145,8 @@ Once you have produced the validated input report and the user has confirmed it,
 - `report`: the full report Markdown
 - `dataset_path`: the absolute filesystem path to the routing dataset
 - `problem_description`: the validated problem description
+
+The tool returns JSON with `run_id`, `report_path`, and `dataset_path`. The `run_id` must be communicated to all downstream agents. The report is persisted to `outputs/<run_id>/input/input_report.md`.
 
 This triggers the **Data Validation Agent** — the next stage in the pipeline. The Data Validation Agent validates the routing dataset, produces a data quality report, and derives routing context before passing control to the Routing Analysis Agent.
 

@@ -12,10 +12,10 @@ Read all inputs from the context dict at startup. If any input is missing or unr
 
 | Key | Type | Source | Description |
 |-----|------|--------|-------------|
-| `validated_input_report_path` | `str` (file path) | User Input Agent | Markdown report with problem description, metrics, thresholds, split ratio |
-| `data_quality_report` | `DataQualityReport` | Data Validation Agent | Schema findings, label distribution, volume assessment |
-| `routing_context` | `RoutingContext` | Data Validation Agent | Domain, routes, dimensions, ordering, seed vocabulary |
-| `dataset_path` | `str` (file path) | Data Validation Agent | Path to the validated JSONL dataset |
+| `validated_input_report_path` | `str` (file path) | User Input Agent | `outputs/<run_id>/input/input_report.md` — problem description, metrics, thresholds, split ratio |
+| `data_quality_report` | `DataQualityReport` | Data Validation Agent | Read from `outputs/<run_id>/validation/data_quality_report.json` |
+| `routing_context` | `RoutingContext` | Data Validation Agent | Read from `outputs/<run_id>/validation/routing_context.json` |
+| `dataset_path` | `str` (file path) | Data Validation Agent | `outputs/<run_id>/validation/transformed.jsonl` |
 
 ## Tools
 
@@ -68,7 +68,7 @@ Run up to 5 attempts. Each attempt:
 1. Call `prune_registry(registry_json, dataset_size)` to remove entries below cluster threshold.
 2. Call `validate_rationale_card_set(card_set_json, routing_context_json, dataset_size)` for deterministic checks on the post-pruning state.
 3. Activate the `check-semantic-overlap` skill for LLM-judged pairwise overlap across vocabulary entries.
-4. If all checks pass, proceed to Phase 4.
+4. If all checks pass, write `outputs/<run_id>/analysis/validation_report.json` containing `dataset_hash`, `card_count`, `validation_checks_passed`, and `validated_at`. Then proceed to Phase 4.
 5. If failures are found, apply auto-fix strategies (see Error Handling below), write checkpoint, and retry.
 6. If still failing after 5 attempts, write all current state to scratch, output a detailed error report listing every unresolved check with `affected_ids`, and surface to the user.
 
@@ -77,10 +77,11 @@ Write checkpoint after each attempt: `scratch/<dataset_hash>/phase3_validated.js
 ### Phase 4 — Split & Output
 
 1. Read `dev_ratio` from the validated input report (default: `0.20` holdout, `0.80` dev).
-2. Call `stratified_split(dataset_path, card_set_json, dev_ratio)` — produces dev/holdout examples + matched card sets.
-3. Write final artifacts to `outputs/`.
-4. Clean up the scratch directory (`scratch/<dataset_hash>/`).
-5. Set output context dict keys (see Output Contract).
+2. Call `stratified_split(dataset_path, card_set_json, dev_ratio, run_id)` — produces dev/holdout examples + matched card sets. Outputs are written to `outputs/<run_id>/analysis/`.
+3. Extract the `VocabularyRegistry` and write to `outputs/<run_id>/analysis/vocabulary_registry.json`.
+4. Write remaining final artifacts to `outputs/<run_id>/analysis/`.
+5. Clean up the scratch directory (`scratch/<dataset_hash>/`).
+6. Set output context dict keys (see Output Contract).
 
 ## Checkpointing
 
