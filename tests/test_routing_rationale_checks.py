@@ -112,6 +112,7 @@ async def _always_overlap_judge(a: str, b: str) -> bool:
 from odysseus.agents.routing_rationale_checks import (  # noqa: E402
     RationaleCheckResult,
     check_ambiguity_tag_membership,
+    check_card_completeness,
     check_cluster_thresholds,
     check_exclusion_coverage,
     check_exclusion_format,
@@ -607,6 +608,39 @@ class TestFindOrphanedExamples:
 
 
 # ---------------------------------------------------------------------------
+# check_card_completeness
+# ---------------------------------------------------------------------------
+
+
+class TestCheckCardCompleteness:
+    def test_matching_count_passes(self) -> None:
+        card_set = _make_card_set()  # 1 card
+        result = check_card_completeness(card_set, dataset_size=1)
+        assert result.passed is True
+        assert result.severity == "critical"
+        assert result.check_name == "check_card_completeness"
+        assert result.affected_ids == []
+
+    def test_fewer_cards_than_examples_fails(self) -> None:
+        card_set = _make_card_set()  # 1 card
+        result = check_card_completeness(card_set, dataset_size=5)
+        assert result.passed is False
+        assert result.severity == "critical"
+        assert "4 missing" in result.details
+
+    def test_empty_card_set_with_nonzero_dataset_fails(self) -> None:
+        card_set = _make_card_set(cards={})
+        result = check_card_completeness(card_set, dataset_size=3)
+        assert result.passed is False
+        assert "3 missing" in result.details
+
+    def test_empty_card_set_with_zero_dataset_passes(self) -> None:
+        card_set = _make_card_set(cards={})
+        result = check_card_completeness(card_set, dataset_size=0)
+        assert result.passed is True
+
+
+# ---------------------------------------------------------------------------
 # check_registry_consistency
 # ---------------------------------------------------------------------------
 
@@ -677,7 +711,7 @@ class TestValidateRationaleCardSet:
         results = await validate_rationale_card_set(
             card_set=card_set,
             routing_context=_TEST_ROUTING_CONTEXT,
-            dataset_size=100,
+            dataset_size=1,
             judge_fn=_no_overlap_judge,
         )
 
@@ -709,6 +743,7 @@ class TestValidateRationaleCardSet:
             judge_fn=_no_overlap_judge,
         )
         dataset_checks = {
+            "check_card_completeness",
             "check_cluster_thresholds",
             "check_pruning_cleanup",
             "find_orphaned_examples",

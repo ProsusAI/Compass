@@ -164,6 +164,7 @@ Validation functions that operate on `RationaleCard` / `RationaleCardSet` instan
 
 | Function | Severity | Description |
 |----------|----------|-------------|
+| `check_card_completeness(card_set, dataset_size)` | critical | Card set contains exactly one card per dataset example |
 | `check_cluster_thresholds(registry, dataset_size)` | warning | Every registry entry has at least `max(3, ceil(0.05 * dataset_size))` example IDs |
 | `check_pruning_cleanup(card_set)` | critical | No card references a vocabulary entry absent from the registry (stale references after pruning) |
 | `find_orphaned_examples(card_set)` | warning | No card's `example_id` is absent from all registry `example_ids` lists |

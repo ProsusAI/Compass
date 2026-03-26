@@ -50,15 +50,15 @@ Three skills activated at specific phases. For each skill: read the full `SKILL.
 3. Check for an existing scratch directory at `scratch/<dataset_hash>/`. If a valid checkpoint exists, resume from the latest phase.
 4. Initialize vocabulary registry: call `resolve_registry(dataset_hash)` first. If no prior registry exists, call `create_seed_registry()`.
 5. Activate the `classify-example` skill.
-6. Process every example in the dataset. For each example, determine `intent_pattern` and `complexity_structure` using the skill procedure. Collect any `proposed_entries` for the vocabulary registry.
+6. Process every example in the dataset — no exceptions, no skipping. For each example, determine `intent_pattern` and `complexity_structure` using the skill procedure. Collect any `proposed_entries` for the vocabulary registry. After this step, verify that the number of classified examples equals the total dataset size.
 7. After processing all examples, incorporate accepted vocabulary proposals into the registry.
 8. Write checkpoint: `scratch/<dataset_hash>/phase1_classification.json` — partial card set (intent_pattern + complexity_structure per example) + registry snapshot.
 
 ### Phase 2 — Rationale Pass
 
 1. Activate the `generate-routing-rationale` skill.
-2. Process every example in the dataset. For each example, determine `route_exclusions` and `ambiguity_tags` using the skill procedure. The skill requires classification output from Phase 1 as input.
-3. Build the complete `RationaleCardSet` with the `VocabularyRegistry`.
+2. Process every example in the dataset — no exceptions, no skipping. For each example, determine `route_exclusions` and `ambiguity_tags` using the skill procedure. The skill requires classification output from Phase 1 as input.
+3. Build the complete `RationaleCardSet` with the `VocabularyRegistry`. Verify that `len(cards) == len(examples)` before proceeding — if any examples are missing cards, re-process them.
 4. Write checkpoint: `scratch/<dataset_hash>/phase2_rationale.json` — complete card set with all four fields per card + full registry.
 
 ### Phase 3 — Validation & Fix Loop
@@ -106,6 +106,7 @@ When validation fails, apply fixes based on failure type:
 
 | Severity | Failure type | Auto-fix strategy |
 |----------|-------------|-------------------|
+| Critical | Incomplete card coverage | Re-process missing examples through Phase 1 + Phase 2 skills |
 | Critical | Missing required fields | Re-annotate affected cards through the relevant skill |
 | Critical | Vocabulary not in registry | Add entry to registry or re-classify the example |
 | Critical | Missing route exclusions | Re-run `generate-routing-rationale` for affected cards |
@@ -143,8 +144,11 @@ Outputs are partitioned to prevent information leakage between dev and holdout s
 
 ## Constraints
 
+- **Read-only dataset.** Never modify existing dataset fields (`id`, `input`, `expected`, or any other source fields). The agent only creates rationale card annotations — it does not alter the underlying data.
+- **Full coverage.** Every example in the dataset must have a rationale card. The `check_card_completeness` validation check enforces this — it fails if the number of cards does not match the dataset size.
 - **Holdout isolation.** Holdout artifacts (`holdout_rationale_card_set_path`, `holdout_jsonl_path`) are never sent to the Prompt Builder Agent. They are available only to the Final Reporting Agent.
 - **Deterministic split.** The stratified split is deterministic — the same dataset always produces the same split.
 - **Dataset provenance.** `dataset_hash` is embedded in all artifacts (`RationaleCardSet`, `SplitReport`), allowing downstream agents to verify they operate on the correct dataset.
 - **Skill adherence.** Follow each skill's `SKILL.md` procedure exactly. Do not skip steps or alter the output format.
+- **No scripting or code generation.** Never write Python scripts, shell commands, or any other code to batch-generate rationale cards, classifications, or vocabulary entries. You must invoke the `classify-example` and `generate-routing-rationale` skills yourself for each example, reasoning through each one individually. The per-example reasoning is the point — automating it away defeats the purpose of the analysis. If you catch yourself planning to "write a script that processes all examples", stop and use the skills instead.
 - **No partial output.** Either complete all four phases and produce the full output contract, or fail with a detailed error report. Never produce partial artifacts in `outputs/`.

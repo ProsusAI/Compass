@@ -104,3 +104,21 @@ def test_missing_exclusion_detected():
     failed = [r for r in coverage_results if not r.passed]
     assert len(failed) == 1
     assert "ex1" in failed[0].affected_ids
+
+
+def test_incomplete_card_set_detected():
+    """Fewer cards than dataset_size triggers check_card_completeness failure."""
+    ctx = _make_routing_context()
+    card_set = _make_valid_card_set()  # 3 cards
+    results = validate_deterministic(card_set, ctx, dataset_size=10)
+    completeness = [r for r in results if r.check_name == "check_card_completeness"]
+    assert len(completeness) == 1
+    assert completeness[0].passed is False
+
+
+def test_card_completeness_runs_first():
+    """check_card_completeness is the first dataset-level check."""
+    ctx = _make_routing_context()
+    card_set = _make_valid_card_set()
+    results = validate_deterministic(card_set, ctx, dataset_size=3)
+    assert results[0].check_name == "check_card_completeness"
