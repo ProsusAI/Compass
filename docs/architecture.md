@@ -179,14 +179,14 @@ odysseus init
 
 This creates `outputs/`, `prompts/`, and `backends/` with starter files.
 
-Optionally set `ODYSSEUS_PROJECT_DIR` to control where files are written:
+All file I/O (`outputs/`, `prompts/`, `backends/`) resolves against the current working directory. To control where files are written, set the working directory when launching the server:
 ```json
 {
   "mcpServers": {
     "odysseus": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/<owner>/project-odysseus", "odysseus"],
-      "env": {"ODYSSEUS_PROJECT_DIR": "/path/to/your/project"}
+      "cwd": "/path/to/your/project"
     }
   }
 }
