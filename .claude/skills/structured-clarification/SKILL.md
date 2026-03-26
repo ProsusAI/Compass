@@ -1,4 +1,7 @@
-# Structured Clarification
+---
+name: structured-clarification
+description: Turn incomplete or ambiguous user input into a fully validated specification through natural collaborative dialogue. Use when an agent needs to gather structured information from a user by resolving blocking gaps one question at a time, applying defaults for non-blocking fields, and producing a confirmed output before handoff. Triggers when: (1) validating user submissions against a field taxonomy, (2) collecting required inputs through conversation, (3) resolving ambiguous or incomplete specifications.
+---
 
 Turn incomplete or ambiguous user input into a fully validated specification through natural collaborative dialogue.
 
@@ -63,9 +66,7 @@ digraph clarification {
 
 **The terminal state is handoff.** The skill does not decide what happens after — the agent prompt defines the handoff mechanism.
 
-## The Process
-
-### Understanding the problem
+## Understanding the Problem
 
 Before checking any fields, make sure you understand what the user is trying to accomplish. You should be able to articulate:
 
@@ -75,7 +76,7 @@ Before checking any fields, make sure you understand what the user is trying to 
 
 If you cannot answer these, ask. This is not a formal gap request — it is a conversation. Information that emerges here counts toward resolving formal gaps. If the user's answer to a context question also fills a required field, do not re-request it.
 
-### Validating fields
+## Validating Fields
 
 The agent prompt provides a **field taxonomy** — the list of fields, which are blocking vs non-blocking, and their priority order. Use it to classify the current state:
 
@@ -85,7 +86,7 @@ The agent prompt provides a **field taxonomy** — the list of fields, which are
 
 After each clarification answer, re-validate the full input set. New gaps can emerge (e.g., a provided dataset triggers validation issues). If they do, re-enter the loop.
 
-### Asking questions
+## Asking Questions
 
 Address blocking gaps in the priority order defined by the agent prompt. For each gap, select the appropriate question type:
 
@@ -108,15 +109,15 @@ Address blocking gaps in the priority order defined by the agent prompt. For eac
 
 **No attempt limit.** Keep asking until all blocking gaps are resolved. Never give up, never skip a blocking field.
 
-### Applying defaults
+## Applying Defaults
 
 Once all blocking gaps are resolved, apply domain defaults for missing non-blocking fields. The agent prompt provides a **defaults table** with values, rationale, and user-facing notes. Mention assumed defaults conversationally so the user knows and can override.
 
-### Producing output
+## Producing Output
 
 Generate the structured output in the format defined by the agent prompt's **output template**. The skill does not own the template — the agent does.
 
-### Confirming with user
+## Confirming with User
 
 Present the output. If the user wants to override an assumed default, accept the new value, update the output, and re-present. Only trigger handoff once the user confirms.
 
@@ -131,8 +132,6 @@ Present the output. If the user wants to override an assumed default, accept the
 - **Separate blocking from non-blocking** — only ask about blocking gaps; default the rest
 
 ## Anti-Patterns
-
-Do NOT do any of the following:
 
 | Anti-pattern | Why it fails |
 |---|---|

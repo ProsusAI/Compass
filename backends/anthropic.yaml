@@ -1,0 +1,9 @@
+model: claude-haiku-4-5
+provider: anthropic
+requests_per_minute: 500
+tokens_per_minute: 100000
+api_key_env: ANTHROPIC_API_KEY
+pricing:
+  input_cost_per_million_tokens: 0.80
+  cached_cost_per_million_tokens: 0.08
+  output_cost_per_million_tokens: 4.00
