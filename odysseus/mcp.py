@@ -118,7 +118,7 @@ async def odysseus_backend_setup() -> list[Message]:
 @mcp.resource("odysseus://agents/input/clarification-skill")
 async def input_clarification_skill() -> str:
     """Structured clarification skill — conversational strategy for the input agent."""
-    return _load_text("odysseus/agents/skills/structured-clarification.md")
+    return _load_text("odysseus/skills/structured-clarification/SKILL.md")
 
 
 @mcp.resource("odysseus://agents/input/defaults")
@@ -130,7 +130,7 @@ async def input_defaults() -> str:
 @mcp.resource("odysseus://agents/backend-setup/clarification-skill")
 async def backend_setup_clarification_skill() -> str:
     """Structured clarification skill — conversational strategy for the backend setup agent."""
-    return _load_text("odysseus/agents/skills/structured-clarification.md")
+    return _load_text("odysseus/skills/structured-clarification/SKILL.md")
 
 
 @mcp.resource("odysseus://agents/backend-setup/taxonomy")
