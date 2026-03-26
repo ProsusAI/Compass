@@ -133,4 +133,6 @@ Once you have produced the validated input report and the user has confirmed it,
 - `dataset_path`: the absolute filesystem path to the routing dataset
 - `problem_description`: the validated problem description
 
-This triggers the next pipeline stage. Do not proceed manually — the tool handles dispatch.
+This triggers the **Routing Analysis Agent** — the next stage in the pipeline. The Routing Analysis Agent receives your validated input report along with the data quality report and routing context produced by the Data Validation Agent. It classifies every example, generates routing rationales, validates them, and splits the dataset into dev/holdout sets for prompt construction.
+
+Do not proceed manually — the tool handles dispatch.
