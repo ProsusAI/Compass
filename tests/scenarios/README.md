@@ -114,6 +114,13 @@ Test scenarios for the User Input agent, Data Validation agent, and Routing Anal
 | 52 | Regression Guard | Candidate improves accuracy but drops rare-class recall → `severity="block"` flag, `decision="refine"` |
 | 53 | Loop Exit | Oracle captured ratios >0.9 and diversity collapsing → `action="exit"` with dominance threshold reason |
 
+### Backend Setup Agent (54-55)
+
+| # | Scenario | Description |
+|---|----------|-------------|
+| 54 | Select existing backend | User picks an existing backend, no new YAML created |
+| 55 | Create new backend | User creates new OpenAI backend, pricing auto-resolved, YAML written |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
@@ -205,6 +212,7 @@ Test datasets live in `tests/scenarios/data/`:
 | `borderline_dataset.jsonl` | 10 rows, 3 tiers, ambiguous tier-boundary queries for semantic overlap testing |
 | `backends/mock-echo.yaml` | Mock echo backend profile for deterministic eval testing |
 | `backends/openai.yaml` | OpenAI backend profile (gpt-5.2) for live API smoke test |
+| `backends/anthropic.yaml` | Anthropic backend profile (claude-haiku-4-5) for backend setup scenario testing |
 | `review/abc123/` | Scenario 51 fixtures: search state, score reports, mutation log for basic review |
 | `review/def456/` | Scenario 52 fixtures: search state, score reports, round reports, mutation log for regression guard |
 | `review/ghi789/` | Scenario 53 fixtures: search state, score reports, 4 round reports, mutation log for loop exit |
