@@ -297,7 +297,7 @@ uv run python -m odysseus.mcp
 |---|---|
 | `ANTHROPIC_API_KEY` | Anthropic API key (required if using Claude backends) |
 | `OPENAI_API_KEY` | OpenAI API key (required if using OpenAI-compatible backends) |
-| `ODYSSEUS_PROJECT_DIR` | Base directory for all file I/O — `outputs/`, `prompts/`, `backends/` resolve relative to this (default: current working directory) |
+
 
 ---
 
