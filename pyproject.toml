@@ -24,7 +24,7 @@ dev = [
 ]
 
 [project.scripts]
-odysseus = "odysseus.mcp:main"
+odysseus = "odysseus.cli:main"
 
 [build-system]
 requires = ["hatchling"]
