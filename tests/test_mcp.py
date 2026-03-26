@@ -2,13 +2,14 @@
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.eval.models import RunSummary, ScoreReport
-from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp
+from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp, model_specific_conventions
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
 
@@ -302,3 +303,59 @@ class TestLoadText:
     def test_project_root_points_to_repo(self):
         """_PROJECT_ROOT resolves to the directory containing pyproject.toml."""
         assert (_PROJECT_ROOT / "pyproject.toml").is_file()
+
+
+class TestModelSpecificConventions:
+    async def test_returns_content_when_file_exists(self, tmp_path: Path) -> None:
+        """Model-specific cookbook is returned when the file exists."""
+        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+            agents_dir = tmp_path / "odysseus" / "agents"
+            agents_dir.mkdir(parents=True)
+            (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text(
+                "# GPT-5.2 Addendum\nTest content."
+            )
+            result = await model_specific_conventions("openai", "gpt-5.2")
+            assert "GPT-5.2 Addendum" in result
+
+    async def test_returns_empty_string_when_file_missing(self, tmp_path: Path) -> None:
+        """Missing model cookbook returns empty string, not an error."""
+        agents_dir = tmp_path / "odysseus" / "agents"
+        agents_dir.mkdir(parents=True)
+        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+            result = await model_specific_conventions("openai", "gpt-99")
+            assert result == ""
+
+    async def test_normalizes_dated_model_string(self, tmp_path: Path) -> None:
+        """Date suffixes like -2025-03-11 are stripped before lookup."""
+        agents_dir = tmp_path / "odysseus" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text("content")
+        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+            result = await model_specific_conventions("openai", "gpt-5.2-2025-03-11")
+            assert result == "content"
+
+    async def test_normalizes_compact_dated_model_string(self, tmp_path: Path) -> None:
+        """Compact date suffixes like -20250311 are stripped before lookup."""
+        agents_dir = tmp_path / "odysseus" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text("content")
+        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+            result = await model_specific_conventions("openai", "gpt-5.2-20250311")
+            assert result == "content"
+
+    async def test_dots_replaced_with_dashes_in_filename(self, tmp_path: Path) -> None:
+        """Model string dots become dashes in filename lookup."""
+        agents_dir = tmp_path / "odysseus" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "prompt_builder_conventions_claude_claude-sonnet-4-6.md").write_text("sonnet content")
+        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+            result = await model_specific_conventions("claude", "claude-sonnet-4.6")
+            assert result == "sonnet content"
+
+    async def test_passthrough_for_unrecognized_format(self, tmp_path: Path) -> None:
+        """Unrecognized model strings pass through and miss gracefully."""
+        agents_dir = tmp_path / "odysseus" / "agents"
+        agents_dir.mkdir(parents=True)
+        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+            result = await model_specific_conventions("openai", "gpt-5.2-turbo-preview")
+            assert result == ""
