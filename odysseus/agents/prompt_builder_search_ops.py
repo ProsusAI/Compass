@@ -18,6 +18,7 @@ import json
 import uuid
 from pathlib import Path
 
+from odysseus.project_dir import get_project_dir
 from odysseus.agents.prompt_builder_search import (
     Candidate,
     RoundSummary,
@@ -29,7 +30,8 @@ from odysseus.agents.prompt_builder_search import (
 # Constants
 # ---------------------------------------------------------------------------
 
-_DEFAULT_OUTPUT_DIR = Path("outputs")
+def _default_output_dir() -> Path:
+    return get_project_dir() / "outputs"
 
 # ---------------------------------------------------------------------------
 # Private path / IO helpers
@@ -83,7 +85,7 @@ def _load_pending(search_state_id: str, output_dir: Path) -> list[Candidate]:
 
 def init_search_state(
     backend: str,
-    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+    output_dir: Path | None = None,
     max_rounds: int = 50,
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
@@ -102,6 +104,8 @@ def init_search_state(
     Returns:
         The newly created :class:`SearchState`.
     """
+    if output_dir is None:
+        output_dir = _default_output_dir()
     search_state_id = uuid.uuid4().hex[:12]
     state = SearchState(
         search_state_id=search_state_id,
@@ -117,7 +121,7 @@ def init_search_state(
 
 def get_search_state(
     search_state_id: str,
-    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+    output_dir: Path | None = None,
 ) -> SearchState:
     """Load and return a persisted SearchState.
 
@@ -131,6 +135,8 @@ def get_search_state(
     Raises:
         FileNotFoundError: If no state exists for *search_state_id*.
     """
+    if output_dir is None:
+        output_dir = _default_output_dir()
     return _load_state(search_state_id, output_dir)
 
 
@@ -143,7 +149,7 @@ def register_candidate(
     search_state_id: str,
     prompt_version: str,
     parent_version: str | None = None,
-    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+    output_dir: Path | None = None,
 ) -> SearchState:
     """Register a new candidate for the current round.
 
@@ -164,6 +170,8 @@ def register_candidate(
         ValueError: If *prompt_version* already exists on the front, in
             history, or in the pending list.
     """
+    if output_dir is None:
+        output_dir = _default_output_dir()
     state = _load_state(search_state_id, output_dir)
     pending = _load_pending(search_state_id, output_dir)
 
@@ -205,7 +213,7 @@ def record_eval_result(
     prompt_version: str,
     quality_score: float,
     cost: float,
-    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+    output_dir: Path | None = None,
 ) -> dict[str, object]:
     """Record evaluation results for a pending candidate.
 
@@ -223,6 +231,8 @@ def record_eval_result(
         FileNotFoundError: If the search state does not exist.
         ValueError: If *prompt_version* is not found in the pending list.
     """
+    if output_dir is None:
+        output_dir = _default_output_dir()
     pending = _load_pending(search_state_id, output_dir)
 
     found_index: int | None = None
@@ -252,7 +262,7 @@ def record_eval_result(
 
 def advance_round(
     search_state_id: str,
-    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+    output_dir: Path | None = None,
 ) -> RoundSummary:
     """Advance the search loop by one round.
 
@@ -270,6 +280,8 @@ def advance_round(
         FileNotFoundError: If the search state does not exist.
         ValueError: If there are no pending candidates.
     """
+    if output_dir is None:
+        output_dir = _default_output_dir()
     state = _load_state(search_state_id, output_dir)
     pending = _load_pending(search_state_id, output_dir)
 
