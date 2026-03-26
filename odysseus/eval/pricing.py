@@ -34,3 +34,57 @@ def compute_cost(pricing: ModelPricing | None, usage: TokenUsage) -> float | Non
     if pricing is None:
         return None
     return pricing.compute_cost(usage)
+
+
+DEFAULT_PRICING: dict[tuple[str, str], ModelPricing] = {
+    # Anthropic
+    ("anthropic", "claude-haiku-4-5"): ModelPricing(
+        input_cost_per_million_tokens=0.80,
+        cached_cost_per_million_tokens=0.08,
+        output_cost_per_million_tokens=4.00,
+    ),
+    ("anthropic", "claude-sonnet-4-5"): ModelPricing(
+        input_cost_per_million_tokens=3.00,
+        cached_cost_per_million_tokens=0.30,
+        output_cost_per_million_tokens=15.00,
+    ),
+    ("anthropic", "claude-opus-4"): ModelPricing(
+        input_cost_per_million_tokens=15.00,
+        cached_cost_per_million_tokens=1.50,
+        output_cost_per_million_tokens=75.00,
+    ),
+    # OpenAI
+    ("openai", "gpt-4.1"): ModelPricing(
+        input_cost_per_million_tokens=2.00,
+        cached_cost_per_million_tokens=0.50,
+        output_cost_per_million_tokens=8.00,
+    ),
+    ("openai", "gpt-4.1-mini"): ModelPricing(
+        input_cost_per_million_tokens=0.40,
+        cached_cost_per_million_tokens=0.10,
+        output_cost_per_million_tokens=1.60,
+    ),
+    ("openai", "gpt-4.1-nano"): ModelPricing(
+        input_cost_per_million_tokens=0.10,
+        cached_cost_per_million_tokens=0.025,
+        output_cost_per_million_tokens=0.40,
+    ),
+    ("openai", "o3"): ModelPricing(
+        input_cost_per_million_tokens=2.00,
+        cached_cost_per_million_tokens=0.50,
+        output_cost_per_million_tokens=8.00,
+    ),
+    ("openai", "o4-mini"): ModelPricing(
+        input_cost_per_million_tokens=1.10,
+        cached_cost_per_million_tokens=0.275,
+        output_cost_per_million_tokens=4.40,
+    ),
+}
+
+
+def get_default_pricing(provider: str, model: str) -> ModelPricing | None:
+    """Look up default pricing for a (provider, model) pair.
+
+    Returns None if the combination is not in the table.
+    """
+    return DEFAULT_PRICING.get((provider, model))
