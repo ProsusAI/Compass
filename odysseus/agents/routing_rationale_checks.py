@@ -236,6 +236,29 @@ def check_pruning_cleanup(card_set: RationaleCardSet) -> RationaleCheckResult:
     )
 
 
+def check_card_completeness(
+    card_set: RationaleCardSet,
+    dataset_size: int,
+) -> RationaleCheckResult:
+    """Check that the card set contains exactly one card per dataset example.
+
+    Fails if the number of cards does not match the expected dataset size.
+    """
+    actual = len(card_set.cards)
+    passed = actual == dataset_size
+    return RationaleCheckResult(
+        passed=passed,
+        check_name="check_card_completeness",
+        severity="critical",
+        details=(
+            f"Card set complete: {actual} cards for {dataset_size} examples."
+            if passed
+            else f"Incomplete card set: {actual} cards for {dataset_size} examples ({dataset_size - actual} missing)."
+        ),
+        affected_ids=[],
+    )
+
+
 def find_orphaned_examples(card_set: RationaleCardSet) -> RationaleCheckResult:
     """Return IDs of examples whose example_id is not listed in any registry entry."""
     registry = card_set.registry
@@ -332,6 +355,7 @@ async def validate_rationale_card_set(
     results: list[RationaleCheckResult] = []
 
     # --- Dataset-level checks ---
+    results.append(check_card_completeness(card_set, dataset_size))
     results.append(check_cluster_thresholds(card_set.registry, dataset_size))
     results.append(check_pruning_cleanup(card_set))
     results.append(find_orphaned_examples(card_set))
