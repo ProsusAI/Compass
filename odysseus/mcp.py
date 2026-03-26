@@ -102,6 +102,17 @@ async def odysseus_prompt_builder() -> list[Message]:
     return [UserMessage(content=system_prompt)]
 
 
+@mcp.prompt()
+async def odysseus_backend_setup() -> list[Message]:
+    """Activate the Odysseus backend setup agent.
+
+    Use when run_eval returns action_required: backend_setup on the first
+    evaluation run. Guides the user through selecting or creating a backend.
+    """
+    system_prompt = _load_text("odysseus/agents/prompts/backend_setup_system.md")
+    return [UserMessage(content=system_prompt)]
+
+
 @mcp.resource("odysseus://agents/input/clarification-skill")
 async def input_clarification_skill() -> str:
     """Structured clarification skill — conversational strategy for the input agent."""
@@ -112,6 +123,24 @@ async def input_clarification_skill() -> str:
 async def input_defaults() -> str:
     """Default values and override mechanism for optional fields."""
     return _load_text("odysseus/agents/user_input_defaults.md")
+
+
+@mcp.resource("odysseus://agents/backend-setup/clarification-skill")
+async def backend_setup_clarification_skill() -> str:
+    """Structured clarification skill — conversational strategy for the backend setup agent."""
+    return _load_text("odysseus/agents/skills/structured-clarification.md")
+
+
+@mcp.resource("odysseus://agents/backend-setup/taxonomy")
+async def backend_setup_taxonomy() -> str:
+    """Field taxonomy for backend configuration — blocking vs non-blocking fields."""
+    return _load_text("odysseus/agents/backend_setup_taxonomy.md")
+
+
+@mcp.resource("odysseus://agents/backend-setup/defaults")
+async def backend_setup_defaults() -> str:
+    """Default values and pricing resolution for backend configuration."""
+    return _load_text("odysseus/agents/backend_setup_defaults.md")
 
 
 @mcp.resource("odysseus://agents/data-validation/format-spec")
