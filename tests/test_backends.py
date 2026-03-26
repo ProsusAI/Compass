@@ -712,6 +712,42 @@ class TestOpenAIBackend:
 
 
 # ---------------------------------------------------------------------------
+# OpenAIBackend — reasoning_level
+# ---------------------------------------------------------------------------
+
+
+class TestOpenAIBackendReasoningLevel:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("level", ["low", "medium", "high"])
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_reasoning_level_sets_reasoning_effort(self, mock_client_cls: MagicMock, level: str) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_openai_mock_response(content="test"))
+        profile = BackendProfile(
+            **{**MINIMAL_PROFILE, "provider": "openai", "reasoning_level": level, "api_key_env": None}
+        )
+        backend = OpenAIBackend(profile)
+        await backend.call("prompt", EXAMPLE)
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert call_kwargs["reasoning_effort"] == level
+
+    @pytest.mark.asyncio
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_no_reasoning_level_omits_reasoning_effort(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(return_value=_make_openai_mock_response(content="test"))
+        profile = BackendProfile(
+            **{**MINIMAL_PROFILE, "provider": "openai", "api_key_env": None}
+        )
+        backend = OpenAIBackend(profile)
+        await backend.call("prompt", EXAMPLE)
+        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+        assert "reasoning_effort" not in call_kwargs
+
+
+# ---------------------------------------------------------------------------
 # BedrockBackend
 # ---------------------------------------------------------------------------
 

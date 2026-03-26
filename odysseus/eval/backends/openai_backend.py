@@ -44,6 +44,8 @@ class OpenAIBackend:
         if self._profile.temperature is not None:
             kwargs["temperature"] = self._profile.temperature
         kwargs.update(self._profile.extra_params)
+        if self._profile.reasoning_level is not None:
+            kwargs["reasoning_effort"] = self._profile.reasoning_level
 
         response = await self._client.chat.completions.create(
             model=self._profile.model,
