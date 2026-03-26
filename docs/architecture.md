@@ -25,6 +25,7 @@ graph TD
 | Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation_checks.py`](../odysseus/agents/data_validation_checks.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path` |
 | Routing Analysis | LLM-driven | [`odysseus/agents/routing_rationale_models.py`](../odysseus/agents/routing_rationale_models.py), [`odysseus/agents/routing_rationale_checks.py`](../odysseus/agents/routing_rationale_checks.py), [`odysseus/agents/routing_rationale_registry.py`](../odysseus/agents/routing_rationale_registry.py), [`odysseus/agents/stratified_split.py`](../odysseus/agents/stratified_split.py) | Done | `validated_input_report_path`, `data_quality_report`, `routing_context`, `dataset_path` | `dev_rationale_card_set_path`, `dev_jsonl_path`, `vocabulary_registry_path`, `split_report_path`, `routing_context` (passthrough), `holdout_rationale_card_set_path`, `holdout_jsonl_path` |
 | Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `config_path` | `eval_score_report` |
+| Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `RationaleCardSet`, `RoutingContext` | `prompt_version` |
 | Review | Hybrid (code + LLM) | [`odysseus/agents/review_models.py`](../odysseus/agents/review_models.py), [`odysseus/agents/review_preprocessor.py`](../odysseus/agents/review_preprocessor.py), [`odysseus/agents/review_ops.py`](../odysseus/agents/review_ops.py), [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) | Done | `eval_score_report`, `review_briefing` | `review_result` |
 | Final Reporting | LLM-driven | (planned) | Planned | `eval_score_report`, full pipeline context | final report |
@@ -71,6 +72,23 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
 
+**`BackendProfile`** ([`odysseus/eval/backends/profile.py`](../odysseus/eval/backends/profile.py))
+Pydantic model representing a validated backend configuration loaded from a YAML file in `backends/`. Key fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | `Literal["anthropic", "openai", "bedrock", "mock_echo"]` | SDK backend selector |
+| `model` | `str` | Model identifier (e.g. `"claude-sonnet-4-20250514"`) |
+| `requests_per_minute` | `int` | RPM rate limit cap |
+| `tokens_per_minute` | `int` | TPM rate limit cap |
+| `max_tokens` | `int \| None` | Max tokens to generate |
+| `temperature` | `float \| None` | Sampling temperature |
+| `reasoning_level` | `Literal["low", "medium", "high"] \| None` | Extended thinking budget tier (Anthropic/Bedrock only) |
+| `pricing` | `ModelPricing \| None` | Inline cost config for token-based cost tracking |
+| `api_key_env` | `str \| None` | Env var name holding the API key |
+| `extra_params` | `dict[str, Any]` | Additional kwargs splatted into the provider SDK's `create()` call |
+| `provider_params` | `dict[str, Any]` | Provider-specific kwargs for client construction |
+
 ## 5. MCP Surface
 
 ### Tools
@@ -98,6 +116,7 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 | `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
 | `odysseus_routing_analysis` | Routing Analysis Agent system prompt | [`odysseus/agents/prompts/routing_analysis_system.md`](../odysseus/agents/prompts/routing_analysis_system.md) |
 | `odysseus_review_agent` | Review Agent system prompt — receives ReviewBriefing, emits ReviewResult JSON | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
+| `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
 
 ### Resources
 
@@ -116,6 +135,9 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 | `odysseus://agents/routing-analysis/generate-rationale-skill` | Generate-routing-rationale skill for annotation | [`odysseus/skills/generate-routing-rationale/SKILL.md`](../odysseus/skills/generate-routing-rationale/SKILL.md) |
 | `odysseus://agents/routing-analysis/check-overlap-skill` | Check-semantic-overlap skill for validation | [`odysseus/skills/check-semantic-overlap/SKILL.md`](../odysseus/skills/check-semantic-overlap/SKILL.md) |
 | `odysseus://agents/review-agent/guidelines` | Review Agent operational guidelines — scoring criteria, promotion rules, loop exit heuristics | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
+| `odysseus://agents/backend-setup/clarification-skill` | Structured clarification skill for backend setup | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
+| `odysseus://agents/backend-setup/taxonomy` | Backend field taxonomy (blocking/non-blocking) | [`odysseus/agents/backend_setup_taxonomy.md`](../odysseus/agents/backend_setup_taxonomy.md) |
+| `odysseus://agents/backend-setup/defaults` | Backend defaults and pricing resolution | [`odysseus/agents/backend_setup_defaults.md`](../odysseus/agents/backend_setup_defaults.md) |
 
 ## 6. Directory Guide
 

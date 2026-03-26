@@ -13,11 +13,12 @@ The one exception is [`EvalRunnerAgent`](#evalrunneragent-eval_runnerpy) — a c
 
 One system prompt per LLM-driven agent, as Markdown files:
 
-| File | Agent |
-|------|-------|
-| [`prompts/user_input_system.md`](prompts/user_input_system.md) | User Input Agent |
-| [`prompts/data_validation_system.md`](prompts/data_validation_system.md) | Data Validation Agent |
-| [`prompts/eval_runner_system.md`](prompts/eval_runner_system.md) | Eval Runner Agent |
+| File | Agent | Description |
+|------|-------|-------------|
+| [`prompts/user_input_system.md`](prompts/user_input_system.md) | User Input Agent | |
+| [`prompts/data_validation_system.md`](prompts/data_validation_system.md) | Data Validation Agent | |
+| [`prompts/eval_runner_system.md`](prompts/eval_runner_system.md) | Eval Runner Agent | |
+| [`prompts/backend_setup_system.md`](prompts/backend_setup_system.md) | Backend Setup Agent | Guides user through selecting or creating a backend before first eval run |
 
 The MCP server registers these as named prompts. When an MCP client (e.g. Claude Desktop, Cursor) calls the `optimize_routing_prompt` tool, Claude is given the appropriate system prompt and acts as that agent.
 
