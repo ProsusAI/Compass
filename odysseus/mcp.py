@@ -7,6 +7,7 @@ parameters/return values and agent context dicts.
 
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ from odysseus.agents.data_ingestion_detect import detect_and_parse
 from odysseus.agents.data_ingestion_transform import transform_dataset as _do_transform
 from odysseus.agents.data_validation_checks import run_all_checks
 from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.pipeline_guards import check_artifacts
+from odysseus.agents.pipeline_status import get_pipeline_status as _get_pipeline_status
 from odysseus.agents.prompt_builder_holdout_filter import filter_holdout_dataset
 from odysseus.agents.prompt_builder_search_ops import (
     advance_round,
@@ -223,8 +226,8 @@ async def model_specific_conventions(provider: str, model_family: str) -> str:
 
 
 @mcp.tool()
-async def run_holdout_eval(prompt_version: str, data_source: str) -> str:
-    """Run evaluation on the holdout split.
+async def run_holdout_eval(prompt_version: str, data_source: str, run_id: str) -> str:
+    """[Stage 7: Holdout Validation] Run evaluation on the holdout split.
 
     This tool must only be available to the Final Evaluation agent.
     It must NOT be in the Eval Runner agent's tool list.
@@ -232,12 +235,20 @@ async def run_holdout_eval(prompt_version: str, data_source: str) -> str:
     Args:
         prompt_version: Prompt version to evaluate.
         data_source: Path to the dataset file.
+        run_id: Pipeline run identifier.
 
     Returns:
         Serialized score report.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "search" / "search_state.json",
+        stage=7,
+        stage_name="Holdout Validation",
+        hint="The eval loop must converge first.",
+    )
     # TODO: implement holdout eval wiring (same pattern as run_eval with data_split="holdout")
-    return f"run_holdout_eval stub: prompt_version={prompt_version}, data_source={data_source}"
+    return f"run_holdout_eval stub: prompt_version={prompt_version}, data_source={data_source}, run_id={run_id}"
 
 
 @mcp.tool()
@@ -246,7 +257,9 @@ async def optimize_routing_prompt(
     problem_description: str,
     target_metrics: list[str],
 ) -> str:
-    """Run the full routing prompt optimization pipeline.
+    """[Stage 1: Full Pipeline] Run the full routing prompt optimization pipeline.
+
+    Note: when implemented, must enforce stage sequencing.
 
     Args:
         data_path: Path to JSONL routing dataset.
@@ -266,9 +279,9 @@ async def run_eval(
     data_source: str,
     backend: str,
     config_path: str = "outputs/run_config.yaml",
-    search_state_id: str | None = None,
+    run_id: str | None = None,
 ) -> str:
-    """Run an evaluation of a prompt version against a dataset.
+    """[Stage 5: Prompt Evaluation] Run an evaluation of a prompt version against a dataset.
 
     Args:
         prompt_version: Prompt version identifier (e.g. "v3", "latest").
@@ -276,27 +289,36 @@ async def run_eval(
         backend: Backend label matching a profile in backends/ directory.
         config_path: Path to YAML config with metrics, concurrency, retry,
                      and output settings. Defaults to "outputs/run_config.yaml".
-        search_state_id: Search state ID for the optimization loop. When
-                         provided and the loop is at round 0 with no history,
-                         returns an action_required response instead of running
-                         the eval, signalling the orchestrator to collect
-                         backend configuration first.
+        run_id: Pipeline run identifier for the optimization loop. When
+                provided and the loop is at round 0 with no history,
+                returns an action_required response instead of running
+                the eval, signalling the orchestrator to collect
+                backend configuration first.
 
     Returns:
         JSON object with report_path and results_path pointing to
         the full evaluation output on disk, OR an action_required
         object on first run.
     """
+    if run_id is not None:
+        project_dir = get_project_dir()
+        check_artifacts(
+            project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
+            stage=5,
+            stage_name="Prompt Evaluation",
+            hint="Complete routing analysis and dataset split first.",
+        )
+
     # Pre-flight: on first run in loop, signal backend setup needed
-    if search_state_id is not None:
-        state = get_search_state(search_state_id=search_state_id)
+    if run_id is not None:
+        state = get_search_state(run_id=run_id)
         if state.round == 0 and len(state.round_history) == 0:
             project_dir = get_project_dir()
             registry = BackendRegistry.from_directory(project_dir / "backends")
             return json.dumps(
                 {
                     "action_required": "backend_setup",
-                    "search_state_id": search_state_id,
+                    "run_id": run_id,
                     "available_backends": registry.list_profiles(),
                 }
             )
@@ -329,44 +351,75 @@ async def submit_input_report(
     report: str,
     dataset_path: str,
     problem_description: str,
+    bootstrap_from_run_id: str | None = None,
 ) -> str:
-    """Submit a validated input report to the pipeline.
+    """[Stage 1: Input] Submit a validated input report to the pipeline.
 
-    Called after the input agent conversation completes and
-    the validated input report has been produced. Triggers
-    the next pipeline stage.
+    No prerequisites. Returns a run_id for scoping all subsequent tools.
 
     Args:
         report: The full validated input report (Markdown).
         dataset_path: Absolute filesystem path to the JSONL routing dataset.
         problem_description: The validated problem description.
+        bootstrap_from_run_id: Optional run_id to copy the latest prompt version from.
 
     Returns:
-        Confirmation or next-stage result.
+        JSON with run_id, report_path, and dataset_path.
     """
-    # TODO: Wire to next pipeline agent.
-    # Expected: save report to disk, build pipeline context,
-    # and dispatch the next agent (e.g. Data Validation or Analysis).
     if not report.strip():
         raise ToolError("submit_input_report failed: report is empty")
     if not dataset_path.strip():
         raise ToolError("submit_input_report failed: dataset_path is empty")
     if not problem_description.strip():
         raise ToolError("submit_input_report failed: problem_description is empty")
-    return "Input report received. Next pipeline stage not yet implemented."
+
+    run_id = uuid.uuid4().hex[:8]
+    project_dir = get_project_dir()
+
+    input_dir = project_dir / "outputs" / run_id / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    report_path = input_dir / "input_report.md"
+    report_path.write_text(report)
+
+    if bootstrap_from_run_id is not None:
+        src_prompts = project_dir / "outputs" / bootstrap_from_run_id / "prompts"
+        if src_prompts.is_dir():
+            prompt_files = sorted(src_prompts.glob("v*.txt"))
+            if prompt_files:
+                latest = prompt_files[-1]
+                dest_prompts = project_dir / "outputs" / run_id / "prompts"
+                dest_prompts.mkdir(parents=True, exist_ok=True)
+                (dest_prompts / "bootstrap.txt").write_text(latest.read_text())
+
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "report_path": str(report_path),
+            "dataset_path": dataset_path,
+        }
+    )
 
 
 @mcp.tool()
-async def validate_dataset(dataset_path: str) -> str:
-    """Run all validation checks against a JSONL routing dataset.
+async def validate_dataset(dataset_path: str, run_id: str) -> str:
+    """[Stage 2: Data Validation] Run all validation checks against a JSONL routing dataset.
 
     Args:
         dataset_path: Absolute path to the JSONL dataset file.
+        run_id: Pipeline run identifier.
 
     Returns:
         JSON-serialized DataQualityReport with schema findings,
         label distribution, volume adequacy, and query length stats.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "input" / "input_report.md",
+        stage=2,
+        stage_name="Data Validation",
+        hint="Submit an input report first.",
+    )
+
     path = Path(dataset_path)
     if not path.is_file():
         raise ToolError(f"Dataset file not found: {dataset_path}")
@@ -384,6 +437,13 @@ async def validate_dataset(dataset_path: str) -> str:
         raise ToolError(f"Malformed JSONL at line {line_num}: {exc}") from exc
 
     report = run_all_checks(rows)
+
+    # Persist report to run output directory
+    report_dir = project_dir / "outputs" / run_id / "validation"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = report_dir / "data_quality_report.json"
+    report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+
     return report.model_dump_json(indent=2)
 
 
@@ -425,11 +485,20 @@ async def detect_and_parse_dataset(dataset_path: str) -> str:
 
     Args:
         dataset_path: Absolute path to the dataset file.
+        run_id: Pipeline run identifier.
 
     Returns:
         JSON-serialized DetectionResult with source_format, columns,
         sample_rows, nested_paths, and any warnings or skipped lines.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "input" / "input_report.md",
+        stage=2,
+        stage_name="Data Validation",
+        hint="Submit an input report first.",
+    )
+
     try:
         result = detect_and_parse(dataset_path)
     except (FileNotFoundError, ValueError) as exc:
@@ -441,9 +510,9 @@ async def detect_and_parse_dataset(dataset_path: str) -> str:
 async def transform_dataset(
     dataset_path: str,
     field_mapping: str,
-    output_path: str,
+    run_id: str,
 ) -> str:
-    """Apply a confirmed field mapping and write canonical JSONL.
+    """[Stage 2: Data Validation] Apply a confirmed field mapping and write canonical JSONL.
 
     Keys in field_mapping are source field names (or dot-paths for nested
     sources). Values are canonical target field names (e.g. "input",
@@ -452,12 +521,21 @@ async def transform_dataset(
     Args:
         dataset_path: Absolute path to the original dataset file.
         field_mapping: JSON object mapping source fields to target fields.
-        output_path: Absolute path for the transformed JSONL output.
+        run_id: Pipeline run identifier.
 
     Returns:
         JSON-serialized TransformResult with output_path, rows_written,
         fields_mapped, and fields_dropped.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "input" / "input_report.md",
+        stage=2,
+        stage_name="Data Validation",
+        hint="Submit an input report first.",
+    )
+
+    output_path = str(project_dir / "outputs" / run_id / "validation" / "transformed.jsonl")
     try:
         result = _do_transform(dataset_path, field_mapping, output_path)
     except (FileNotFoundError, ValueError) as exc:
@@ -467,15 +545,17 @@ async def transform_dataset(
 
 @mcp.tool()
 async def init_search_state_tool(
+    run_id: str,
     backend: str,
     max_rounds: int = 50,
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
 ) -> str:
-    """Initialise a new prompt-builder search state.
+    """[Stage 4: Search Init] Initialise a new prompt-builder search state.
 
     Args:
+        run_id: Pipeline run identifier.
         backend: Backend identifier (e.g. "anthropic", "openai").
         max_rounds: Maximum number of search rounds before forced convergence.
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
@@ -485,8 +565,17 @@ async def init_search_state_tool(
     Returns:
         JSON-serialized SearchState for the new search run.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
+        stage=4,
+        stage_name="Search Init",
+        hint="Complete routing analysis and dataset split first.",
+    )
+
     state = init_search_state(
         backend=backend,
+        run_id=run_id,
         max_rounds=max_rounds,
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
@@ -497,14 +586,14 @@ async def init_search_state_tool(
 
 @mcp.tool()
 async def register_candidate_tool(
-    search_state_id: str,
+    run_id: str,
     prompt_version: str,
     parent_version: str | None = None,
 ) -> str:
-    """Register a new candidate prompt version for the current search round.
+    """[Stage 5: Prompt Search] Register a new candidate prompt version for the current search round.
 
     Args:
-        search_state_id: ID of the search state to update.
+        run_id: Pipeline run identifier.
         prompt_version: Unique version identifier for the new prompt candidate.
         parent_version: Parent prompt version, if any.
 
@@ -513,7 +602,7 @@ async def register_candidate_tool(
     """
     try:
         register_candidate(
-            search_state_id=search_state_id,
+            run_id=run_id,
             prompt_version=prompt_version,
             parent_version=parent_version,
         )
@@ -526,15 +615,15 @@ async def register_candidate_tool(
 
 @mcp.tool()
 async def record_eval_result_tool(
-    search_state_id: str,
+    run_id: str,
     prompt_version: str,
     quality_score: float,
     cost: float,
 ) -> str:
-    """Record evaluation results for a pending candidate.
+    """[Stage 5: Prompt Search] Record evaluation results for a pending candidate.
 
     Args:
-        search_state_id: ID of the search state to update.
+        run_id: Pipeline run identifier.
         prompt_version: Version identifier of the candidate being evaluated.
         quality_score: Evaluation quality score.
         cost: Evaluation cost.
@@ -544,7 +633,7 @@ async def record_eval_result_tool(
     """
     try:
         result = record_eval_result(
-            search_state_id=search_state_id,
+            run_id=run_id,
             prompt_version=prompt_version,
             quality_score=quality_score,
             cost=cost,
@@ -557,20 +646,20 @@ async def record_eval_result_tool(
 
 
 @mcp.tool()
-async def advance_round_tool(search_state_id: str) -> str:
-    """Advance the search loop by one round.
+async def advance_round_tool(run_id: str) -> str:
+    """[Stage 5: Prompt Search] Advance the search loop by one round.
 
     Processes all pending candidates, updates the Pareto front, adjusts
     stagnation tracking, and checks for convergence.
 
     Args:
-        search_state_id: ID of the search state to advance.
+        run_id: Pipeline run identifier.
 
     Returns:
         JSON-serialized RoundSummary for the completed round.
     """
     try:
-        summary = advance_round(search_state_id=search_state_id)
+        summary = advance_round(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     except ValueError as exc:
@@ -579,17 +668,17 @@ async def advance_round_tool(search_state_id: str) -> str:
 
 
 @mcp.tool()
-async def get_search_state_tool(search_state_id: str) -> str:
-    """Load and return the current search state.
+async def get_search_state_tool(run_id: str) -> str:
+    """[Stage 5: Prompt Search] Load and return the current search state.
 
     Args:
-        search_state_id: ID of the search state to retrieve.
+        run_id: Pipeline run identifier.
 
     Returns:
         JSON-serialized SearchState.
     """
     try:
-        state = get_search_state(search_state_id=search_state_id)
+        state = get_search_state(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     return state.model_dump_json(indent=2)
@@ -599,8 +688,9 @@ async def get_search_state_tool(search_state_id: str) -> str:
 async def filter_holdout_dataset_tool(
     holdout_jsonl_path: str,
     exclude_ids: list[str],
+    run_id: str,
 ) -> str:
-    """Filter a holdout JSONL dataset by removing rows with specified IDs.
+    """[Stage 7: Holdout Validation] Filter a holdout JSONL dataset by removing rows with specified IDs.
 
     Removes few-shot examples from the holdout set to prevent data
     contamination before final evaluation.
@@ -608,10 +698,19 @@ async def filter_holdout_dataset_tool(
     Args:
         holdout_jsonl_path: Path to the holdout JSONL dataset file.
         exclude_ids: List of row IDs to exclude from the output.
+        run_id: Pipeline run identifier.
 
     Returns:
         JSON object with filtered_holdout_path pointing to the output file.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
+        stage=7,
+        stage_name="Holdout Validation",
+        hint="Complete routing analysis and dataset split first.",
+    )
+
     try:
         filtered_path = filter_holdout_dataset(
             holdout_jsonl_path=holdout_jsonl_path,
@@ -652,31 +751,54 @@ async def check_overlap_skill() -> str:
 
 
 @mcp.tool()
-async def create_seed_registry_tool() -> str:
-    """Initialize a vocabulary registry with 4 canonical ambiguity tags.
+async def create_seed_registry_tool(run_id: str) -> str:
+    """[Stage 3: Routing Analysis] Initialize a vocabulary registry with 4 canonical ambiguity tags.
+
+    Args:
+        run_id: Pipeline run identifier.
 
     Returns:
         JSON-serialized VocabularyRegistry with seed ambiguity tags.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
+        project_dir / "outputs" / run_id / "validation" / "routing_context.json",
+        stage=3,
+        stage_name="Routing Analysis",
+        hint="Complete data validation first.",
+    )
+
     registry = create_seed_registry()
     return registry.model_dump_json(indent=2)
 
 
 @mcp.tool()
 async def resolve_registry_tool(
+    run_id: str,
     dataset_hash: str,
     registry_dir: str = "outputs",
 ) -> str:
-    """Look up an existing registry by dataset hash.
+    """[Stage 3: Routing Analysis] Look up an existing registry by dataset hash.
 
     Args:
+        run_id: Pipeline run identifier.
         dataset_hash: SHA-256 hash (16 hex chars) of the dataset.
         registry_dir: Directory to search for saved registries. Defaults to "outputs".
 
     Returns:
         JSON-serialized VocabularyRegistry if found, or {"found": false, ...}.
     """
-    registry_path = Path(registry_dir) if Path(registry_dir).is_absolute() else get_project_dir() / registry_dir
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
+        project_dir / "outputs" / run_id / "validation" / "routing_context.json",
+        stage=3,
+        stage_name="Routing Analysis",
+        hint="Complete data validation first.",
+    )
+
+    registry_path = Path(registry_dir) if Path(registry_dir).is_absolute() else project_dir / registry_dir
     result = resolve_registry(dataset_hash, registry_path)
     if result is None:
         return json.dumps({"found": False, "dataset_hash": dataset_hash, "registry_dir": registry_dir})
@@ -685,16 +807,18 @@ async def resolve_registry_tool(
 
 @mcp.tool()
 async def validate_rationale_card_set_tool(
+    run_id: str,
     card_set_json: str,
     routing_context_json: str,
     dataset_size: int,
 ) -> str:
-    """Run deterministic validation checks on a rationale card set.
+    """[Stage 3: Routing Analysis] Run deterministic validation checks on a rationale card set.
 
     Does not call an LLM judge; semantic overlap is handled by the
     check-semantic-overlap skill.
 
     Args:
+        run_id: Pipeline run identifier.
         card_set_json: JSON-serialized RationaleCardSet.
         routing_context_json: JSON-serialized RoutingContext.
         dataset_size: Total number of examples in the dataset.
@@ -702,6 +826,15 @@ async def validate_rationale_card_set_tool(
     Returns:
         JSON array of RationaleCheckResult objects.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
+        project_dir / "outputs" / run_id / "validation" / "routing_context.json",
+        stage=3,
+        stage_name="Routing Analysis",
+        hint="Complete data validation first.",
+    )
+
     card_set = RationaleCardSet.model_validate_json(card_set_json)
     routing_context = RoutingContext.model_validate_json(routing_context_json)
     results = validate_deterministic(card_set, routing_context, dataset_size)
@@ -710,20 +843,31 @@ async def validate_rationale_card_set_tool(
 
 @mcp.tool()
 async def prune_registry_tool(
+    run_id: str,
     registry_json: str,
     dataset_size: int,
 ) -> str:
-    """Remove vocabulary entries below the cluster threshold.
+    """[Stage 3: Routing Analysis] Remove vocabulary entries below the cluster threshold.
 
     Threshold: max(3, ceil(0.05 * dataset_size)).
 
     Args:
+        run_id: Pipeline run identifier.
         registry_json: JSON-serialized VocabularyRegistry.
         dataset_size: Total number of examples in the dataset.
 
     Returns:
         JSON with pruned_registry and removed_entries.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
+        project_dir / "outputs" / run_id / "validation" / "routing_context.json",
+        stage=3,
+        stage_name="Routing Analysis",
+        hint="Complete data validation first.",
+    )
+
     registry = VocabularyRegistry.model_validate_json(registry_json)
     pruned_registry, removed_entries = prune_registry(registry, dataset_size)
     return json.dumps(
@@ -737,17 +881,19 @@ async def prune_registry_tool(
 
 @mcp.tool()
 async def stratified_split_tool(
+    run_id: str,
     dataset_path: str,
     card_set_json: str,
     dev_ratio: float = 0.8,
 ) -> str:
-    """Split a dataset and card set into dev and holdout partitions.
+    """[Stage 3: Routing Analysis — Phase 4] Split a dataset and card set into dev and holdout partitions.
 
     Writes dev.jsonl, holdout.jsonl, dev_rationale_card_set.json,
-    holdout_rationale_card_set.json, and split_report.json to an
-    isolated subdirectory under outputs/ keyed by dataset hash.
+    holdout_rationale_card_set.json, and split_report.json to
+    outputs/<run_id>/analysis/.
 
     Args:
+        run_id: Pipeline run identifier.
         dataset_path: Absolute path to the JSONL dataset file.
         card_set_json: JSON-serialized RationaleCardSet.
         dev_ratio: Proportion allocated to dev set. Defaults to 0.8.
@@ -755,6 +901,14 @@ async def stratified_split_tool(
     Returns:
         JSON with paths to all output files.
     """
+    project_dir = get_project_dir()
+    check_artifacts(
+        project_dir / "outputs" / run_id / "analysis" / "validation_report.json",
+        stage=3,
+        stage_name="Routing Analysis — Phase 4",
+        hint="Complete routing analysis validation first.",
+    )
+
     path = Path(dataset_path)
     if not path.is_file():
         raise ToolError(f"Dataset file not found: {dataset_path}")
@@ -766,7 +920,7 @@ async def stratified_split_tool(
         examples, card_set, dev_ratio
     )
 
-    output_dir = get_project_dir() / "outputs" / split_report.dataset_hash
+    output_dir = project_dir / "outputs" / run_id / "analysis"
     output_dir.mkdir(parents=True, exist_ok=True)
     dev_path = output_dir / "dev.jsonl"
     holdout_path = output_dir / "holdout.jsonl"
@@ -806,21 +960,21 @@ async def review_agent_guidelines() -> str:
 
 @mcp.tool()
 async def build_review_briefing_tool(
-    search_state_id: str,
+    run_id: str,
     candidate_versions: list[str],
     parent_versions: dict[str, str | None],
     report_paths: dict[str, str],
     holdout_card_set_path: str = "",
     output_dir: str = "outputs",
 ) -> str:
-    """Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
+    """[Stage 6: Review] Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
 
     Loads search state, score reports, prompt texts, mutation log, and directive
     history, then computes candidate comparisons, per-class recall, diversity
     metrics, diminishing returns, mutation correlation, and oracle metrics.
 
     Args:
-        search_state_id: The search state to review.
+        run_id: Pipeline run identifier.
         candidate_versions: Versions evaluated in the current round.
         parent_versions: Mapping of candidate → parent version.
         report_paths: Mapping of version → path to its ScoreReport JSON.
@@ -844,7 +998,7 @@ async def build_review_briefing_tool(
     out = Path(output_dir) if Path(output_dir).is_absolute() else get_project_dir() / output_dir
 
     # Load search state
-    state = get_search_state(search_state_id, output_dir=out)
+    state = get_search_state(run_id=run_id, output_dir=out)
 
     # Load score reports for current candidates + front + parents
     all_versions: set[str] = set(candidate_versions)
@@ -855,7 +1009,7 @@ async def build_review_briefing_tool(
             all_versions.add(parent)
 
     # Load historical round reports
-    historical = load_round_reports(search_state_id, output_dir=out)
+    historical = load_round_reports(run_id, output_dir=out)
 
     # Load current round reports via report_paths param; fall back to historical for front members
     score_reports: dict[str, Any] = {}
@@ -880,8 +1034,8 @@ async def build_review_briefing_tool(
             prompt_texts[version] = prompt_mgr.load(version)
 
     # Load mutation log and directive history
-    mutation_log = load_mutation_log(search_state_id, output_dir=out)
-    directive_history = load_directive_history(search_state_id, output_dir=out)
+    mutation_log = load_mutation_log(run_id, output_dir=out)
+    directive_history = load_directive_history(run_id, output_dir=out)
 
     # Load holdout examples from rationale card set if path provided
     holdout_examples: list[ExampleSummary] = []
@@ -911,21 +1065,21 @@ async def build_review_briefing_tool(
 
     # Save current round's reports for future historical access
     current_round_reports = {v: score_reports[v] for v in candidate_versions if v in score_reports}
-    save_round_report(search_state_id, state.round, current_round_reports, output_dir=out)
+    save_round_report(run_id, state.round, current_round_reports, output_dir=out)
 
     return briefing.model_dump_json(indent=2)
 
 
 @mcp.tool()
 async def record_directive_outcomes_tool(
-    search_state_id: str,
+    run_id: str,
     outcomes: list[dict[str, Any]],
     output_dir: str = "outputs",
 ) -> str:
-    """Record the outcomes of prior Review Agent directives.
+    """[Stage 6: Review] Record the outcomes of prior Review Agent directives.
 
     Args:
-        search_state_id: ID of the search state these outcomes belong to.
+        run_id: Pipeline run identifier.
         outcomes: List of DirectiveOutcome dicts to record.
         output_dir: Output directory (default "outputs").
 
@@ -937,9 +1091,28 @@ async def record_directive_outcomes_tool(
 
     out = Path(output_dir) if Path(output_dir).is_absolute() else get_project_dir() / output_dir
     parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
-    existing = load_directive_history(search_state_id, output_dir=out)
-    save_directive_history(search_state_id, existing + parsed, output_dir=out)
+    existing = load_directive_history(run_id, output_dir=out)
+    save_directive_history(run_id, existing + parsed, output_dir=out)
     return json.dumps({"recorded": len(parsed), "total": len(existing) + len(parsed)})
+
+
+@mcp.tool()
+async def get_pipeline_status(run_id: str | None = None) -> str:
+    """Check pipeline progress and get guidance on the next step.
+
+    Call this at any time. Accepts optional run_id; if omitted, uses the
+    most recent pipeline run.
+
+    Args:
+        run_id: Optional pipeline run identifier.
+
+    Returns:
+        JSON object with stage checklist, current stage, and next action.
+    """
+    project_dir = get_project_dir()
+    outputs_dir = project_dir / "outputs"
+    result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
+    return json.dumps(result, indent=2)
 
 
 def main() -> None:

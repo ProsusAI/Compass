@@ -79,16 +79,12 @@ def build_candidate_comparisons(
         if parent and parent in score_reports:
             parent_report = score_reports[parent]
             delta_parent = MetricDeltas(
-                quality_delta=_extract_metric(report, primary_metric)
-                - _extract_metric(parent_report, primary_metric),
-                cost_delta=_extract_metric(report, "cost")
-                - _extract_metric(parent_report, "cost"),
+                quality_delta=_extract_metric(report, primary_metric) - _extract_metric(parent_report, primary_metric),
+                cost_delta=_extract_metric(report, "cost") - _extract_metric(parent_report, "cost"),
                 per_class_recall_deltas=_compute_recall_deltas(report, parent_report),
             )
         else:
-            delta_parent = MetricDeltas(
-                quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={}
-            )
+            delta_parent = MetricDeltas(quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={})
 
         # Delta vs each front member
         delta_front: list[FrontComparison] = []
@@ -100,8 +96,7 @@ def build_candidate_comparisons(
                         front_candidate_version=fv,
                         quality_delta=_extract_metric(report, primary_metric)
                         - _extract_metric(front_report, primary_metric),
-                        cost_delta=_extract_metric(report, "cost")
-                        - _extract_metric(front_report, "cost"),
+                        cost_delta=_extract_metric(report, "cost") - _extract_metric(front_report, "cost"),
                     )
                 )
 
@@ -326,14 +321,10 @@ def compute_oracle_metrics(
         oracle_cost_reduction=oracle_cost_reduction,
         oracle_quality_reduction=oracle_quality_reduction,
         candidate_cost_captured=(
-            candidate_cost_reduction / oracle_cost_reduction
-            if oracle_cost_reduction != 0.0
-            else None
+            candidate_cost_reduction / oracle_cost_reduction if oracle_cost_reduction != 0.0 else None
         ),
         candidate_quality_captured=(
-            candidate_quality_reduction / oracle_quality_reduction
-            if oracle_quality_reduction != 0.0
-            else None
+            candidate_quality_reduction / oracle_quality_reduction if oracle_quality_reduction != 0.0 else None
         ),
     )
 
@@ -429,9 +420,7 @@ def build_review_briefing(
     mutation_descriptions: dict[str, str] = {}
     for version in candidate_versions:
         matching = [m for m in mutation_log if m.child_version == version]
-        mutation_descriptions[version] = (
-            matching[-1].description if matching else "No mutation record"
-        )
+        mutation_descriptions[version] = matching[-1].description if matching else "No mutation record"
 
     # 1. Candidate comparisons
     candidates = build_candidate_comparisons(

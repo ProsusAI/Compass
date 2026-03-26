@@ -81,7 +81,7 @@ class TestSaveLoadDirectiveHistory:
         history = [_make_directive_outcome("dir-001")]
         save_directive_history("state-new", history, output_dir=tmp_path)
 
-        expected_path = tmp_path / "state-new" / "directive_history.json"
+        expected_path = tmp_path / "state-new" / "search" / "directive_history.json"
         assert expected_path.exists()
 
     def test_empty_history_roundtrip(self, tmp_path: Path) -> None:
@@ -132,7 +132,7 @@ class TestSaveLoadMutationLog:
         log = [_make_mutation_record("v2", "v1")]
         save_mutation_log("state-new", log, output_dir=tmp_path)
 
-        expected_path = tmp_path / "state-new" / "mutation_log.json"
+        expected_path = tmp_path / "state-new" / "search" / "mutation_log.json"
         assert expected_path.exists()
 
 
@@ -174,7 +174,7 @@ class TestSaveLoadRoundReports:
     def test_creates_directory_structure(self, tmp_path: Path) -> None:
         save_round_report("state-new", 1, {"v2": {}}, output_dir=tmp_path)
 
-        expected_path = tmp_path / "state-new" / "round_reports" / "round_1.json"
+        expected_path = tmp_path / "state-new" / "search" / "round_reports" / "round_1.json"
         assert expected_path.exists()
 
     def test_round_numbers_parsed_correctly(self, tmp_path: Path) -> None:
@@ -197,3 +197,21 @@ class TestSaveLoadRoundReports:
         keys = list(loaded.keys())
 
         assert keys == [1, 2, 3]
+
+
+# ---------------------------------------------------------------------------
+# run_id path tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunIdPaths:
+    def test_directive_history_uses_run_id_path(self, tmp_path: Path) -> None:
+        outcome = DirectiveOutcome(prior_directive_id="d1", was_attempted=True, outcome="improved")
+        save_directive_history("abc12345", [outcome], output_dir=tmp_path)
+        assert (tmp_path / "abc12345" / "search" / "directive_history.json").is_file()
+        loaded = load_directive_history("abc12345", output_dir=tmp_path)
+        assert len(loaded) == 1
+
+    def test_round_report_uses_run_id_path(self, tmp_path: Path) -> None:
+        save_round_report("abc12345", 1, {"v1": {"score": 0.8}}, output_dir=tmp_path)
+        assert (tmp_path / "abc12345" / "search" / "round_reports" / "round_1.json").is_file()

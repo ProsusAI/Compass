@@ -1,7 +1,5 @@
 """Tests for odysseus.cli — init command."""
 
-from pathlib import Path
-
 from odysseus.cli import run_init
 
 

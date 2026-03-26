@@ -26,7 +26,7 @@ In this phase you interact with the user to confirm field mappings.
 5. Present the proposed mapping as a table to the user. For each target field, briefly explain what it represents.
 6. If all required fields (`input`, `expected.route`, `expected.routes`) are confidently mapped: ask the user to confirm. Unmapped source fields are dropped silently.
 7. If any required field is ambiguous or unmapped: ask about each unresolved field one at a time.
-8. Once confirmed, call `transform_dataset` with the mapping. The output is written to `data/transformed_<source_filestem>.jsonl`.
+8. Once confirmed, call `transform_dataset` with the mapping and the `run_id`. The output is written to `outputs/<run_id>/validation/transformed.jsonl`.
 9. Proceed to Phase 2 with the transformed file path.
 
 **Skip Phase 1** if `detect_and_parse_dataset` returns `source_format: "jsonl"` and the columns include `id`, `input`, `expected`, and the sample rows show the canonical nested structure (`expected.route`, `expected.routes`). Proceed directly to Phase 2 with the original file path.
@@ -35,9 +35,10 @@ In this phase you interact with the user to confirm field mappings.
 
 In this phase you work autonomously — produce the report without user interaction.
 
-1. Call the `validate_dataset` tool with the dataset path (transformed or original).
+1. Call the `validate_dataset` tool with the dataset path (transformed or original). The `DataQualityReport` is automatically persisted by `validate_dataset` to `outputs/<run_id>/validation/data_quality_report.json`.
 2. Interpret the structured results returned by the tool.
 3. Write a data quality report following the output format below.
+4. After writing the report, persist the `RoutingContext` YAML block as JSON to `outputs/<run_id>/validation/routing_context.json`.
 
 You always produce a full report — even when critical issues are found. The report is consumed by the pipeline orchestrator and downstream agents.
 

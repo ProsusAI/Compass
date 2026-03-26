@@ -87,12 +87,8 @@ class TestCandidateAnalysis:
             parent_version="v1",
             mutation_description="added an example",
             score_report=_make_score_report(),
-            delta_vs_parent=MetricDeltas(
-                quality_delta=0.01, cost_delta=0.0, per_class_recall_deltas={}
-            ),
-            delta_vs_front=[
-                FrontComparison(front_candidate_version="v1", quality_delta=0.01, cost_delta=0.0)
-            ],
+            delta_vs_parent=MetricDeltas(quality_delta=0.01, cost_delta=0.0, per_class_recall_deltas={}),
+            delta_vs_front=[FrontComparison(front_candidate_version="v1", quality_delta=0.01, cost_delta=0.0)],
         )
         assert ca.candidate_version == "v2"
         assert ca.parent_version == "v1"
@@ -105,9 +101,7 @@ class TestCandidateAnalysis:
             parent_version=None,
             mutation_description="seed candidate",
             score_report=_make_score_report(),
-            delta_vs_parent=MetricDeltas(
-                quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={}
-            ),
+            delta_vs_parent=MetricDeltas(quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={}),
             delta_vs_front=[],
         )
         assert ca.parent_version is None

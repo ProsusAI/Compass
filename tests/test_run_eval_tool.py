@@ -186,9 +186,20 @@ GET_SEARCH_STATE = "odysseus.mcp.get_search_state"
 BACKEND_REGISTRY = "odysseus.mcp.BackendRegistry"
 
 
+def _setup_run_eval_guard(tmp_path: Path, run_id: str = "test-123") -> None:
+    """Create guard artifacts for run_eval (needs dev.jsonl + backend)."""
+    analysis = tmp_path / "outputs" / run_id / "analysis"
+    analysis.mkdir(parents=True, exist_ok=True)
+    (analysis / "dev.jsonl").write_text("")
+    backends = tmp_path / "backends"
+    backends.mkdir(parents=True, exist_ok=True)
+    (backends / "anthropic.yaml").write_text("provider: anthropic")
+
+
 @pytest.mark.asyncio
-async def test_run_eval_preflight_triggers_on_round_zero() -> None:
+async def test_run_eval_preflight_triggers_on_round_zero(tmp_path: Path) -> None:
     """First run in loop (round 0, no history) returns action_required."""
+    _setup_run_eval_guard(tmp_path)
     state = SearchState(
         search_state_id="test-123",
         backend="anthropic",
@@ -201,7 +212,7 @@ async def test_run_eval_preflight_triggers_on_round_zero() -> None:
     with (
         patch(GET_SEARCH_STATE, return_value=state),
         patch(BACKEND_REGISTRY) as MockRegistry,  # noqa: N806
-        patch("odysseus.mcp.get_project_dir", return_value=Path("/fake")),
+        patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
     ):
         MockRegistry.from_directory.return_value = mock_registry
 
@@ -209,18 +220,19 @@ async def test_run_eval_preflight_triggers_on_round_zero() -> None:
             prompt_version="v1",
             data_source="data/test.jsonl",
             backend="anthropic",
-            search_state_id="test-123",
+            run_id="test-123",
         )
 
     parsed = json.loads(result)
     assert parsed["action_required"] == "backend_setup"
-    assert parsed["search_state_id"] == "test-123"
+    assert parsed["run_id"] == "test-123"
     assert "anthropic" in parsed["available_backends"]
 
 
 @pytest.mark.asyncio
-async def test_run_eval_preflight_skipped_after_round_zero() -> None:
+async def test_run_eval_preflight_skipped_after_round_zero(tmp_path: Path) -> None:
     """After first round, run_eval proceeds normally (no action_required)."""
+    _setup_run_eval_guard(tmp_path)
     state = SearchState(
         search_state_id="test-123",
         backend="anthropic",
@@ -232,6 +244,7 @@ async def test_run_eval_preflight_skipped_after_round_zero() -> None:
     with (
         patch(GET_SEARCH_STATE, return_value=state),
         patch(AGENT_RUN, new_callable=AsyncMock) as mock_run,
+        patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
     ):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
@@ -239,7 +252,7 @@ async def test_run_eval_preflight_skipped_after_round_zero() -> None:
             prompt_version="v1",
             data_source="data/test.jsonl",
             backend="anthropic",
-            search_state_id="test-123",
+            run_id="test-123",
         )
 
     parsed = json.loads(result)
