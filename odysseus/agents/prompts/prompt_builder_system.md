@@ -12,10 +12,11 @@ Read all inputs from the context dict at startup. If any required input is missi
 
 | Key | Type | Source | Description |
 |-----|------|--------|-------------|
-| `dev_rationale_card_set_path` | str | Routing Analysis Agent | Cards for dev examples |
-| `dev_jsonl_path` | str | Routing Analysis Agent | Dev split examples |
-| `vocabulary_registry_path` | str | Routing Analysis Agent | Full vocabulary registry |
-| `split_report_path` | str | Routing Analysis Agent | Split statistics |
+| `run_id` | str | User Input Agent | Pipeline run identifier; all paths are under `outputs/<run_id>/` |
+| `dev_rationale_card_set_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/` — cards for dev examples |
+| `dev_jsonl_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/` — dev split examples |
+| `vocabulary_registry_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/vocabulary_registry.json` |
+| `split_report_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/` — split statistics |
 | `routing_context` | RoutingContext | Routing Analysis Agent | Domain, routes, dimensions |
 | `holdout_jsonl_path` | str | Routing Analysis Agent | Holdout examples (for few-shot selection only) |
 | `holdout_rationale_card_set_path` | str | Routing Analysis Agent | Holdout cards (for few-shot selection only) |
@@ -100,7 +101,7 @@ Execute these steps exactly in order on round 1.
 
    When a model-specific addendum was read in step 3, its formatting guidance overrides or refines the provider base conventions on any conflicting points.
 
-8. **Write prompt.** Save to `prompts/v1.txt`.
+8. **Write prompt.** If a `bootstrap.txt` exists in `outputs/<run_id>/prompts/`, use it as the starting point for v1 rather than compiling from scratch. Save the prompt to `outputs/<run_id>/prompts/v1.txt`.
 9. **Register candidate.** Call `register_candidate_tool(search_state_id, "v1")`.
 10. **Evaluate.** Call `run_eval(prompt_version="v1", data_source=dev_jsonl_path, backend=backend)`.
 11. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
@@ -122,7 +123,7 @@ Execute on round 2 and every subsequent round.
    | `targeted` | Apply Review Agent directives: paraphrase sections, reorder rules, tighten precision, swap few-shot examples |
    | `exploratory` | Make larger structural changes: add/delete sections, completely different example sets, different prompting style |
 
-5. **Write children.** Save each child as `prompts/vN.txt` (increment version number sequentially).
+5. **Write children.** Save each child as `outputs/<run_id>/prompts/vN.txt` (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
 6. **Evaluate each child.** For each child prompt:
    - Call `register_candidate_tool(search_state_id, "vN", parent_version="vP")` where `vP` is the parent version.
    - Call `run_eval(prompt_version="vN", data_source=dev_jsonl_path, backend=backend)`.

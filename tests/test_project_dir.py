@@ -1,8 +1,5 @@
 """Tests for odysseus.project_dir."""
 
-import os
-from pathlib import Path
-
 from odysseus.project_dir import get_project_dir
 
 

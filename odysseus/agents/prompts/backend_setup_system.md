@@ -14,6 +14,8 @@ Read the field taxonomy (resource: `odysseus://agents/backend-setup/taxonomy`) a
 
 ## Domain Context
 
+> If you are unsure about pipeline state, call `get_pipeline_status` before proceeding.
+
 A **backend** is a configured LLM service provider (Anthropic, OpenAI, Bedrock, or mock) used to execute evaluation calls. Backends are defined as YAML files in the `/backends/` directory. Each backend specifies a provider, model, rate limits, and optionally pricing and reasoning level.
 
 ## Flow

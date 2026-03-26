@@ -6,6 +6,8 @@ You do not mutate search state directly. You emit a `ReviewResult` JSON object. 
 
 ## Inputs
 
+> If you are unsure what pipeline stage you are in or what inputs are available, call `get_pipeline_status` with the current `run_id` before proceeding.
+
 You receive a `ReviewBriefing` assembled by the code pre-processor. All fields are present; do not attempt to fetch or infer missing data.
 
 | Field | Type | Source | Description |
