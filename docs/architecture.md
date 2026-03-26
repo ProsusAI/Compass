@@ -7,7 +7,7 @@ Quick re-orientation guide for the Odysseus multi-agent routing optimizer.
 ```mermaid
 graph TD
     U["User"] -->|problem + dataset| A1["User Input Agent<br/><em>LLM-driven</em><br/>Status: done"]
-    A1 -->|validated_input_report_path| A2["Data Validation Agent<br/><em>LLM-driven</em><br/>Status: done"]
+    A1 -->|validated_input_report_path| A2["Data Validation Agent<br/><em>LLM-driven</em><br/>Phase 1: ingest &amp; map → Phase 2: validate<br/>Status: done"]
     A2 -->|DataQualityReport| A3["Routing Analysis Agent<br/><em>LLM-driven</em><br/>Status: done"]
     A3 -->|RationaleCardSet +<br/>RoutingContext| A4["Prompt Builder Agent<br/><em>LLM-driven</em><br/>Status: planned"]
     A4 -->|prompt version| A5["Eval Runner Agent<br/><em>code-driven</em><br/>Status: done"]
@@ -22,7 +22,7 @@ graph TD
 | Agent | Type | Module / Prompt | Status | Reads from Context | Writes to Context |
 |---|---|---|---|---|---|
 | User Input | LLM-driven | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md), [`odysseus/agents/user_input_report.py`](../odysseus/agents/user_input_report.py) | Done | (user conversation) | `validated_input_report_path` |
-| Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation_checks.py`](../odysseus/agents/data_validation_checks.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path` |
+| Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation_checks.py`](../odysseus/agents/data_validation_checks.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path` |
 | Routing Analysis | LLM-driven | [`odysseus/agents/routing_rationale_models.py`](../odysseus/agents/routing_rationale_models.py), [`odysseus/agents/routing_rationale_checks.py`](../odysseus/agents/routing_rationale_checks.py), [`odysseus/agents/routing_rationale_registry.py`](../odysseus/agents/routing_rationale_registry.py), [`odysseus/agents/stratified_split.py`](../odysseus/agents/stratified_split.py) | Done | `validated_input_report_path`, `data_quality_report`, `routing_context`, `dataset_path` | `dev_rationale_card_set_path`, `dev_jsonl_path`, `vocabulary_registry_path`, `split_report_path`, `routing_context` (passthrough), `holdout_rationale_card_set_path`, `holdout_jsonl_path` |
 | Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `config_path` | `eval_score_report` |
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
@@ -43,6 +43,7 @@ graph TD
 | `routing_context` | `RoutingContext` | Data Validation Agent | Routing Analysis Agent | Domain-agnostic routing config: routes, dimensions, ordering, seed vocabulary |
 | `data_quality_report` | `DataQualityReport` | Data Validation Agent | Routing Analysis Agent | Schema findings, label distribution, volume assessment |
 | `dataset_path` | `str` | Data Validation Agent | Routing Analysis Agent | Path to validated JSONL dataset |
+| `original_dataset_path` | `str` | Data Validation Agent | (provenance tracking) | Path to the user's original dataset file before transformation |
 | `dev_rationale_card_set_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Cards for dev examples only |
 | `dev_jsonl_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Dev split examples path |
 | `vocabulary_registry_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Full vocabulary registry path |

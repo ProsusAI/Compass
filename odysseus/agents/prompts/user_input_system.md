@@ -60,16 +60,20 @@ The evaluation framework supports four metrics. Use this to guide users toward a
 - **confusion** — Full confusion matrix. Diagnostic only — not suitable as an optimization target.
 - **cost_quality_reduction** — Percentage change in cost/quality vs. a baseline tier. Outputs `cost_reduction` (model cost only), `cost_reduction_with_overhead` (includes routing call cost), `quality_reduction`, `oracle_cost_reduction`, `oracle_quality_reduction`. Use `cost_reduction_with_overhead` for threshold targets. Example: `cost_reduction_with_overhead <= -0.30`.
 
-## Data Validation agent
+## Pipeline handoff
 
-When the user provides a dataset, dispatch the Data Validation agent to assess its quality. Incorporate findings into your validation:
+Once you have produced the validated input report and the user has confirmed it, call the `submit_input_report` tool with:
+- `report`: the full report Markdown
+- `dataset_path`: the absolute filesystem path to the routing dataset
+- `problem_description`: the validated problem description
 
-- If the Data Validation agent reports issues (insufficient examples, label imbalance, malformed records), treat them as potential blocking gaps.
-- Surface data issues conversationally using the **fix** question type from the clarification skill.
-- Data validation issues inherit the dataset's priority (priority 2).
+This triggers the next pipeline stage — the Data Validation Agent.
 
+The pipeline flow after your handoff:
+1. **Data Validation Agent** — ingests the dataset (CSV/JSON/JSONL), confirms field mappings with the user if needed, transforms to canonical format, then validates and produces a quality report.
+2. **Routing Analysis Agent** — annotates and splits the validated dataset.
 
-The Data Validation agent produces a data quality report that includes a **Routing Context** section — a structured YAML block describing routes, routing dimensions, and domain context derived from the dataset.
+Your job is done after calling `submit_input_report`. The Data Validation Agent owns the conversation from that point — it will talk to the user directly if field mapping confirmation is needed. Do not attempt to mediate validation issues.
 
 ## Output template
 
