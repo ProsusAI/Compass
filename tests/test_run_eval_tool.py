@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
+from odysseus.agents.prompt_builder_search import SearchState
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
 
@@ -174,3 +176,91 @@ async def test_run_eval_permission_error_raises_tool_error() -> None:
                 data_source="data/test.jsonl",
                 backend="test-backend",
             )
+
+
+# ---------------------------------------------------------------------------
+# Pre-flight check
+# ---------------------------------------------------------------------------
+
+GET_SEARCH_STATE = "odysseus.mcp.get_search_state"
+BACKEND_REGISTRY = "odysseus.mcp.BackendRegistry"
+
+
+@pytest.mark.asyncio
+async def test_run_eval_preflight_triggers_on_round_zero() -> None:
+    """First run in loop (round 0, no history) returns action_required."""
+    state = SearchState(
+        search_state_id="test-123",
+        backend="anthropic",
+        round=0,
+        round_history=[],
+    )
+    mock_registry = MagicMock()
+    mock_registry.list_profiles.return_value = ["anthropic", "openai"]
+
+    with (
+        patch(GET_SEARCH_STATE, return_value=state),
+        patch(BACKEND_REGISTRY) as MockRegistry,  # noqa: N806
+        patch("odysseus.mcp.get_project_dir", return_value=Path("/fake")),
+    ):
+        MockRegistry.from_directory.return_value = mock_registry
+
+        result = await run_eval(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="anthropic",
+            search_state_id="test-123",
+        )
+
+    parsed = json.loads(result)
+    assert parsed["action_required"] == "backend_setup"
+    assert parsed["search_state_id"] == "test-123"
+    assert "anthropic" in parsed["available_backends"]
+
+
+@pytest.mark.asyncio
+async def test_run_eval_preflight_skipped_after_round_zero() -> None:
+    """After first round, run_eval proceeds normally (no action_required)."""
+    state = SearchState(
+        search_state_id="test-123",
+        backend="anthropic",
+        round=1,
+        round_history=[],
+    )
+    score_report = _stub_score_report()
+
+    with (
+        patch(GET_SEARCH_STATE, return_value=state),
+        patch(AGENT_RUN, new_callable=AsyncMock) as mock_run,
+    ):
+        mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
+
+        result = await run_eval(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="anthropic",
+            search_state_id="test-123",
+        )
+
+    parsed = json.loads(result)
+    assert "action_required" not in parsed
+    assert "report_path" in parsed
+
+
+@pytest.mark.asyncio
+async def test_run_eval_no_search_state_id_skips_preflight() -> None:
+    """Without search_state_id, run_eval behaves as before."""
+    score_report = _stub_score_report()
+
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+        mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
+
+        result = await run_eval(
+            prompt_version="v1",
+            data_source="data/test.jsonl",
+            backend="anthropic",
+        )
+
+    parsed = json.loads(result)
+    assert "action_required" not in parsed
+    assert "report_path" in parsed

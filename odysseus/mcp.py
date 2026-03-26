@@ -28,6 +28,7 @@ from odysseus.agents.routing_rationale_checks_deterministic import validate_dete
 from odysseus.agents.routing_rationale_models import RationaleCardSet, RoutingContext, VocabularyRegistry
 from odysseus.agents.routing_rationale_registry import create_seed_registry, prune_registry, resolve_registry
 from odysseus.agents.stratified_split import stratified_split
+from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import ScoreReport
 from odysseus.project_dir import get_project_dir
 
@@ -234,6 +235,7 @@ async def run_eval(
     data_source: str,
     backend: str,
     config_path: str = "outputs/run_config.yaml",
+    search_state_id: str | None = None,
 ) -> str:
     """Run an evaluation of a prompt version against a dataset.
 
@@ -243,11 +245,31 @@ async def run_eval(
         backend: Backend label matching a profile in backends/ directory.
         config_path: Path to YAML config with metrics, concurrency, retry,
                      and output settings. Defaults to "outputs/run_config.yaml".
+        search_state_id: Search state ID for the optimization loop. When
+                         provided and the loop is at round 0 with no history,
+                         returns an action_required response instead of running
+                         the eval, signalling the orchestrator to collect
+                         backend configuration first.
 
     Returns:
         JSON object with report_path and results_path pointing to
-        the full evaluation output on disk.
+        the full evaluation output on disk, OR an action_required
+        object on first run.
     """
+    # Pre-flight: on first run in loop, signal backend setup needed
+    if search_state_id is not None:
+        state = get_search_state(search_state_id=search_state_id)
+        if state.round == 0 and len(state.round_history) == 0:
+            project_dir = get_project_dir()
+            registry = BackendRegistry.from_directory(project_dir / "backends")
+            return json.dumps(
+                {
+                    "action_required": "backend_setup",
+                    "search_state_id": search_state_id,
+                    "available_backends": registry.list_profiles(),
+                }
+            )
+
     agent = EvalRunnerAgent()
     result = await agent.run(
         {
