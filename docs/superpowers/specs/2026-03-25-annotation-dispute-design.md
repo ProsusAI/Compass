@@ -23,14 +23,14 @@ The Routing Analysis Agent produces rationale cards before the optimization loop
 
 ```
 Each review round:
-  eval results + holdout RationaleCardSet
+  results JSONL (per-example predictions) + holdout RationaleCardSet
       ↓
-  compute_misroute_stats()          (review_preprocessor.py — pure function)
+  compute_misroute_stats()          (review_preprocessor.py — reads results files)
       ↓
-  save_misroute_stats()             (review_ops.py — append to misroute_stats.jsonl)
+  save_misroute_stats()             (review_ops.py — JSON, keyed by round)
 
 End of loop:
-  misroute_stats.jsonl + holdout RationaleCardSet
+  misroute_stats.json + holdout RationaleCardSet
       ↓
   Final Reporting Agent             (LLM — reasons about which dimensions are suspect)
       ↓
@@ -45,9 +45,9 @@ End of loop:
 |---|---|
 | `review_preprocessor.py` | New `compute_misroute_stats` function, `ExampleMisrouteStats` model |
 | `review_ops.py` | New `save_misroute_stats` / `load_all_misroute_stats` persistence pair |
-| New shared models | `AnnotationDispute`, `DisputedDimension` (not review-specific) |
+| `odysseus/agents/annotation_dispute_models.py` | New file: `AnnotationDispute`, `DisputedDimension` models |
 | Final Reporting Agent prompt | New section: consume misroute stats, produce annotation disputes |
-| `docs/architecture.md` | New context dict key `misroute_stats_path` |
+| `docs/architecture.md` | New context dict key `misroute_stats_path`, update `holdout_rationale_card_set_path` consumers |
 | Orchestrator | Call `compute_misroute_stats` + `save_misroute_stats` after each review round |
 
 ### What Doesn't Change
@@ -73,6 +73,7 @@ class ExampleMisrouteStats(BaseModel):
     ambiguity_tags: list[str]
     intent_pattern: str
     complexity_structure: str
+    route_exclusions: list[RouteExclusion]
 ```
 
 ### Threshold Constants (in `review_preprocessor.py`)
@@ -82,16 +83,26 @@ MIN_MISROUTE_CANDIDATES = 3   # Misrouted by at least 3 candidates
 MIN_MISROUTE_ROUNDS = 2       # Across at least 2 rounds
 ```
 
-Only examples meeting both thresholds are persisted.
+Defaults — exposed as function parameters for configurability:
 
-### `DisputedDimension` / `AnnotationDispute` (shared models)
+```python
+def compute_misroute_stats(
+    ...,
+    min_misroute_candidates: int = MIN_MISROUTE_CANDIDATES,
+    min_misroute_rounds: int = MIN_MISROUTE_ROUNDS,
+) -> list[ExampleMisrouteStats]:
+```
 
-Final Reporting Agent output — includes LLM-generated evidence.
+Only examples meeting both thresholds are included in the output.
+
+### `DisputedDimension` / `AnnotationDispute` (in `odysseus/agents/annotation_dispute_models.py`)
+
+Shared models consumed by the Final Reporting Agent. Separate file because they span the boundary between the review pre-processor (which produces the stats) and the reporting agent (which produces the disputes).
 
 ```python
 class DisputedDimension(BaseModel):
     dimension: Literal["intent_pattern", "complexity_structure", "ambiguity_tags", "route_exclusions"]
-    current_value: str
+    current_value: str | list[str]
     evidence: str                  # Why this seems wrong/incomplete
 
 class AnnotationDispute(BaseModel):
@@ -102,38 +113,72 @@ class AnnotationDispute(BaseModel):
     rounds_observed: list[int]
 ```
 
+`current_value` is `str | list[str]` to handle both scalar dimensions (`intent_pattern`, `complexity_structure`) and list dimensions (`ambiguity_tags`, `route_exclusions` serialized as a list of route strings).
+
 ## Pre-processor: `compute_misroute_stats`
 
-Pure function in `review_preprocessor.py`.
+Function in `review_preprocessor.py`. Not a pure function — reads results JSONL files from disk.
 
 **Inputs:**
-- Current round's eval results (per-example predictions from `ScoreReport`)
-- Historical eval results (accumulated across rounds)
-- Holdout `RationaleCardSet` (for card metadata)
+- `results_paths: dict[str, str]` — candidate version → path to results JSONL file (from `ScoreReport.results_path`). Each file contains per-example `EvalResult` records including the model's predicted route.
+- `historical_results_paths: dict[int, dict[str, str]]` — round → (version → results path). Accumulated across rounds.
+- `holdout_card_set: RationaleCardSet` — for card metadata and `assigned_route` ground truth.
+
+**Why not `ScoreReport` directly?** `ScoreReport` carries only aggregate metrics and error breakdowns — not per-example predictions. The per-example route predictions live in the results JSONL files referenced by `ScoreReport.results_path`. This function reads those files to get the predicted route per example per candidate.
+
+**Route extraction:** The predicted route lives at `EvalResult.output["route"]` (matching the convention in `odysseus/eval/metrics.py`). Records where `output` is `None` (failed calls) are skipped. Records where `output["route"]` does not match any known route are skipped (hallucinated routes — already handled in metrics).
 
 **Logic:**
-1. For each holdout example, count how many candidates routed it differently from `assigned_route` across current + historical rounds
-2. Filter to examples meeting both thresholds (`MIN_MISROUTE_CANDIDATES`, `MIN_MISROUTE_ROUNDS`)
-3. For qualifying examples, extract the card's rationale dimensions into `ExampleMisrouteStats`
+1. For each results file, load per-example `EvalResult` records and extract `output["route"]`
+2. For each holdout example, count how many candidates routed it differently from `assigned_route`, tracking which rounds the misroutes appeared in
+3. Filter to examples meeting both thresholds
+4. For qualifying examples, extract all rationale dimensions from the holdout card
 
 **Output:** `list[ExampleMisrouteStats]`
 
-Derived from `historical_reports` already available in `build_review_briefing` — no new data dependencies. Stateless: recomputed each round from accumulated eval results.
+### Data dependency note
+
+The orchestrator must accumulate `results_paths` across rounds (similar to how `historical_reports` accumulates `ScoreReport` dicts). The `results_path` field already exists on `ScoreReport` — the orchestrator just needs to track it per round.
+
+`holdout_rationale_card_set_path` is currently consumed only by the Final Reporting Agent (per `docs/architecture.md`). The orchestrator / review pre-processor now also reads it for `compute_misroute_stats`. The architecture doc's "Consumed By" column must be updated.
 
 ## Persistence
 
 ### `save_misroute_stats` / `load_all_misroute_stats` (in `review_ops.py`)
 
-- `save_misroute_stats(run_dir: Path, round: int, stats: list[ExampleMisrouteStats])` — writes to `{run_dir}/misroute_stats.jsonl`, one JSON object per stat entry with round number
-- `load_all_misroute_stats(run_dir: Path) -> dict[int, list[ExampleMisrouteStats]]` — reads all entries, grouped by round
+Follows the existing `review_ops.py` pattern: `search_state_id` + `output_dir`, JSON format.
 
-Consistent with existing `review_ops.py` patterns (directive history, round reports).
+```python
+def save_misroute_stats(
+    search_state_id: str,
+    round_num: int,
+    stats: list[ExampleMisrouteStats],
+    *,
+    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+) -> None:
+    """Write misroute stats for a round to {search_dir}/misroute_stats/round_{n}.json."""
+
+def load_all_misroute_stats(
+    search_state_id: str,
+    *,
+    output_dir: Path = _DEFAULT_OUTPUT_DIR,
+) -> dict[int, list[ExampleMisrouteStats]]:
+    """Load all rounds' misroute stats, keyed by round number."""
+```
+
+Storage layout: `{output_dir}/{search_state_id}/misroute_stats/round_{n}.json` — one file per round, matching the `round_reports/round_{n}.json` pattern. Always writes even if the stats list is empty (records that the round was processed).
 
 ## Context Dict Addition
 
 | Key | Type | Set By | Consumed By | Description |
 |---|---|---|---|---|
-| `misroute_stats_path` | `str` | Orchestrator (review round persistence) | Final Reporting Agent | Path to accumulated `misroute_stats.jsonl` |
+| `misroute_stats_path` | `str` | Orchestrator (review round persistence) | Final Reporting Agent | Path to `misroute_stats/` directory containing per-round JSON files |
+
+Update to existing key:
+
+| Key | Consumed By (updated) |
+|---|---|
+| `holdout_rationale_card_set_path` | Final Reporting Agent, Review pre-processor (`compute_misroute_stats`) |
 
 ## Final Report Section
 
