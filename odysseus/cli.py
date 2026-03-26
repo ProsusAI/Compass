@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-
 _MOCK_BACKEND = """\
 model: mock-echo
 provider: mock_echo

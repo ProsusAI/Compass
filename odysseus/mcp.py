@@ -9,7 +9,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from odysseus.project_dir import get_project_dir
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.prompts.base import Message, UserMessage
@@ -29,6 +28,7 @@ from odysseus.agents.routing_rationale_models import RationaleCardSet, RoutingCo
 from odysseus.agents.routing_rationale_registry import create_seed_registry, prune_registry, resolve_registry
 from odysseus.agents.stratified_split import stratified_split
 from odysseus.eval.models import ScoreReport
+from odysseus.project_dir import get_project_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
