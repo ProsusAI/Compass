@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 class JsonResultsCollector:
     """Persists evaluation results as JSONL and reports as pretty-printed JSON."""
 
-    def write_results(
-        self, results: list[EvalResult], path: str, fingerprint: RunFingerprint | None = None
-    ) -> None:
+    def write_results(self, results: list[EvalResult], path: str, fingerprint: RunFingerprint | None = None) -> None:
         """Write each EvalResult as a JSON line to *path*, with optional fingerprint header."""
         with open(path, "w") as f:
             if fingerprint is not None:

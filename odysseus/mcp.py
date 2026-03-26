@@ -257,7 +257,9 @@ async def optimize_routing_prompt(
     problem_description: str,
     target_metrics: list[str],
 ) -> str:
-    """[Stage 1: Full Pipeline] Run the full routing prompt optimization pipeline. Note: when implemented, must enforce stage sequencing.
+    """[Stage 1: Full Pipeline] Run the full routing prompt optimization pipeline.
+
+    Note: when implemented, must enforce stage sequencing.
 
     Args:
         data_path: Path to JSONL routing dataset.
@@ -351,7 +353,9 @@ async def submit_input_report(
     problem_description: str,
     bootstrap_from_run_id: str | None = None,
 ) -> str:
-    """[Stage 1: Input] Submit a validated input report to the pipeline. No prerequisites. Returns a run_id for scoping all subsequent tools.
+    """[Stage 1: Input] Submit a validated input report to the pipeline.
+
+    No prerequisites. Returns a run_id for scoping all subsequent tools.
 
     Args:
         report: The full validated input report (Markdown).
@@ -387,11 +391,13 @@ async def submit_input_report(
                 dest_prompts.mkdir(parents=True, exist_ok=True)
                 (dest_prompts / "bootstrap.txt").write_text(latest.read_text())
 
-    return json.dumps({
-        "run_id": run_id,
-        "report_path": str(report_path),
-        "dataset_path": dataset_path,
-    })
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "report_path": str(report_path),
+            "dataset_path": dataset_path,
+        }
+    )
 
 
 @mcp.tool()

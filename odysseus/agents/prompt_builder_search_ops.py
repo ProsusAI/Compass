@@ -30,8 +30,10 @@ from odysseus.project_dir import get_project_dir
 # Constants
 # ---------------------------------------------------------------------------
 
+
 def _default_output_dir() -> Path:
     return get_project_dir() / "outputs"
+
 
 # ---------------------------------------------------------------------------
 # Private path / IO helpers

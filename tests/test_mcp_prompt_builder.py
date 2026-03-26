@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,8 +17,6 @@ from odysseus.mcp import (
     record_eval_result_tool,
     register_candidate_tool,
 )
-
-from contextlib import contextmanager
 
 _RUN_ID = "test_run"
 

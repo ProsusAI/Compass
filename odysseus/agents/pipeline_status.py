@@ -195,12 +195,14 @@ def get_pipeline_status(
         stage_name: str = stage_def["name"]
 
         if found_incomplete:
-            stage_results.append({
-                "stage": stage_num,
-                "name": stage_name,
-                "status": "blocked",
-                "artifacts": [],
-            })
+            stage_results.append(
+                {
+                    "stage": stage_num,
+                    "name": stage_name,
+                    "status": "blocked",
+                    "artifacts": [],
+                }
+            )
             continue
 
         status, artifacts, detail = _check_stage(stage_def, run_dir, project_dir)

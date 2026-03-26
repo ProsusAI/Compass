@@ -206,9 +206,7 @@ class TestSaveLoadRoundReports:
 
 class TestRunIdPaths:
     def test_directive_history_uses_run_id_path(self, tmp_path: Path) -> None:
-        outcome = DirectiveOutcome(
-            prior_directive_id="d1", was_attempted=True, outcome="improved"
-        )
+        outcome = DirectiveOutcome(prior_directive_id="d1", was_attempted=True, outcome="improved")
         save_directive_history("abc12345", [outcome], output_dir=tmp_path)
         assert (tmp_path / "abc12345" / "search" / "directive_history.json").is_file()
         loaded = load_directive_history("abc12345", output_dir=tmp_path)

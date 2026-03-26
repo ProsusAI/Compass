@@ -412,8 +412,9 @@ class TestGuardRejection:
     async def test_validate_dataset_rejects_without_input_report(self, tmp_path: Path):
         from odysseus.mcp import validate_dataset
 
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path), pytest.raises(
-            ToolError, match="Pipeline precondition not met"
+        with (
+            patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+            pytest.raises(ToolError, match="Pipeline precondition not met"),
         ):
             await validate_dataset(dataset_path="/some/path.jsonl", run_id="no_such_run")
 
@@ -425,8 +426,9 @@ class TestGuardRejection:
         input_dir.mkdir(parents=True)
         (input_dir / "input_report.md").write_text("# Report")
 
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path), pytest.raises(
-            ToolError, match="Pipeline precondition not met"
+        with (
+            patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+            pytest.raises(ToolError, match="Pipeline precondition not met"),
         ):
             await create_seed_registry_tool(run_id="test_run")
 

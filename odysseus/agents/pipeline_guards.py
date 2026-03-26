@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import functools
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from mcp.server.fastmcp.exceptions import ToolError
 
@@ -31,23 +32,29 @@ def require_artifacts(
     """Decorator that checks file existence before tool execution.
     Works with both sync and async functions.
     """
+
     def decorator(fn: Callable) -> Callable:
         if asyncio.iscoroutinefunction(fn):
+
             @functools.wraps(fn)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 missing = _check_missing(list(paths))
                 if missing:
                     raise _make_error(missing, stage, stage_name, hint)
                 return await fn(*args, **kwargs)
+
             return async_wrapper
         else:
+
             @functools.wraps(fn)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 missing = _check_missing(list(paths))
                 if missing:
                     raise _make_error(missing, stage, stage_name, hint)
                 return fn(*args, **kwargs)
+
             return sync_wrapper
+
     return decorator
 
 

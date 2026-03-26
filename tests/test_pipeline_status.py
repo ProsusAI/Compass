@@ -40,9 +40,14 @@ class TestGetPipelineStatus:
         _setup_through_validation(tmp_path, "abc12345")
         analysis = tmp_path / "abc12345" / "analysis"
         analysis.mkdir(parents=True)
-        for f in ["validation_report.json", "dev.jsonl", "holdout.jsonl",
-                   "dev_rationale_card_set.json", "holdout_rationale_card_set.json",
-                   "vocabulary_registry.json"]:
+        for f in [
+            "validation_report.json",
+            "dev.jsonl",
+            "holdout.jsonl",
+            "dev_rationale_card_set.json",
+            "holdout_rationale_card_set.json",
+            "vocabulary_registry.json",
+        ]:
             (analysis / f).write_text("{}")
         result = get_pipeline_status(tmp_path, "abc12345")
         assert result["stages"][2]["status"] == "complete"
@@ -91,7 +96,12 @@ def _setup_through_validation(base: Path, run_id: str) -> None:
 def _setup_analysis(base: Path, run_id: str) -> None:
     analysis = base / run_id / "analysis"
     analysis.mkdir(parents=True, exist_ok=True)
-    for f in ["validation_report.json", "dev.jsonl", "holdout.jsonl",
-               "dev_rationale_card_set.json", "holdout_rationale_card_set.json",
-               "vocabulary_registry.json"]:
+    for f in [
+        "validation_report.json",
+        "dev.jsonl",
+        "holdout.jsonl",
+        "dev_rationale_card_set.json",
+        "holdout_rationale_card_set.json",
+        "vocabulary_registry.json",
+    ]:
         (analysis / f).write_text("{}")

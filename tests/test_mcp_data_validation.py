@@ -62,9 +62,11 @@ class TestValidateDataset:
     @pytest.mark.asyncio
     async def test_nonexistent_file_raises_tool_error(self, tmp_path: Path) -> None:
         _setup_guard(tmp_path)
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
-            with pytest.raises(ToolError, match="Dataset file not found"):
-                await validate_dataset("/nonexistent/path/data.jsonl", run_id=RUN_ID)
+        with (
+            patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+            pytest.raises(ToolError, match="Dataset file not found"),
+        ):
+            await validate_dataset("/nonexistent/path/data.jsonl", run_id=RUN_ID)
 
     @pytest.mark.asyncio
     async def test_malformed_jsonl_raises_tool_error(self, tmp_path: Path) -> None:
@@ -72,9 +74,11 @@ class TestValidateDataset:
         dataset = tmp_path / "bad.jsonl"
         dataset.write_text("not valid json\n", encoding="utf-8")
 
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
-            with pytest.raises(ToolError, match="Malformed JSONL"):
-                await validate_dataset(str(dataset), run_id=RUN_ID)
+        with (
+            patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+            pytest.raises(ToolError, match="Malformed JSONL"),
+        ):
+            await validate_dataset(str(dataset), run_id=RUN_ID)
 
     @pytest.mark.asyncio
     async def test_empty_file_returns_empty_report(self, tmp_path: Path) -> None:
