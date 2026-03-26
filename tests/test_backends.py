@@ -818,6 +818,42 @@ class TestBedrockBackend:
 
 
 # ---------------------------------------------------------------------------
+# AnthropicBackend — reasoning_level
+# ---------------------------------------------------------------------------
+
+
+class TestAnthropicBackendReasoningLevel:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("level,expected_budget", [
+        ("low", 1024),
+        ("medium", 4096),
+        ("high", 16384),
+    ])
+    async def test_reasoning_level_sets_thinking_budget(
+        self, level: str, expected_budget: int
+    ) -> None:
+        profile = BackendProfile(
+            **{**MINIMAL_PROFILE, "reasoning_level": level, "api_key_env": None}
+        )
+        backend = AnthropicBackend(profile)
+        with patch.object(backend._client.messages, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = _make_anthropic_mock_response(text="test")
+            await backend.call("prompt", EXAMPLE)
+            call_kwargs = mock_create.call_args.kwargs
+            assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": expected_budget}
+
+    @pytest.mark.asyncio
+    async def test_no_reasoning_level_omits_thinking(self) -> None:
+        profile = BackendProfile(**{**MINIMAL_PROFILE, "api_key_env": None})
+        backend = AnthropicBackend(profile)
+        with patch.object(backend._client.messages, "create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = _make_anthropic_mock_response(text="test")
+            await backend.call("prompt", EXAMPLE)
+            call_kwargs = mock_create.call_args.kwargs
+            assert "thinking" not in call_kwargs
+
+
+# ---------------------------------------------------------------------------
 # RunDependencies validation tests
 # ---------------------------------------------------------------------------
 

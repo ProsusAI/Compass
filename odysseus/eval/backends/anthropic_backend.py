@@ -8,6 +8,8 @@ from typing import Any
 import anthropic
 
 from odysseus.eval.backends.profile import BackendProfile
+
+REASONING_BUDGET_MAP: dict[str, int] = {"low": 1024, "medium": 4096, "high": 16384}
 from odysseus.eval.models import Example, TokenUsage
 from odysseus.eval.pricing import ModelPricing
 
@@ -45,6 +47,9 @@ class AnthropicBackend:
         if self._profile.temperature is not None:
             kwargs["temperature"] = self._profile.temperature
         kwargs.update(self._profile.extra_params)
+        if self._profile.reasoning_level is not None:
+            budget = REASONING_BUDGET_MAP[self._profile.reasoning_level]
+            kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
 
         response = await self._client.messages.create(
             model=self._profile.model,
