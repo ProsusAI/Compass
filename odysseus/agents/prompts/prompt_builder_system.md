@@ -40,13 +40,15 @@ Read these at the start of every compilation.
 
 | Resource | When to read |
 |----------|-------------|
+| `odysseus://backends/{backend}` | Every compilation — read this **first** to detect the provider |
 | `odysseus://agents/prompt-builder/best-practices` | Every compilation |
 | `odysseus://agents/prompt-builder/conventions-claude` | When backend provider is Anthropic or Bedrock |
 | `odysseus://agents/prompt-builder/conventions-openai` | When backend provider is OpenAI |
+| `odysseus://agents/prompt-builder/conventions-{provider}/{model}` | After provider conventions — read if available, skip if empty |
 
 ## Provider detection
 
-Detect the provider from the backend profile. The `provider` field in the backend YAML is one of: `"anthropic"`, `"openai"`, `"bedrock"`, `"mock_echo"`. Bedrock uses Claude conventions. `mock_echo` uses Claude conventions.
+**You must read the backend profile resource before compiling any prompt.** Read `odysseus://backends/{backend}` (replacing `{backend}` with the backend label from the context, e.g. `odysseus://backends/openai`) and extract the `provider` field from the returned YAML. The `provider` field is one of: `"anthropic"`, `"openai"`, `"bedrock"`, `"mock_echo"`.
 
 | Provider value | Conventions resource to read |
 |----------------|------------------------------|
@@ -55,13 +57,17 @@ Detect the provider from the backend profile. The `provider` field in the backen
 | `openai` | `conventions-openai` |
 | `mock_echo` | `conventions-claude` |
 
+Also extract the `model` field from the backend profile YAML. Pass this value as-is when requesting the model-specific conventions resource — the server handles normalization of dated model strings.
+
+**Do not infer the provider from the backend label name.** Always read the profile resource to get the actual `provider` value.
+
 ## Phase 1 — Initial compilation
 
 Execute these steps exactly in order on round 1.
 
 1. **Read all inputs.** Load every key from the inputs table. Fail immediately if any required key is missing.
-2. **Detect provider.** Read the backend profile YAML and extract the `provider` field.
-3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource.
+2. **Detect provider.** Read the `odysseus://backends/{backend}` resource (substituting the backend label) and extract the `provider` field from the returned YAML.
+3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
 4. **Initialize search state.** Call `init_search_state_tool(backend=backend, max_rounds=50, stagnation_limit=3, convergence_limit=5)`. Store the returned `search_state_id`.
 5. **Select few-shot examples from holdout set.**
    - Read `holdout_jsonl_path` and `holdout_rationale_card_set_path`.
@@ -91,6 +97,8 @@ Execute these steps exactly in order on round 1.
    |----------|-----------------|
    | Claude / Bedrock | XML tags for structure, `<example>` blocks for few-shots, `<important>` tags for critical rules |
    | OpenAI | Markdown headers for structure, `User:`/`Assistant:` turns for few-shots, **bold** for emphasis |
+
+   When a model-specific addendum was read in step 3, its formatting guidance overrides or refines the provider base conventions on any conflicting points.
 
 8. **Write prompt.** Save to `prompts/v1.txt`.
 9. **Register candidate.** Call `register_candidate_tool(search_state_id, "v1")`.
