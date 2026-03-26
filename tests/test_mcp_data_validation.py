@@ -4,11 +4,21 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.mcp import validate_dataset
+
+RUN_ID = "test_run"
+
+
+def _setup_guard(tmp_path: Path) -> None:
+    """Create guard artifacts so validate_dataset passes preconditions."""
+    d = tmp_path / "outputs" / RUN_ID / "input"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "input_report.md").write_text("# Report")
 
 
 def _write_jsonl(rows: list[dict], path: Path) -> None:
@@ -35,10 +45,12 @@ def _valid_row(id: str = "ex-1") -> dict:
 class TestValidateDataset:
     @pytest.mark.asyncio
     async def test_valid_dataset_returns_report(self, tmp_path: Path) -> None:
+        _setup_guard(tmp_path)
         dataset = tmp_path / "data.jsonl"
         _write_jsonl([_valid_row("ex-1"), _valid_row("ex-2")], dataset)
 
-        result = await validate_dataset(str(dataset))
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            result = await validate_dataset(str(dataset), run_id=RUN_ID)
         report = json.loads(result)
 
         assert "schema_findings" in report
@@ -48,24 +60,30 @@ class TestValidateDataset:
         assert report["query_length"]["count"] == 2
 
     @pytest.mark.asyncio
-    async def test_nonexistent_file_raises_tool_error(self) -> None:
-        with pytest.raises(ToolError, match="Dataset file not found"):
-            await validate_dataset("/nonexistent/path/data.jsonl")
+    async def test_nonexistent_file_raises_tool_error(self, tmp_path: Path) -> None:
+        _setup_guard(tmp_path)
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            with pytest.raises(ToolError, match="Dataset file not found"):
+                await validate_dataset("/nonexistent/path/data.jsonl", run_id=RUN_ID)
 
     @pytest.mark.asyncio
     async def test_malformed_jsonl_raises_tool_error(self, tmp_path: Path) -> None:
+        _setup_guard(tmp_path)
         dataset = tmp_path / "bad.jsonl"
         dataset.write_text("not valid json\n", encoding="utf-8")
 
-        with pytest.raises(ToolError, match="Malformed JSONL"):
-            await validate_dataset(str(dataset))
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            with pytest.raises(ToolError, match="Malformed JSONL"):
+                await validate_dataset(str(dataset), run_id=RUN_ID)
 
     @pytest.mark.asyncio
     async def test_empty_file_returns_empty_report(self, tmp_path: Path) -> None:
+        _setup_guard(tmp_path)
         dataset = tmp_path / "empty.jsonl"
         dataset.write_text("", encoding="utf-8")
 
-        result = await validate_dataset(str(dataset))
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            result = await validate_dataset(str(dataset), run_id=RUN_ID)
         report = json.loads(result)
 
         assert report["label_distribution"]["total_records"] == 0
@@ -73,11 +91,13 @@ class TestValidateDataset:
 
     @pytest.mark.asyncio
     async def test_blank_lines_tolerated(self, tmp_path: Path) -> None:
+        _setup_guard(tmp_path)
         dataset = tmp_path / "data.jsonl"
         row_json = json.dumps(_valid_row("ex-1"))
         dataset.write_text(f"\n{row_json}\n\n", encoding="utf-8")
 
-        result = await validate_dataset(str(dataset))
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            result = await validate_dataset(str(dataset), run_id=RUN_ID)
         report = json.loads(result)
 
         assert report["query_length"]["count"] == 1
