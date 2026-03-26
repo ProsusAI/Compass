@@ -25,7 +25,6 @@ class TransformResult(BaseModel):
     fields_dropped: list[str] = Field(default_factory=list)
 
 
-# Required target fields (or their parents for nested fields).
 _REQUIRED_TARGETS = {"input", "expected.route", "expected.routes"}
 
 
@@ -95,7 +94,7 @@ def _parse_all_rows(dataset_path: str, source_format: str) -> list[dict]:
         return json.loads(text)
 
     # jsonl
-    rows = []
+    rows: list[dict] = []
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped:
@@ -128,7 +127,6 @@ def transform_dataset(
     detection = detect_and_parse(dataset_path)
     source_rows = _parse_all_rows(dataset_path, detection.source_format)
 
-    # Determine dropped fields from detection columns
     all_source_fields = set(detection.columns)
     mapped_source_fields = set(mapping.keys())
     dropped = sorted(all_source_fields - mapped_source_fields)
@@ -148,7 +146,6 @@ def transform_dataset(
                 if value is not None:
                     _set_nested(target_row, tgt_field, value)
 
-            # Generate id if not mapped
             if not has_id_mapping and "id" not in target_row:
                 target_row["id"] = f"row-{idx}"
 
