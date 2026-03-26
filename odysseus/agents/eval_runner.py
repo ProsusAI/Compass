@@ -17,6 +17,7 @@ from odysseus.eval.dataset import JsonlDatasetManager
 from odysseus.eval.metrics import create_default_engine
 from odysseus.eval.models import RunConfig, RunReport, ScoreReport
 from odysseus.eval.protocols import RunDependencies
+from odysseus.project_dir import get_project_dir
 from odysseus.prompts.manager import FilePromptManager
 
 logger = logging.getLogger(__name__)
@@ -116,13 +117,14 @@ class EvalRunnerAgent(BaseAgent):
 
     def _wire_dependencies(self, config: RunConfig) -> RunDependencies:
         """Construct RunDependencies from config."""
-        registry = BackendRegistry.from_directory(Path("backends"))
+        project = get_project_dir()
+        registry = BackendRegistry.from_directory(project / "backends")
         profile = registry.get_profile(config.backend)
         backend_instance = registry.create_backend(config.backend)
 
         return RunDependencies(
             backend=backend_instance,
-            prompt_manager=FilePromptManager(prompts_dir=Path("prompts")),
+            prompt_manager=FilePromptManager(prompts_dir=project / "prompts"),
             dataset_manager=JsonlDatasetManager(),
             metrics_engine=create_default_engine(),
             results_collector=JsonResultsCollector(),

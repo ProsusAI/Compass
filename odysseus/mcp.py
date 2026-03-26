@@ -28,6 +28,7 @@ from odysseus.agents.routing_rationale_models import RationaleCardSet, RoutingCo
 from odysseus.agents.routing_rationale_registry import create_seed_registry, prune_registry, resolve_registry
 from odysseus.agents.stratified_split import stratified_split
 from odysseus.eval.models import ScoreReport
+from odysseus.project_dir import get_project_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -496,7 +497,7 @@ async def resolve_registry_tool(
     Returns:
         JSON-serialized VocabularyRegistry if found, or {"found": false, ...}.
     """
-    registry_path = Path(registry_dir)
+    registry_path = Path(registry_dir) if Path(registry_dir).is_absolute() else get_project_dir() / registry_dir
     result = resolve_registry(dataset_hash, registry_path)
     if result is None:
         return json.dumps({"found": False, "dataset_hash": dataset_hash, "registry_dir": registry_dir})
@@ -586,7 +587,7 @@ async def stratified_split_tool(
         examples, card_set, dev_ratio
     )
 
-    output_dir = Path("outputs") / split_report.dataset_hash
+    output_dir = get_project_dir() / "outputs" / split_report.dataset_hash
     output_dir.mkdir(parents=True, exist_ok=True)
     dev_path = output_dir / "dev.jsonl"
     holdout_path = output_dir / "holdout.jsonl"
@@ -661,7 +662,7 @@ async def build_review_briefing_tool(
     from odysseus.agents.review_preprocessor import build_review_briefing
     from odysseus.prompts.manager import FilePromptManager
 
-    out = Path(output_dir)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else get_project_dir() / output_dir
 
     # Load search state
     state = get_search_state(search_state_id, output_dir=out)
@@ -693,7 +694,7 @@ async def build_review_briefing_tool(
     # Load prompt texts
     import contextlib
 
-    prompt_mgr = FilePromptManager("prompts/")
+    prompt_mgr = FilePromptManager(get_project_dir() / "prompts")
     prompt_texts: dict[str, str] = {}
     for version in all_versions:
         with contextlib.suppress(FileNotFoundError):
@@ -755,7 +756,7 @@ async def record_directive_outcomes_tool(
     from odysseus.agents.review_models import DirectiveOutcome
     from odysseus.agents.review_ops import load_directive_history, save_directive_history
 
-    out = Path(output_dir)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else get_project_dir() / output_dir
     parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
     existing = load_directive_history(search_state_id, output_dir=out)
     save_directive_history(search_state_id, existing + parsed, output_dir=out)

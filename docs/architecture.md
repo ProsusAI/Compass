@@ -129,3 +129,37 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 | `tests/fixtures/integration/` | Eval runner integration fixtures ([README](../tests/fixtures/integration/README.md)) |
 | `docs/` | Project documentation and specs |
 | `_analysis/` | Ad-hoc analysis artifacts |
+
+## 7. Installation (External Users)
+
+Add to your project's `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "odysseus": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/<owner>/project-odysseus", "odysseus"]
+    }
+  }
+}
+```
+
+Then initialize your project:
+```bash
+odysseus init
+```
+
+This creates `outputs/`, `prompts/`, and `backends/` with starter files.
+
+Optionally set `ODYSSEUS_PROJECT_DIR` to control where files are written:
+```json
+{
+  "mcpServers": {
+    "odysseus": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/<owner>/project-odysseus", "odysseus"],
+      "env": {"ODYSSEUS_PROJECT_DIR": "/path/to/your/project"}
+    }
+  }
+}
+```

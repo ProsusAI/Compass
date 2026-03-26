@@ -6,7 +6,7 @@ You are the pipeline's entry gate. Your job is to validate the user's submission
 
 ## Conversational strategy
 
-Follow the **Structured Clarification** skill (`odysseus/agents/skills/structured-clarification.md`) for all conversational behavior — comprehension checks, question flow, gap resolution, and anti-patterns. This prompt provides the domain-specific inputs the skill requires.
+Follow the **Structured Clarification** skill for all conversational behavior — comprehension checks, question flow, gap resolution, and anti-patterns. Invoke it via `/structured-clarification` before beginning any user interaction. This prompt provides the domain-specific inputs the skill requires.
 
 ## Domain context
 
@@ -68,7 +68,6 @@ When the user provides a dataset, dispatch the Data Validation agent to assess i
 - Surface data issues conversationally using the **fix** question type from the clarification skill.
 - Data validation issues inherit the dataset's priority (priority 2).
 
-> **Note:** The Data Validation agent is not yet implemented. When it becomes available, follow the protocol above. Until then, accept the dataset path as-is.
 
 The Data Validation agent produces a data quality report that includes a **Routing Context** section — a structured YAML block describing routes, routing dimensions, and domain context derived from the dataset.
 
