@@ -21,6 +21,7 @@ uv run ruff check .         # Lint
 uv run ruff format .        # Format
 uv run pyright              # Type check
 uv run python -m odysseus.mcp  # Run MCP server locally
+uv run odysseus init           # Scaffold project dirs (outputs/, prompts/, backends/)
 ```
 
 ## Project Structure
