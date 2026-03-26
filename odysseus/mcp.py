@@ -6,6 +6,7 @@ parameters/return values and agent context dicts.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +125,27 @@ async def data_validation_output_spec() -> str:
     return _load_text("odysseus/agents/data_validation_output.md")
 
 
+@mcp.resource("odysseus://backends/{backend_label}")
+async def backend_profile(backend_label: str) -> str:
+    """Backend profile YAML for a given backend label.
+
+    Returns the raw YAML content of the backend profile file so agents
+    can read the provider field and other configuration.
+
+    Args:
+        backend_label: Backend label matching a YAML file in backends/
+                       (e.g. "openai", "anthropic", "mock-echo").
+    """
+    project_dir = get_project_dir()
+    profile_path = project_dir / "backends" / f"{backend_label}.yaml"
+    if not profile_path.is_file():
+        raise ToolError(
+            f"Backend profile not found: {profile_path}. "
+            f"Available profiles: {[p.stem for p in (project_dir / 'backends').glob('*.yaml')]}"
+        )
+    return profile_path.read_text()
+
+
 @mcp.resource("odysseus://agents/prompt-builder/best-practices")
 async def prompt_builder_best_practices() -> str:
     """General prompt engineering principles for routing prompts."""
@@ -138,8 +160,34 @@ async def prompt_builder_conventions_claude() -> str:
 
 @mcp.resource("odysseus://agents/prompt-builder/conventions-openai")
 async def prompt_builder_conventions_openai() -> str:
-    """OpenAI conventions and cookbook patterns for routing prompts."""
+    """OpenAI GPT-5 conventions and cookbook patterns for routing prompts."""
     return _load_text("odysseus/agents/prompt_builder_conventions_openai.md")
+
+
+def _normalize_model_family(model: str) -> str:
+    """Strip date suffixes and replace dots with dashes for filename lookup."""
+    normalized = re.sub(r"-\d{4}-?\d{2}-?\d{2}$", "", model)
+    return normalized.replace(".", "-")
+
+
+@mcp.resource("odysseus://agents/prompt-builder/conventions-{provider}/{model_family}")
+async def model_specific_conventions(provider: str, model_family: str) -> str:
+    """Model-specific conventions addendum for routing prompts.
+
+    Returns the model-specific cookbook content if a file exists for this
+    provider/model combination. Returns an empty string if no model-specific
+    guidance is available — this is the expected case for most models.
+
+    The model string is normalized: date suffixes are stripped
+    (gpt-5.2-2025-03-11 → gpt-5.2) and dots become dashes for filename
+    lookup (gpt-5.2 → gpt-5-2).
+    """
+    sanitized = _normalize_model_family(model_family)
+    relative_path = f"odysseus/agents/prompt_builder_conventions_{provider}_{sanitized}.md"
+    path = _PROJECT_ROOT / relative_path
+    if not path.is_file():
+        return ""
+    return path.read_text()
 
 
 @mcp.tool()
