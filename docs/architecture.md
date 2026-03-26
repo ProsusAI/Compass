@@ -103,6 +103,11 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 
 | URI | Purpose | Backing File |
 |---|---|---|
+| `odysseus://backends/{backend_label}` | Backend profile YAML (resource template) — provider detection for prompt builder | `backends/{backend_label}.yaml` (user project dir) |
+| `odysseus://agents/prompt-builder/best-practices` | General prompt engineering principles for routing prompts | [`odysseus/agents/prompt_builder_best_practices.md`](../odysseus/agents/prompt_builder_best_practices.md) |
+| `odysseus://agents/prompt-builder/conventions-claude` | Claude conventions and Anthropic cookbook patterns for routing prompts | [`odysseus/agents/prompt_builder_conventions_claude.md`](../odysseus/agents/prompt_builder_conventions_claude.md) |
+| `odysseus://agents/prompt-builder/conventions-openai` | OpenAI GPT-5 conventions and cookbook patterns for routing prompts | [`odysseus/agents/prompt_builder_conventions_openai.md`](../odysseus/agents/prompt_builder_conventions_openai.md) |
+| `odysseus://agents/prompt-builder/conventions-{provider}/{model_family}` | Model-specific conventions addendum (resource template) — returns empty if no addendum exists | `odysseus/agents/prompt_builder_conventions_{provider}_{model_family}.md` |
 | `odysseus://agents/input/clarification-skill` | Structured clarification skill — conversational strategy for the input agent | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
 | `odysseus://agents/input/defaults` | Default values and override mechanism for optional fields | [`odysseus/agents/user_input_defaults.md`](../odysseus/agents/user_input_defaults.md) |
 | `odysseus://agents/data-validation/format-spec` | Data format specification (THP-80) | [`odysseus/agents/data_validation_format.md`](../odysseus/agents/data_validation_format.md) |
