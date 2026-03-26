@@ -14,6 +14,8 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.prompts.base import Message, UserMessage
 
+from odysseus.agents.data_ingestion_detect import detect_and_parse
+from odysseus.agents.data_ingestion_transform import transform_dataset as _do_transform
 from odysseus.agents.data_validation_checks import run_all_checks
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.agents.prompt_builder_holdout_filter import filter_holdout_dataset
@@ -383,6 +385,56 @@ async def validate_dataset(dataset_path: str) -> str:
 
     report = run_all_checks(rows)
     return report.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def detect_and_parse_dataset(dataset_path: str) -> str:
+    """Detect the format of a dataset file and parse its schema.
+
+    Supports CSV, JSON (array of objects), and JSONL formats.
+    Returns column names, sample rows, and nested field paths
+    for LLM-driven field mapping inference.
+
+    Args:
+        dataset_path: Absolute path to the dataset file.
+
+    Returns:
+        JSON-serialized DetectionResult with source_format, columns,
+        sample_rows, nested_paths, and any warnings or skipped lines.
+    """
+    try:
+        result = detect_and_parse(dataset_path)
+    except (FileNotFoundError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    return result.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def transform_dataset(
+    dataset_path: str,
+    field_mapping: str,
+    output_path: str,
+) -> str:
+    """Apply a confirmed field mapping and write canonical JSONL.
+
+    Keys in field_mapping are source field names (or dot-paths for nested
+    sources). Values are canonical target field names (e.g. "input",
+    "expected.route", "expected.routes.opus.cost").
+
+    Args:
+        dataset_path: Absolute path to the original dataset file.
+        field_mapping: JSON object mapping source fields to target fields.
+        output_path: Absolute path for the transformed JSONL output.
+
+    Returns:
+        JSON-serialized TransformResult with output_path, rows_written,
+        fields_mapped, and fields_dropped.
+    """
+    try:
+        result = _do_transform(dataset_path, field_mapping, output_path)
+    except (FileNotFoundError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    return result.model_dump_json(indent=2)
 
 
 @mcp.tool()
