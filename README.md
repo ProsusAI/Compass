@@ -162,7 +162,7 @@ Add Odysseus to your project's `.mcp.json`:
   "mcpServers": {
     "odysseus": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/your-org/project-odysseus", "odysseus"]
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-odysseus", "odysseus"]
     }
   }
 }
@@ -179,7 +179,7 @@ This creates `outputs/`, `prompts/`, and `backends/` with starter files. Add you
 ### Install from source (for development)
 
 ```bash
-git clone https://github.com/your-org/project-odysseus.git
+git clone https://github.com/thymofieten-prosus/project-odysseus.git
 cd project-odysseus
 uv sync
 ```
@@ -199,7 +199,7 @@ The MCP server reads these at runtime via the `api_key_env` field in backend pro
 ### One-command install for Claude Code
 
 ```bash
-claude mcp add odysseus -- uvx --from git+https://github.com/your-org/project-odysseus odysseus
+claude mcp add odysseus -- uvx --from git+https://github.com/thymofieten-prosus/project-odysseus odysseus
 ```
 
 The server inherits your shell environment variables, so if you've exported your API keys as shown above, no extra configuration is needed.
@@ -210,7 +210,7 @@ If you prefer not to set global environment variables, you can pass keys directl
 claude mcp add odysseus \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e OPENAI_API_KEY=sk-... \
-  -- uvx --from git+https://github.com/your-org/project-odysseus odysseus
+  -- uvx --from git+https://github.com/thymofieten-prosus/project-odysseus odysseus
 ```
 
 To verify it's connected:
@@ -232,7 +232,7 @@ Add the server to any MCP-compatible client's config file. API keys are picked u
   "mcpServers": {
     "odysseus": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/your-org/project-odysseus", "odysseus"]
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-odysseus", "odysseus"]
     }
   }
 }
@@ -245,7 +245,7 @@ Add the server to any MCP-compatible client's config file. API keys are picked u
   "mcpServers": {
     "odysseus": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/your-org/project-odysseus", "odysseus"],
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-odysseus", "odysseus"],
       "env": {
         "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}"
