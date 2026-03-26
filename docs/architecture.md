@@ -83,7 +83,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `tokens_per_minute` | `int` | TPM rate limit cap |
 | `max_tokens` | `int \| None` | Max tokens to generate |
 | `temperature` | `float \| None` | Sampling temperature |
-| `reasoning_level` | `Literal["low", "medium", "high"] \| None` | Extended thinking budget tier (Anthropic/Bedrock only) |
+| `reasoning_level` | `Literal["low", "medium", "high"] \| None` | Reasoning effort/budget tier; mapped per-provider (Anthropic: `thinking.budget_tokens`, OpenAI: `reasoning_effort`) |
 | `pricing` | `ModelPricing \| None` | Inline cost config for token-based cost tracking |
 | `api_key_env` | `str \| None` | Env var name holding the API key |
 | `extra_params` | `dict[str, Any]` | Additional kwargs splatted into the provider SDK's `create()` call |
