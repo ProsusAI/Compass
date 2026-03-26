@@ -207,6 +207,32 @@ class TokenUsage(BaseModel):
     output_tokens: int
 
 
+class RunFingerprint(BaseModel):
+    """Identity header for a results file — used to detect stale cached results.
+
+    Written as the first line of the results JSONL. On resume, the controller
+    compares the stored fingerprint against the current config and discards
+    the file if they differ.
+    """
+
+    meta: Literal["run_fingerprint"] = Field("run_fingerprint", alias="__meta__")
+    prompt_version: str
+    backend: str
+    data_source: str
+    data_split: Literal["dev", "holdout"]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @classmethod
+    def from_config(cls, config: RunConfig) -> RunFingerprint:
+        return cls(
+            prompt_version=config.prompt_version,
+            backend=config.backend,
+            data_source=config.data_source,
+            data_split=config.data_split,
+        )
+
+
 class EvalResult(BaseModel):
     """Result of evaluating a single example."""
 

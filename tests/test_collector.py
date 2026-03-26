@@ -10,6 +10,7 @@ from odysseus.eval.models import (
     MetricConfig,  # noqa: F401
     OutputConfig,  # noqa: F401
     RunConfig,  # noqa: F401
+    RunFingerprint,
     RunReport,  # noqa: F401
     RunSummary,  # noqa: F401
     TokenUsage,
@@ -259,3 +260,22 @@ def test_read_completed_ids_skips_malformed_lines(tmp_path):
 
     ids = collector.read_completed_ids(str(path))
     assert ids == {"ex-1"}
+
+
+# --- Tests: RunFingerprint ---
+
+
+def test_run_fingerprint_round_trip():
+    """RunFingerprint serializes with __meta__ key and deserializes back."""
+    fp = RunFingerprint(
+        prompt_version="v3",
+        backend="anthropic",
+        data_source="data/routing.jsonl",
+        data_split="dev",
+    )
+    dumped = fp.model_dump(by_alias=True)
+    assert dumped["__meta__"] == "run_fingerprint"
+    assert dumped["prompt_version"] == "v3"
+
+    restored = RunFingerprint.model_validate(dumped)
+    assert restored == fp
