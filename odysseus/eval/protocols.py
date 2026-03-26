@@ -61,7 +61,9 @@ class MetricsEngine(Protocol):
 class ResultsCollector(Protocol):
     """Persists evaluation results and reports to disk."""
 
-    def write_results(self, results: list[EvalResult], path: str, fingerprint: RunFingerprint | None = None) -> None: ...
+    def write_results(
+        self, results: list[EvalResult], path: str, fingerprint: RunFingerprint | None = None
+    ) -> None: ...
 
     def write_report(self, report: RunReport, path: str) -> None: ...
 
