@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.prompts.base import Message, UserMessage
 
@@ -35,7 +35,7 @@ from odysseus.agents.routing_rationale_registry import create_seed_registry, pru
 from odysseus.agents.stratified_split import stratified_split
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import ScoreReport
-from odysseus.project_dir import get_project_dir
+from odysseus.project_dir import get_project_dir, resolve_project_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -226,7 +226,7 @@ async def model_specific_conventions(provider: str, model_family: str) -> str:
 
 
 @mcp.tool()
-async def run_holdout_eval(prompt_version: str, data_source: str, run_id: str) -> str:
+async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, run_id: str) -> str:
     """[Stage 7: Holdout Validation] Run evaluation on the holdout split.
 
     This tool must only be available to the Final Evaluation agent.
@@ -240,7 +240,7 @@ async def run_holdout_eval(prompt_version: str, data_source: str, run_id: str) -
     Returns:
         Serialized score report.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "search" / "search_state.json",
         stage=7,
@@ -275,6 +275,7 @@ async def optimize_routing_prompt(
 
 @mcp.tool()
 async def run_eval(
+    ctx: Context,
     prompt_version: str,
     data_source: str,
     backend: str,
@@ -300,8 +301,8 @@ async def run_eval(
         the full evaluation output on disk, OR an action_required
         object on first run.
     """
+    project_dir = await resolve_project_dir(ctx)
     if run_id is not None:
-        project_dir = get_project_dir()
         check_artifacts(
             project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
             stage=5,
@@ -313,7 +314,6 @@ async def run_eval(
     if run_id is not None:
         state = get_search_state(run_id=run_id)
         if state.round == 0 and len(state.round_history) == 0:
-            project_dir = get_project_dir()
             registry = BackendRegistry.from_directory(project_dir / "backends")
             return json.dumps(
                 {
@@ -348,6 +348,7 @@ async def run_eval(
 
 @mcp.tool()
 async def submit_input_report(
+    ctx: Context,
     report: str,
     dataset_path: str,
     problem_description: str,
@@ -374,7 +375,7 @@ async def submit_input_report(
         raise ToolError("submit_input_report failed: problem_description is empty")
 
     run_id = uuid.uuid4().hex[:8]
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
 
     input_dir = project_dir / "outputs" / run_id / "input"
     input_dir.mkdir(parents=True, exist_ok=True)
@@ -401,7 +402,7 @@ async def submit_input_report(
 
 
 @mcp.tool()
-async def validate_dataset(dataset_path: str, run_id: str) -> str:
+async def validate_dataset(ctx: Context, dataset_path: str, run_id: str) -> str:
     """[Stage 2: Data Validation] Run all validation checks against a JSONL routing dataset.
 
     Args:
@@ -412,7 +413,7 @@ async def validate_dataset(dataset_path: str, run_id: str) -> str:
         JSON-serialized DataQualityReport with schema findings,
         label distribution, volume adequacy, and query length stats.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "input" / "input_report.md",
         stage=2,
@@ -448,7 +449,7 @@ async def validate_dataset(dataset_path: str, run_id: str) -> str:
 
 
 @mcp.tool()
-async def save_routing_context(run_id: str, routing_context_json: str) -> str:
+async def save_routing_context(ctx: Context, run_id: str, routing_context_json: str) -> str:
     """Persist a RoutingContext to the validation directory for a run.
 
     Call this after synthesizing the routing context from the data
@@ -467,7 +468,7 @@ async def save_routing_context(run_id: str, routing_context_json: str) -> str:
     except Exception as exc:
         raise ToolError(f"Invalid RoutingContext JSON: {exc}") from exc
 
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     validation_dir = project_dir / "outputs" / run_id / "validation"
     validation_dir.mkdir(parents=True, exist_ok=True)
     out_path = validation_dir / "routing_context.json"
@@ -476,7 +477,7 @@ async def save_routing_context(run_id: str, routing_context_json: str) -> str:
 
 
 @mcp.tool()
-async def detect_and_parse_dataset(dataset_path: str, run_id: str) -> str:
+async def detect_and_parse_dataset(ctx: Context, dataset_path: str, run_id: str) -> str:
     """[Stage 2: Data Validation] Detect the format of a dataset file and parse its schema.
 
     Supports CSV, JSON (array of objects), and JSONL formats.
@@ -491,7 +492,7 @@ async def detect_and_parse_dataset(dataset_path: str, run_id: str) -> str:
         JSON-serialized DetectionResult with source_format, columns,
         sample_rows, nested_paths, and any warnings or skipped lines.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "input" / "input_report.md",
         stage=2,
@@ -508,6 +509,7 @@ async def detect_and_parse_dataset(dataset_path: str, run_id: str) -> str:
 
 @mcp.tool()
 async def transform_dataset(
+    ctx: Context,
     dataset_path: str,
     field_mapping: str,
     run_id: str,
@@ -527,7 +529,7 @@ async def transform_dataset(
         JSON-serialized TransformResult with output_path, rows_written,
         fields_mapped, and fields_dropped.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "input" / "input_report.md",
         stage=2,
@@ -545,6 +547,7 @@ async def transform_dataset(
 
 @mcp.tool()
 async def init_search_state_tool(
+    ctx: Context,
     run_id: str,
     backend: str,
     max_rounds: int = 50,
@@ -565,7 +568,7 @@ async def init_search_state_tool(
     Returns:
         JSON-serialized SearchState for the new search run.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
         stage=4,
@@ -686,6 +689,7 @@ async def get_search_state_tool(run_id: str) -> str:
 
 @mcp.tool()
 async def filter_holdout_dataset_tool(
+    ctx: Context,
     holdout_jsonl_path: str,
     exclude_ids: list[str],
     run_id: str,
@@ -703,7 +707,7 @@ async def filter_holdout_dataset_tool(
     Returns:
         JSON object with filtered_holdout_path pointing to the output file.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
         stage=7,
@@ -751,7 +755,7 @@ async def check_overlap_skill() -> str:
 
 
 @mcp.tool()
-async def create_seed_registry_tool(run_id: str) -> str:
+async def create_seed_registry_tool(ctx: Context, run_id: str) -> str:
     """[Stage 3: Routing Analysis] Initialize a vocabulary registry with 4 canonical ambiguity tags.
 
     Args:
@@ -760,7 +764,7 @@ async def create_seed_registry_tool(run_id: str) -> str:
     Returns:
         JSON-serialized VocabularyRegistry with seed ambiguity tags.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
         project_dir / "outputs" / run_id / "validation" / "routing_context.json",
@@ -775,6 +779,7 @@ async def create_seed_registry_tool(run_id: str) -> str:
 
 @mcp.tool()
 async def resolve_registry_tool(
+    ctx: Context,
     run_id: str,
     dataset_hash: str,
     registry_dir: str = "outputs",
@@ -789,7 +794,7 @@ async def resolve_registry_tool(
     Returns:
         JSON-serialized VocabularyRegistry if found, or {"found": false, ...}.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
         project_dir / "outputs" / run_id / "validation" / "routing_context.json",
@@ -807,6 +812,7 @@ async def resolve_registry_tool(
 
 @mcp.tool()
 async def validate_rationale_card_set_tool(
+    ctx: Context,
     run_id: str,
     card_set_json: str,
     routing_context_json: str,
@@ -826,7 +832,7 @@ async def validate_rationale_card_set_tool(
     Returns:
         JSON array of RationaleCheckResult objects.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
         project_dir / "outputs" / run_id / "validation" / "routing_context.json",
@@ -843,6 +849,7 @@ async def validate_rationale_card_set_tool(
 
 @mcp.tool()
 async def prune_registry_tool(
+    ctx: Context,
     run_id: str,
     registry_json: str,
     dataset_size: int,
@@ -859,7 +866,7 @@ async def prune_registry_tool(
     Returns:
         JSON with pruned_registry and removed_entries.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
         project_dir / "outputs" / run_id / "validation" / "routing_context.json",
@@ -881,6 +888,7 @@ async def prune_registry_tool(
 
 @mcp.tool()
 async def stratified_split_tool(
+    ctx: Context,
     run_id: str,
     dataset_path: str,
     card_set_json: str,
@@ -901,7 +909,7 @@ async def stratified_split_tool(
     Returns:
         JSON with paths to all output files.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "analysis" / "validation_report.json",
         stage=3,
@@ -960,6 +968,7 @@ async def review_agent_guidelines() -> str:
 
 @mcp.tool()
 async def build_review_briefing_tool(
+    ctx: Context,
     run_id: str,
     candidate_versions: list[str],
     parent_versions: dict[str, str | None],
@@ -995,7 +1004,8 @@ async def build_review_briefing_tool(
     from odysseus.agents.review_preprocessor import build_review_briefing
     from odysseus.prompts.manager import FilePromptManager
 
-    out = Path(output_dir) if Path(output_dir).is_absolute() else get_project_dir() / output_dir
+    project_dir = await resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
 
     # Load search state
     state = get_search_state(run_id=run_id, output_dir=out)
@@ -1027,7 +1037,7 @@ async def build_review_briefing_tool(
     # Load prompt texts
     import contextlib
 
-    prompt_mgr = FilePromptManager(get_project_dir() / "prompts")
+    prompt_mgr = FilePromptManager(project_dir / "prompts")
     prompt_texts: dict[str, str] = {}
     for version in all_versions:
         with contextlib.suppress(FileNotFoundError):
@@ -1072,6 +1082,7 @@ async def build_review_briefing_tool(
 
 @mcp.tool()
 async def record_directive_outcomes_tool(
+    ctx: Context,
     run_id: str,
     outcomes: list[dict[str, Any]],
     output_dir: str = "outputs",
@@ -1089,7 +1100,8 @@ async def record_directive_outcomes_tool(
     from odysseus.agents.review_models import DirectiveOutcome
     from odysseus.agents.review_ops import load_directive_history, save_directive_history
 
-    out = Path(output_dir) if Path(output_dir).is_absolute() else get_project_dir() / output_dir
+    project_dir = await resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
     parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
     existing = load_directive_history(run_id, output_dir=out)
     save_directive_history(run_id, existing + parsed, output_dir=out)
@@ -1097,7 +1109,7 @@ async def record_directive_outcomes_tool(
 
 
 @mcp.tool()
-async def get_pipeline_status(run_id: str | None = None) -> str:
+async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     """Check pipeline progress and get guidance on the next step.
 
     Call this at any time. Accepts optional run_id; if omitted, uses the
@@ -1109,7 +1121,7 @@ async def get_pipeline_status(run_id: str | None = None) -> str:
     Returns:
         JSON object with stage checklist, current stage, and next action.
     """
-    project_dir = get_project_dir()
+    project_dir = await resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
     return json.dumps(result, indent=2)
