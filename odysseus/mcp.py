@@ -388,6 +388,34 @@ async def validate_dataset(dataset_path: str) -> str:
 
 
 @mcp.tool()
+async def save_routing_context(run_id: str, routing_context_json: str) -> str:
+    """Persist a RoutingContext to the validation directory for a run.
+
+    Call this after synthesizing the routing context from the data
+    quality report and problem description. The JSON is validated
+    against the RoutingContext schema before writing.
+
+    Args:
+        run_id: The run identifier (e.g. "a1b2c3d4").
+        routing_context_json: JSON-serialized RoutingContext object.
+
+    Returns:
+        Confirmation message with the persisted file path.
+    """
+    try:
+        ctx = RoutingContext.model_validate_json(routing_context_json)
+    except Exception as exc:
+        raise ToolError(f"Invalid RoutingContext JSON: {exc}") from exc
+
+    project_dir = get_project_dir()
+    validation_dir = project_dir / "outputs" / run_id / "validation"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    out_path = validation_dir / "routing_context.json"
+    out_path.write_text(ctx.model_dump_json(indent=2), encoding="utf-8")
+    return f"Routing context saved to {out_path}"
+
+
+@mcp.tool()
 async def detect_and_parse_dataset(dataset_path: str) -> str:
     """Detect the format of a dataset file and parse its schema.
 

@@ -78,7 +78,7 @@ Synthesize a `routing_context` block for downstream annotation skills. Derive it
 - **`route_ordering`**: If routes have a natural ordering along one dimension (e.g., capability tiers), include it. If routes are unordered (e.g., specialized tools), omit this field.
 - **`seed_vocabulary`**: Leave all lists empty unless a prior annotation run's vocabulary is available.
 
-Present the routing context as a fenced YAML code block. This block will be consumed verbatim by the routing analysis agent.
+Present the routing context as a fenced YAML code block in the report, then call `save_routing_context` with the `run_id` and the routing context serialized as JSON. This persists it to `outputs/<run_id>/validation/routing_context.json` where downstream agents can find it.
 
 ## Decision rules
 
@@ -96,6 +96,7 @@ Use the `severity` field on each schema finding to determine how to present it:
 - `detect_and_parse_dataset` — detects format (CSV/JSON/JSONL) and returns columns, sample rows, nested paths.
 - `transform_dataset` — applies a confirmed field mapping and writes canonical JSONL.
 - `validate_dataset` — runs all validation checks against a canonical JSONL dataset file.
+- `save_routing_context` — persists the synthesized routing context JSON for downstream agents. Call with `run_id` and the routing context as JSON.
 
 ## Available resources
 
