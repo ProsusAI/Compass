@@ -25,6 +25,7 @@ class BackendProfile(BaseModel):
 
     max_tokens: int | None = None
     temperature: float | None = None
+    reasoning_level: Literal["low", "medium", "high"] | None = None
     extra_params: dict[str, Any] = Field(default_factory=dict)
     provider_params: dict[str, Any] = Field(default_factory=dict)
 

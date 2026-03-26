@@ -313,6 +313,39 @@ def test_profile_provider_bedrock():
 
 
 # ---------------------------------------------------------------------------
+# BackendProfile — reasoning_level field
+# ---------------------------------------------------------------------------
+
+
+class TestBackendProfileReasoningLevel:
+    def test_reasoning_level_defaults_to_none(self) -> None:
+        profile = BackendProfile(**MINIMAL_PROFILE)
+        assert profile.reasoning_level is None
+
+    def test_reasoning_level_accepts_valid_values(self) -> None:
+        for level in ("low", "medium", "high"):
+            profile = BackendProfile(**{**MINIMAL_PROFILE, "reasoning_level": level})
+            assert profile.reasoning_level == level
+
+    def test_reasoning_level_rejects_invalid_value(self) -> None:
+        with pytest.raises(ValidationError):
+            BackendProfile(**{**MINIMAL_PROFILE, "reasoning_level": "extreme"})
+
+    def test_reasoning_level_from_yaml(self, tmp_path: Path) -> None:
+        yaml_content = """
+model: test-model
+provider: anthropic
+requests_per_minute: 100
+tokens_per_minute: 50000
+reasoning_level: high
+"""
+        p = tmp_path / "test.yaml"
+        p.write_text(yaml_content)
+        profile = BackendProfile.from_yaml(p)
+        assert profile.reasoning_level == "high"
+
+
+# ---------------------------------------------------------------------------
 # BackendRegistry
 # ---------------------------------------------------------------------------
 
