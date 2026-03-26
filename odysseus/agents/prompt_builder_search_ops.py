@@ -6,8 +6,8 @@ and pending Candidate lists.  All state is persisted to files — there is no
 module-level mutable state, making the module safe across MCP server restarts.
 
 Persistence layout:
-    outputs/<search_state_id>/search_state.json
-    outputs/<search_state_id>/pending_candidates.json
+    outputs/<run_id>/search/search_state.json
+    outputs/<run_id>/search/pending_candidates.json
 
 See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 """
@@ -38,40 +38,40 @@ def _default_output_dir() -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _state_path(search_state_id: str, output_dir: Path) -> Path:
-    return output_dir / search_state_id / "search_state.json"
+def _state_path(run_id: str, output_dir: Path) -> Path:
+    return output_dir / run_id / "search" / "search_state.json"
 
 
-def _pending_path(search_state_id: str, output_dir: Path) -> Path:
-    return output_dir / search_state_id / "pending_candidates.json"
+def _pending_path(run_id: str, output_dir: Path) -> Path:
+    return output_dir / run_id / "search" / "pending_candidates.json"
 
 
-def _save_state(state: SearchState, output_dir: Path) -> None:
-    path = _state_path(state.search_state_id, output_dir)
+def _save_state(run_id: str, state: SearchState, output_dir: Path) -> None:
+    path = _state_path(run_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
 
 
-def _load_state(search_state_id: str, output_dir: Path) -> SearchState:
-    path = _state_path(search_state_id, output_dir)
+def _load_state(run_id: str, output_dir: Path) -> SearchState:
+    path = _state_path(run_id, output_dir)
     if not path.exists():
         raise FileNotFoundError(f"Search state not found: {path}")
     return SearchState.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def _save_pending(
-    search_state_id: str,
+    run_id: str,
     pending: list[Candidate],
     output_dir: Path,
 ) -> None:
-    path = _pending_path(search_state_id, output_dir)
+    path = _pending_path(run_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = [c.model_dump() for c in pending]
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def _load_pending(search_state_id: str, output_dir: Path) -> list[Candidate]:
-    path = _pending_path(search_state_id, output_dir)
+def _load_pending(run_id: str, output_dir: Path) -> list[Candidate]:
+    path = _pending_path(run_id, output_dir)
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -85,6 +85,7 @@ def _load_pending(search_state_id: str, output_dir: Path) -> list[Candidate]:
 
 def init_search_state(
     backend: str,
+    run_id: str,
     output_dir: Path | None = None,
     max_rounds: int = 50,
     stagnation_limit: int = 3,
@@ -95,6 +96,7 @@ def init_search_state(
 
     Args:
         backend: Backend identifier (e.g. ``"anthropic"``).
+        run_id: Run identifier used as the top-level directory key for storage.
         output_dir: Root directory for persisted state files.
         max_rounds: Maximum number of search rounds before forced convergence.
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
@@ -115,29 +117,29 @@ def init_search_state(
         convergence_limit=convergence_limit,
         primary_metric_name=primary_metric_name,
     )
-    _save_state(state, output_dir)
+    _save_state(run_id, state, output_dir)
     return state
 
 
 def get_search_state(
-    search_state_id: str,
+    run_id: str,
     output_dir: Path | None = None,
 ) -> SearchState:
     """Load and return a persisted SearchState.
 
     Args:
-        search_state_id: ID returned by :func:`init_search_state`.
+        run_id: Run identifier used to locate the state on disk.
         output_dir: Root directory for persisted state files.
 
     Returns:
         The loaded :class:`SearchState`.
 
     Raises:
-        FileNotFoundError: If no state exists for *search_state_id*.
+        FileNotFoundError: If no state exists for *run_id*.
     """
     if output_dir is None:
         output_dir = _default_output_dir()
-    return _load_state(search_state_id, output_dir)
+    return _load_state(run_id, output_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +148,7 @@ def get_search_state(
 
 
 def register_candidate(
-    search_state_id: str,
+    run_id: str,
     prompt_version: str,
     parent_version: str | None = None,
     output_dir: Path | None = None,
@@ -157,7 +159,7 @@ def register_candidate(
     or cost is recorded yet — those are filled in by :func:`record_eval_result`.
 
     Args:
-        search_state_id: Search state to update.
+        run_id: Run identifier used to locate the state on disk.
         prompt_version: Unique version identifier for the prompt.
         parent_version: Parent prompt version, if any.
         output_dir: Root directory for persisted state files.
@@ -172,8 +174,8 @@ def register_candidate(
     """
     if output_dir is None:
         output_dir = _default_output_dir()
-    state = _load_state(search_state_id, output_dir)
-    pending = _load_pending(search_state_id, output_dir)
+    state = _load_state(run_id, output_dir)
+    pending = _load_pending(run_id, output_dir)
 
     # Collect all known versions
     front_versions = {c.prompt_version for c in state.pareto_front}
@@ -199,7 +201,7 @@ def register_candidate(
         round_introduced=state.round + 1,
     )
     pending.append(candidate)
-    _save_pending(search_state_id, pending, output_dir)
+    _save_pending(run_id, pending, output_dir)
     return state
 
 
@@ -209,7 +211,7 @@ def register_candidate(
 
 
 def record_eval_result(
-    search_state_id: str,
+    run_id: str,
     prompt_version: str,
     quality_score: float,
     cost: float,
@@ -218,7 +220,7 @@ def record_eval_result(
     """Record evaluation results for a pending candidate.
 
     Args:
-        search_state_id: Search state to update.
+        run_id: Run identifier used to locate the state on disk.
         prompt_version: Version identifier of the candidate to update.
         quality_score: Evaluation quality score.
         cost: Evaluation cost.
@@ -233,7 +235,7 @@ def record_eval_result(
     """
     if output_dir is None:
         output_dir = _default_output_dir()
-    pending = _load_pending(search_state_id, output_dir)
+    pending = _load_pending(run_id, output_dir)
 
     found_index: int | None = None
     for i, c in enumerate(pending):
@@ -246,7 +248,7 @@ def record_eval_result(
 
     updated = pending[found_index].model_copy(update={"quality_score": quality_score, "cost": cost})
     pending[found_index] = updated
-    _save_pending(search_state_id, pending, output_dir)
+    _save_pending(run_id, pending, output_dir)
 
     return {
         "prompt_version": prompt_version,
@@ -261,7 +263,7 @@ def record_eval_result(
 
 
 def advance_round(
-    search_state_id: str,
+    run_id: str,
     output_dir: Path | None = None,
 ) -> RoundSummary:
     """Advance the search loop by one round.
@@ -270,7 +272,7 @@ def advance_round(
     stagnation tracking, switches mutation mode, and checks for convergence.
 
     Args:
-        search_state_id: Search state to advance.
+        run_id: Run identifier used to locate the state on disk.
         output_dir: Root directory for persisted state files.
 
     Returns:
@@ -282,8 +284,8 @@ def advance_round(
     """
     if output_dir is None:
         output_dir = _default_output_dir()
-    state = _load_state(search_state_id, output_dir)
-    pending = _load_pending(search_state_id, output_dir)
+    state = _load_state(run_id, output_dir)
+    pending = _load_pending(run_id, output_dir)
 
     if not pending:
         raise ValueError("No pending candidates to advance round with")
@@ -330,9 +332,9 @@ def advance_round(
             "converged": converged,
         }
     )
-    _save_state(updated_state, output_dir)
+    _save_state(run_id, updated_state, output_dir)
 
     # Clear pending
-    _save_pending(search_state_id, [], output_dir)
+    _save_pending(run_id, [], output_dir)
 
     return summary
