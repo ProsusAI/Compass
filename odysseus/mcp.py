@@ -7,6 +7,7 @@ parameters/return values and agent context dicts.
 
 import json
 import re
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -289,7 +290,7 @@ async def run_eval(
     """
     # Pre-flight: on first run in loop, signal backend setup needed
     if search_state_id is not None:
-        state = get_search_state(search_state_id=search_state_id)
+        state = get_search_state(run_id=search_state_id)
         if state.round == 0 and len(state.round_history) == 0:
             project_dir = get_project_dir()
             registry = BackendRegistry.from_directory(project_dir / "backends")
@@ -329,31 +330,49 @@ async def submit_input_report(
     report: str,
     dataset_path: str,
     problem_description: str,
+    bootstrap_from_run_id: str | None = None,
 ) -> str:
-    """Submit a validated input report to the pipeline.
-
-    Called after the input agent conversation completes and
-    the validated input report has been produced. Triggers
-    the next pipeline stage.
+    """[Stage 1: Input] Submit a validated input report to the pipeline. No prerequisites. Returns a run_id for scoping all subsequent tools.
 
     Args:
         report: The full validated input report (Markdown).
         dataset_path: Absolute filesystem path to the JSONL routing dataset.
         problem_description: The validated problem description.
+        bootstrap_from_run_id: Optional run_id to copy the latest prompt version from.
 
     Returns:
-        Confirmation or next-stage result.
+        JSON with run_id, report_path, and dataset_path.
     """
-    # TODO: Wire to next pipeline agent.
-    # Expected: save report to disk, build pipeline context,
-    # and dispatch the next agent (e.g. Data Validation or Analysis).
     if not report.strip():
         raise ToolError("submit_input_report failed: report is empty")
     if not dataset_path.strip():
         raise ToolError("submit_input_report failed: dataset_path is empty")
     if not problem_description.strip():
         raise ToolError("submit_input_report failed: problem_description is empty")
-    return "Input report received. Next pipeline stage not yet implemented."
+
+    run_id = uuid.uuid4().hex[:8]
+    project_dir = get_project_dir()
+
+    input_dir = project_dir / "outputs" / run_id / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    report_path = input_dir / "input_report.md"
+    report_path.write_text(report)
+
+    if bootstrap_from_run_id is not None:
+        src_prompts = project_dir / "outputs" / bootstrap_from_run_id / "prompts"
+        if src_prompts.is_dir():
+            prompt_files = sorted(src_prompts.glob("v*.txt"))
+            if prompt_files:
+                latest = prompt_files[-1]
+                dest_prompts = project_dir / "outputs" / run_id / "prompts"
+                dest_prompts.mkdir(parents=True, exist_ok=True)
+                (dest_prompts / "bootstrap.txt").write_text(latest.read_text())
+
+    return json.dumps({
+        "run_id": run_id,
+        "report_path": str(report_path),
+        "dataset_path": dataset_path,
+    })
 
 
 @mcp.tool()
@@ -457,8 +476,11 @@ async def init_search_state_tool(
     Returns:
         JSON-serialized SearchState for the new search run.
     """
+    import uuid
+    run_id = uuid.uuid4().hex[:16]
     state = init_search_state(
         backend=backend,
+        run_id=run_id,
         max_rounds=max_rounds,
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
@@ -485,7 +507,7 @@ async def register_candidate_tool(
     """
     try:
         register_candidate(
-            search_state_id=search_state_id,
+            run_id=search_state_id,
             prompt_version=prompt_version,
             parent_version=parent_version,
         )
@@ -516,7 +538,7 @@ async def record_eval_result_tool(
     """
     try:
         result = record_eval_result(
-            search_state_id=search_state_id,
+            run_id=search_state_id,
             prompt_version=prompt_version,
             quality_score=quality_score,
             cost=cost,
@@ -542,7 +564,7 @@ async def advance_round_tool(search_state_id: str) -> str:
         JSON-serialized RoundSummary for the completed round.
     """
     try:
-        summary = advance_round(search_state_id=search_state_id)
+        summary = advance_round(run_id=search_state_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     except ValueError as exc:
@@ -561,7 +583,7 @@ async def get_search_state_tool(search_state_id: str) -> str:
         JSON-serialized SearchState.
     """
     try:
-        state = get_search_state(search_state_id=search_state_id)
+        state = get_search_state(run_id=search_state_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     return state.model_dump_json(indent=2)
@@ -816,7 +838,7 @@ async def build_review_briefing_tool(
     out = Path(output_dir) if Path(output_dir).is_absolute() else get_project_dir() / output_dir
 
     # Load search state
-    state = get_search_state(search_state_id, output_dir=out)
+    state = get_search_state(run_id=search_state_id, output_dir=out)
 
     # Load score reports for current candidates + front + parents
     all_versions: set[str] = set(candidate_versions)

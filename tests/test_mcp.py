@@ -217,16 +217,20 @@ class TestSubmitInputReport:
         tool_names = [t.name for t in tools]
         assert "submit_input_report" in tool_names
 
-    async def test_stub_returns_confirmation(self):
-        """Stub returns a confirmation message."""
+    async def test_stub_returns_confirmation(self, tmp_path: Path):
+        """Returns JSON with run_id, report_path, and dataset_path."""
         from odysseus.mcp import submit_input_report
 
-        result = await submit_input_report(
-            report="# Validated Input Report\n**Status:** proceed",
-            dataset_path="/data/routing.jsonl",
-            problem_description="Route support queries to tiers.",
-        )
-        assert "received" in result.lower()
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            result = await submit_input_report(
+                report="# Validated Input Report\n**Status:** proceed",
+                dataset_path="/data/routing.jsonl",
+                problem_description="Route support queries to tiers.",
+            )
+        data = json.loads(result)
+        assert "run_id" in data
+        assert "report_path" in data
+        assert data["dataset_path"] == "/data/routing.jsonl"
 
     async def test_empty_report_raises_tool_error(self):
         """Empty report raises ToolError."""
@@ -359,3 +363,66 @@ class TestModelSpecificConventions:
         with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-5.2-turbo-preview")
             assert result == ""
+
+
+class TestSubmitInputReportPersistence:
+    """Tests for run_id generation and artifact persistence."""
+
+    async def test_returns_run_id(self, tmp_path: Path) -> None:
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            from odysseus.mcp import submit_input_report
+
+            result = await submit_input_report(
+                report="# Validated Input Report\n**Status:** proceed",
+                dataset_path="/data/test.jsonl",
+                problem_description="Route queries to models",
+            )
+        data = json.loads(result)
+        assert "run_id" in data
+        assert len(data["run_id"]) == 8
+
+    async def test_persists_report_to_disk(self, tmp_path: Path) -> None:
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            from odysseus.mcp import submit_input_report
+
+            result = await submit_input_report(
+                report="# Validated Input Report\n**Status:** proceed",
+                dataset_path="/data/test.jsonl",
+                problem_description="Route queries to models",
+            )
+        data = json.loads(result)
+        report_path = tmp_path / "outputs" / data["run_id"] / "input" / "input_report.md"
+        assert report_path.is_file()
+        assert "Validated Input Report" in report_path.read_text()
+
+    async def test_bootstrap_copies_latest_prompt(self, tmp_path: Path) -> None:
+        old_prompts = tmp_path / "outputs" / "old_run" / "prompts"
+        old_prompts.mkdir(parents=True)
+        (old_prompts / "v1.txt").write_text("prompt v1")
+        (old_prompts / "v2.txt").write_text("prompt v2")
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            from odysseus.mcp import submit_input_report
+
+            result = await submit_input_report(
+                report="# Report\n**Status:** proceed",
+                dataset_path="/data/test.jsonl",
+                problem_description="Route queries",
+                bootstrap_from_run_id="old_run",
+            )
+        data = json.loads(result)
+        bootstrap = tmp_path / "outputs" / data["run_id"] / "prompts" / "bootstrap.txt"
+        assert bootstrap.is_file()
+        assert bootstrap.read_text() == "prompt v2"
+
+    async def test_bootstrap_nonexistent_run_is_noop(self, tmp_path: Path) -> None:
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            from odysseus.mcp import submit_input_report
+
+            result = await submit_input_report(
+                report="# Report\n**Status:** proceed",
+                dataset_path="/data/test.jsonl",
+                problem_description="Route queries",
+                bootstrap_from_run_id="no_such_run",
+            )
+        data = json.loads(result)
+        assert "run_id" in data  # no error
