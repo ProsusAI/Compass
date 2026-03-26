@@ -738,9 +738,7 @@ class TestOpenAIBackendReasoningLevel:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
         mock_client.chat.completions.create = AsyncMock(return_value=_make_openai_mock_response(content="test"))
-        profile = BackendProfile(
-            **{**MINIMAL_PROFILE, "provider": "openai", "api_key_env": None}
-        )
+        profile = BackendProfile(**{**MINIMAL_PROFILE, "provider": "openai", "api_key_env": None})
         backend = OpenAIBackend(profile)
         await backend.call("prompt", EXAMPLE)
         call_kwargs = mock_client.chat.completions.create.call_args.kwargs
@@ -860,17 +858,16 @@ class TestBedrockBackend:
 
 class TestAnthropicBackendReasoningLevel:
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("level,expected_budget", [
-        ("low", 1024),
-        ("medium", 4096),
-        ("high", 16384),
-    ])
-    async def test_reasoning_level_sets_thinking_budget(
-        self, level: str, expected_budget: int
-    ) -> None:
-        profile = BackendProfile(
-            **{**MINIMAL_PROFILE, "reasoning_level": level, "api_key_env": None}
-        )
+    @pytest.mark.parametrize(
+        "level,expected_budget",
+        [
+            ("low", 1024),
+            ("medium", 4096),
+            ("high", 16384),
+        ],
+    )
+    async def test_reasoning_level_sets_thinking_budget(self, level: str, expected_budget: int) -> None:
+        profile = BackendProfile(**{**MINIMAL_PROFILE, "reasoning_level": level, "api_key_env": None})
         backend = AnthropicBackend(profile)
         with patch.object(backend._client.messages, "create", new_callable=AsyncMock) as mock_create:
             mock_create.return_value = _make_anthropic_mock_response(text="test")

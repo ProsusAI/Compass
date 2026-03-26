@@ -8,10 +8,10 @@ from typing import Any
 import anthropic
 
 from odysseus.eval.backends.profile import BackendProfile
-
-REASONING_BUDGET_MAP: dict[str, int] = {"low": 1024, "medium": 4096, "high": 16384}
 from odysseus.eval.models import Example, TokenUsage
 from odysseus.eval.pricing import ModelPricing
+
+REASONING_BUDGET_MAP: dict[str, int] = {"low": 1024, "medium": 4096, "high": 16384}
 
 
 class AnthropicBackend:
