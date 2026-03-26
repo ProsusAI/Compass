@@ -274,11 +274,13 @@ async def test_output_writing(tmp_path: Path):
     results_path = Path(config.output.results_path)
     report_path = Path(config.output.report_path)
 
-    # Verify results JSONL was written
+    # Verify results JSONL was written (1 fingerprint header + 5 results)
     assert results_path.exists()
     lines = [line for line in results_path.read_text().splitlines() if line.strip()]
-    assert len(lines) == 5
-    for line in lines:
+    assert len(lines) == 6
+    header = json.loads(lines[0])
+    assert header["__meta__"] == "run_fingerprint"
+    for line in lines[1:]:
         result = json.loads(line)
         assert "example_id" in result
         assert "model" in result
@@ -473,14 +475,23 @@ async def test_streaming_writes_incrementally(tmp_path: Path):
 
 async def test_resume_from_partial_results(tmp_path: Path):
     """Run resumes from a partial results file, skipping completed examples."""
+    from odysseus.eval.models import RunFingerprint
+
     examples = _make_examples(5)
     _write_jsonl(tmp_path / "data.jsonl", examples)
 
-    # Simulate a partial run: write results for the first 3 examples
+    # Simulate a partial run: write fingerprint + results for the first 3 examples
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
     partial_path = outputs_dir / "results.jsonl"
+    fp = RunFingerprint(
+        prompt_version="latest",
+        backend="test-model",
+        data_source=str(tmp_path / "data.jsonl"),
+        data_split="dev",
+    )
     with open(partial_path, "w") as f:
+        f.write(fp.model_dump_json(by_alias=True) + "\n")
         for ex in examples[:3]:
             result = EvalResult(
                 example_id=ex.id,
@@ -533,13 +544,22 @@ async def test_resume_with_no_partial_results(tmp_path: Path):
 
 async def test_resume_all_completed(tmp_path: Path):
     """When all examples are already in the partial file, no backend calls are made."""
+    from odysseus.eval.models import RunFingerprint
+
     examples = _make_examples(3)
     _write_jsonl(tmp_path / "data.jsonl", examples)
 
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
     partial_path = outputs_dir / "results.jsonl"
+    fp = RunFingerprint(
+        prompt_version="latest",
+        backend="test-model",
+        data_source=str(tmp_path / "data.jsonl"),
+        data_split="dev",
+    )
     with open(partial_path, "w") as f:
+        f.write(fp.model_dump_json(by_alias=True) + "\n")
         for ex in examples:
             result = EvalResult(
                 example_id=ex.id,
@@ -576,3 +596,170 @@ async def test_resume_all_completed(tmp_path: Path):
     assert call_count == 0
     assert report.summary.total == 3
     assert report.summary.succeeded == 3
+
+
+# --- Tests: fingerprint validation ---
+
+
+async def test_resume_discards_stale_results_on_fingerprint_mismatch(tmp_path: Path):
+    """When the results file has a different prompt_version, discard and re-evaluate all."""
+    from odysseus.eval.models import RunFingerprint
+
+    examples = _make_examples(3)
+    _write_jsonl(tmp_path / "data.jsonl", examples)
+
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    partial_path = outputs_dir / "results.jsonl"
+
+    # Write a fingerprint for prompt v_old + results for all 3 examples
+    old_fp = RunFingerprint(
+        prompt_version="v_old",
+        backend="test-model",
+        data_source=str(tmp_path / "data.jsonl"),
+        data_split="dev",
+    )
+    with open(partial_path, "w") as f:
+        f.write(old_fp.model_dump_json(by_alias=True) + "\n")
+        for ex in examples:
+            result = EvalResult(
+                example_id=ex.id,
+                model="test-model",
+                output={"route": ex.expected.route},
+                error=None,
+                latency_ms=50.0,
+                retries=0,
+                token_usage=TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5),
+                cost=None,
+            )
+            f.write(result.model_dump_json() + "\n")
+
+    # Now run with a DIFFERENT prompt_version
+    processed: list[str] = []
+
+    class TrackingBackend(MockBackend):
+        async def call(self, prompt, example):
+            processed.append(example.id)
+            return await super().call(prompt, example)
+
+    deps = RunDependencies(
+        backend=TrackingBackend(),
+        prompt_manager=_setup_prompt_dir(tmp_path),
+        dataset_manager=JsonlDatasetManager(),
+        metrics_engine=create_default_engine(),
+        results_collector=JsonResultsCollector(),
+        requests_per_minute=10000,
+        tokens_per_minute=1_000_000,
+    )
+    config = _make_config(tmp_path, prompt_version="v1")  # Different from v_old
+    report = await run(config, deps)
+
+    # ALL examples should have been re-evaluated (stale file discarded)
+    assert set(processed) == {ex.id for ex in examples}
+    assert report.summary.total == 3
+    assert report.summary.succeeded == 3
+
+
+async def test_resume_continues_with_matching_fingerprint(tmp_path: Path):
+    """When the results file has a matching fingerprint, resume as before."""
+    from odysseus.eval.models import RunFingerprint
+
+    examples = _make_examples(5)
+    _write_jsonl(tmp_path / "data.jsonl", examples)
+
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    partial_path = outputs_dir / "results.jsonl"
+
+    # Write a fingerprint matching the config we'll use + results for first 3
+    fp = RunFingerprint(
+        prompt_version="v1",
+        backend="test-model",
+        data_source=str(tmp_path / "data.jsonl"),
+        data_split="dev",
+    )
+    with open(partial_path, "w") as f:
+        f.write(fp.model_dump_json(by_alias=True) + "\n")
+        for ex in examples[:3]:
+            result = EvalResult(
+                example_id=ex.id,
+                model="test-model",
+                output={"route": ex.expected.route},
+                error=None,
+                latency_ms=50.0,
+                retries=0,
+                token_usage=TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5),
+                cost=None,
+            )
+            f.write(result.model_dump_json() + "\n")
+
+    processed: list[str] = []
+
+    class TrackingBackend(MockBackend):
+        async def call(self, prompt, example):
+            processed.append(example.id)
+            return await super().call(prompt, example)
+
+    deps = RunDependencies(
+        backend=TrackingBackend(),
+        prompt_manager=_setup_prompt_dir(tmp_path),
+        dataset_manager=JsonlDatasetManager(),
+        metrics_engine=create_default_engine(),
+        results_collector=JsonResultsCollector(),
+        requests_per_minute=10000,
+        tokens_per_minute=1_000_000,
+    )
+    config = _make_config(tmp_path, prompt_version="v1")
+    report = await run(config, deps)
+
+    # Only last 2 should be evaluated
+    assert set(processed) == {examples[3].id, examples[4].id}
+    assert report.summary.total == 5
+
+
+async def test_resume_discards_legacy_file_without_fingerprint(tmp_path: Path):
+    """A results file with no __meta__ header (pre-fingerprint) is discarded."""
+    examples = _make_examples(3)
+    _write_jsonl(tmp_path / "data.jsonl", examples)
+
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    partial_path = outputs_dir / "results.jsonl"
+
+    # Write results WITHOUT a fingerprint header (legacy format)
+    with open(partial_path, "w") as f:
+        for ex in examples:
+            result = EvalResult(
+                example_id=ex.id,
+                model="test-model",
+                output={"route": ex.expected.route},
+                error=None,
+                latency_ms=50.0,
+                retries=0,
+                token_usage=TokenUsage(input_tokens=10, cached_tokens=0, output_tokens=5),
+                cost=None,
+            )
+            f.write(result.model_dump_json() + "\n")
+
+    processed: list[str] = []
+
+    class TrackingBackend(MockBackend):
+        async def call(self, prompt, example):
+            processed.append(example.id)
+            return await super().call(prompt, example)
+
+    deps = RunDependencies(
+        backend=TrackingBackend(),
+        prompt_manager=_setup_prompt_dir(tmp_path),
+        dataset_manager=JsonlDatasetManager(),
+        metrics_engine=create_default_engine(),
+        results_collector=JsonResultsCollector(),
+        requests_per_minute=10000,
+        tokens_per_minute=1_000_000,
+    )
+    config = _make_config(tmp_path, prompt_version="v1")
+    report = await run(config, deps)
+
+    # All examples re-evaluated (legacy file discarded)
+    assert set(processed) == {ex.id for ex in examples}
+    assert report.summary.total == 3

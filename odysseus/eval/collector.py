@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from odysseus.eval.diff import compute_metric_diffs
-from odysseus.eval.models import EvalResult, RunReport
+from odysseus.eval.models import EvalResult, RunFingerprint, RunReport
 
 logger = logging.getLogger(__name__)
 
@@ -16,9 +16,13 @@ logger = logging.getLogger(__name__)
 class JsonResultsCollector:
     """Persists evaluation results as JSONL and reports as pretty-printed JSON."""
 
-    def write_results(self, results: list[EvalResult], path: str) -> None:
-        """Write each EvalResult as a JSON line to *path*."""
+    def write_results(
+        self, results: list[EvalResult], path: str, fingerprint: RunFingerprint | None = None
+    ) -> None:
+        """Write each EvalResult as a JSON line to *path*, with optional fingerprint header."""
         with open(path, "w") as f:
+            if fingerprint is not None:
+                f.write(fingerprint.model_dump_json(by_alias=True) + "\n")
             for result in results:
                 f.write(result.model_dump_json() + "\n")
 
@@ -43,12 +47,40 @@ class JsonResultsCollector:
                 continue
             try:
                 record = json.loads(line)
+                if record.get("__meta__"):
+                    continue
                 eid = record.get("example_id")
                 if eid is not None:
                     ids.add(eid)
             except json.JSONDecodeError:
                 logger.warning("Skipping malformed line in partial results: %s", path)
         return ids
+
+    def write_fingerprint(self, fingerprint: RunFingerprint, path: str) -> None:
+        """Write (or overwrite) the fingerprint as the first line of the results file."""
+        with open(path, "w") as f:
+            f.write(fingerprint.model_dump_json(by_alias=True) + "\n")
+
+    def read_fingerprint(self, path: str) -> RunFingerprint | None:
+        """Read the fingerprint from the first line of a results file.
+
+        Returns None if the file doesn't exist, is empty, or has no __meta__ header.
+        """
+        p = Path(path)
+        if not p.exists():
+            return None
+        for line in p.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+                if record.get("__meta__") == "run_fingerprint":
+                    return RunFingerprint.model_validate(record)
+            except (json.JSONDecodeError, Exception):
+                pass
+            return None  # First non-empty line is not a fingerprint
+        return None
 
     def write_report(self, report: RunReport, path: str) -> None:
         """Write the full RunReport as pretty-printed JSON to *path*.

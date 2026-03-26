@@ -15,6 +15,7 @@ from odysseus.eval.models import (
     Example,
     RetryConfig,
     RunConfig,
+    RunFingerprint,
     RunReport,
     RunSummary,
 )
@@ -51,10 +52,31 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     Path(config.output.results_path).parent.mkdir(parents=True, exist_ok=True)
     Path(config.output.report_path).parent.mkdir(parents=True, exist_ok=True)
 
-    # 3. Resume: check for partial results from a previous interrupted run
-    completed_ids = deps.results_collector.read_completed_ids(config.output.results_path)
-    if completed_ids:
-        logger.info("Resuming: found %d completed examples from previous run", len(completed_ids))
+    # 3. Resume: validate fingerprint before reusing cached results
+    fingerprint = RunFingerprint.from_config(config)
+    stored_fingerprint = deps.results_collector.read_fingerprint(config.output.results_path)
+
+    if stored_fingerprint is not None and stored_fingerprint == fingerprint:
+        # Fingerprint matches — safe to resume
+        completed_ids = deps.results_collector.read_completed_ids(config.output.results_path)
+        if completed_ids:
+            logger.info("Resuming: found %d completed examples from previous run", len(completed_ids))
+    elif Path(config.output.results_path).exists():
+        # Fingerprint missing or mismatched — discard stale results
+        if stored_fingerprint is None:
+            logger.warning(
+                "Discarding results file with no fingerprint (legacy format): %s",
+                config.output.results_path,
+            )
+        else:
+            logger.warning("Discarding stale results file (config changed): %s", config.output.results_path)
+        completed_ids: set[str] = set()
+        deps.results_collector.write_fingerprint(fingerprint, config.output.results_path)
+    else:
+        # No existing file — write fingerprint to start fresh
+        completed_ids = set()
+        deps.results_collector.write_fingerprint(fingerprint, config.output.results_path)
+
     remaining_examples = [ex for ex in examples if ex.id not in completed_ids]
 
     # 4. Evaluate remaining examples, streaming results to disk
@@ -119,7 +141,7 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     )
 
     # 8. Write final outputs (overwrites the streaming file with canonical order)
-    deps.results_collector.write_results(results, config.output.results_path)
+    deps.results_collector.write_results(results, config.output.results_path, fingerprint)
     deps.results_collector.write_report(report, config.output.report_path)
 
     return report
@@ -139,6 +161,8 @@ def _load_resumed_results(results_path: str, completed_ids: set[str]) -> list[Ev
             continue
         try:
             record = json.loads(line)
+            if record.get("__meta__"):
+                continue
             if record.get("example_id") in completed_ids:
                 results.append(EvalResult.model_validate(record))
         except (json.JSONDecodeError, Exception):

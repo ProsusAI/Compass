@@ -10,6 +10,7 @@ from odysseus.eval.models import (
     MetricConfig,  # noqa: F401
     OutputConfig,  # noqa: F401
     RunConfig,  # noqa: F401
+    RunFingerprint,
     RunReport,  # noqa: F401
     RunSummary,  # noqa: F401
     TokenUsage,
@@ -259,3 +260,96 @@ def test_read_completed_ids_skips_malformed_lines(tmp_path):
 
     ids = collector.read_completed_ids(str(path))
     assert ids == {"ex-1"}
+
+
+# --- Tests: RunFingerprint ---
+
+
+def test_run_fingerprint_round_trip():
+    """RunFingerprint serializes with __meta__ key and deserializes back."""
+    fp = RunFingerprint(
+        prompt_version="v3",
+        backend="anthropic",
+        data_source="data/routing.jsonl",
+        data_split="dev",
+    )
+    dumped = fp.model_dump(by_alias=True)
+    assert dumped["__meta__"] == "run_fingerprint"
+    assert dumped["prompt_version"] == "v3"
+
+    restored = RunFingerprint.model_validate(dumped)
+    assert restored == fp
+
+
+def test_write_and_read_fingerprint(tmp_path):
+    """write_fingerprint writes a __meta__ line; read_fingerprint reads it back."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "results.jsonl")
+    fp = RunFingerprint(
+        prompt_version="v3",
+        backend="anthropic",
+        data_source="data/routing.jsonl",
+        data_split="dev",
+    )
+    collector.write_fingerprint(fp, path)
+
+    result = collector.read_fingerprint(path)
+    assert result is not None
+    assert result == fp
+
+
+def test_read_fingerprint_missing_file(tmp_path):
+    """read_fingerprint returns None for a nonexistent file."""
+    collector = JsonResultsCollector()
+    assert collector.read_fingerprint(str(tmp_path / "nope.jsonl")) is None
+
+
+def test_read_fingerprint_no_meta_line(tmp_path):
+    """read_fingerprint returns None for a legacy file with no __meta__ header."""
+    collector = JsonResultsCollector()
+    path = tmp_path / "results.jsonl"
+    r = _make_result("ex-1")
+    path.write_text(r.model_dump_json() + "\n")
+
+    assert collector.read_fingerprint(str(path)) is None
+
+
+def test_read_completed_ids_skips_meta_line(tmp_path):
+    """read_completed_ids ignores the __meta__ fingerprint line."""
+    collector = JsonResultsCollector()
+    path = tmp_path / "results.jsonl"
+    fp = RunFingerprint(
+        prompt_version="v1",
+        backend="test",
+        data_source="data.jsonl",
+        data_split="dev",
+    )
+    lines = [
+        fp.model_dump_json(by_alias=True),
+        _make_result("ex-1").model_dump_json(),
+    ]
+    path.write_text("\n".join(lines) + "\n")
+
+    ids = collector.read_completed_ids(str(path))
+    assert ids == {"ex-1"}
+
+
+def test_write_results_with_fingerprint(tmp_path):
+    """write_results with fingerprint writes header line followed by result lines."""
+    collector = JsonResultsCollector()
+    path = str(tmp_path / "results.jsonl")
+    fp = RunFingerprint(
+        prompt_version="v1",
+        backend="test",
+        data_source="data.jsonl",
+        data_split="dev",
+    )
+    results = [_make_result("ex-1"), _make_result("ex-2")]
+    collector.write_results(results, path, fingerprint=fp)
+
+    file_lines = [line for line in (tmp_path / "results.jsonl").read_text().splitlines() if line.strip()]
+    assert len(file_lines) == 3  # 1 fingerprint + 2 results
+    header = json.loads(file_lines[0])
+    assert header["__meta__"] == "run_fingerprint"
+    assert json.loads(file_lines[1])["example_id"] == "ex-1"
+    assert json.loads(file_lines[2])["example_id"] == "ex-2"
