@@ -1,6 +1,14 @@
-# Prompt Builder — OpenAI Conventions
+# Prompt Builder — OpenAI GPT-5 Conventions
 
-OpenAI-specific conventions for routing prompts. Distilled from OpenAI's prompt engineering guide and cookbook patterns.
+OpenAI-specific conventions for routing prompts targeting the GPT-5 model family (gpt-5, gpt-5-mini). Distilled from OpenAI's GPT-5 prompting guide and cookbook patterns.
+
+## Key GPT-5 characteristics
+
+GPT-5 follows instructions with surgical precision, but spends reasoning tokens reconciling contradictions. For routing prompts this means:
+
+- **Non-contradictory rules are critical.** If two rules can conflict, add explicit priority or scope to disambiguate. GPT-5 will burn tokens (and cost) trying to reconcile them rather than picking one.
+- **Concise, precise instructions outperform verbose ones.** GPT-5's improved instruction-following means shorter, clearer rules work better than long explanations.
+- **Reasoning effort is controllable.** The `reasoning_effort` parameter (`high`, `medium`, `low`, `minimal`) lets you trade depth for latency. For routing classifiers, `low` or `minimal` is usually sufficient.
 
 ## System vs User Messages
 
@@ -28,16 +36,25 @@ to exactly one route based on the rules below.
 Respond with exactly one JSON object: {"route": "<route_name>"}
 ```
 
-## Markdown Structure
+## Markdown and XML Structure
 
-OpenAI models parse Markdown headers and lists natively. Use them for organization:
+GPT-5 parses both Markdown and XML tags effectively. Use Markdown as the primary structure, and XML tags for semantically distinct blocks when it aids clarity:
 
 - `##` headers to separate prompt sections (Routes, Rules, Examples, Output Format)
 - **Bold** for route names and critical terms
-- Numbered lists for ordered rules (the ordering signals priority)
+- Numbered lists for ordered rules (ordering signals priority)
 - Bullet lists for unordered attributes of a route
+- XML tags for grouping structured blocks (e.g., `<routes>`, `<rules>`) when the prompt has complex nested structure
 
-Do not use XML tags — OpenAI models treat them as literal text rather than structural markers.
+```xml
+<routing_rules>
+1. Default to haiku unless escalation criteria are met.
+2. Route to sonnet for tasks requiring synthesis or comparison.
+3. Route to opus for multi-step reasoning or long-form generation.
+</routing_rules>
+```
+
+Unlike earlier GPT-4o models, GPT-5 treats XML tags as structural markers rather than literal text, so they can be used when Markdown headers alone are insufficient. Prefer Markdown for simple prompts; add XML when sections need explicit boundaries.
 
 ## Emphasis
 
@@ -50,7 +67,29 @@ Use **bold** and numbered lists to highlight critical rules. For must-not-violat
 2. **When uncertain, prefer the cheaper route.** Only escalate when criteria are clearly met.
 ```
 
-Avoid ALL CAPS. Bold is the strongest reliable emphasis mechanism for OpenAI models.
+Avoid ALL CAPS. Bold is the strongest reliable emphasis mechanism for GPT-5.
+
+## Instruction hierarchy for conflicting rules
+
+GPT-5 expends significant reasoning effort trying to reconcile contradictory instructions. Avoid this by:
+
+1. **Ordering rules by priority** — place higher-priority rules first in numbered lists.
+2. **Adding explicit scope** — "In the case of X, rule A takes precedence over rule B."
+3. **Removing dead rules** — delete any rule that is always overridden by another.
+
+Bad (contradictory):
+
+```
+1. Default to the cheapest route for all requests.
+2. Always route code-related requests to opus.
+```
+
+Good (explicit priority):
+
+```
+1. Route code-related requests to opus.
+2. For all other requests, default to the cheapest route.
+```
 
 ## JSON Mode for Structured Output
 
@@ -58,7 +97,7 @@ Enable JSON mode to guarantee valid JSON responses:
 
 ```python
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="gpt-5",
     response_format={"type": "json_object"},
     messages=[...]
 )
@@ -131,9 +170,19 @@ When using chain-of-thought, include reasoning in the assistant turn but clearly
 {"role": "assistant", "content": "The request asks for a simple factual lookup with no analysis needed.\n\n{\"route\": \"haiku\"}"}
 ```
 
-## Chain-of-Thought
+GPT-5 is more concise by default than GPT-4o in few-shot responses — 3–5 examples is usually sufficient. Include boundary cases (requests that look like one route but belong to another) as these have the highest teaching value.
 
-For OpenAI models, request reasoning inline rather than in tagged blocks:
+## Chain-of-Thought vs Reasoning Effort
+
+GPT-5 has a built-in `reasoning_effort` parameter that controls internal chain-of-thought depth. For routing prompts, prefer using `reasoning_effort` over prompt-level CoT instructions:
+
+| Approach | When to use |
+|----------|-------------|
+| `reasoning_effort: "low"` or `"minimal"` | Most routing tasks — fast, cheap, sufficient for clear-cut classifications |
+| `reasoning_effort: "medium"` | Routing with subtle boundary cases or many overlapping routes |
+| Explicit prompt-level CoT | Only when you need the reasoning visible in the output (e.g., for debugging or auditing) |
+
+When you do need visible reasoning, keep the instructions concise:
 
 ```
 For each request, briefly state:
@@ -144,28 +193,43 @@ For each request, briefly state:
 Then output the JSON routing decision on the final line.
 ```
 
-Keep reasoning instructions concise — OpenAI models tend to be verbose when given open-ended reasoning prompts, which adds latency. Asking for "brief" reasoning controls output length.
+GPT-5 follows "brief" literally — it will not over-elaborate like GPT-4o did. Avoid open-ended reasoning prompts; they are unnecessary with GPT-5's improved instruction-following.
+
+## Markdown Formatting in Output
+
+GPT-5's API does not format responses in Markdown by default. For routing prompts this is desirable — you want raw JSON, not Markdown-wrapped output. Do **not** include Markdown formatting instructions in routing prompts.
+
+If you ever need Markdown in the output for a non-routing use case, you must explicitly request it: "Use Markdown **only where semantically correct** (e.g., `inline code`, ```code fences```, lists, tables)." Note that Markdown adherence may degrade over long conversations.
+
+## Verbosity Control
+
+GPT-5 supports a `verbosity` parameter that controls answer length independently from reasoning depth. For routing prompts:
+
+- Use low verbosity (or omit the parameter) — routing output should be a single JSON object.
+- The prompt-level instruction "Respond with exactly one JSON object" is sufficient to keep output minimal, but `verbosity` provides an additional API-level guarantee.
 
 ## Classification Cookbook Pattern
 
-OpenAI's recommended classification structure adapted for routing:
+GPT-5's recommended classification structure adapted for routing:
 
-1. **System message:** Role + route definitions (Markdown headers) + ordered rules (numbered list) + output format
-2. **Few-shot turns:** 3–6 user/assistant pairs covering each route, including boundary cases
+1. **System message:** Role + route definitions (Markdown headers or XML blocks) + ordered rules (numbered list, priority-first) + output format
+2. **Few-shot turns:** 3–5 user/assistant pairs covering each route, including boundary cases
 3. **Final user turn:** The actual request to classify
 4. **Response format:** JSON mode enabled, or function calling for enum-constrained output
+5. **Reasoning effort:** `low` or `minimal` for straightforward routing; `medium` for complex taxonomies
 
-This three-part message structure (system, examples-as-turns, query) is the recommended skeleton for all OpenAI routing prompts.
+This message structure (system, examples-as-turns, query) with low reasoning effort is the recommended skeleton for all GPT-5 routing prompts.
 
 ## Practical Differences from Claude Prompts
 
 When converting a routing prompt between providers:
 
-| Aspect | Claude | OpenAI |
+| Aspect | Claude | GPT-5 |
 |---|---|---|
-| Structure | XML tags (`<routes>`, `<rules>`) | Markdown headers, bold, lists |
+| Structure | XML tags (`<routes>`, `<rules>`) | Markdown headers + optional XML for complex blocks |
 | Examples | `<example>` blocks in system prompt | User/assistant turn pairs |
 | Output control | Assistant prefill | JSON mode or function calling |
 | Emphasis | `<important>` tags | **Bold** text |
-| Reasoning | `<thinking>` tags | Inline reasoning before JSON |
-| Length tolerance | High — more detail helps | Moderate — concise rules preferred |
+| Reasoning | `<thinking>` tags | `reasoning_effort` parameter; inline CoT only when visible reasoning needed |
+| Length tolerance | High — more detail helps | Moderate — concise, non-contradictory rules preferred |
+| Contradictions | Handles gracefully | Burns reasoning tokens reconciling — must be eliminated |
