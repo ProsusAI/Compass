@@ -196,7 +196,6 @@ class Example(BaseModel):
     input: str
     expected: Expected
     split: Literal["dev", "holdout"]
-    metadata: dict[str, Any] | None = None
 
 
 class TokenUsage(BaseModel):

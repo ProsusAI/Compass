@@ -264,14 +264,6 @@ class TestCheckSchemaConformance:
         assert rir_finding.status == "fail"
         assert 2 in rir_finding.row_indices
 
-    def test_null_optional_field_detected(self) -> None:
-        """Null in a non-required field (metadata) is detected."""
-        row = _valid_row(metadata=None)
-        findings = check_schema_conformance([row])
-        null_finding = next(f for f in findings if f.field == "null_fields")
-        assert null_finding.status == "fail"
-        assert 0 in null_finding.row_indices
-
     def test_null_in_expected_subfield_detected(self) -> None:
         """Null in expected.routes.*.cost is detected."""
         row = _valid_row()

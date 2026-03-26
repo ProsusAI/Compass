@@ -29,12 +29,6 @@ JSONL — one JSON object per line. UTF-8 encoded. Blank lines and trailing newl
 | `cost` | `number` | Cost per call for that model |
 | `quality_score` | `number` | Quality score for that model |
 
-## Optional Fields
-
-| Field | Type | Description |
-|---|---|---|
-| `metadata` | `object` | Arbitrary additional context. Not validated beyond type. |
-
 ## Schema Constraints
 
 1. **No null values** in required fields.
@@ -68,7 +62,7 @@ Non-normative starting point for auto-mapping user field names to target fields.
 ```
 
 ```json
-{"id": "ex-2", "input": "What is my account balance?", "expected": {"route": "haiku", "routes": {"opus": {"cost": 0.05, "quality_score": 0.65}, "sonnet": {"cost": 0.01, "quality_score": 0.62}, "haiku": {"cost": 0.002, "quality_score": 0.60}}}, "split": "holdout", "metadata": {"source": "production_logs"}}
+{"id": "ex-2", "input": "What is my account balance?", "expected": {"route": "haiku", "routes": {"opus": {"cost": 0.05, "quality_score": 0.65}, "sonnet": {"cost": 0.01, "quality_score": 0.62}, "haiku": {"cost": 0.002, "quality_score": 0.60}}}, "split": "holdout"}
 ```
 
 ### Invalid
