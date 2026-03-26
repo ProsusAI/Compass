@@ -38,7 +38,7 @@ Phase 1 — Ingestion & Mapping (conversational)
     ↓
 Phase 2 — Validation & Reporting (autonomous, unchanged)
   7. Call validate_dataset(transformed_path)
-  8. Interpret results, write data quality report (existing 6 sections)
+  8. Interpret results, write data quality report (5 sections + routing context)
   9. Set context dict keys for downstream
 ```
 
@@ -67,7 +67,17 @@ Phase 2 — Validation & Reporting (autonomous, unchanged)
 | `nested_paths` | Dot-path keys for nested objects (e.g. `expected.route`) |
 | `sample_rows` | First 5 rows as dicts — the LLM inspects values to reason about ambiguous mappings |
 
-Fails with `ToolError` if format is unrecognizable or file is empty.
+### Error cases
+
+| Condition | Behavior |
+|-----------|----------|
+| Unrecognizable format | `ToolError` with detected extension and first 200 chars of content |
+| Empty file | `ToolError` — "file is empty" |
+| CSV with inconsistent column counts | Parse with the header row's column count; rows with mismatched columns get `null` for missing fields, extras are dropped |
+| JSON file that is not an array of objects | `ToolError` — "expected a JSON array of objects" |
+| JSONL with some invalid lines | Skip invalid lines; include `skipped_lines: [line_numbers]` in the return value |
+| Non-UTF-8 encoding | Attempt UTF-8 with `errors="replace"`; include a warning in the return value |
+| Large files (>10k rows) | Parse all rows for `num_rows` and `columns`, but `sample_rows` is still only the first 5 |
 
 ## New MCP Tool: `transform_dataset`
 
@@ -75,8 +85,8 @@ Fails with `ToolError` if format is unrecognizable or file is empty.
 
 **Inputs:**
 - `dataset_path: str` — original file path
-- `field_mapping: str` — JSON object mapping source fields to target fields (e.g. `{"prompt": "input", "model_tier": "expected.route"}`)
-- `output_path: str` — where to write the transformed JSONL
+- `field_mapping: str` — JSON object where **keys are source field names** and **values are canonical target field names** (e.g. `{"prompt": "input", "model_tier": "expected.route"}`)
+- `output_path: str` — where to write the transformed JSONL (convention: `data/transformed_<source_filestem>.jsonl`; overwrite if file exists)
 
 **Returns** (JSON):
 ```json
@@ -88,11 +98,27 @@ Fails with `ToolError` if format is unrecognizable or file is empty.
 }
 ```
 
+### Mapping syntax
+
+Keys are source field names (or dot-paths for nested sources). Values are canonical target field names.
+
+| Source shape | Mapping example | Result |
+|-------------|----------------|--------|
+| Flat → flat | `{"prompt": "input"}` | `{"input": "<value>"}` |
+| Flat → nested | `{"tier": "expected.route"}` | `{"expected": {"route": "<value>"}}` |
+| Nested → nested | `{"result.tier": "expected.route"}` | `{"expected": {"route": "<value>"}}` |
+| Multi-model routes | `{"routes": "expected.routes"}` | Passthrough: copies the object as-is |
+| Flat per-model columns | `{"opus_cost": "expected.routes.opus.cost", "opus_quality": "expected.routes.opus.quality_score"}` | `{"expected": {"routes": {"opus": {"cost": ..., "quality_score": ...}}}}` |
+
+The `expected.routes` structure is the most complex case. The tool supports two patterns:
+1. **Object passthrough** — source has a nested routes-like object → map it directly
+2. **Column expansion** — source has flat columns like `<model>_cost`, `<model>_quality` → the LLM constructs explicit per-field mappings and the tool assembles the nested structure
+
 Behavior:
 - Re-parses the source file, applies the mapping, writes one JSONL line per row
 - Generates `id` fields if none exist (`row-0`, `row-1`, ...)
-- Does **not** set `split` — that's the Routing Analysis Agent's job downstream
-- Fails with `ToolError` if required target fields aren't covered by the mapping
+- Does **not** set `split` — the Routing Analysis Agent assigns splits downstream. The `split` field in the format spec is marked as required in the *final* canonical form but is not expected at this stage. Phase 2 validation does not check for `split` (the existing `check_schema_conformance` only checks `id`, `input`, `expected`).
+- Fails with `ToolError` if required target fields (`input`, `expected.route`, `expected.routes`) aren't covered by the mapping
 
 ## System Prompt Changes (`data_validation_system.md`)
 
@@ -115,7 +141,7 @@ Added before the existing workflow:
 ### Phase 2 section (existing, minor changes)
 
 - Operates on the transformed file path (or original if Phase 1 was skipped)
-- "You do not interact with the user directly" line removed (Phase 1 is conversational)
+- "You do not interact with the user directly" line removed — replaced with phase-specific guidance: Phase 1 is conversational, Phase 2 is autonomous (produce the report without user interaction)
 
 ### Available tools
 
@@ -125,14 +151,31 @@ Updated to list all three: `detect_and_parse_dataset`, `transform_dataset`, `val
 
 Unchanged — they only apply to Phase 2.
 
+## Conversation Flow
+
+The Data Validation Agent is activated by the pipeline orchestrator (Claude Code) after the User Input Agent calls `submit_input_report`. The orchestrator loads the `odysseus_data_validation` prompt, which injects the system prompt.
+
+**Phase 1 (conversational):** The agent talks to the user to confirm field mappings. This phase ends when `transform_dataset` completes successfully. If the source is already canonical JSONL, Phase 1 is skipped entirely (no user interaction needed).
+
+**Phase 2 (autonomous):** The agent calls `validate_dataset`, interprets results, and writes the data quality report. No user interaction — the report is the output. If critical issues are found, the report surfaces them; the orchestrator decides whether to loop back to the user.
+
+**Canonical detection criteria:** Phase 1 is skipped when `detect_and_parse_dataset` returns `source_format: "jsonl"` and the `columns` match the required canonical fields (`id`, `input`, `expected`) and the `sample_rows` show the expected nested structure (`expected.route`, `expected.routes`).
+
 ## User Input Agent Handoff Update (`user_input_system.md`)
 
-The User Input Agent's prompt currently treats Data Validation as a silent sub-step it dispatches and mediates. This changes to a clean handoff:
+The User Input Agent's prompt currently treats Data Validation as a silent sub-step it dispatches and mediates. This changes to a clean handoff.
 
-- Update the "Data Validation agent" section to clarify the full pipeline flow: User Input → Data Validation → Routing Analysis
-- Make explicit that after `submit_input_report`, the Data Validation Agent activates and may talk to the user directly to confirm field mappings
-- Remove the implication that User Input mediates validation issues — Data Validation handles that directly with the user
-- The User Input Agent's job is done once it produces the validated input report
+Replace the "Data Validation agent" section (current lines 63-73) with:
+
+> ## Pipeline handoff
+>
+> Once you have produced the validated input report and the user has confirmed it, call the `submit_input_report` tool. This triggers the next pipeline stage — the Data Validation Agent.
+>
+> The pipeline flow after your handoff:
+> 1. **Data Validation Agent** — ingests the dataset (CSV/JSON/JSONL), confirms field mappings with the user if needed, transforms to canonical format, then validates and produces a quality report.
+> 2. **Routing Analysis Agent** — annotates and splits the validated dataset.
+>
+> Your job is done after calling `submit_input_report`. The Data Validation Agent owns the conversation from that point — it will talk to the user directly if field mapping confirmation is needed. Do not attempt to mediate validation issues.
 
 ## Pipeline Integration
 
@@ -159,6 +202,16 @@ The User Input Agent's prompt currently treats Data Validation as a silent sub-s
 | CSV | `.csv` extension or comma-delimited content | Headers required |
 | JSON | `.json` extension, content is a JSON array | Array of objects |
 | JSONL | `.jsonl` extension or newline-delimited JSON | One object per line |
+
+## Integration Tests
+
+Per project conventions, add integration test scenarios in `tests/scenarios/` covering:
+
+- CSV ingestion with auto-mapping and user confirmation
+- JSON array ingestion with nested field mapping
+- Already-canonical JSONL — Phase 1 skip
+- Ambiguous mapping requiring per-field clarification
+- Mapping with flat per-model columns → nested `expected.routes` construction
 
 ## Out of Scope
 
