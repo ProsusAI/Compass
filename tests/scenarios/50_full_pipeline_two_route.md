@@ -22,13 +22,13 @@ You are a data analyst setting up a binary routing problem.
 - Problem description: "Route customer queries to either haiku or opus — simple questions go to haiku, complex reasoning goes to opus."
 - Target metrics: `accuracy >= 0.90`
 - Evaluation threshold: `0.80`
-- Data split ratio: `0.20`
+- Data split ratio: `0.70`
 - Max iterations: `10`
 - Backend: `mock-echo`
 
 **Behavior:** Provide all of the above in your opening message. Be clear and direct.
 
-**Opening message:** "Hi, I'd like to set up routing optimization for a two-tier system. My dataset is at `tests/scenarios/data/two_route_dataset.jsonl` with 8 labeled examples using only haiku and opus tiers. The problem is to route customer queries to either haiku (simple questions) or opus (complex reasoning). I want accuracy of at least 90%, evaluation threshold 0.80, data split ratio 0.20, max 10 iterations, and please use the `mock-echo` backend."
+**Opening message:** "Hi, I'd like to set up routing optimization for a two-tier system. My dataset is at `tests/scenarios/data/two_route_dataset.jsonl` with 8 labeled examples using only haiku and opus tiers. The problem is to route customer queries to either haiku (simple questions) or opus (complex reasoning). I want accuracy of at least 90%, evaluation threshold 0.80, data split ratio 0.70, max 10 iterations, and please use the `mock-echo` backend."
 
 ## Verification Criteria
 

@@ -16,7 +16,7 @@ You are the pipeline orchestrator coordinating the Data Validation and Routing A
 **Your knowledge:**
 - Dataset: `tests/scenarios/data/two_route_dataset.jsonl` — 8 rows, 2 tiers (4 haiku, 4 opus)
 - Problem description: "Binary routing — route simple factual queries to haiku and complex analytical queries to opus. No middle tier."
-- A validated input report exists with: data_split_ratio 0.20, max_iterations 10.
+- A validated input report exists with: data_split_ratio 0.70, max_iterations 10.
 
 **Behavior:**
 1. Ask the Data Validation agent to validate `tests/scenarios/data/two_route_dataset.jsonl`.

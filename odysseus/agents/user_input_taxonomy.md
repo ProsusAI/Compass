@@ -12,11 +12,11 @@ whether to proceed, apply defaults, or request clarification.
 
 | Field | Classification | Rationale | Default |
 |---|---|---|---|
-| `routing_dataset` | Blocking | No default can substitute real labeled routing data | — |
+| `routing_dataset` | Blocking | No default can substitute a reference to real labeled routing data; contents validated downstream by Data Validation agent | — |
 | `problem_description` | Blocking | Analysis agent cannot extract patterns without it | — |
 | `target_metrics` | Non-blocking | Metrics are fixed in THP-69 context; F1 is a strong general-purpose default | F1 score |
 | `evaluation_threshold` | Non-blocking | Conservative threshold consistent with routing literature | 0.80 |
-| `data_split_ratio` | Non-blocking | 80/20 is a well-established standard | 0.20 |
+| `data_split_ratio` | Non-blocking | 30/70 is a well-established standard | 0.70 |
 | `max_iterations` | Non-blocking | Bounds cost while allowing convergence | 10 |
 
 ## Status Decision Logic

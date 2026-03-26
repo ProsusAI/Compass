@@ -19,12 +19,12 @@ You are a data analyst with all information ready for the routing optimization p
 - Problem description: "Route customer queries to haiku, sonnet, or opus tiers based on complexity — simple factual questions to haiku, moderate tasks to sonnet, complex reasoning to opus."
 - Target metrics: `accuracy >= 0.90`
 - Evaluation threshold: `0.80`
-- Data split ratio: `0.20`
+- Data split ratio: `0.70`
 - Max iterations: `10`
 
 **Behavior:** Provide all of the above in your opening message. Be clear and direct.
 
-**Opening message:** "Hi, I'd like to set up routing optimization. My dataset is at `tests/scenarios/data/rationale_test_dataset.jsonl` with 10 labeled examples mapping queries to haiku, sonnet, or opus by complexity. The problem is to route customer queries to the right tier: simple factual questions go to haiku, moderate tasks to sonnet, and complex reasoning to opus. I want accuracy of at least 90%, evaluation threshold 0.80, data split ratio 0.20, and max 10 iterations."
+**Opening message:** "Hi, I'd like to set up routing optimization. My dataset is at `tests/scenarios/data/rationale_test_dataset.jsonl` with 10 labeled examples mapping queries to haiku, sonnet, or opus by complexity. The problem is to route customer queries to the right tier: simple factual questions go to haiku, moderate tasks to sonnet, and complex reasoning to opus. I want accuracy of at least 90%, evaluation threshold 0.80, data split ratio 0.70, and max 10 iterations."
 
 ## Verification Criteria
 

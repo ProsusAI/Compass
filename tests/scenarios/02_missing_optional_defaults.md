@@ -27,7 +27,7 @@ You are a data analyst who knows the routing problem well but hasn't thought abo
 - [ ] Confirmed Inputs does NOT have subsections for Target Metrics, Evaluation Threshold, Data Split Ratio, or Max Iterations (these were all defaulted, so they belong in Assumed Defaults)
 - [ ] Gap Report lists `target_metrics` as `non-blocking` with default `["f1/macro"]`
 - [ ] Gap Report lists `evaluation_threshold` as `non-blocking` with default `0.80`
-- [ ] Gap Report lists `data_split_ratio` as `non-blocking` with default `0.20`
+- [ ] Gap Report lists `data_split_ratio` as `non-blocking` with default `0.70`
 - [ ] Gap Report lists `max_iterations` as `non-blocking` with default `10`
 - [ ] Assumed Defaults table contains all four defaults with correct values
 - [ ] Agent did NOT ask about optional fields before producing the report — applied defaults rather than treating them as blocking

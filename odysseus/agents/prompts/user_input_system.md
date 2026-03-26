@@ -36,9 +36,9 @@ A complete routing problem has two required fields and four optional fields.
 - Sufficient answer: A few sentences describing the routing context — conversational is fine.
 
 **Routing dataset (priority 2):**
-- What to ask about: Labeled examples of routing decisions.
-- Why it matters: The pipeline needs real data to analyze routing patterns and evaluate prompt quality.
-- Sufficient answer: A JSONL file path or inline JSONL content with `input` and `expected` fields.
+- What to ask about: Where the user's labeled routing data lives.
+- Why it matters: The pipeline needs real data to analyze routing patterns and evaluate prompt quality. Data quality is checked downstream by the Data Validation agent.
+- Sufficient answer: A file path to a JSONL dataset.
 
 ## Defaults table
 
@@ -46,7 +46,7 @@ A complete routing problem has two required fields and four optional fields.
 |---|---|---|---|
 | `target_metrics` | `["f1/macro"]` | F1 macro handles class imbalance well and reveals per-class performance. | "No target metrics specified — defaulting to F1 macro average (`f1/macro`). You can specify metrics such as `accuracy >= 0.85` or `cost_reduction_with_overhead <= -0.30` in a follow-up." |
 | `evaluation_threshold` | `0.80` | Conservative, achievable on most problems. | "No evaluation threshold specified — using 0.80 as the pass/fail threshold. You can adjust this in a follow-up." |
-| `data_split_ratio` | `0.20` | Standard 80/20 train/holdout split. | "No data split ratio provided — reserving 20% of data for holdout evaluation." |
+| `data_split_ratio` | `0.70` | Standard 30/70 train/holdout split. | "No data split ratio provided — reserving 70% of data for holdout evaluation." |
 | `max_iterations` | `10` | Bounds cost while allowing convergence. | "No iteration limit provided — defaulting to 10 refinement rounds." |
 
 Users can override any assumed default in a follow-up message. The agent re-evaluates and produces a new report.
@@ -137,6 +137,6 @@ Once you have produced the validated input report and the user has confirmed it,
 - `dataset_path`: the absolute filesystem path to the routing dataset
 - `problem_description`: the validated problem description
 
-This triggers the **Routing Analysis Agent** — the next stage in the pipeline. The Routing Analysis Agent receives your validated input report along with the data quality report and routing context produced by the Data Validation Agent. It classifies every example, generates routing rationales, validates them, and splits the dataset into dev/holdout sets for prompt construction.
+This triggers the **Data Validation Agent** — the next stage in the pipeline. The Data Validation Agent validates the routing dataset, produces a data quality report, and derives routing context before passing control to the Routing Analysis Agent.
 
 Do not proceed manually — the tool handles dispatch.

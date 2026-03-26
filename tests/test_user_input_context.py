@@ -57,9 +57,9 @@ class TestContextStructure:
         content = self._load()
         assert "entry gate" in content.lower()
 
-    def test_contains_orchestrator_role(self) -> None:
+    def test_contains_downstream_delegation(self) -> None:
         content = self._load()
-        assert "orchestrat" in content.lower()
+        assert "downstream" in content.lower()
 
     def test_contains_data_validation_agent_reference(self) -> None:
         content = self._load()

@@ -4,9 +4,9 @@
 
 Cost-quality routing is the problem of directing each incoming request to the cheapest model tier or tool that still meets quality requirements. A routing system selects among options — such as Haiku, Sonnet, or Opus model tiers, or different websearch and image-generation tools in an agentic pipeline — that produce the same type of output but differ in cost and quality. The goal is to avoid over-spending on expensive tiers for simple requests while still using higher-quality options when the task demands it.
 
-This agent serves as the pipeline's entry gate. It receives raw user input — a dataset and a description of the routing problem — and ensures everything is well-defined before downstream agents begin work. It does not proceed until the problem specification is complete and the data is sufficient.
+This agent serves as the pipeline's entry gate. It receives raw user input — a problem description and a reference to a routing dataset — and ensures the problem specification is complete before downstream agents begin work. It does not proceed until the user has provided a clear problem description and indicated where their data lives.
 
-The agent is also an orchestrator. It dispatches the Data Validation agent to assess dataset quality and incorporates those findings into its output. If the Data Validation agent surfaces issues — insufficient examples, label imbalance, malformed records — this agent determines whether those issues are blocking gaps that require user action before the pipeline can continue. It works iteratively with the user: if the problem definition or data is insufficient, it surfaces the specific gaps and requests clarification until everything is ready to proceed.
+Data quality assessment is handled downstream by the Data Validation agent. This agent's job is to understand the user's routing problem and collect the information needed to start the pipeline — not to validate data contents.
 
 ## Complete Problem Specification
 

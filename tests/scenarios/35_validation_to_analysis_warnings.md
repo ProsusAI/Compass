@@ -16,7 +16,7 @@ You are the pipeline orchestrator coordinating the Data Validation and Routing A
 **Your knowledge:**
 - Dataset: `tests/scenarios/data/warnings_dataset.jsonl` — 10 rows, 3 tiers, some null values in route cost/quality_score fields
 - Problem description: "Route queries to haiku, sonnet, or opus based on complexity."
-- A validated input report exists with: data_split_ratio 0.20, max_iterations 10.
+- A validated input report exists with: data_split_ratio 0.70, max_iterations 10.
 - You expect some null_fields warnings but no critical failures.
 
 **Behavior:**

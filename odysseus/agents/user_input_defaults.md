@@ -10,7 +10,7 @@ input report.
 |---|---|---|---|
 | `target_metrics` | `["f1/macro"]` | F1 macro is a strong general-purpose metric for routing problems — it handles class imbalance well and reveals per-class performance, unlike accuracy which can mask poor routing on minority classes. | "No target metrics specified — defaulting to F1 macro average (`f1/macro`). You can specify metrics such as `accuracy >= 0.85` or `cost_reduction_with_overhead <= -0.30` in a follow-up." |
 | `evaluation_threshold` | `0.80` | Conservative pass threshold consistent with routing literature — high enough to ensure meaningful quality, low enough to be achievable on most problems. | "No evaluation threshold specified — using 0.80 as the pass/fail threshold. You can adjust this in a follow-up." |
-| `data_split_ratio` | `0.70` | 30/70 train/holdout split is the standard for supervised evaluation — balances having enough training data with a reliable holdout estimate. | "No data split ratio provided — reserving 20% of data for holdout evaluation." |
+| `data_split_ratio` | `0.70` | 30/70 train/holdout split is the standard for supervised evaluation — balances having enough training data with a reliable holdout estimate. | "No data split ratio provided — reserving 70% of data for holdout evaluation." |
 | `max_iterations` | `10` | Bounds compute cost while allowing sufficient convergence — most routing problems converge within 5–8 rounds; 10 provides headroom without unbounded spending. | "No iteration limit provided — defaulting to 10 refinement rounds." |
 
 ## Override Mechanism

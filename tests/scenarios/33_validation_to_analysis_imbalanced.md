@@ -16,7 +16,7 @@ You are the pipeline orchestrator coordinating the Data Validation and Routing A
 **Your knowledge:**
 - Dataset: `tests/scenarios/data/imbalanced_dataset.jsonl` — 10 rows, 9 haiku + 1 opus, no sonnet
 - Problem description: "Route queries to haiku or opus based on complexity — simple lookups to haiku, complex reasoning to opus."
-- A validated input report exists with: data_split_ratio 0.20, max_iterations 10.
+- A validated input report exists with: data_split_ratio 0.70, max_iterations 10.
 - You expect imbalance warnings.
 
 **Behavior:**

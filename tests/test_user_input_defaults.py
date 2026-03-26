@@ -78,9 +78,9 @@ class TestDefaultValues:
         content = DEFAULTS_PATH.read_text()
         assert "0.80" in content, "evaluation_threshold should default to 0.80"
 
-    def test_data_split_ratio_is_020(self) -> None:
+    def test_data_split_ratio_is_070(self) -> None:
         content = DEFAULTS_PATH.read_text()
-        assert "0.20" in content, "data_split_ratio should default to 0.20"
+        assert "0.70" in content, "data_split_ratio should default to 0.70"
 
     def test_max_iterations_is_10(self) -> None:
         content = DEFAULTS_PATH.read_text()

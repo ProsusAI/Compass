@@ -18,7 +18,7 @@ You are the pipeline orchestrator coordinating the Data Validation and Routing A
 **Your knowledge:**
 - Dataset: `tests/scenarios/data/borderline_dataset.jsonl` — 10 rows, 3 tiers, with deliberately ambiguous near-duplicate query intents
 - Problem description: "Route queries to haiku, sonnet, or opus based on complexity and depth required."
-- A validated input report exists with: data_split_ratio 0.20, max_iterations 10.
+- A validated input report exists with: data_split_ratio 0.70, max_iterations 10.
 
 **Behavior:**
 1. Ask the Data Validation agent to validate `tests/scenarios/data/borderline_dataset.jsonl`.

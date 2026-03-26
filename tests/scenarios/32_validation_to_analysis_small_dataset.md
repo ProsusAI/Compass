@@ -8,7 +8,7 @@
 - MCP tools: `validate_dataset`, `create_seed_registry`, `resolve_registry`, `validate_rationale_card_set`, `prune_registry`, `stratified_split`
 
 ## Scenario Description
-Data Validation validates a 5-row dataset (2 haiku, 2 opus, 1 sonnet). Validation passes with a volume `fail` verdict (treated as warning — does not block). Routing Analysis proceeds and must handle stratified_split on 5 rows with 0.20 holdout (~1 holdout row). Tests volume warning propagation and degenerate split handling.
+Data Validation validates a 5-row dataset (2 haiku, 2 opus, 1 sonnet). Validation passes with a volume `fail` verdict (treated as warning — does not block). Routing Analysis proceeds and must handle stratified_split on 5 rows with 0.70 holdout (~3-4 holdout rows). Tests volume warning propagation and degenerate split handling.
 
 ## User Simulator
 You are the pipeline orchestrator coordinating the Data Validation and Routing Analysis agents.
@@ -16,7 +16,7 @@ You are the pipeline orchestrator coordinating the Data Validation and Routing A
 **Your knowledge:**
 - Dataset: `tests/scenarios/data/valid_dataset.jsonl` — 5 rows, 3 tiers (2 haiku, 2 opus, 1 sonnet)
 - Problem description: "Route queries to haiku, sonnet, or opus based on complexity."
-- A validated input report exists with: data_split_ratio 0.20, max_iterations 10.
+- A validated input report exists with: data_split_ratio 0.70, max_iterations 10.
 - You expect volume warnings because tiers have fewer than 5 examples each.
 
 **Behavior:**

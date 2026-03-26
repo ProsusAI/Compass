@@ -43,7 +43,7 @@ You are the pipeline orchestrator providing context and monitoring the Routing A
 **Your knowledge:**
 - Dataset has 10 examples across 3 tiers (haiku, sonnet, opus)
 - Expected output: dev.jsonl, holdout.jsonl, dev_rationale_card_set.json, holdout_rationale_card_set.json, split_report.json, vocabulary_registry.json
-- Default split ratio: 0.80 dev / 0.20 holdout
+- Default split ratio: 0.30 dev / 0.70 holdout
 
 **Behavior:**
 1. Provide all four context dict keys to the agent.

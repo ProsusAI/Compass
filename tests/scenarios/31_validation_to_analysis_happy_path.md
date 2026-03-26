@@ -16,7 +16,7 @@ You are the pipeline orchestrator coordinating the Data Validation and Routing A
 **Your knowledge:**
 - Dataset: `tests/scenarios/data/rationale_test_dataset.jsonl` — 10 labeled routing examples, 3 tiers (haiku/sonnet/opus)
 - Problem description: "Route customer queries to haiku, sonnet, or opus tiers based on complexity — simple factual questions to haiku, moderate tasks to sonnet, complex reasoning to opus."
-- A validated input report exists with: accuracy >= 0.90 target, evaluation_threshold 0.80, data_split_ratio 0.20, max_iterations 10.
+- A validated input report exists with: accuracy >= 0.90 target, evaluation_threshold 0.80, data_split_ratio 0.70, max_iterations 10.
 
 **Behavior:**
 1. Ask the Data Validation agent to validate `tests/scenarios/data/rationale_test_dataset.jsonl`.
