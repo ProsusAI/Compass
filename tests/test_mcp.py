@@ -20,11 +20,17 @@ async def test_server_has_tools():
     assert "optimize_routing_prompt" in tool_names
 
 
-async def test_run_holdout_eval_is_stub():
+async def test_run_holdout_eval_is_stub(tmp_path: Path):
     """run_holdout_eval is still a stub (out of THP-129 scope)."""
     from odysseus.mcp import run_holdout_eval
 
-    result = await run_holdout_eval(prompt_version="v1", data_source="data/test.jsonl")
+    # Set up guard artifact
+    search_dir = tmp_path / "outputs" / "test_run" / "search"
+    search_dir.mkdir(parents=True)
+    (search_dir / "search_state.json").write_text("{}")
+
+    with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+        result = await run_holdout_eval(prompt_version="v1", data_source="data/test.jsonl", run_id="test_run")
     assert "stub" in result
 
 
@@ -363,6 +369,66 @@ class TestModelSpecificConventions:
         with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-5.2-turbo-preview")
             assert result == ""
+
+
+class TestGetPipelineStatus:
+    """Tests for the get_pipeline_status MCP tool."""
+
+    async def test_tool_registered(self):
+        """get_pipeline_status is listed as an MCP tool."""
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "get_pipeline_status" in tool_names
+
+    async def test_returns_checklist(self, tmp_path: Path):
+        """get_pipeline_status returns a JSON checklist."""
+        from odysseus.mcp import get_pipeline_status
+
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            result = await get_pipeline_status()
+        data = json.loads(result)
+        assert "current_stage" in data
+        assert "next_action" in data
+
+    async def test_returns_checklist_with_run_id(self, tmp_path: Path):
+        """get_pipeline_status with a run_id returns its status."""
+        from odysseus.mcp import get_pipeline_status
+
+        # Create a run
+        input_dir = tmp_path / "outputs" / "abc123" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "input_report.md").write_text("# Report")
+
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+            result = await get_pipeline_status(run_id="abc123")
+        data = json.loads(result)
+        assert data["run_id"] == "abc123"
+        assert data["current_stage"] >= 2
+
+
+class TestGuardRejection:
+    """Tests that guards reject tools when prerequisites are missing."""
+
+    async def test_validate_dataset_rejects_without_input_report(self, tmp_path: Path):
+        from odysseus.mcp import validate_dataset
+
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path), pytest.raises(
+            ToolError, match="Pipeline precondition not met"
+        ):
+            await validate_dataset(dataset_path="/some/path.jsonl", run_id="no_such_run")
+
+    async def test_create_seed_registry_rejects_without_validation(self, tmp_path: Path):
+        from odysseus.mcp import create_seed_registry_tool
+
+        # Create input report but no validation artifacts
+        input_dir = tmp_path / "outputs" / "test_run" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "input_report.md").write_text("# Report")
+
+        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path), pytest.raises(
+            ToolError, match="Pipeline precondition not met"
+        ):
+            await create_seed_registry_tool(run_id="test_run")
 
 
 class TestSubmitInputReportPersistence:
