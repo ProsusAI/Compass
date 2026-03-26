@@ -121,6 +121,7 @@ def compute_cost_quality_reduction(
     """
     zero_result = {
         "cost_reduction": 0.0,
+        "cost_reduction_with_overhead": 0.0,
         "quality_reduction": 0.0,
         "oracle_cost_reduction": 0.0,
         "oracle_quality_reduction": 0.0,
@@ -140,6 +141,7 @@ def compute_cost_quality_reduction(
     predicted_quality = 0.0
     oracle_cost = 0.0
     oracle_quality = 0.0
+    routing_overhead = 0.0
     counted = 0
 
     for r, ex in zip(results, examples, strict=True):
@@ -163,13 +165,20 @@ def compute_cost_quality_reduction(
         predicted_quality += (routes[pred_route].quality_score or 0.0) if pred_route else 0.0
         oracle_cost += routes[oracle_route].cost or 0.0
         oracle_quality += routes[oracle_route].quality_score or 0.0
+        routing_overhead += r.cost or 0.0
         counted += 1
 
     if counted == 0:
         return zero_result
 
+    cost_reduction = (predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
+    cost_reduction_with_overhead = (
+        (predicted_cost + routing_overhead - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
+    )
+
     return {
-        "cost_reduction": ((predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0),
+        "cost_reduction": cost_reduction,
+        "cost_reduction_with_overhead": cost_reduction_with_overhead,
         "quality_reduction": (
             (predicted_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
         ),

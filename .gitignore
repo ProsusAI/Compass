@@ -226,3 +226,4 @@ prompts/*.yml
 
 # Generated test artifacts
 tests/scenarios/data/holdout_filtered.jsonl
+.worktrees/
