@@ -371,6 +371,7 @@ async def run_eval(
             "data_source": data_source,
             "backend": backend,
             "config_path": config_path,
+            "run_id": run_id,
         }
     )
 

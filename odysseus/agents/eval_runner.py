@@ -44,6 +44,8 @@ class EvalRunnerAgent(BaseAgent):
             data_source: str — path to the JSONL dataset.
             backend: str — backend label matching a profile in backends/.
             config_path: str — path to YAML run config (optional, defaults to outputs/run_config.yaml).
+            run_id: str | None — pipeline run identifier; when provided, prompts are loaded
+                from outputs/<run_id>/prompts/ instead of the top-level prompts/ directory.
 
         Returns:
             Dict with ScoreReport.CONTEXT_KEY -> ScoreReport on success,
@@ -53,6 +55,7 @@ class EvalRunnerAgent(BaseAgent):
         data_source = context.get("data_source", "")
         backend_label = context.get("backend", "default")
         config_path = context.get("config_path", "outputs/run_config.yaml")
+        run_id: str | None = context.get("run_id")
 
         # 1. Load and validate run config from YAML
         try:
@@ -69,7 +72,7 @@ class EvalRunnerAgent(BaseAgent):
 
         # 2. Wire dependencies
         try:
-            deps = self._wire_dependencies(config)
+            deps = self._wire_dependencies(config, run_id=run_id)
         except KeyError as e:
             return {"error": {"category": "not_found", "detail": str(e)}}
 
@@ -115,16 +118,21 @@ class EvalRunnerAgent(BaseAgent):
 
         return RunConfig.model_validate(config_data)
 
-    def _wire_dependencies(self, config: RunConfig) -> RunDependencies:
+    def _wire_dependencies(self, config: RunConfig, run_id: str | None = None) -> RunDependencies:
         """Construct RunDependencies from config."""
         project = get_project_dir()
         registry = BackendRegistry.from_directory(project / "backends")
         profile = registry.get_profile(config.backend)
         backend_instance = registry.create_backend(config.backend)
 
+        if run_id is not None:
+            prompts_dir = project / "outputs" / run_id / "prompts"
+        else:
+            prompts_dir = project / "prompts"
+
         return RunDependencies(
             backend=backend_instance,
-            prompt_manager=FilePromptManager(prompts_dir=project / "prompts"),
+            prompt_manager=FilePromptManager(prompts_dir=prompts_dir),
             dataset_manager=JsonlDatasetManager(),
             metrics_engine=create_default_engine(),
             results_collector=JsonResultsCollector(),
