@@ -91,11 +91,18 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         ["submit_input_report"],
         ["odysseus_routing_input"],
         (
-            "Spawn a sub-agent for Stage 1: Input Report. "
-            "Activate the `odysseus_routing_input` MCP prompt — it contains the agent's full workflow. "
-            "The agent may call these tools: get_pipeline_status, submit_input_report. "
-            "Do not call these tools yourself. "
-            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+            "<HARD_STOP>\n"
+            "You MUST NOT call any Stage 1 tools from the current context.\n\n"
+            "REQUIRED: Spawn a sub-agent before proceeding.\n"
+            "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+            "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+            "The sub-agent activates prompt: odysseus_routing_input\n"
+            "The sub-agent handles: get_pipeline_status, submit_input_report\n"
+            "You handle only: get_pipeline_status\n\n"
+            "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+            "If Stage 1 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "</HARD_STOP>\n\n"
+            "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
     2: (
@@ -104,12 +111,19 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         ["validate_dataset", "detect_and_parse_dataset", "transform_dataset", "save_routing_context"],
         ["odysseus_data_validation"],
         (
-            "Spawn a sub-agent for Stage 2: Data Validated. "
-            "Activate the `odysseus_data_validation` MCP prompt — it contains the agent's full workflow. "
-            "The agent may call these tools: get_pipeline_status, validate_dataset, "
-            "detect_and_parse_dataset, transform_dataset, save_routing_context. "
-            "Do not call these tools yourself. "
-            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+            "<HARD_STOP>\n"
+            "You MUST NOT call any Stage 2 tools from the current context.\n\n"
+            "REQUIRED: Spawn a sub-agent before proceeding.\n"
+            "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+            "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+            "The sub-agent activates prompt: odysseus_data_validation\n"
+            "The sub-agent handles: get_pipeline_status, validate_dataset, "
+            "detect_and_parse_dataset, transform_dataset, save_routing_context\n"
+            "You handle only: get_pipeline_status\n\n"
+            "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+            "If Stage 2 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "</HARD_STOP>\n\n"
+            "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
     3: (
@@ -124,13 +138,20 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         ],
         ["odysseus_routing_analysis"],
         (
-            "Spawn a sub-agent for Stage 3: Routing Analysis & Split. "
-            "Activate the `odysseus_routing_analysis` MCP prompt — it contains the agent's full workflow. "
-            "The agent may call these tools: get_pipeline_status, create_seed_registry_tool, "
+            "<HARD_STOP>\n"
+            "You MUST NOT call any Stage 3 tools from the current context.\n\n"
+            "REQUIRED: Spawn a sub-agent before proceeding.\n"
+            "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+            "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+            "The sub-agent activates prompt: odysseus_routing_analysis\n"
+            "The sub-agent handles: get_pipeline_status, create_seed_registry_tool, "
             "resolve_registry_tool, validate_rationale_card_set_tool, prune_registry_tool, "
-            "stratified_split_tool. "
-            "Do not call these tools yourself. "
-            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+            "stratified_split_tool\n"
+            "You handle only: get_pipeline_status\n\n"
+            "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+            "If Stage 3 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "</HARD_STOP>\n\n"
+            "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
     4: (
@@ -139,24 +160,49 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         [],
         ["odysseus_backend_setup"],
         (
-            "Spawn a sub-agent for Stage 4: Backend Configured. "
-            "Activate the `odysseus_backend_setup` MCP prompt — it contains the agent's full workflow. "
-            "The agent may call: get_pipeline_status. "
-            "Do not perform backend setup yourself. "
-            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+            "<HARD_STOP>\n"
+            "You MUST NOT perform backend setup from the current context.\n\n"
+            "REQUIRED: Spawn a sub-agent before proceeding.\n"
+            "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+            "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+            "The sub-agent handles: get_pipeline_status, get_default_pricing\n"
+            "You handle only: get_pipeline_status\n\n"
+            "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+            "If Stage 4 is not complete, re-dispatch the sub-agent. Do not perform backend setup yourself.\n"
+            "</HARD_STOP>\n\n"
+            "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
     5: (
         "Compile the initial routing prompt (v1). "
         "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any stage 5 tools.",
-        ["optimize_routing_prompt"],
+        [
+            "init_search_state_tool",
+            "register_candidate_tool",
+            "record_eval_result_tool",
+            "advance_round_tool",
+            "get_search_state_tool",
+            "run_eval",
+            "filter_holdout_dataset_tool",
+        ],
         ["odysseus_prompt_builder"],
         (
-            "Spawn a sub-agent for Stage 5: Prompt v1 Compiled. "
-            "Activate the `odysseus_prompt_builder` MCP prompt — it contains the agent's full workflow. "
-            "The agent may call these tools: get_pipeline_status, optimize_routing_prompt. "
-            "Do not call these tools yourself. "
-            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+            "<HARD_STOP>\n"
+            "You MUST NOT call any Stage 5 tools from the current context.\n\n"
+            "REQUIRED: Spawn a sub-agent before proceeding.\n"
+            "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+            "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+            "The sub-agent activates prompt: odysseus_prompt_builder\n"
+            "The sub-agent handles: get_pipeline_status, init_search_state_tool, "
+            "register_candidate_tool, record_eval_result_tool, advance_round_tool, "
+            "get_search_state_tool, run_eval, filter_holdout_dataset_tool\n"
+            "You handle only: get_pipeline_status\n\n"
+            "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only).\n"
+            "It is NOT a stage 5 sub-agent tool and must not be called from within the sub-agent.\n\n"
+            "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+            "If Stage 5 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "</HARD_STOP>\n\n"
+            "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
     6: (
@@ -174,14 +220,21 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         ],
         ["odysseus_review_agent"],
         (
-            "Spawn a sub-agent for Stage 6: Eval Loop Active. "
-            "Activate the `odysseus_review_agent` MCP prompt — it contains the agent's full workflow. "
-            "The agent may call these tools: get_pipeline_status, init_search_state_tool, "
+            "<HARD_STOP>\n"
+            "You MUST NOT call any Stage 6 tools from the current context.\n\n"
+            "REQUIRED: Spawn a sub-agent before proceeding.\n"
+            "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+            "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+            "The sub-agent activates prompt: odysseus_review_agent\n"
+            "The sub-agent handles: get_pipeline_status, init_search_state_tool, "
             "register_candidate_tool, record_eval_result_tool, advance_round_tool, "
             "get_search_state_tool, run_eval, build_review_briefing_tool, "
-            "record_directive_outcomes_tool. "
-            "Do not call these tools yourself. "
-            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+            "record_directive_outcomes_tool\n"
+            "You handle only: get_pipeline_status\n\n"
+            "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+            "If Stage 6 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "</HARD_STOP>\n\n"
+            "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
     7: (

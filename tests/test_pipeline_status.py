@@ -114,6 +114,10 @@ class TestSubagentInstruction:
         result = get_pipeline_status(tmp_path, run_id=None)
         instr = result["subagent_instruction"]
         assert instr is not None
+        assert "<HARD_STOP>" in instr
+        assert "</HARD_STOP>" in instr
+        assert "<stage_system_prompt>" in instr
+        assert "</stage_system_prompt>" in instr
         assert "odysseus_routing_input" in instr
         assert "get_pipeline_status" in instr
         assert "submit_input_report" in instr
@@ -124,6 +128,10 @@ class TestSubagentInstruction:
         result = get_pipeline_status(tmp_path, "r1")
         instr = result["subagent_instruction"]
         assert instr is not None
+        assert "<HARD_STOP>" in instr
+        assert "</HARD_STOP>" in instr
+        assert "<stage_system_prompt>" in instr
+        assert "</stage_system_prompt>" in instr
         assert "odysseus_data_validation" in instr
         assert "get_pipeline_status" in instr
         assert "validate_dataset" in instr
@@ -136,6 +144,10 @@ class TestSubagentInstruction:
         result = get_pipeline_status(tmp_path, "r1")
         instr = result["subagent_instruction"]
         assert instr is not None
+        assert "<HARD_STOP>" in instr
+        assert "</HARD_STOP>" in instr
+        assert "<stage_system_prompt>" in instr
+        assert "</stage_system_prompt>" in instr
         assert "odysseus_routing_analysis" in instr
         assert "get_pipeline_status" in instr
         assert "create_seed_registry_tool" in instr
@@ -144,11 +156,39 @@ class TestSubagentInstruction:
         assert "prune_registry_tool" in instr
         assert "stratified_split_tool" in instr
 
+    def test_stage5_has_subagent_instruction(self, tmp_path: Path) -> None:
+        _setup_through_stage4(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "<HARD_STOP>" in instr
+        assert "<stage_system_prompt>" in instr
+        assert "odysseus_prompt_builder" in instr
+        # optimize_routing_prompt appears in the NOTE clause, not as a sub-agent tool —
+        # verify via available_tools list, not the instruction string (see test_stage5_available_tools_correct)
+
+    def test_stage5_available_tools_correct(self, tmp_path: Path) -> None:
+        """Stage 5 available_tools must not include optimize_routing_prompt (pipeline entry tool)."""
+        _setup_through_stage4(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        tools = result["available_tools"]
+        assert "optimize_routing_prompt" not in tools
+        assert "init_search_state_tool" in tools
+        assert "register_candidate_tool" in tools
+        assert "record_eval_result_tool" in tools
+        assert "advance_round_tool" in tools
+        assert "get_search_state_tool" in tools
+        assert "run_eval" in tools
+
     def test_stage6_has_subagent_instruction(self, tmp_path: Path) -> None:
         _setup_through_stage5(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
         assert instr is not None
+        assert "<HARD_STOP>" in instr
+        assert "</HARD_STOP>" in instr
+        assert "<stage_system_prompt>" in instr
+        assert "</stage_system_prompt>" in instr
         assert "odysseus_review_agent" in instr
         assert "get_pipeline_status" in instr
         assert "init_search_state_tool" in instr
@@ -212,6 +252,13 @@ class TestSubagentInstruction:
 def _setup_stage1(base: Path, run_id: str) -> None:
     (base / run_id / "input").mkdir(parents=True, exist_ok=True)
     (base / run_id / "input" / "input_report.md").write_text("# Report")
+
+
+def _setup_through_stage4(base: Path, run_id: str) -> None:
+    _setup_through_validation(base, run_id)
+    _setup_analysis(base, run_id)
+    (base / "backends").mkdir(parents=True, exist_ok=True)
+    (base / "backends" / "mock.yaml").write_text("label: mock")
 
 
 def _setup_through_stage5(base: Path, run_id: str) -> None:
