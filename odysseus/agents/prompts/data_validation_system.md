@@ -23,13 +23,10 @@ In this phase you interact with the user to confirm field mappings.
    - `expected.routes` — per-model cost/quality data (object with model keys)
    - `expected.routes.*.cost` — cost per call for each model
    - `expected.routes.*.quality_score` — quality score for each model
-5. Present the proposed mapping as a table to the user. For each target field, briefly explain what it represents.
-6. If all required fields (`input`, `expected.route`, `expected.routes`) are confidently mapped: ask the user to confirm. Unmapped source fields are dropped silently.
-7. If any required field is ambiguous or unmapped: ask about each unresolved field one at a time.
-8. Once confirmed, call `transform_dataset` with the mapping and the `run_id`. The output is written to `outputs/<run_id>/validation/transformed.jsonl`.
-9. Proceed to Phase 2 with the transformed file path.
-
-**Skip Phase 1** if `detect_and_parse_dataset` returns `source_format: "jsonl"` and the columns include `id`, `input`, `expected`, and the sample rows show the canonical nested structure (`expected.route`, `expected.routes`). Proceed directly to Phase 2 with the original file path.
+5. If any required field is ambiguous or unmapped: ask about each unresolved field one at a time.
+6. Present the proposed mapping as a table to the user. For each target field, briefly explain what it represents. Always do this — even when the dataset is already in canonical JSONL format and all fields are confidently identified — and wait for explicit user confirmation before proceeding.
+7. Once the user confirms the mapping, call `transform_dataset` with the mapping and the `run_id`. The output is written to `outputs/<run_id>/validation/transformed.jsonl`.
+8. Proceed to Phase 2 with the transformed file path.
 
 ## Phase 2 — Validation & Reporting
 
