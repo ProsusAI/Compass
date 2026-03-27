@@ -37,7 +37,7 @@ Deterministic, code-driven operations exposed as MCP tools:
 | `resolve_registry(dataset_hash)` | Check if a prior registry exists for this dataset |
 | `validate_rationale_card_set(card_set_json, routing_context_json, dataset_size)` | Run deterministic per-card + dataset-level checks (no LLM judge) |
 | `prune_registry(registry_json, dataset_size)` | Remove entries below cluster threshold; returns pruned registry + removed entries map |
-| `stratified_split(dataset_path, card_set_json, dev_ratio)` | Split examples + card set into dev/holdout matched pairs |
+| `stratified_split(dataset_path, card_set_path, dev_ratio)` | Split examples + card set into dev/holdout matched pairs |
 
 `validate_rationale_card_set` runs deterministic checks only. Semantic overlap is handled separately by the `check-semantic-overlap` skill.
 
@@ -87,7 +87,7 @@ Write checkpoint after each attempt: `scratch/<dataset_hash>/phase3_validated.js
 ### Phase 4 — Split & Output
 
 1. Read `dev_ratio` from the validated input report (default: `0.20` holdout, `0.80` dev).
-2. Call `stratified_split(dataset_path, card_set_json, dev_ratio, run_id)` — produces dev/holdout examples + matched card sets. Outputs are written to `outputs/<run_id>/analysis/`.
+2. Write the validated card set to `scratch/<dataset_hash>/phase3_validated_card_set.json`. Call `stratified_split(dataset_path, card_set_path, dev_ratio, run_id)` — pass the path to that file. Produces dev/holdout examples + matched card sets. Outputs are written to `outputs/<run_id>/analysis/`.
 3. Extract the `VocabularyRegistry` and write to `outputs/<run_id>/analysis/vocabulary_registry.json`.
 4. Write remaining final artifacts to `outputs/<run_id>/analysis/`.
 5. Clean up the scratch directory (`scratch/<dataset_hash>/`).

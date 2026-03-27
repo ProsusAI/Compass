@@ -933,7 +933,7 @@ async def stratified_split_tool(
     ctx: Context,
     run_id: str,
     dataset_path: str,
-    card_set_json: str,
+    card_set_path: str,
     dev_ratio: float = 0.8,
 ) -> str:
     """[Stage 3: Routing Analysis — Phase 4] Split a dataset and card set into dev and holdout partitions.
@@ -945,7 +945,7 @@ async def stratified_split_tool(
     Args:
         run_id: Pipeline run identifier.
         dataset_path: Absolute path to the JSONL dataset file.
-        card_set_json: JSON-serialized RationaleCardSet.
+        card_set_path: Absolute path to the JSON file containing a serialized RationaleCardSet.
         dev_ratio: Proportion allocated to dev set. Defaults to 0.8.
 
     Returns:
@@ -963,8 +963,12 @@ async def stratified_split_tool(
     if not path.is_file():
         raise ToolError(f"Dataset file not found: {dataset_path}")
 
+    card_set_file = Path(card_set_path)
+    if not card_set_file.is_file():
+        raise ToolError(f"Card set file not found: {card_set_path}")
+
     examples = _load_examples(path)
-    card_set = RationaleCardSet.model_validate_json(card_set_json)
+    card_set = RationaleCardSet.model_validate_json(card_set_file.read_text(encoding="utf-8"))
 
     dev_examples, holdout_examples, dev_card_set, holdout_card_set, split_report = stratified_split(
         examples, card_set, dev_ratio
