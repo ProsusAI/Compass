@@ -259,8 +259,33 @@ async def optimize_routing_prompt(ctx: Context) -> str:
     you through providing a problem description and dataset before the
     pipeline runs.
     """
-    # Implementation added in next task — placeholder to pass schema test
-    raise ToolError("Not yet implemented")
+    try:
+        system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
+    except FileNotFoundError as e:
+        raise ToolError(
+            f"User Input Agent system prompt not found — MCP server installation may be broken: {e}"
+        )
+
+    project_dir = await resolve_project_dir(ctx)
+    outputs_dir = project_dir / "outputs"
+
+    try:
+        status = _get_pipeline_status(outputs_dir=outputs_dir, run_id=None, project_dir=project_dir)
+    except Exception as e:
+        raise ToolError(f"Failed to read pipeline status from {outputs_dir}: {e}")
+
+    status_json = json.dumps(status, indent=2)
+
+    return (
+        f"<pipeline_status>\n{status_json}\n</pipeline_status>\n\n"
+        f"<instructions>\n"
+        f"You are now operating as the User Input Agent for the Odysseus pipeline.\n"
+        f"The pipeline status above has already been checked — use it to decide whether\n"
+        f"to greet the user for a fresh run or surface existing runs and offer to bootstrap.\n"
+        f"Follow your system prompt below exactly.\n"
+        f"</instructions>\n\n"
+        f"<system_prompt>\n{system_prompt}\n</system_prompt>"
+    )
 
 
 @mcp.tool()

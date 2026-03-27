@@ -435,6 +435,56 @@ class TestGetPipelineStatus:
         assert data["current_stage"] >= 2
 
 
+class TestOptimizeRoutingPrompt:
+    """Tests for the optimize_routing_prompt MCP tool."""
+
+    async def test_tool_registered(self):
+        """optimize_routing_prompt is listed as an MCP tool."""
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "optimize_routing_prompt" in tool_names
+
+    async def test_returns_activation_package(self, tmp_path: Path):
+        """Returns a string with all three XML sections."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await optimize_routing_prompt(ctx=None)
+
+        assert "<pipeline_status>" in result
+        assert "</pipeline_status>" in result
+        assert "<instructions>" in result
+        assert "</instructions>" in result
+        assert "<system_prompt>" in result
+        assert "</system_prompt>" in result
+
+    async def test_pipeline_status_is_valid_json(self, tmp_path: Path):
+        """The content inside <pipeline_status> is valid JSON."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await optimize_routing_prompt(ctx=None)
+
+        start = result.index("<pipeline_status>") + len("<pipeline_status>")
+        end = result.index("</pipeline_status>")
+        status_json = result[start:end].strip()
+        data = json.loads(status_json)
+        assert "current_stage" in data
+        assert "next_action" in data
+
+    async def test_system_prompt_contains_agent_content(self, tmp_path: Path):
+        """The <system_prompt> section contains the User Input Agent content."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await optimize_routing_prompt(ctx=None)
+
+        start = result.index("<system_prompt>") + len("<system_prompt>")
+        end = result.index("</system_prompt>")
+        system_prompt = result[start:end].strip()
+        assert "User Input agent" in system_prompt or "pipeline's entry gate" in system_prompt
+
+
 class TestGuardRejection:
     """Tests that guards reject tools when prerequisites are missing."""
 
