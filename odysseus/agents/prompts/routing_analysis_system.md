@@ -33,13 +33,13 @@ Deterministic, code-driven operations exposed as MCP tools:
 
 | Tool | Purpose |
 |------|---------|
-| `create_seed_registry()` | Initialize vocabulary registry with 4 canonical ambiguity tags |
-| `resolve_registry(dataset_hash)` | Check if a prior registry exists for this dataset |
-| `validate_rationale_card_set(card_set_json, routing_context_json, dataset_size)` | Run deterministic per-card + dataset-level checks (no LLM judge) |
-| `prune_registry(registry_json, dataset_size)` | Remove entries below cluster threshold; returns pruned registry + removed entries map |
-| `stratified_split(dataset_path, card_set_path, dev_ratio)` | Split examples + card set into dev/holdout matched pairs |
+| `create_seed_registry_tool` | Initialize vocabulary registry with 4 canonical ambiguity tags |
+| `resolve_registry_tool(dataset_hash)` | Check if a prior registry exists for this dataset |
+| `validate_rationale_card_set_tool(card_set_json, routing_context_json, dataset_size)` | Run deterministic per-card + dataset-level checks (no LLM judge) |
+| `prune_registry_tool(registry_json, dataset_size)` | Remove entries below cluster threshold; returns pruned registry + removed entries map |
+| `stratified_split_tool(dataset_path, card_set_path, dev_ratio)` | Split examples + card set into dev/holdout matched pairs |
 
-`validate_rationale_card_set` runs deterministic checks only. Semantic overlap is handled separately by the `check-semantic-overlap` skill.
+`validate_rationale_card_set_tool` runs deterministic checks only. Semantic overlap is handled separately by the `check-semantic-overlap` skill.
 
 ## Skills
 
@@ -58,7 +58,7 @@ Three skills activated at specific phases. For each skill: read the full `SKILL.
 1. Read all context dict inputs and validate they exist.
 2. Compute `dataset_hash` from dataset contents (deterministic, content-based).
 3. Check for an existing scratch directory at `scratch/<dataset_hash>/`. If a valid checkpoint exists, resume from the latest phase.
-4. Initialize vocabulary registry: call `resolve_registry(dataset_hash)` first. If no prior registry exists, call `create_seed_registry()`.
+4. Initialize vocabulary registry: call `resolve_registry_tool(dataset_hash)` first. If no prior registry exists, call `create_seed_registry_tool`.
 5. Activate the `classify-example` skill.
 6. Process every example in the dataset — no exceptions, no skipping. For each example, determine `intent_pattern` and `complexity_structure` using the skill procedure. Collect any `proposed_entries` for the vocabulary registry. After this step, verify that the number of classified examples equals the total dataset size.
 7. After processing all examples, incorporate accepted vocabulary proposals into the registry.
@@ -75,8 +75,8 @@ Three skills activated at specific phases. For each skill: read the full `SKILL.
 
 Run up to 5 attempts. Each attempt:
 
-1. Call `prune_registry(registry_json, dataset_size)` to remove entries below cluster threshold.
-2. Call `validate_rationale_card_set(card_set_json, routing_context_json, dataset_size)` for deterministic checks on the post-pruning state.
+1. Call `prune_registry_tool(registry_json, dataset_size)` to remove entries below cluster threshold.
+2. Call `validate_rationale_card_set_tool(card_set_json, routing_context_json, dataset_size)` for deterministic checks on the post-pruning state.
 3. Activate the `check-semantic-overlap` skill for LLM-judged pairwise overlap across vocabulary entries.
 4. If all checks pass, write `outputs/<run_id>/analysis/validation_report.json` containing `dataset_hash`, `card_count`, `validation_checks_passed`, and `validated_at`. Then proceed to Phase 4.
 5. If failures are found, apply auto-fix strategies (see Error Handling below), write checkpoint, and retry.
@@ -87,7 +87,7 @@ Write checkpoint after each attempt: `scratch/<dataset_hash>/phase3_validated.js
 ### Phase 4 — Split & Output
 
 1. Read `dev_ratio` from the validated input report (default: `0.20` holdout, `0.80` dev).
-2. Write the validated card set to `scratch/<dataset_hash>/phase3_validated_card_set.json`. Call `stratified_split(dataset_path, card_set_path, dev_ratio, run_id)` — pass the path to that file. Produces dev/holdout examples + matched card sets. Outputs are written to `outputs/<run_id>/analysis/`.
+2. Write the validated card set to `scratch/<dataset_hash>/phase3_validated_card_set.json`. Call `stratified_split_tool(dataset_path, card_set_path, dev_ratio, run_id)` — pass the path to that file. Produces dev/holdout examples + matched card sets. Outputs are written to `outputs/<run_id>/analysis/`.
 3. Extract the `VocabularyRegistry` and write to `outputs/<run_id>/analysis/vocabulary_registry.json`.
 4. Write remaining final artifacts to `outputs/<run_id>/analysis/`.
 5. Clean up the scratch directory (`scratch/<dataset_hash>/`).
