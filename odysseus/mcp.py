@@ -264,7 +264,7 @@ async def optimize_routing_prompt(ctx: Context) -> str:
     except FileNotFoundError as e:
         raise ToolError(
             f"User Input Agent system prompt not found — MCP server installation may be broken: {e}"
-        )
+        ) from e
 
     project_dir = await resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"
@@ -272,7 +272,7 @@ async def optimize_routing_prompt(ctx: Context) -> str:
     try:
         status = _get_pipeline_status(outputs_dir=outputs_dir, run_id=None, project_dir=project_dir)
     except Exception as e:
-        raise ToolError(f"Failed to read pipeline status from {outputs_dir}: {e}")
+        raise ToolError(f"Failed to read pipeline status from {outputs_dir}: {e}") from e
 
     status_json = json.dumps(status, indent=2)
 
