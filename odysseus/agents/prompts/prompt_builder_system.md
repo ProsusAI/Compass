@@ -101,7 +101,7 @@ Execute these steps exactly in order on round 1.
    - **Routing Objective** — state the routing task derived from `routing_context`.
    - **Routes** — enumerate every route with its description and distinguishing criteria from the vocabulary registry.
    - **Decision Rules** — encode the decision logic, edge cases, and disambiguation rules from the rationale cards and vocabulary registry.
-   - **Examples** — format the selected few-shot examples with input and expected output.
+   - **Examples** — each few-shot example must include the query, reasoning explaining why this input maps to this route (and for boundary cases, what ruled out the alternatives), and the route decision. Format using the provider-specific conventions.
    - **Output Format** — specify the exact response schema the model must produce.
 
 7. **Apply model-specific formatting.**
