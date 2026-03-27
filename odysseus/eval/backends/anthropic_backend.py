@@ -19,7 +19,12 @@ class AnthropicBackend:
         self._profile = profile
         api_key: str | None = None
         if profile.api_key_env:
-            api_key = os.environ[profile.api_key_env]
+            api_key = os.environ.get(profile.api_key_env)
+            if api_key is None:
+                raise ValueError(
+                    f"Environment variable '{profile.api_key_env}' is not set. "
+                    f"Add it to your MCP server's env configuration (mcp.json)."
+                )
 
         client_kwargs: dict[str, Any] = {}
         if api_key:

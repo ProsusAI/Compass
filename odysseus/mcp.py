@@ -35,6 +35,7 @@ from odysseus.agents.routing_rationale_registry import create_seed_registry, pru
 from odysseus.agents.stratified_split import stratified_split
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import ScoreReport
+from odysseus.eval.pricing import get_default_pricing as _get_default_pricing
 from odysseus.project_dir import get_project_dir, resolve_project_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -146,6 +147,27 @@ async def backend_setup_taxonomy() -> str:
 async def backend_setup_defaults() -> str:
     """Default values and pricing resolution for backend configuration."""
     return _load_text("odysseus/agents/backend_setup_defaults.md")
+
+
+@mcp.tool()
+async def get_default_pricing(provider: str, model: str) -> str:
+    """Look up default pricing for a (provider, model) pair.
+
+    Used by the backend setup agent to resolve pricing when configuring a
+    new backend. Returns the pricing table entry if found.
+
+    Args:
+        provider: Provider identifier (e.g. "openai", "anthropic", "bedrock").
+        model: Model identifier (e.g. "gpt-5.2", "claude-haiku-4-5").
+
+    Returns:
+        JSON object with ``found: true`` and pricing fields (all costs in USD
+        per million tokens), or ``{"found": false}`` if no entry exists.
+    """
+    pricing = _get_default_pricing(provider, model)
+    if pricing is None:
+        return json.dumps({"found": False})
+    return json.dumps({"found": True, **pricing.model_dump()})
 
 
 @mcp.resource("odysseus://agents/data-validation/format-spec")

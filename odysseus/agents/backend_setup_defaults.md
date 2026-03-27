@@ -22,7 +22,7 @@ Default values for non-blocking backend configuration fields.
 
 ## Pricing Resolution
 
-Pricing is resolved via `get_default_pricing(provider, model)` from `odysseus/eval/pricing.py`.
+Pricing is resolved by calling the `get_default_pricing` MCP tool with `provider` and `model` arguments.
 
 `ModelPricing` fields (all costs are USD per million tokens):
 

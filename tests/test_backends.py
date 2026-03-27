@@ -515,7 +515,7 @@ class TestAnthropicBackend:
             tokens_per_minute=50000,
             api_key_env="NONEXISTENT_KEY_12345",
         )
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError, match="NONEXISTENT_KEY_12345"):
             AnthropicBackend(profile)
 
     @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
@@ -664,7 +664,7 @@ class TestOpenAIBackend:
             tokens_per_minute=50000,
             api_key_env="NONEXISTENT_KEY_12345",
         )
-        with pytest.raises(KeyError):
+        with pytest.raises(ValueError, match="NONEXISTENT_KEY_12345"):
             OpenAIBackend(profile)
 
     @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
