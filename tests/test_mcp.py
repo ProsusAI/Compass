@@ -484,6 +484,31 @@ class TestOptimizeRoutingPrompt:
         system_prompt = result[start:end].strip()
         assert "User Input agent" in system_prompt or "pipeline's entry gate" in system_prompt
 
+    async def test_missing_system_prompt_raises_tool_error(self, tmp_path: Path):
+        """FileNotFoundError from _load_text is surfaced as ToolError with installation message."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with (
+            patch("odysseus.mcp._load_text", side_effect=FileNotFoundError("no such file")),
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            pytest.raises(ToolError, match="installation may be broken"),
+        ):
+            await optimize_routing_prompt(ctx=None)
+
+    async def test_pipeline_status_error_raises_tool_error(self, tmp_path: Path):
+        """OSError from _get_pipeline_status is surfaced as ToolError with outputs_dir in message."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch(
+                "odysseus.mcp._get_pipeline_status",
+                side_effect=OSError("disk read error"),
+            ),
+            pytest.raises(ToolError, match="outputs"),
+        ):
+            await optimize_routing_prompt(ctx=None)
+
 
 class TestGuardRejection:
     """Tests that guards reject tools when prerequisites are missing."""
