@@ -112,7 +112,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `stratified_split` | Implemented | Split dataset + card set into dev/holdout | [`odysseus/agents/stratified_split.py`](../odysseus/agents/stratified_split.py) |
 | `build_review_briefing_tool` | Planned | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/agents/review_preprocessor.py`](../odysseus/agents/review_preprocessor.py) |
 | `record_directive_outcomes_tool` | Planned | Persist directive outcome tracking after the Review Agent emits a ReviewResult | [`odysseus/agents/review_ops.py`](../odysseus/agents/review_ops.py) |
-| `get_pipeline_status` | Implemented | Check pipeline progress and get guidance on next step | [`odysseus/agents/pipeline_status.py`](../odysseus/agents/pipeline_status.py) |
+| `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–6, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline_status.py`](../odysseus/agents/pipeline_status.py) |
 | `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
@@ -120,6 +120,19 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `advance_round_tool` | Implemented | Close round, update Pareto front, check convergence | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
 | `get_search_state_tool` | Implemented | Load current search state | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
 | `filter_holdout_dataset_tool` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder_holdout_filter.py`](../odysseus/agents/prompt_builder_holdout_filter.py) |
+
+#### Sub-Agent Guard Pattern
+
+`get_pipeline_status` implements a two-sided entry/exit contract for sub-agent dispatch:
+
+| Gate point | Side | Mechanism | Strength |
+|---|---|---|---|
+| Entry | Orchestrator | `<HARD_STOP>` in `subagent_instruction`; stage system prompt embedded | Hard (structural) |
+| Entry | Sub-agent | `get_pipeline_status` call; stage mismatch → abort | Hard (behavioural) |
+| Exit | Sub-agent | `get_pipeline_status` call; incomplete → fix before exiting | Hard (behavioural) |
+| Exit | Orchestrator | `<HARD_STOP>` post-exit instruction | Soft (advisory) |
+
+Each stage system prompt (stages 1–6) includes mandatory `## Entry verification` and `## Exit verification` blocks. Sequencing knowledge lives exclusively in `pipeline_status.py`; stage prompts know only their own stage number.
 
 ### Prompts
 

@@ -100,7 +100,6 @@ async def odysseus_routing_input() -> list[Message]:
 async def odysseus_data_validation() -> list[Message]:
     """Activate the Odysseus data validation agent.
 
-    Use after the input agent has produced a validated input report.
     Validates the routing dataset and produces a data quality report.
     """
     system_prompt = _load_text("odysseus/agents/prompts/data_validation_system.md")
@@ -109,10 +108,7 @@ async def odysseus_data_validation() -> list[Message]:
 
 @mcp.prompt()
 async def odysseus_prompt_builder() -> list[Message]:
-    """Activate the Odysseus prompt builder agent.
-
-    Use after the routing analysis agent has produced annotated and split datasets.
-    """
+    """Activate the Odysseus prompt builder agent."""
     system_prompt = _load_text("odysseus/agents/prompts/prompt_builder_system.md")
     return [UserMessage(content=system_prompt)]
 
@@ -121,8 +117,7 @@ async def odysseus_prompt_builder() -> list[Message]:
 async def odysseus_backend_setup() -> list[Message]:
     """Activate the Odysseus backend setup agent.
 
-    Use when run_eval returns action_required: backend_setup on the first
-    evaluation run. Guides the user through selecting or creating a backend.
+    Guides the user through selecting or creating a backend profile.
     """
     system_prompt = _load_text("odysseus/agents/prompts/backend_setup_system.md")
     return [UserMessage(content=system_prompt)]
@@ -287,9 +282,8 @@ async def optimize_routing_prompt(ctx: Context) -> str:
     """Start the Odysseus routing prompt optimization pipeline.
 
     This is the pipeline entry-point tool for orchestrators; it is not a
-    stage 5 sub-agent tool. Call this to begin. Activates the User Input
-    Agent, which will guide you through providing a problem description and
-    dataset before the pipeline runs.
+    stage sub-agent tool. Returns pipeline status and the stage system prompt.
+    Call `get_pipeline_status` to determine next action after this call.
     """
     try:
         system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
@@ -778,8 +772,7 @@ async def filter_holdout_dataset_tool(
 async def odysseus_routing_analysis() -> list[Message]:
     """Activate the Odysseus routing analysis agent.
 
-    Use after the data validation agent has produced a data quality report
-    and routing context. Annotates, validates, and splits the dataset.
+    Annotates, validates, and splits the routing dataset.
     """
     system_prompt = _load_text("odysseus/agents/prompts/routing_analysis_system.md")
     return [UserMessage(content=system_prompt)]
