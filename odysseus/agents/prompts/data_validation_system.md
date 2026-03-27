@@ -78,6 +78,26 @@ Synthesize a `routing_context` block for downstream annotation skills. Derive it
 
 Present the routing context as a fenced YAML code block in the report, then call `save_routing_context` with the `run_id` and the routing context serialized as JSON. This persists it to `outputs/<run_id>/validation/routing_context.json` where downstream agents can find it.
 
+The JSON you pass to `save_routing_context` must match this structure exactly (fill in values from the dataset and problem description — do not pass the problem description itself):
+
+```json
+{
+  "domain": "Two-sentence domain description...",
+  "routes": [
+    {"name": "route_name_from_dataset", "description": "One sentence describing what this route handles."},
+    {"name": "another_route", "description": "One sentence describing what this route handles."}
+  ],
+  "routing_dimensions": [
+    {"name": "cost", "direction": "lower_is_better", "description": "Per-call cost in USD."},
+    {"name": "quality_score", "direction": "higher_is_better", "description": "Model quality score 0–1."}
+  ],
+  "route_ordering": {"dimension": "cost", "order": ["cheap_route", "expensive_route"]},
+  "seed_vocabulary": {"intent_pattern": [], "complexity_structure": [], "ambiguity_tags": []}
+}
+```
+
+Omit `route_ordering` if routes have no natural ordering. `seed_vocabulary` is always included with empty lists.
+
 ## Decision rules
 
 Use the `severity` field on each schema finding to determine how to present it:
