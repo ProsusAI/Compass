@@ -113,6 +113,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `build_review_briefing_tool` | Planned | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/agents/review_preprocessor.py`](../odysseus/agents/review_preprocessor.py) |
 | `record_directive_outcomes_tool` | Planned | Persist directive outcome tracking after the Review Agent emits a ReviewResult | [`odysseus/agents/review_ops.py`](../odysseus/agents/review_ops.py) |
 | `get_pipeline_status` | Implemented | Check pipeline progress and get guidance on next step | [`odysseus/agents/pipeline_status.py`](../odysseus/agents/pipeline_status.py) |
+| `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
 | `record_eval_result_tool` | Implemented | Record evaluation results for Pareto tracking | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
