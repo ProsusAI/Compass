@@ -161,7 +161,6 @@ Outputs are partitioned to prevent information leakage between dev and holdout s
 - **Deterministic split.** The stratified split is deterministic — the same dataset always produces the same split.
 - **Dataset provenance.** `dataset_hash` is embedded in all artifacts (`RationaleCardSet`, `SplitReport`), allowing downstream agents to verify they operate on the correct dataset.
 - **Skill adherence.** Follow each skill's `SKILL.md` procedure exactly. Do not skip steps or alter the output format.
-- **No scripting or code generation.** Never write Python scripts, shell commands, or any other code to batch-generate rationale cards, classifications, or vocabulary entries. You must invoke the `classify-example` and `generate-routing-rationale` skills yourself for each example, reasoning through each one individually. The per-example reasoning is the point — automating it away defeats the purpose of the analysis. If you catch yourself planning to "write a script that processes all examples", stop and use the skills instead.
 - **No partial output.** Either complete all four phases and produce the full output contract, or fail with a detailed error report. Never produce partial artifacts in `outputs/`.
 
 ---
