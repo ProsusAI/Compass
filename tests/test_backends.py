@@ -57,18 +57,25 @@ def _make_anthropic_mock_response(
     input_tokens: int = 10,
     output_tokens: int = 20,
     cache_read_input_tokens: int | None = 5,
+    ephemeral_5m_input_tokens: int = 0,
+    ephemeral_1h_input_tokens: int = 0,
 ) -> MagicMock:
     """Build a mock Anthropic response object."""
     content_block = MagicMock()
     content_block.text = text
 
-    usage = MagicMock()
+    usage = MagicMock(spec=["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation"])
     usage.input_tokens = input_tokens
     usage.output_tokens = output_tokens
     if cache_read_input_tokens is not None:
         usage.cache_read_input_tokens = cache_read_input_tokens
     else:
         del usage.cache_read_input_tokens
+
+    cache_creation = MagicMock(spec=["ephemeral_5m_input_tokens", "ephemeral_1h_input_tokens"])
+    cache_creation.ephemeral_5m_input_tokens = ephemeral_5m_input_tokens
+    cache_creation.ephemeral_1h_input_tokens = ephemeral_1h_input_tokens
+    usage.cache_creation = cache_creation
 
     resp = MagicMock()
     resp.content = [content_block]
@@ -536,6 +543,34 @@ class TestAnthropicBackend:
         assert usage.input_tokens == 100
         assert usage.cached_tokens == 30
         assert usage.output_tokens == 50
+        assert usage.cache_write_5m_tokens == 0
+        assert usage.cache_write_1h_tokens == 0
+
+    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    async def test_backend_call_cache_write_tokens_from_usage(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(
+                input_tokens=100,
+                output_tokens=50,
+                cache_read_input_tokens=10,
+                ephemeral_5m_input_tokens=200,
+                ephemeral_1h_input_tokens=50,
+            )
+        )
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+        )
+        backend = AnthropicBackend(profile)
+        _, usage = await backend.call("prompt", EXAMPLE)
+
+        assert usage.cache_write_5m_tokens == 200
+        assert usage.cache_write_1h_tokens == 50
 
     @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_call_no_cache_tokens(self, mock_client_cls: MagicMock) -> None:

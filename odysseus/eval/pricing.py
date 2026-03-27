@@ -74,7 +74,7 @@ DEFAULT_PRICING: dict[tuple[str, str], ModelPricing] = {
     ),
     ("openai", "gpt-5.4-mini"): ModelPricing(
         input_cost_per_million_tokens=0.75,
-        cached_cost_per_million_tokens=0.25,
+        cached_cost_per_million_tokens=0.075,
         output_cost_per_million_tokens=4.50,
     ),
     ("openai", "gpt-5.4-nano"): ModelPricing(
@@ -87,7 +87,26 @@ DEFAULT_PRICING: dict[tuple[str, str], ModelPricing] = {
         cached_cost_per_million_tokens=0.175,
         output_cost_per_million_tokens=14.00,
     ),
-
+    ("openai", "gpt-5.1"): ModelPricing(
+        input_cost_per_million_tokens=1.25,
+        cached_cost_per_million_tokens=0.125,
+        output_cost_per_million_tokens=10.00,
+    ),
+    ("openai", "gpt-5"): ModelPricing(
+        input_cost_per_million_tokens=1.25,
+        cached_cost_per_million_tokens=0.125,
+        output_cost_per_million_tokens=10.00,
+    ),
+    ("openai", "gpt-5-mini"): ModelPricing(
+        input_cost_per_million_tokens=0.25,
+        cached_cost_per_million_tokens=0.025,
+        output_cost_per_million_tokens=2.00,
+    ),
+    ("openai", "gpt-5-nano"): ModelPricing(
+        input_cost_per_million_tokens=0.05,
+        cached_cost_per_million_tokens=0.005,
+        output_cost_per_million_tokens=0.40,
+    ),
     ("openai", "gpt-4.1"): ModelPricing(
         input_cost_per_million_tokens=2.00,
         cached_cost_per_million_tokens=0.50,
@@ -102,11 +121,6 @@ DEFAULT_PRICING: dict[tuple[str, str], ModelPricing] = {
         input_cost_per_million_tokens=0.10,
         cached_cost_per_million_tokens=0.025,
         output_cost_per_million_tokens=0.40,
-    ),
-    ("openai", "o3"): ModelPricing(
-        input_cost_per_million_tokens=2.00,
-        cached_cost_per_million_tokens=0.50,
-        output_cost_per_million_tokens=8.00,
     ),
     ("openai", "o4-mini"): ModelPricing(
         input_cost_per_million_tokens=1.10,

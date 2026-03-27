@@ -16,6 +16,26 @@ def test_model_pricing_compute_cost():
     assert abs(cost - expected) < 1e-12
 
 
+def test_model_pricing_compute_cost_with_cache_writes():
+    pricing = ModelPricing(
+        input_cost_per_million_tokens=3.0,
+        cached_cost_per_million_tokens=0.3,
+        cache_write_5m_cost_per_million_tokens=3.75,
+        cache_write_1h_cost_per_million_tokens=6.0,
+        output_cost_per_million_tokens=15.0,
+    )
+    usage = TokenUsage(
+        input_tokens=100,
+        cached_tokens=0,
+        cache_write_5m_tokens=1000,
+        cache_write_1h_tokens=500,
+        output_tokens=50,
+    )
+    cost = pricing.compute_cost(usage)
+    expected = (3.0 * 100 + 3.75 * 1000 + 6.0 * 500 + 15.0 * 50) / 1_000_000
+    assert abs(cost - expected) < 1e-12
+
+
 def test_compute_cost_with_pricing():
     pricing = ModelPricing(
         input_cost_per_million_tokens=3.0,
@@ -40,11 +60,15 @@ class TestDefaultPricing:
         assert pricing is not None
         assert isinstance(pricing, ModelPricing)
         assert pricing.input_cost_per_million_tokens == 0.80
+        assert pricing.cache_write_5m_cost_per_million_tokens == 1.25
+        assert pricing.cache_write_1h_cost_per_million_tokens == 2.00
 
     def test_known_openai_model_resolves(self) -> None:
         pricing = get_default_pricing("openai", "gpt-4.1")
         assert pricing is not None
         assert pricing.input_cost_per_million_tokens == 2.00
+        assert pricing.cache_write_5m_cost_per_million_tokens == 0.0
+        assert pricing.cache_write_1h_cost_per_million_tokens == 0.0
 
     def test_unknown_model_returns_none(self) -> None:
         pricing = get_default_pricing("anthropic", "nonexistent-model")

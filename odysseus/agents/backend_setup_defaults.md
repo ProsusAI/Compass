@@ -23,8 +23,21 @@ Default values for non-blocking backend configuration fields.
 ## Pricing Resolution
 
 Pricing is resolved via `get_default_pricing(provider, model)` from `odysseus/eval/pricing.py`.
+
+`ModelPricing` fields (all costs are USD per million tokens):
+
+| Field | Purpose |
+|-------|---------|
+| `input_cost_per_million_tokens` | Standard input |
+| `cached_cost_per_million_tokens` | Cache read / prompt cache hits |
+| `cache_write_5m_cost_per_million_tokens` | Anthropic 5-minute TTL cache writes (optional, default `0.0`) |
+| `cache_write_1h_cost_per_million_tokens` | Anthropic 1-hour TTL cache writes (optional, default `0.0`) |
+| `output_cost_per_million_tokens` | Output |
+
+For **OpenAI** and **Bedrock**, the two cache-write fields stay at `0.0` (writes are billed as normal input). For **Anthropic**, defaults include non-zero cache-write rates when auto-resolved from the table.
+
 - If found: show the resolved `ModelPricing` values and offer override
-- If not found: pricing becomes blocking — ask user for all three cost fields
+- If not found: pricing becomes blocking — ask user for the required cost fields (at minimum input, cached/read, output; include cache-write fields for Anthropic if not using table defaults)
 
 ## Override Mechanism
 
