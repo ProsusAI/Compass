@@ -252,25 +252,40 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, 
 
 
 @mcp.tool()
-async def optimize_routing_prompt(
-    data_path: str,
-    problem_description: str,
-    target_metrics: list[str],
-) -> str:
-    """[Stage 1: Full Pipeline] Run the full routing prompt optimization pipeline.
+async def optimize_routing_prompt(ctx: Context) -> str:
+    """Start the Odysseus routing prompt optimization pipeline.
 
-    Note: when implemented, must enforce stage sequencing.
-
-    Args:
-        data_path: Path to JSONL routing dataset.
-        problem_description: Natural language description of the routing task.
-        target_metrics: List of metric names and thresholds (e.g. "accuracy>=0.90").
-
-    Returns:
-        Structured evaluation report with the final optimized prompt.
+    Call this to begin. Activates the User Input Agent, which will guide
+    you through providing a problem description and dataset before the
+    pipeline runs.
     """
-    # TODO: Wire up the full pipeline
-    return f"Pipeline not yet implemented. Received: {data_path}, {problem_description}, {target_metrics}"
+    try:
+        system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
+    except FileNotFoundError as e:
+        raise ToolError(
+            f"User Input Agent system prompt not found — MCP server installation may be broken: {e}"
+        ) from e
+
+    project_dir = await resolve_project_dir(ctx)
+    outputs_dir = project_dir / "outputs"
+
+    try:
+        status = _get_pipeline_status(outputs_dir=outputs_dir, run_id=None, project_dir=project_dir)
+    except Exception as e:
+        raise ToolError(f"Failed to read pipeline status from {outputs_dir}: {e}") from e
+
+    status_json = json.dumps(status, indent=2)
+
+    return (
+        f"<pipeline_status>\n{status_json}\n</pipeline_status>\n\n"
+        f"<instructions>\n"
+        f"You are now operating as the User Input Agent for the Odysseus pipeline.\n"
+        f"The pipeline status above has already been checked — use it to decide whether\n"
+        f"to greet the user for a fresh run or surface existing runs and offer to bootstrap.\n"
+        f"Follow your system prompt below exactly.\n"
+        f"</instructions>\n\n"
+        f"<system_prompt>\n{system_prompt}\n</system_prompt>"
+    )
 
 
 @mcp.tool()

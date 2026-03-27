@@ -65,6 +65,16 @@ async def test_run_holdout_eval_does_not_expose_data_split():
     assert "data_split" not in schema_properties, "data_split must not be exposed as a tool parameter"
 
 
+async def test_optimize_routing_prompt_has_no_user_params():
+    """optimize_routing_prompt must expose no user-facing parameters."""
+    tools = await mcp.list_tools()
+    tool = next(t for t in tools if t.name == "optimize_routing_prompt")
+    schema_properties = tool.inputSchema.get("properties", {})
+    assert schema_properties == {}, (
+        f"optimize_routing_prompt must have no parameters, got: {list(schema_properties)}"
+    )
+
+
 def _make_stub_score_report() -> ScoreReport:
     """Create a minimal ScoreReport for testing."""
     return ScoreReport(
@@ -423,6 +433,81 @@ class TestGetPipelineStatus:
         data = json.loads(result)
         assert data["run_id"] == "abc123"
         assert data["current_stage"] >= 2
+
+
+class TestOptimizeRoutingPrompt:
+    """Tests for the optimize_routing_prompt MCP tool."""
+
+    async def test_tool_registered(self):
+        """optimize_routing_prompt is listed as an MCP tool."""
+        tools = await mcp.list_tools()
+        tool_names = [t.name for t in tools]
+        assert "optimize_routing_prompt" in tool_names
+
+    async def test_returns_activation_package(self, tmp_path: Path):
+        """Returns a string with all three XML sections."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await optimize_routing_prompt(ctx=None)
+
+        assert "<pipeline_status>" in result
+        assert "</pipeline_status>" in result
+        assert "<instructions>" in result
+        assert "</instructions>" in result
+        assert "<system_prompt>" in result
+        assert "</system_prompt>" in result
+
+    async def test_pipeline_status_is_valid_json(self, tmp_path: Path):
+        """The content inside <pipeline_status> is valid JSON."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await optimize_routing_prompt(ctx=None)
+
+        start = result.index("<pipeline_status>") + len("<pipeline_status>")
+        end = result.index("</pipeline_status>")
+        status_json = result[start:end].strip()
+        data = json.loads(status_json)
+        assert "current_stage" in data
+        assert "next_action" in data
+
+    async def test_system_prompt_contains_agent_content(self, tmp_path: Path):
+        """The <system_prompt> section contains the User Input Agent content."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await optimize_routing_prompt(ctx=None)
+
+        start = result.index("<system_prompt>") + len("<system_prompt>")
+        end = result.index("</system_prompt>")
+        system_prompt = result[start:end].strip()
+        assert "User Input agent" in system_prompt or "pipeline's entry gate" in system_prompt
+
+    async def test_missing_system_prompt_raises_tool_error(self, tmp_path: Path):
+        """FileNotFoundError from _load_text is surfaced as ToolError with installation message."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with (
+            patch("odysseus.mcp._load_text", side_effect=FileNotFoundError("no such file")),
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            pytest.raises(ToolError, match="installation may be broken"),
+        ):
+            await optimize_routing_prompt(ctx=None)
+
+    async def test_pipeline_status_error_raises_tool_error(self, tmp_path: Path):
+        """OSError from _get_pipeline_status is surfaced as ToolError with outputs_dir in message."""
+        from odysseus.mcp import optimize_routing_prompt
+
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch(
+                "odysseus.mcp._get_pipeline_status",
+                side_effect=OSError("disk read error"),
+            ),
+            pytest.raises(ToolError, match="outputs"),
+        ):
+            await optimize_routing_prompt(ctx=None)
 
 
 class TestGuardRejection:
