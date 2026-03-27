@@ -40,6 +40,15 @@ from odysseus.project_dir import get_project_dir, resolve_project_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+_STAGE_PROMPT_MAP: dict[int, str] = {
+    1: "odysseus/agents/prompts/user_input_system.md",
+    2: "odysseus/agents/prompts/data_validation_system.md",
+    3: "odysseus/agents/prompts/routing_analysis_system.md",
+    4: "odysseus/agents/prompts/backend_setup_system.md",
+    5: "odysseus/agents/prompts/prompt_builder_system.md",
+    6: "odysseus/agents/prompts/review_agent_system.md",
+}
+
 
 def _load_text(relative_path: str) -> str:
     """Load a text file relative to the project root.
@@ -277,9 +286,10 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, 
 async def optimize_routing_prompt(ctx: Context) -> str:
     """Start the Odysseus routing prompt optimization pipeline.
 
-    Call this to begin. Activates the User Input Agent, which will guide
-    you through providing a problem description and dataset before the
-    pipeline runs.
+    This is the pipeline entry-point tool for orchestrators; it is not a
+    stage 5 sub-agent tool. Call this to begin. Activates the User Input
+    Agent, which will guide you through providing a problem description and
+    dataset before the pipeline runs.
     """
     try:
         system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
@@ -1172,6 +1182,21 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     project_dir = await resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
+    current_stage = result.get("current_stage")
+    subagent_instruction = result.get("subagent_instruction")
+    if current_stage in _STAGE_PROMPT_MAP and subagent_instruction:
+        placeholder = "<stage_system_prompt></stage_system_prompt>"
+        if placeholder in subagent_instruction:
+            try:
+                system_prompt = _load_text(_STAGE_PROMPT_MAP[current_stage])
+                result["subagent_instruction"] = subagent_instruction.replace(
+                    placeholder,
+                    f"<stage_system_prompt>\n{system_prompt}\n</stage_system_prompt>",
+                )
+            except FileNotFoundError as e:
+                raise ToolError(
+                    f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
+                ) from e
     return json.dumps(result, indent=2)
 
 
