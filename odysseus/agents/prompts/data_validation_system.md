@@ -98,6 +98,10 @@ The JSON you pass to `save_routing_context` must match this structure exactly (f
 
 Omit `route_ordering` if routes have no natural ordering. `seed_vocabulary` is always included with empty lists.
 
+**Field mapping notes:**
+- `routes` corresponds to what the problem description may call "tiers", "tools", or "models" — use the actual route names from the dataset (e.g. `simple`, `moderate`, `complex`), not the word "tiers".
+- Do NOT include optimization metadata (`optimization_goal`, `primary_metric`, `constraints`, `dataset_characteristics`, `benchmarks`, or any other fields from the problem specification). The `RoutingContext` schema has exactly five fields: `domain`, `routes`, `routing_dimensions`, `route_ordering` (optional), and `seed_vocabulary`. Any other field will cause a validation error.
+
 ## Decision rules
 
 Use the `severity` field on each schema finding to determine how to present it:
