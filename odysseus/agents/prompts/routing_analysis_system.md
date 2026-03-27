@@ -35,8 +35,8 @@ Deterministic, code-driven operations exposed as MCP tools:
 |------|---------|
 | `create_seed_registry_tool` | Initialize vocabulary registry with 4 canonical ambiguity tags |
 | `resolve_registry_tool(dataset_hash)` | Check if a prior registry exists for this dataset |
-| `validate_rationale_card_set_tool(card_set_json, routing_context_json, dataset_size)` | Run deterministic per-card + dataset-level checks (no LLM judge) |
-| `prune_registry_tool(registry_json, dataset_size)` | Remove entries below cluster threshold; returns pruned registry + removed entries map |
+| `validate_rationale_card_set_tool(card_set_path, dataset_size)` | Run deterministic per-card + dataset-level checks (no LLM judge) |
+| `prune_registry_tool(registry_path, dataset_size)` | Remove entries below cluster threshold; returns pruned registry + removed entries map |
 | `stratified_split_tool(dataset_path, card_set_path, dev_ratio)` | Split examples + card set into dev/holdout matched pairs |
 
 `validate_rationale_card_set_tool` runs deterministic checks only. Semantic overlap is handled separately by the `check-semantic-overlap` skill.
@@ -75,8 +75,8 @@ Three skills activated at specific phases. For each skill: read the full `SKILL.
 
 Run up to 5 attempts. Each attempt:
 
-1. Call `prune_registry_tool(registry_json, dataset_size)` to remove entries below cluster threshold.
-2. Call `validate_rationale_card_set_tool(card_set_json, routing_context_json, dataset_size)` for deterministic checks on the post-pruning state.
+1. Write the current registry to `scratch/<dataset_hash>/phase3_registry.json`. Call `prune_registry_tool(registry_path, dataset_size)` to remove entries below cluster threshold.
+2. Write the current card set to `scratch/<dataset_hash>/phase3_card_set.json`. Call `validate_rationale_card_set_tool(card_set_path, dataset_size)` for deterministic checks on the post-pruning state.
 3. Activate the `check-semantic-overlap` skill for LLM-judged pairwise overlap across vocabulary entries.
 4. If all checks pass, write `outputs/<run_id>/analysis/validation_report.json` containing `dataset_hash`, `card_count`, `validation_checks_passed`, and `validated_at`. Then proceed to Phase 4.
 5. If failures are found, apply auto-fix strategies (see Error Handling below), write checkpoint, and retry.

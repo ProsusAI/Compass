@@ -856,8 +856,7 @@ async def resolve_registry_tool(
 async def validate_rationale_card_set_tool(
     ctx: Context,
     run_id: str,
-    card_set_json: str,
-    routing_context_json: str,
+    card_set_path: str,
     dataset_size: int,
 ) -> str:
     """[Stage 3: Routing Analysis] Run deterministic validation checks on a rationale card set.
@@ -867,24 +866,27 @@ async def validate_rationale_card_set_tool(
 
     Args:
         run_id: Pipeline run identifier.
-        card_set_json: JSON-serialized RationaleCardSet.
-        routing_context_json: JSON-serialized RoutingContext.
+        card_set_path: Absolute path to a JSON file containing a serialized RationaleCardSet.
         dataset_size: Total number of examples in the dataset.
 
     Returns:
         JSON array of RationaleCheckResult objects.
     """
     project_dir = await resolve_project_dir(ctx)
+    routing_context_path = project_dir / "outputs" / run_id / "validation" / "routing_context.json"
     check_artifacts(
         project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
-        project_dir / "outputs" / run_id / "validation" / "routing_context.json",
+        routing_context_path,
         stage=3,
         stage_name="Routing Analysis",
         hint="Complete data validation first.",
     )
 
-    card_set = RationaleCardSet.model_validate_json(card_set_json)
-    routing_context = RoutingContext.model_validate_json(routing_context_json)
+    card_set_file = Path(card_set_path)
+    if not card_set_file.is_file():
+        raise ToolError(f"Card set file not found: {card_set_path}")
+    card_set = RationaleCardSet.model_validate_json(card_set_file.read_text(encoding="utf-8"))
+    routing_context = RoutingContext.model_validate_json(routing_context_path.read_text(encoding="utf-8"))
     results = validate_deterministic(card_set, routing_context, dataset_size)
     return json.dumps([r.model_dump() for r in results], indent=2)
 
@@ -893,7 +895,7 @@ async def validate_rationale_card_set_tool(
 async def prune_registry_tool(
     ctx: Context,
     run_id: str,
-    registry_json: str,
+    registry_path: str,
     dataset_size: int,
 ) -> str:
     """[Stage 3: Routing Analysis] Remove vocabulary entries below the cluster threshold.
@@ -902,7 +904,7 @@ async def prune_registry_tool(
 
     Args:
         run_id: Pipeline run identifier.
-        registry_json: JSON-serialized VocabularyRegistry.
+        registry_path: Absolute path to a JSON file containing a serialized VocabularyRegistry.
         dataset_size: Total number of examples in the dataset.
 
     Returns:
@@ -917,7 +919,10 @@ async def prune_registry_tool(
         hint="Complete data validation first.",
     )
 
-    registry = VocabularyRegistry.model_validate_json(registry_json)
+    registry_file = Path(registry_path)
+    if not registry_file.is_file():
+        raise ToolError(f"Registry file not found: {registry_path}")
+    registry = VocabularyRegistry.model_validate_json(registry_file.read_text(encoding="utf-8"))
     pruned_registry, removed_entries = prune_registry(registry, dataset_size)
     return json.dumps(
         {
