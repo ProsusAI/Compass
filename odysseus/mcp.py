@@ -481,7 +481,7 @@ async def save_routing_context(ctx: Context, run_id: str, routing_context_json: 
         Confirmation message with the persisted file path.
     """
     try:
-        ctx = RoutingContext.model_validate_json(routing_context_json)
+        routing_context = RoutingContext.model_validate_json(routing_context_json)
     except Exception as exc:
         raise ToolError(f"Invalid RoutingContext JSON: {exc}") from exc
 
@@ -489,7 +489,7 @@ async def save_routing_context(ctx: Context, run_id: str, routing_context_json: 
     validation_dir = project_dir / "outputs" / run_id / "validation"
     validation_dir.mkdir(parents=True, exist_ok=True)
     out_path = validation_dir / "routing_context.json"
-    out_path.write_text(ctx.model_dump_json(indent=2), encoding="utf-8")
+    out_path.write_text(routing_context.model_dump_json(indent=2), encoding="utf-8")
     return f"Routing context saved to {out_path}"
 
 
