@@ -62,7 +62,7 @@ The evaluation framework supports four metrics. Use this to guide users toward a
 
 ## Pipeline Discovery
 
-Before collecting the problem spec, check if previous pipeline runs exist by calling `get_pipeline_status`. If previous runs exist, ask the user:
+Pipeline status has already been retrieved and is pre-injected above — use it directly. If previous runs exist, ask the user:
 
 > "I found existing pipeline runs. Would you like to start fresh, or bootstrap from an existing run's prompt?"
 
