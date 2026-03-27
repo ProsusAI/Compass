@@ -84,51 +84,123 @@ _STAGES: list[dict[str, Any]] = [
 # Next-action mapping
 # ---------------------------------------------------------------------------
 
-_NEXT_ACTION: dict[int, tuple[str, list[str], list[str]]] = {
+_NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
     1: (
-        "Submit an input report to start the pipeline.",
+        "Submit an input report to start the pipeline. "
+        "REQUIRED: activate prompt 'odysseus_routing_input' before calling any stage 1 tools.",
         ["submit_input_report"],
-        ["odysseus://user_input"],
+        ["odysseus_routing_input"],
+        (
+            "Spawn a sub-agent for Stage 1: Input Report. "
+            "Activate the `odysseus_routing_input` MCP prompt — it contains the agent's full workflow. "
+            "The agent may call these tools: get_pipeline_status, submit_input_report. "
+            "Do not call these tools yourself. "
+            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+        ),
     ),
     2: (
-        "Validate and transform the dataset.",
-        ["validate_dataset", "transform_dataset"],
-        ["odysseus://data_validation"],
+        "Validate and transform the dataset. "
+        "REQUIRED: activate prompt 'odysseus_data_validation' before calling any stage 2 tools.",
+        ["validate_dataset", "detect_and_parse_dataset", "transform_dataset", "save_routing_context"],
+        ["odysseus_data_validation"],
+        (
+            "Spawn a sub-agent for Stage 2: Data Validated. "
+            "Activate the `odysseus_data_validation` MCP prompt — it contains the agent's full workflow. "
+            "The agent may call these tools: get_pipeline_status, validate_dataset, "
+            "detect_and_parse_dataset, transform_dataset, save_routing_context. "
+            "Do not call these tools yourself. "
+            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+        ),
     ),
     3: (
-        "Run routing analysis and split the dataset into dev/holdout sets.",
-        ["stratified_split_tool", "create_seed_registry_tool"],
-        ["odysseus://routing_analysis"],
+        "Run routing analysis and split the dataset into dev/holdout sets. "
+        "REQUIRED: activate prompt 'odysseus_routing_analysis' before calling any stage 3 tools.",
+        [
+            "create_seed_registry_tool",
+            "resolve_registry_tool",
+            "validate_rationale_card_set_tool",
+            "prune_registry_tool",
+            "stratified_split_tool",
+        ],
+        ["odysseus_routing_analysis"],
+        (
+            "Spawn a sub-agent for Stage 3: Routing Analysis & Split. "
+            "Activate the `odysseus_routing_analysis` MCP prompt — it contains the agent's full workflow. "
+            "The agent may call these tools: get_pipeline_status, create_seed_registry_tool, "
+            "resolve_registry_tool, validate_rationale_card_set_tool, prune_registry_tool, "
+            "stratified_split_tool. "
+            "Do not call these tools yourself. "
+            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+        ),
     ),
     4: (
-        "Configure at least one routing backend (create a backends/*.yaml file).",
+        "Configure at least one routing backend (create a backends/*.yaml file). "
+        "REQUIRED: activate prompt 'odysseus_backend_setup' for guided configuration.",
         [],
-        [],
+        ["odysseus_backend_setup"],
+        (
+            "Spawn a sub-agent for Stage 4: Backend Configured. "
+            "Activate the `odysseus_backend_setup` MCP prompt — it contains the agent's full workflow. "
+            "The agent may call: get_pipeline_status. "
+            "Do not perform backend setup yourself. "
+            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+        ),
     ),
     5: (
-        "Compile the initial routing prompt (v1).",
+        "Compile the initial routing prompt (v1). "
+        "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any stage 5 tools.",
         ["optimize_routing_prompt"],
-        ["odysseus://prompt_builder"],
+        ["odysseus_prompt_builder"],
+        (
+            "Spawn a sub-agent for Stage 5: Prompt v1 Compiled. "
+            "Activate the `odysseus_prompt_builder` MCP prompt — it contains the agent's full workflow. "
+            "The agent may call these tools: get_pipeline_status, optimize_routing_prompt. "
+            "Do not call these tools yourself. "
+            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+        ),
     ),
     6: (
-        "Start the eval loop to iteratively refine the routing prompt.",
-        ["init_search_state_tool", "advance_round_tool"],
-        ["odysseus://eval_loop"],
+        "Start the eval loop to iteratively refine the routing prompt. "
+        "REQUIRED: activate prompt 'odysseus_review_agent' before calling any stage 6 tools.",
+        [
+            "init_search_state_tool",
+            "register_candidate_tool",
+            "record_eval_result_tool",
+            "advance_round_tool",
+            "get_search_state_tool",
+            "run_eval",
+            "build_review_briefing_tool",
+            "record_directive_outcomes_tool",
+        ],
+        ["odysseus_review_agent"],
+        (
+            "Spawn a sub-agent for Stage 6: Eval Loop Active. "
+            "Activate the `odysseus_review_agent` MCP prompt — it contains the agent's full workflow. "
+            "The agent may call these tools: get_pipeline_status, init_search_state_tool, "
+            "register_candidate_tool, record_eval_result_tool, advance_round_tool, "
+            "get_search_state_tool, run_eval, build_review_briefing_tool, "
+            "record_directive_outcomes_tool. "
+            "Do not call these tools yourself. "
+            "After the sub-agent exits, call get_pipeline_status to verify stage completion."
+        ),
     ),
     7: (
         "The eval loop has converged. Run holdout validation.",
         ["run_holdout_eval", "filter_holdout_dataset_tool"],
         [],
+        None,
     ),
     8: (
         "Generate the final report.",
         [],
         [],
+        None,
     ),
     9: (
         "Pipeline complete.",
         [],
         [],
+        None,
     ),
 }
 
@@ -173,7 +245,7 @@ def get_pipeline_status(
     if run_id is None:
         runs = discover_runs(outputs_dir)
         if not runs:
-            action, tools, prompts = _next_action_for_stage(1)
+            action, tools, prompts, subagent_instruction = _next_action_for_stage(1)
             return {
                 "run_id": None,
                 "stages": [],
@@ -181,7 +253,8 @@ def get_pipeline_status(
                 "current_stage_name": _STAGES[0]["name"],
                 "next_action": "No pipeline runs found. Call submit_input_report to start.",
                 "available_tools": tools,
-                "available_prompts": prompts,
+                "activate_prompt": prompts[0] if prompts else None,
+                "subagent_instruction": subagent_instruction,
             }
         run_id = runs[0]
 
@@ -230,7 +303,7 @@ def get_pipeline_status(
         (s["name"] for s in _STAGES if s["stage"] == current_stage),
         _STAGES[-1]["name"],
     )
-    next_action, tools, prompts = _next_action_for_stage(current_stage)
+    next_action, tools, prompts, subagent_instruction = _next_action_for_stage(current_stage)
 
     return {
         "run_id": run_id,
@@ -239,7 +312,8 @@ def get_pipeline_status(
         "current_stage_name": current_stage_name,
         "next_action": next_action,
         "available_tools": tools,
-        "available_prompts": prompts,
+        "activate_prompt": prompts[0] if prompts else None,
+        "subagent_instruction": subagent_instruction,
     }
 
 
@@ -376,9 +450,9 @@ def _check_stage_7(run_dir: Path) -> tuple[str, list[str], str]:
     return "incomplete", [str(search_state)], ""
 
 
-def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str]]:
-    """Return (next_action_text, tool_list, prompt_list) for the given stage."""
+def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str | None]:
+    """Return (next_action_text, tool_list, prompt_list, subagent_instruction) for the given stage."""
     return _NEXT_ACTION.get(
         stage,
-        ("Pipeline complete.", [], []),
+        ("Pipeline complete.", [], [], None),
     )

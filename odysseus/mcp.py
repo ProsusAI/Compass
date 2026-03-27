@@ -297,7 +297,7 @@ async def run_eval(
     config_path: str = "outputs/run_config.yaml",
     run_id: str | None = None,
 ) -> str:
-    """[Stage 5: Prompt Evaluation] Run an evaluation of a prompt version against a dataset.
+    """[Stage 6: Eval Loop] Run an evaluation of a prompt version against a dataset.
 
     Args:
         prompt_version: Prompt version identifier (e.g. "v3", "latest").
@@ -572,7 +572,7 @@ async def init_search_state_tool(
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
 ) -> str:
-    """[Stage 4: Search Init] Initialise a new prompt-builder search state.
+    """[Stage 6: Eval Loop] Initialise a new prompt-builder search state.
 
     Args:
         run_id: Pipeline run identifier.
@@ -610,7 +610,7 @@ async def register_candidate_tool(
     prompt_version: str,
     parent_version: str | None = None,
 ) -> str:
-    """[Stage 5: Prompt Search] Register a new candidate prompt version for the current search round.
+    """[Stage 6: Eval Loop] Register a new candidate prompt version for the current search round.
 
     Args:
         run_id: Pipeline run identifier.
@@ -640,7 +640,7 @@ async def record_eval_result_tool(
     quality_score: float,
     cost: float,
 ) -> str:
-    """[Stage 5: Prompt Search] Record evaluation results for a pending candidate.
+    """[Stage 6: Eval Loop] Record evaluation results for a pending candidate.
 
     Args:
         run_id: Pipeline run identifier.
@@ -667,7 +667,7 @@ async def record_eval_result_tool(
 
 @mcp.tool()
 async def advance_round_tool(run_id: str) -> str:
-    """[Stage 5: Prompt Search] Advance the search loop by one round.
+    """[Stage 6: Eval Loop] Advance the search loop by one round.
 
     Processes all pending candidates, updates the Pareto front, adjusts
     stagnation tracking, and checks for convergence.
@@ -689,7 +689,7 @@ async def advance_round_tool(run_id: str) -> str:
 
 @mcp.tool()
 async def get_search_state_tool(run_id: str) -> str:
-    """[Stage 5: Prompt Search] Load and return the current search state.
+    """[Stage 6: Eval Loop] Load and return the current search state.
 
     Args:
         run_id: Pipeline run identifier.
@@ -993,7 +993,7 @@ async def build_review_briefing_tool(
     holdout_card_set_path: str = "",
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 6: Review] Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
+    """[Stage 6: Eval Loop — Review] Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
 
     Loads search state, score reports, prompt texts, mutation log, and directive
     history, then computes candidate comparisons, per-class recall, diversity
@@ -1104,7 +1104,7 @@ async def record_directive_outcomes_tool(
     outcomes: list[dict[str, Any]],
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 6: Review] Record the outcomes of prior Review Agent directives.
+    """[Stage 6: Eval Loop — Review] Record the outcomes of prior Review Agent directives.
 
     Args:
         run_id: Pipeline run identifier.
@@ -1132,11 +1132,20 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     Call this at any time. Accepts optional run_id; if omitted, uses the
     most recent pipeline run.
 
+    The response includes a ``subagent_instruction`` field. If it is non-null,
+    you MUST spawn a sub-agent with that instruction before calling any tools
+    for the current stage. The instruction names the MCP prompt to activate and
+    lists the tools the sub-agent may call. Do not call stage tools yourself.
+
+    After the sub-agent exits, call this tool again to verify stage completion
+    and receive the next instruction.
+
     Args:
         run_id: Optional pipeline run identifier.
 
     Returns:
-        JSON object with stage checklist, current stage, and next action.
+        JSON object with stage checklist, current stage, next action, and
+        subagent_instruction (non-null when a sub-agent must be spawned).
     """
     project_dir = await resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"

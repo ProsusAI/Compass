@@ -105,3 +105,136 @@ def _setup_analysis(base: Path, run_id: str) -> None:
         "vocabulary_registry.json",
     ]:
         (analysis / f).write_text("{}")
+
+
+class TestSubagentInstruction:
+    """subagent_instruction field is present and correctly populated."""
+
+    def test_stage1_has_subagent_instruction(self, tmp_path: Path) -> None:
+        result = get_pipeline_status(tmp_path, run_id=None)
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_routing_input" in instr
+        assert "get_pipeline_status" in instr
+        assert "submit_input_report" in instr
+        assert "Stage 1" in instr
+
+    def test_stage2_has_subagent_instruction(self, tmp_path: Path) -> None:
+        _setup_stage1(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1")
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_data_validation" in instr
+        assert "get_pipeline_status" in instr
+        assert "validate_dataset" in instr
+        assert "detect_and_parse_dataset" in instr
+        assert "transform_dataset" in instr
+        assert "save_routing_context" in instr
+
+    def test_stage3_has_subagent_instruction(self, tmp_path: Path) -> None:
+        _setup_through_validation(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1")
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_routing_analysis" in instr
+        assert "get_pipeline_status" in instr
+        assert "create_seed_registry_tool" in instr
+        assert "resolve_registry_tool" in instr
+        assert "validate_rationale_card_set_tool" in instr
+        assert "prune_registry_tool" in instr
+        assert "stratified_split_tool" in instr
+
+    def test_stage6_has_subagent_instruction(self, tmp_path: Path) -> None:
+        _setup_through_stage5(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_review_agent" in instr
+        assert "get_pipeline_status" in instr
+        assert "init_search_state_tool" in instr
+        assert "run_eval" in instr
+        assert "build_review_briefing_tool" in instr
+        assert "record_directive_outcomes_tool" in instr
+
+    def test_stage7_has_null_subagent_instruction(self, tmp_path: Path) -> None:
+        # stage 6 complete (round >= 1), stage 7 not yet complete (converged=False)
+        # → current_stage == 7, subagent_instruction is null
+        _setup_through_stage6(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["current_stage"] == 7
+        assert result["subagent_instruction"] is None
+
+    def test_no_runs_has_subagent_instruction(self, tmp_path: Path) -> None:
+        result = get_pipeline_status(tmp_path, run_id=None)
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_routing_input" in instr
+
+    def test_stage2_available_tools_complete(self, tmp_path: Path) -> None:
+        """available_tools for stage 2 includes all 4 stage tools."""
+        _setup_stage1(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1")
+        tools = result["available_tools"]
+        assert "validate_dataset" in tools
+        assert "detect_and_parse_dataset" in tools
+        assert "transform_dataset" in tools
+        assert "save_routing_context" in tools
+
+    def test_stage3_available_tools_complete(self, tmp_path: Path) -> None:
+        """available_tools for stage 3 includes all 5 stage tools."""
+        _setup_through_validation(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1")
+        tools = result["available_tools"]
+        assert "create_seed_registry_tool" in tools
+        assert "resolve_registry_tool" in tools
+        assert "validate_rationale_card_set_tool" in tools
+        assert "prune_registry_tool" in tools
+        assert "stratified_split_tool" in tools
+
+    def test_stage6_available_tools_complete(self, tmp_path: Path) -> None:
+        """available_tools for stage 6 includes all 8 stage tools."""
+        _setup_through_stage5(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        tools = result["available_tools"]
+        for tool in [
+            "init_search_state_tool",
+            "register_candidate_tool",
+            "record_eval_result_tool",
+            "advance_round_tool",
+            "get_search_state_tool",
+            "run_eval",
+            "build_review_briefing_tool",
+            "record_directive_outcomes_tool",
+        ]:
+            assert tool in tools
+
+
+def _setup_stage1(base: Path, run_id: str) -> None:
+    (base / run_id / "input").mkdir(parents=True, exist_ok=True)
+    (base / run_id / "input" / "input_report.md").write_text("# Report")
+
+
+def _setup_through_stage5(base: Path, run_id: str) -> None:
+    _setup_through_validation(base, run_id)
+    _setup_analysis(base, run_id)
+    # Stage 4: backends dir under base so _check_stage_4 finds it when
+    # get_pipeline_status is called with project_dir=base.
+    (base / "backends").mkdir(parents=True, exist_ok=True)
+    (base / "backends" / "mock.yaml").write_text("label: mock")
+    # Stage 5: v1 prompt
+    (base / run_id / "prompts").mkdir(parents=True, exist_ok=True)
+    (base / run_id / "prompts" / "v1.yaml").write_text("prompt: test")
+
+
+def _setup_through_stage6(base: Path, run_id: str) -> None:
+    """Stage 6 complete (round >= 1), stage 7 not yet complete (converged=False).
+
+    Call get_pipeline_status(..., project_dir=base) after this to reach stage 7.
+    """
+    import json
+    _setup_through_stage5(base, run_id)
+    search = base / run_id / "search"
+    search.mkdir(parents=True, exist_ok=True)
+    (search / "search_state.json").write_text(
+        json.dumps({"round": 2, "converged": False})
+    )
