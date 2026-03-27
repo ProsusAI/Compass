@@ -40,6 +40,15 @@ from odysseus.project_dir import get_project_dir, resolve_project_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+_STAGE_PROMPT_MAP: dict[int, str] = {
+    1: "odysseus/agents/prompts/user_input_system.md",
+    2: "odysseus/agents/prompts/data_validation_system.md",
+    3: "odysseus/agents/prompts/routing_analysis_system.md",
+    4: "odysseus/agents/prompts/backend_setup_system.md",
+    5: "odysseus/agents/prompts/prompt_builder_system.md",
+    6: "odysseus/agents/prompts/review_agent_system.md",
+}
+
 
 def _load_text(relative_path: str) -> str:
     """Load a text file relative to the project root.
@@ -91,7 +100,6 @@ async def odysseus_routing_input() -> list[Message]:
 async def odysseus_data_validation() -> list[Message]:
     """Activate the Odysseus data validation agent.
 
-    Use after the input agent has produced a validated input report.
     Validates the routing dataset and produces a data quality report.
     """
     system_prompt = _load_text("odysseus/agents/prompts/data_validation_system.md")
@@ -100,10 +108,7 @@ async def odysseus_data_validation() -> list[Message]:
 
 @mcp.prompt()
 async def odysseus_prompt_builder() -> list[Message]:
-    """Activate the Odysseus prompt builder agent.
-
-    Use after the routing analysis agent has produced annotated and split datasets.
-    """
+    """Activate the Odysseus prompt builder agent."""
     system_prompt = _load_text("odysseus/agents/prompts/prompt_builder_system.md")
     return [UserMessage(content=system_prompt)]
 
@@ -112,8 +117,7 @@ async def odysseus_prompt_builder() -> list[Message]:
 async def odysseus_backend_setup() -> list[Message]:
     """Activate the Odysseus backend setup agent.
 
-    Use when run_eval returns action_required: backend_setup on the first
-    evaluation run. Guides the user through selecting or creating a backend.
+    Guides the user through selecting or creating a backend profile.
     """
     system_prompt = _load_text("odysseus/agents/prompts/backend_setup_system.md")
     return [UserMessage(content=system_prompt)]
@@ -277,9 +281,9 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, 
 async def optimize_routing_prompt(ctx: Context) -> str:
     """Start the Odysseus routing prompt optimization pipeline.
 
-    Call this to begin. Activates the User Input Agent, which will guide
-    you through providing a problem description and dataset before the
-    pipeline runs.
+    This is the pipeline entry-point tool for orchestrators; it is not a
+    stage sub-agent tool. Returns pipeline status and the stage system prompt.
+    Call `get_pipeline_status` to determine next action after this call.
     """
     try:
         system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
@@ -768,8 +772,7 @@ async def filter_holdout_dataset_tool(
 async def odysseus_routing_analysis() -> list[Message]:
     """Activate the Odysseus routing analysis agent.
 
-    Use after the data validation agent has produced a data quality report
-    and routing context. Annotates, validates, and splits the dataset.
+    Annotates, validates, and splits the routing dataset.
     """
     system_prompt = _load_text("odysseus/agents/prompts/routing_analysis_system.md")
     return [UserMessage(content=system_prompt)]
@@ -1172,6 +1175,21 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     project_dir = await resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
+    current_stage = result.get("current_stage")
+    subagent_instruction = result.get("subagent_instruction")
+    if current_stage in _STAGE_PROMPT_MAP and subagent_instruction:
+        placeholder = "<stage_system_prompt></stage_system_prompt>"
+        if placeholder in subagent_instruction:
+            try:
+                system_prompt = _load_text(_STAGE_PROMPT_MAP[current_stage])
+                result["subagent_instruction"] = subagent_instruction.replace(
+                    placeholder,
+                    f"<stage_system_prompt>\n{system_prompt}\n</stage_system_prompt>",
+                )
+            except FileNotFoundError as e:
+                raise ToolError(
+                    f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
+                ) from e
     return json.dumps(result, indent=2)
 
 

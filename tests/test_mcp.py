@@ -434,6 +434,78 @@ class TestGetPipelineStatus:
         assert data["run_id"] == "abc123"
         assert data["current_stage"] >= 2
 
+    async def test_get_pipeline_status_enriches_stage1_subagent_instruction(self, tmp_path: Path):
+        """get_pipeline_status enriches subagent_instruction with stage system prompt for stage 1."""
+        from odysseus.mcp import get_pipeline_status
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await get_pipeline_status(ctx=None, run_id=None)
+        data = json.loads(result)
+        instr = data.get("subagent_instruction", "")
+        assert "<stage_system_prompt>" in instr
+        assert "</stage_system_prompt>" in instr
+        # The placeholder should be replaced with actual content (not empty)
+        assert "<stage_system_prompt></stage_system_prompt>" not in instr
+
+    async def test_get_pipeline_status_enriches_stage2_subagent_instruction(self, tmp_path: Path):
+        """get_pipeline_status enriches subagent_instruction for stage 2."""
+        from odysseus.mcp import get_pipeline_status
+
+        # Create a stage-1-complete run (has input_report.md)
+        input_dir = tmp_path / "outputs" / "stage2run" / "input"
+        input_dir.mkdir(parents=True)
+        (input_dir / "input_report.md").write_text("# Report")
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await get_pipeline_status(ctx=None, run_id="stage2run")
+        data = json.loads(result)
+        assert data["current_stage"] == 2
+        instr = data.get("subagent_instruction", "")
+        assert "<stage_system_prompt>" in instr
+        assert "</stage_system_prompt>" in instr
+        assert "<stage_system_prompt></stage_system_prompt>" not in instr
+
+    async def test_get_pipeline_status_missing_prompt_file_raises_tool_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        """get_pipeline_status raises ToolError when stage prompt file is not found."""
+        from unittest.mock import patch
+
+        import odysseus.mcp as mcp_module
+
+        from odysseus.mcp import get_pipeline_status
+
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch.object(mcp_module, "_load_text", side_effect=FileNotFoundError("prompt not found")),
+            pytest.raises(ToolError, match="installation may be broken"),
+        ):
+            await get_pipeline_status(ctx=None, run_id=None)
+
+    async def test_get_pipeline_status_stage7_not_enriched(self, tmp_path: Path):
+        """get_pipeline_status does not enrich subagent_instruction for stage 7 (None)."""
+        import odysseus.mcp as mcp_module
+
+        from odysseus.mcp import get_pipeline_status
+
+        stage7_result = {
+            "run_id": "test-run",
+            "stages": [],
+            "current_stage": 7,
+            "current_stage_name": "Converged",
+            "next_action": "The eval loop has converged. Run holdout validation.",
+            "available_tools": ["run_holdout_eval", "filter_holdout_dataset_tool"],
+            "activate_prompt": None,
+            "subagent_instruction": None,
+        }
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch.object(mcp_module, "_get_pipeline_status", return_value=stage7_result),
+        ):
+            result = await get_pipeline_status(ctx=None, run_id=None)
+        data = json.loads(result)
+        assert data["subagent_instruction"] is None
+
 
 class TestOptimizeRoutingPrompt:
     """Tests for the optimize_routing_prompt MCP tool."""
