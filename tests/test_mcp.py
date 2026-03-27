@@ -65,6 +65,16 @@ async def test_run_holdout_eval_does_not_expose_data_split():
     assert "data_split" not in schema_properties, "data_split must not be exposed as a tool parameter"
 
 
+async def test_optimize_routing_prompt_has_no_user_params():
+    """optimize_routing_prompt must expose no user-facing parameters."""
+    tools = await mcp.list_tools()
+    tool = next(t for t in tools if t.name == "optimize_routing_prompt")
+    schema_properties = tool.inputSchema.get("properties", {})
+    assert schema_properties == {}, (
+        f"optimize_routing_prompt must have no parameters, got: {list(schema_properties)}"
+    )
+
+
 def _make_stub_score_report() -> ScoreReport:
     """Create a minimal ScoreReport for testing."""
     return ScoreReport(

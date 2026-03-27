@@ -252,25 +252,15 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, 
 
 
 @mcp.tool()
-async def optimize_routing_prompt(
-    data_path: str,
-    problem_description: str,
-    target_metrics: list[str],
-) -> str:
-    """[Stage 1: Full Pipeline] Run the full routing prompt optimization pipeline.
+async def optimize_routing_prompt(ctx: Context) -> str:
+    """Start the Odysseus routing prompt optimization pipeline.
 
-    Note: when implemented, must enforce stage sequencing.
-
-    Args:
-        data_path: Path to JSONL routing dataset.
-        problem_description: Natural language description of the routing task.
-        target_metrics: List of metric names and thresholds (e.g. "accuracy>=0.90").
-
-    Returns:
-        Structured evaluation report with the final optimized prompt.
+    Call this to begin. Activates the User Input Agent, which will guide
+    you through providing a problem description and dataset before the
+    pipeline runs.
     """
-    # TODO: Wire up the full pipeline
-    return f"Pipeline not yet implemented. Received: {data_path}, {problem_description}, {target_metrics}"
+    # Implementation added in next task — placeholder to pass schema test
+    raise ToolError("Not yet implemented")
 
 
 @mcp.tool()
