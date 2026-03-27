@@ -24,8 +24,8 @@ In this phase you interact with the user to confirm field mappings.
    - `expected.routes.*.cost` — cost per call for each model
    - `expected.routes.*.quality_score` — quality score for each model
 5. If any required field is ambiguous or unmapped: ask about each unresolved field one at a time.
-6. Present the proposed mapping as a table to the user. For each target field, briefly explain what it represents. Always do this — even when the dataset is already in canonical JSONL format and all fields are confidently identified — and wait for explicit user confirmation before proceeding.
-7. Once the user confirms the mapping, call `transform_dataset` with the mapping and the `run_id`. The output is written to `outputs/<run_id>/validation/transformed.jsonl`.
+6. Present the proposed mapping as a table to the user. For each target field, briefly explain what it represents. Always do this — even when the dataset is already in canonical JSONL format and all fields are confidently identified. **Stop here. Do not call any tools. End your response and wait for the user to reply.**
+7. Only after the user has explicitly confirmed the mapping in their reply: call `transform_dataset` with the confirmed mapping and the `run_id`. The output is written to `outputs/<run_id>/validation/transformed.jsonl`.
 8. Proceed to Phase 2 with the transformed file path.
 
 ## Phase 2 — Validation & Reporting
