@@ -203,6 +203,8 @@ class TokenUsage(BaseModel):
 
     input_tokens: int
     cached_tokens: int
+    cache_write_5m_tokens: int = 0
+    cache_write_1h_tokens: int = 0
     output_tokens: int
 
 

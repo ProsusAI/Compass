@@ -196,7 +196,13 @@ async def _eval_with_retry(
                 latency_ms = (time.monotonic() - start) * 1000
 
                 # Post-call token accounting
-                total_tokens = usage.input_tokens + usage.cached_tokens + usage.output_tokens
+                total_tokens = (
+                    usage.input_tokens
+                    + usage.cached_tokens
+                    + usage.cache_write_5m_tokens
+                    + usage.cache_write_1h_tokens
+                    + usage.output_tokens
+                )
                 rate_limiter.consume_tokens(total_tokens)
 
                 cost = compute_cost(pricing, usage)

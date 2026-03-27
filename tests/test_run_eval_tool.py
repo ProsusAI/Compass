@@ -2,7 +2,7 @@
 
 These tests verify that the MCP layer correctly:
 - Passes tool parameters to the agent as a context dict
-- Translates agent success (ScoreReport) into JSON with paths
+- Translates agent success (ScoreReport) into JSON with paths and metrics
 - Translates agent errors into ToolError
 """
 
@@ -21,6 +21,7 @@ from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
+RESOLVE_PROJECT_DIR = "odysseus.mcp.resolve_project_dir"
 
 
 def _stub_score_report(
@@ -55,13 +56,16 @@ def _stub_score_report(
 
 @pytest.mark.asyncio
 async def test_run_eval_success() -> None:
-    """Successful run_eval returns report and results paths."""
+    """Successful run_eval returns report path, results path, metrics, and summary."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         result = await run_eval(
+            ctx=None,
             prompt_version="v1",
             data_source="data/test.jsonl",
             backend="test-backend",
@@ -70,6 +74,8 @@ async def test_run_eval_success() -> None:
     parsed = json.loads(result)
     assert parsed["report_path"] == "outputs/report.json"
     assert parsed["results_path"] == "outputs/results.jsonl"
+    assert parsed["metrics"] == {"accuracy": 0.85}
+    assert parsed["summary"]["total_cost"] == 0.001
 
 
 # ---------------------------------------------------------------------------
@@ -82,10 +88,13 @@ async def test_run_eval_forwards_all_params() -> None:
     """run_eval passes all tool parameters to the agent context."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         await run_eval(
+            ctx=None,
             prompt_version="v5",
             data_source="data/new.jsonl",
             backend="tool-backend",
@@ -104,10 +113,13 @@ async def test_run_eval_default_config_path() -> None:
     """run_eval uses default config_path when not specified."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         await run_eval(
+            ctx=None,
             prompt_version="v1",
             data_source="data/test.jsonl",
             backend="test-backend",
@@ -125,11 +137,14 @@ async def test_run_eval_default_config_path() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_not_found_raises_tool_error() -> None:
     """Agent not_found error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {"error": {"category": "not_found", "detail": "config missing"}}
 
         with pytest.raises(ToolError, match="not_found"):
             await run_eval(
+                ctx=None,
                 prompt_version="v1",
                 data_source="data/test.jsonl",
                 backend="test-backend",
@@ -139,11 +154,14 @@ async def test_run_eval_not_found_raises_tool_error() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_validation_error_raises_tool_error() -> None:
     """Agent validation_error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {"error": {"category": "validation_error", "detail": "bad config"}}
 
         with pytest.raises(ToolError, match="validation_error"):
             await run_eval(
+                ctx=None,
                 prompt_version="v1",
                 data_source="data/test.jsonl",
                 backend="test-backend",
@@ -153,11 +171,14 @@ async def test_run_eval_validation_error_raises_tool_error() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_run_error_raises_tool_error() -> None:
     """Agent run_error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {"error": {"category": "run_error", "detail": "connection reset"}}
 
         with pytest.raises(ToolError, match="run_error"):
             await run_eval(
+                ctx=None,
                 prompt_version="v1",
                 data_source="data/test.jsonl",
                 backend="test-backend",
@@ -167,11 +188,14 @@ async def test_run_eval_run_error_raises_tool_error() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_permission_error_raises_tool_error() -> None:
     """Agent permission_denied error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {"error": {"category": "permission_denied", "detail": "read-only"}}
 
         with pytest.raises(ToolError, match="permission_denied"):
             await run_eval(
+                ctx=None,
                 prompt_version="v1",
                 data_source="data/test.jsonl",
                 backend="test-backend",
@@ -212,11 +236,12 @@ async def test_run_eval_preflight_triggers_on_round_zero(tmp_path: Path) -> None
     with (
         patch(GET_SEARCH_STATE, return_value=state),
         patch(BACKEND_REGISTRY) as MockRegistry,  # noqa: N806
-        patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+        patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
     ):
         MockRegistry.from_directory.return_value = mock_registry
 
         result = await run_eval(
+            ctx=None,
             prompt_version="v1",
             data_source="data/test.jsonl",
             backend="anthropic",
@@ -244,11 +269,12 @@ async def test_run_eval_preflight_skipped_after_round_zero(tmp_path: Path) -> No
     with (
         patch(GET_SEARCH_STATE, return_value=state),
         patch(AGENT_RUN, new_callable=AsyncMock) as mock_run,
-        patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+        patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
     ):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         result = await run_eval(
+            ctx=None,
             prompt_version="v1",
             data_source="data/test.jsonl",
             backend="anthropic",
@@ -265,10 +291,13 @@ async def test_run_eval_no_search_state_id_skips_preflight() -> None:
     """Without search_state_id, run_eval behaves as before."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         result = await run_eval(
+            ctx=None,
             prompt_version="v1",
             data_source="data/test.jsonl",
             backend="anthropic",

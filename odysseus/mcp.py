@@ -342,6 +342,8 @@ async def run_eval(
         {
             "report_path": score_report.report_path,
             "results_path": score_report.results_path,
+            "metrics": score_report.metrics,
+            "summary": score_report.summary.model_dump(mode="json"),
         }
     )
 

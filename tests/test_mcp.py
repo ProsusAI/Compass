@@ -12,6 +12,7 @@ from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp, model_specific_conventions
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
+RESOLVE_PROJECT_DIR = "odysseus.mcp.resolve_project_dir"
 
 
 async def test_server_has_tools():
@@ -29,8 +30,8 @@ async def test_run_holdout_eval_is_stub(tmp_path: Path):
     search_dir.mkdir(parents=True)
     (search_dir / "search_state.json").write_text("{}")
 
-    with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
-        result = await run_holdout_eval(prompt_version="v1", data_source="data/test.jsonl", run_id="test_run")
+    with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        result = await run_holdout_eval(ctx=None, prompt_version="v1", data_source="data/test.jsonl", run_id="test_run")
     assert "stub" in result
 
 
@@ -88,15 +89,18 @@ class TestRunEval:
     """Integration tests for the run_eval MCP tool."""
 
     async def test_success_returns_paths(self):
-        """Successful run returns JSON with report_path and results_path."""
+        """Successful run returns JSON with report_path, results_path, metrics, and summary."""
         score_report = _make_stub_score_report()
 
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+        ):
             mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
             from odysseus.mcp import run_eval
 
             result = await run_eval(
+                ctx=None,
                 prompt_version="v1",
                 data_source="data/test.jsonl",
                 backend="test-backend",
@@ -105,17 +109,22 @@ class TestRunEval:
         parsed = json.loads(result)
         assert parsed["report_path"] == "outputs/report.json"
         assert parsed["results_path"] == "outputs/results.jsonl"
+        assert parsed["metrics"] == {"accuracy": 0.95}
+        assert parsed["summary"]["total_cost"] == 0.01
 
     async def test_agent_receives_correct_context(self):
         """MCP tool passes all parameters to agent context."""
         score_report = _make_stub_score_report()
 
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+        ):
             mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
             from odysseus.mcp import run_eval
 
             await run_eval(
+                ctx=None,
                 prompt_version="v3",
                 data_source="data/routing.jsonl",
                 backend="openai",
@@ -130,13 +139,16 @@ class TestRunEval:
 
     async def test_agent_error_raises_tool_error(self):
         """Agent error dict is translated to ToolError."""
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+        ):
             mock_run.return_value = {"error": {"category": "not_found", "detail": "config missing"}}
 
             from odysseus.mcp import run_eval
 
             with pytest.raises(ToolError, match="not_found"):
                 await run_eval(
+                    ctx=None,
                     prompt_version="v1",
                     data_source="data/test.jsonl",
                     backend="test-backend",
@@ -144,13 +156,16 @@ class TestRunEval:
 
     async def test_validation_error_raises_tool_error(self):
         """Agent validation error is translated to ToolError."""
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run:
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+        ):
             mock_run.return_value = {"error": {"category": "validation_error", "detail": "bad config"}}
 
             from odysseus.mcp import run_eval
 
             with pytest.raises(ToolError, match="validation_error"):
                 await run_eval(
+                    ctx=None,
                     prompt_version="v1",
                     data_source="data/test.jsonl",
                     backend="test-backend",
@@ -227,8 +242,9 @@ class TestSubmitInputReport:
         """Returns JSON with run_id, report_path, and dataset_path."""
         from odysseus.mcp import submit_input_report
 
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             result = await submit_input_report(
+                ctx=None,
                 report="# Validated Input Report\n**Status:** proceed",
                 dataset_path="/data/routing.jsonl",
                 problem_description="Route support queries to tiers.",
@@ -244,6 +260,7 @@ class TestSubmitInputReport:
 
         with pytest.raises(ToolError, match="report is empty"):
             await submit_input_report(
+                ctx=None,
                 report="",
                 dataset_path="/data/routing.jsonl",
                 problem_description="Route queries.",
@@ -255,6 +272,7 @@ class TestSubmitInputReport:
 
         with pytest.raises(ToolError, match="dataset_path is empty"):
             await submit_input_report(
+                ctx=None,
                 report="# Report",
                 dataset_path="",
                 problem_description="Route queries.",
@@ -266,6 +284,7 @@ class TestSubmitInputReport:
 
         with pytest.raises(ToolError, match="problem_description is empty"):
             await submit_input_report(
+                ctx=None,
                 report="# Report",
                 dataset_path="/data/routing.jsonl",
                 problem_description="",
@@ -384,8 +403,8 @@ class TestGetPipelineStatus:
         """get_pipeline_status returns a JSON checklist."""
         from odysseus.mcp import get_pipeline_status
 
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
-            result = await get_pipeline_status()
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await get_pipeline_status(ctx=None)
         data = json.loads(result)
         assert "current_stage" in data
         assert "next_action" in data
@@ -399,8 +418,8 @@ class TestGetPipelineStatus:
         input_dir.mkdir(parents=True)
         (input_dir / "input_report.md").write_text("# Report")
 
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
-            result = await get_pipeline_status(run_id="abc123")
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = await get_pipeline_status(ctx=None, run_id="abc123")
         data = json.loads(result)
         assert data["run_id"] == "abc123"
         assert data["current_stage"] >= 2
@@ -413,10 +432,10 @@ class TestGuardRejection:
         from odysseus.mcp import validate_dataset
 
         with (
-            patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
             pytest.raises(ToolError, match="Pipeline precondition not met"),
         ):
-            await validate_dataset(dataset_path="/some/path.jsonl", run_id="no_such_run")
+            await validate_dataset(ctx=None, dataset_path="/some/path.jsonl", run_id="no_such_run")
 
     async def test_create_seed_registry_rejects_without_validation(self, tmp_path: Path):
         from odysseus.mcp import create_seed_registry_tool
@@ -427,20 +446,21 @@ class TestGuardRejection:
         (input_dir / "input_report.md").write_text("# Report")
 
         with (
-            patch("odysseus.mcp.get_project_dir", return_value=tmp_path),
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
             pytest.raises(ToolError, match="Pipeline precondition not met"),
         ):
-            await create_seed_registry_tool(run_id="test_run")
+            await create_seed_registry_tool(ctx=None, run_id="test_run")
 
 
 class TestSubmitInputReportPersistence:
     """Tests for run_id generation and artifact persistence."""
 
     async def test_returns_run_id(self, tmp_path: Path) -> None:
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             from odysseus.mcp import submit_input_report
 
             result = await submit_input_report(
+                ctx=None,
                 report="# Validated Input Report\n**Status:** proceed",
                 dataset_path="/data/test.jsonl",
                 problem_description="Route queries to models",
@@ -450,10 +470,11 @@ class TestSubmitInputReportPersistence:
         assert len(data["run_id"]) == 8
 
     async def test_persists_report_to_disk(self, tmp_path: Path) -> None:
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             from odysseus.mcp import submit_input_report
 
             result = await submit_input_report(
+                ctx=None,
                 report="# Validated Input Report\n**Status:** proceed",
                 dataset_path="/data/test.jsonl",
                 problem_description="Route queries to models",
@@ -468,10 +489,11 @@ class TestSubmitInputReportPersistence:
         old_prompts.mkdir(parents=True)
         (old_prompts / "v1.txt").write_text("prompt v1")
         (old_prompts / "v2.txt").write_text("prompt v2")
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             from odysseus.mcp import submit_input_report
 
             result = await submit_input_report(
+                ctx=None,
                 report="# Report\n**Status:** proceed",
                 dataset_path="/data/test.jsonl",
                 problem_description="Route queries",
@@ -483,10 +505,11 @@ class TestSubmitInputReportPersistence:
         assert bootstrap.read_text() == "prompt v2"
 
     async def test_bootstrap_nonexistent_run_is_noop(self, tmp_path: Path) -> None:
-        with patch("odysseus.mcp.get_project_dir", return_value=tmp_path):
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             from odysseus.mcp import submit_input_report
 
             result = await submit_input_report(
+                ctx=None,
                 report="# Report\n**Status:** proceed",
                 dataset_path="/data/test.jsonl",
                 problem_description="Route queries",

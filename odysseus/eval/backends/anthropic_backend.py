@@ -58,9 +58,12 @@ class AnthropicBackend:
         )
 
         usage = response.usage
+        cache_creation = getattr(usage, "cache_creation", None)
         token_usage = TokenUsage(
             input_tokens=usage.input_tokens,
             cached_tokens=getattr(usage, "cache_read_input_tokens", 0),
+            cache_write_5m_tokens=getattr(cache_creation, "ephemeral_5m_input_tokens", 0) if cache_creation else 0,
+            cache_write_1h_tokens=getattr(cache_creation, "ephemeral_1h_input_tokens", 0) if cache_creation else 0,
             output_tokens=usage.output_tokens,
         )
         output = {"content": response.content[0].text}

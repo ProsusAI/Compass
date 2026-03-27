@@ -49,7 +49,7 @@ class StubMetricsEngine:
 
 
 class StubResultsCollector:
-    def write_results(self, results: list[EvalResult], path: str) -> None:
+    def write_results(self, results: list[EvalResult], path: str, fingerprint: Any = None) -> None:
         pass
 
     def write_report(self, report: RunReport, path: str) -> None:
@@ -57,6 +57,15 @@ class StubResultsCollector:
 
     def append_result(self, result: EvalResult, path: str) -> None:
         pass
+
+    def read_completed_ids(self, path: str) -> set[str]:
+        return set()
+
+    def write_fingerprint(self, fingerprint: Any, path: str) -> None:
+        pass
+
+    def read_fingerprint(self, path: str) -> Any:
+        return None
 
     def read_completed_ids(self, path: str) -> set[str]:
         return set()
