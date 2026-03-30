@@ -598,19 +598,11 @@ class TestGuardRejection:
         ):
             await validate_dataset(ctx=None, dataset_path="/some/path.jsonl", run_id="no_such_run")
 
-    async def test_create_seed_registry_rejects_without_validation(self, tmp_path: Path):
-        from odysseus.mcp import create_seed_registry_tool
+    async def test_stratified_split_tool_importable_from_data_validation_tools(self):
+        """stratified_split_tool must be importable from data_validation_tools."""
+        from odysseus.mcp.data_validation_tools import stratified_split_tool
 
-        # Create input report but no validation artifacts
-        input_dir = tmp_path / "outputs" / "test_run" / "input"
-        input_dir.mkdir(parents=True)
-        (input_dir / "input_report.md").write_text("# Report")
-
-        with (
-            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            pytest.raises(ToolError, match="Pipeline precondition not met"),
-        ):
-            await create_seed_registry_tool(ctx=None, run_id="test_run")
+        assert callable(stratified_split_tool)
 
 
 class TestSubmitInputReportPersistence:
@@ -678,3 +670,35 @@ class TestSubmitInputReportPersistence:
             )
         data = json.loads(result)
         assert "run_id" in data  # no error
+
+
+class TestRoutingAnalysisRemoved:
+    """Tests verifying routing analysis stage is removed from MCP registrations."""
+
+    def test_routing_analysis_not_in_stage_registry(self):
+        """STAGE_REGISTRY must not contain a 'routing_analysis' entry."""
+        from odysseus.mcp import STAGE_REGISTRY
+
+        assert "routing_analysis" not in STAGE_REGISTRY
+
+    def test_stratified_split_tool_in_data_validation_stage(self):
+        """stratified_split_tool must appear in the 'data_validation' stage."""
+        from odysseus.mcp import STAGE_REGISTRY
+
+        assert "stratified_split_tool" in STAGE_REGISTRY["data_validation"]
+
+    def test_odysseus_routing_analysis_prompt_not_registered(self):
+        """odysseus_routing_analysis prompt must not be registered."""
+        from odysseus.mcp import mcp
+
+        prompt_names = [p.name for p in mcp._prompt_manager.list_prompts()]
+        assert "odysseus_routing_analysis" not in prompt_names
+
+    def test_routing_analysis_skill_resources_not_registered(self):
+        """Routing analysis skill resources must not be registered."""
+        from odysseus.mcp import mcp
+
+        resource_uris = [str(r.uri) for r in mcp._resource_manager.list_resources()]
+        assert "odysseus://agents/routing-analysis/classify-example-skill" not in resource_uris
+        assert "odysseus://agents/routing-analysis/generate-rationale-skill" not in resource_uris
+        assert "odysseus://agents/routing-analysis/check-overlap-skill" not in resource_uris

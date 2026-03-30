@@ -11,12 +11,11 @@ from odysseus.mcp.server import STAGE_REGISTRY, mcp, set_active_stage
 
 
 def test_stage_registry_has_all_stages():
-    """All 8 stages are defined."""
+    """All 7 stages are defined."""
     expected = {
         "orchestrator",
         "input_report",
         "data_validation",
-        "routing_analysis",
         "backend_setup",
         "prompt_building",
         "review",
@@ -49,7 +48,6 @@ def test_no_stage_specific_tools_in_orchestrator():
         "submit_input_report",
         "run_eval",
         "detect_and_parse_dataset",
-        "create_seed_registry_tool",
         "get_default_pricing",
         "init_search_state_tool",
         "build_review_briefing_tool",

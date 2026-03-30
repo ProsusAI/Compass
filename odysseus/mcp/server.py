@@ -18,10 +18,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _STAGE_PROMPT_MAP: dict[int | str, str] = {
     1: "odysseus/agents/prompts/user_input_system.md",
     2: "odysseus/agents/prompts/data_validation_system.md",
-    3: "odysseus/agents/prompts/routing_analysis_system.md",
-    4: "odysseus/agents/prompts/backend_setup_system.md",
-    5: "odysseus/agents/prompts/prompt_builder_system.md",
-    # Stage 6 is dynamic — looked up by activate_prompt name:
+    3: "odysseus/agents/prompts/backend_setup_system.md",
+    4: "odysseus/agents/prompts/prompt_builder_system.md",
+    # Stage 5 is dynamic — looked up by activate_prompt name:
     "odysseus_prompt_builder": "odysseus/agents/prompts/prompt_builder_system.md",
     "odysseus_review_agent": "odysseus/agents/prompts/review_agent_system.md",
 }
@@ -48,13 +47,6 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "transform_dataset",
         "validate_dataset",
         "save_routing_context",
-        "get_pipeline_status",
-    ],
-    "routing_analysis": [
-        "create_seed_registry_tool",
-        "resolve_registry_tool",
-        "prune_registry_tool",
-        "validate_rationale_card_set_tool",
         "stratified_split_tool",
         "get_pipeline_status",
     ],
@@ -184,7 +176,6 @@ import odysseus.mcp.prompt_building_tools as _prompt_building_tools  # noqa: E40
 import odysseus.mcp.prompts as _prompts  # noqa: E402, F401
 import odysseus.mcp.resources as _resources  # noqa: E402, F401
 import odysseus.mcp.review_tools as _review_tools  # noqa: E402, F401
-import odysseus.mcp.routing_analysis_tools as _routing_analysis_tools  # noqa: E402, F401
 
 
 def main() -> None:
