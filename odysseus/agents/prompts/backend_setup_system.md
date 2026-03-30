@@ -28,16 +28,17 @@ A **backend** is a configured LLM service provider (Anthropic, OpenAI, Bedrock, 
 
 ## Flow
 
+0. **Pricing update mode:** Check if you were dispatched with pricing values in your conversation context (the orchestrator will include them after collecting from the user). If so, load the existing backend YAML at `/backends/<label>.yaml`, merge the provided pricing into it, write the updated YAML, and skip to exit verification.
 1. Present the list of available backends from the `action_required` response.
 2. Ask: "Would you like to use one of these existing backends, or create a new one?"
-   - **Existing:** Confirm selection → skip to step 10
+   - **Existing:** Load the selected backend YAML. If `pricing` is present, confirm selection → skip to step 10. If `pricing` is null, run `get_default_pricing(provider, model)` for that backend. If found, update YAML with pricing and confirm. If not found, escalate (same as step 6 "Not found").
    - **New:** Continue to step 3
 3. Ask for the backend **label** (will become the YAML filename). Validate it doesn't collide with existing backends.
 4. Ask for **provider** (multiple choice: `anthropic`, `openai`, `bedrock`, `mock_echo`).
 5. Ask for **model** (model identifier, e.g., `claude-haiku-4-5`, `gpt-4.1`).
 6. Look up pricing via `get_default_pricing(provider, model)`:
-   - **Found:** Show resolved pricing (input/cached/output per 1M tokens). Ask if the user wants to adjust.
-   - **Not found:** Ask the user for `input_cost_per_million_tokens`, `cached_cost_per_million_tokens`, and `output_cost_per_million_tokens`.
+   - **Found:** Apply the resolved pricing. Show it in the summary (step 10).
+   - **Not found:** Write the YAML without pricing. Exit immediately with the message: "PRICING_MISSING for {provider}/{model}. The user must provide: input_cost_per_million_tokens, cached_cost_per_million_tokens, and output_cost_per_million_tokens."
 7. Ask for **requests_per_minute** (integer, >= 1).
 8. Ask for **tokens_per_minute** (integer, >= 1).
 9. Apply non-blocking defaults:
@@ -77,4 +78,5 @@ reasoning_level: <reasoning_level>
 
 Before you finish, call `get_pipeline_status` and confirm your stage shows `status: complete`.
 If any required artifacts are missing, fix them before exiting — do not exit with an incomplete stage.
-Only exit once `get_pipeline_status` confirms your stage is complete.
+
+**Exception:** If pricing lookup failed and you wrote the YAML without pricing, exit with an incomplete stage. Your final message must explain what pricing fields the user needs to provide.
