@@ -129,7 +129,7 @@ async def test_start_stage_sets_active_stage():
     set_active_stage("orchestrator")
     from odysseus.mcp.orchestrator_tools import start_stage
 
-    result = await start_stage(run_id="test-run", stage="data_validation")
+    result = await start_stage(stage="data_validation", run_id="test-run")
     assert get_active_stage() == "data_validation"
     assert "data_validation" in result
     assert "detect_and_parse_dataset" in result
@@ -141,7 +141,7 @@ async def test_start_stage_rejects_unknown_stage():
 
     set_active_stage("orchestrator")
     with pytest.raises(ToolError, match="Unknown stage"):
-        await start_stage(run_id="test-run", stage="nonexistent")
+        await start_stage(stage="nonexistent", run_id="test-run")
 
 
 async def test_start_stage_rejects_from_non_orchestrator_scope():
@@ -150,7 +150,28 @@ async def test_start_stage_rejects_from_non_orchestrator_scope():
 
     set_active_stage("input_report")
     with pytest.raises(ToolError, match="only be called from orchestrator scope"):
-        await start_stage(run_id="test-run", stage="data_validation")
+        await start_stage(stage="data_validation", run_id="test-run")
+
+
+async def test_start_stage_allows_input_report_without_run_id():
+    """start_stage allows input_report stage without a run_id."""
+    from odysseus.mcp.orchestrator_tools import start_stage
+    from odysseus.mcp.server import get_active_stage
+
+    set_active_stage("orchestrator")
+    result = await start_stage(stage="input_report")
+    assert get_active_stage() == "input_report"
+    assert "input_report" in result
+    assert "submit_input_report" in result
+
+
+async def test_start_stage_requires_run_id_for_non_input_stages():
+    """start_stage raises ToolError when run_id is missing for non-input stages."""
+    from odysseus.mcp.orchestrator_tools import start_stage
+
+    set_active_stage("orchestrator")
+    with pytest.raises(ToolError, match="run_id is required"):
+        await start_stage(stage="data_validation")
 
 
 async def test_complete_stage_rejects_from_orchestrator_scope():
@@ -168,7 +189,7 @@ async def test_complete_stage_resets_to_orchestrator():
     from odysseus.mcp.server import get_active_stage
 
     set_active_stage("orchestrator")
-    await start_stage(run_id="test-run", stage="review")
+    await start_stage(stage="review", run_id="test-run")
     assert get_active_stage() == "review"
 
     result = await complete_stage(run_id="test-run")

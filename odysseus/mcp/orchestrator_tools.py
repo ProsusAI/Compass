@@ -103,7 +103,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
 
 
 @mcp.tool()
-async def start_stage(run_id: str, stage: str) -> str:  # noqa: ARG001
+async def start_stage(stage: str, run_id: str | None = None) -> str:  # noqa: ARG001
     """Activate a pipeline stage, scoping visible tools to that stage.
 
     The orchestrator calls this before spawning a sub-agent so the sub-agent
@@ -111,8 +111,9 @@ async def start_stage(run_id: str, stage: str) -> str:  # noqa: ARG001
     call ``complete_stage`` to return to orchestrator scope.
 
     Args:
-        run_id: Pipeline run identifier (for logging / future per-run state).
         stage: Stage name — must be a key in ``STAGE_REGISTRY``.
+        run_id: Pipeline run identifier. Optional for the ``input_report``
+            stage (which creates the run_id); required for all other stages.
 
     Returns:
         Confirmation message listing the tools now available.
@@ -128,10 +129,17 @@ async def start_stage(run_id: str, stage: str) -> str:  # noqa: ARG001
         valid = ", ".join(sorted(STAGE_REGISTRY))
         raise ToolError(f"Unknown stage '{stage}'. Valid stages: {valid}")
 
+    if run_id is None and stage != "input_report":
+        raise ToolError(
+            f"run_id is required for stage '{stage}'. "
+            f"Only the 'input_report' stage can be started without a run_id."
+        )
+
     set_active_stage(stage)
     tools = STAGE_REGISTRY[stage]
+    run_label = f" for run {run_id}" if run_id else ""
     return (
-        f"Stage '{stage}' activated for run {run_id}. "
+        f"Stage '{stage}' activated{run_label}. "
         f"Available tools: {', '.join(tools)}"
     )
 
