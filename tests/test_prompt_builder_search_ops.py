@@ -372,8 +372,7 @@ class TestAdvanceRound:
 
 class TestAdvanceRoundLoopPhase:
     def test_sets_loop_phase_review_when_not_converged(self, tmp_path) -> None:
-        init_search_state("anthropic", run_id="r1", output_dir=tmp_path,
-                          convergence_limit=5, stagnation_limit=3)
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path, convergence_limit=5, stagnation_limit=3)
         _register_and_score("r1", "v1", 0.8, 0.5, tmp_path)
         summary = advance_round("r1", output_dir=tmp_path)
         state = get_search_state(run_id="r1", output_dir=tmp_path)
@@ -382,8 +381,7 @@ class TestAdvanceRoundLoopPhase:
 
     def test_sets_loop_phase_build_when_converged(self, tmp_path) -> None:
         # convergence_limit=2, stagnation_limit=1: converges after 2 stagnation rounds
-        init_search_state("anthropic", run_id="r1", output_dir=tmp_path,
-                          convergence_limit=2, stagnation_limit=1)
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path, convergence_limit=2, stagnation_limit=1)
         # Round 1: v1 added to empty front → new_pareto_points=1, stagnation_count=0
         _register_and_score("r1", "v1", 0.8, 0.5, tmp_path)
         advance_round("r1", output_dir=tmp_path)

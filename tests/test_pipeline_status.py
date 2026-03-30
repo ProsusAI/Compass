@@ -199,9 +199,7 @@ class TestSubagentInstruction:
         _setup_through_stage5(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 1, "converged": False, "loop_phase": "review"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
         assert instr is not None
@@ -249,9 +247,12 @@ class TestSubagentInstruction:
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
         for tool in [
-            "init_search_state_tool", "register_candidate_tool",
-            "record_eval_result_tool", "advance_round_tool",
-            "get_search_state_tool", "run_eval",
+            "init_search_state_tool",
+            "register_candidate_tool",
+            "record_eval_result_tool",
+            "advance_round_tool",
+            "get_search_state_tool",
+            "run_eval",
         ]:
             assert tool in tools
         assert "build_review_briefing_tool" not in tools
@@ -262,9 +263,7 @@ class TestSubagentInstruction:
         _setup_through_stage5(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 1, "converged": False, "loop_phase": "review"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
         assert "build_review_briefing_tool" in tools
@@ -282,20 +281,16 @@ class TestStage6NewBehavior:
         _setup_through_stage5(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 3, "converged": False, "loop_phase": "review"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 3, "converged": False, "loop_phase": "review"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["stages"][5]["status"] == "incomplete"   # Stage 6 index
+        assert result["stages"][5]["status"] == "incomplete"  # Stage 6 index
         assert result["current_stage"] == 6
 
     def test_stage6_complete_when_converged(self, tmp_path: Path) -> None:
         _setup_through_stage5(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 5, "converged": True, "loop_phase": "build"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["stages"][5]["status"] == "complete"
         assert result["current_stage"] == 7  # Holdout Validation
@@ -308,9 +303,7 @@ class TestStage6DynamicHardStop:
         _setup_through_stage5(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 1, "converged": False, "loop_phase": "build"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 6
         instr = result["subagent_instruction"]
@@ -328,9 +321,7 @@ class TestStage6DynamicHardStop:
         _setup_through_stage5(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 1, "converged": False, "loop_phase": "review"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 6
         instr = result["subagent_instruction"]
@@ -380,6 +371,4 @@ def _setup_through_stage6_converged(base: Path, run_id: str) -> None:
     _setup_through_stage5(base, run_id)
     search = base / run_id / "search"
     search.mkdir(parents=True, exist_ok=True)
-    (search / "search_state.json").write_text(
-        json.dumps({"round": 5, "converged": True, "loop_phase": "build"})
-    )
+    (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
