@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from odysseus.agents.review_models import (
+from odysseus.agents.review.models import (
     DirectiveOutcome,
     MutationRecord,
 )

@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 
 from odysseus.agents.prompt_builder.search import Candidate, SearchState
-from odysseus.agents.review_models import ExampleSummary, MutationRecord
-from odysseus.agents.review_preprocessor import (
+from odysseus.agents.review.models import ExampleSummary, MutationRecord
+from odysseus.agents.review.preprocessor import (
     build_candidate_comparisons,
     build_review_briefing,
     compute_diminishing_returns,

@@ -23,7 +23,7 @@ from odysseus.agents.prompt_builder.search import (
     select_best,
     update_pareto_front,
 )
-from odysseus.agents.review_models import (
+from odysseus.agents.review.models import (
     CandidateAnalysis,
     ClassRecallEntry,
     DirectiveOutcome,

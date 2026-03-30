@@ -1049,14 +1049,14 @@ async def build_review_briefing_tool(
         JSON-serialized ReviewBriefing.
     """
     from odysseus.agents.prompt_builder.search_ops import get_search_state
-    from odysseus.agents.review_models import ExampleSummary
-    from odysseus.agents.review_ops import (
+    from odysseus.agents.review.models import ExampleSummary
+    from odysseus.agents.review.ops import (
         load_directive_history,
         load_mutation_log,
         load_round_reports,
         save_round_report,
     )
-    from odysseus.agents.review_preprocessor import build_review_briefing
+    from odysseus.agents.review.preprocessor import build_review_briefing
     from odysseus.prompts.manager import FilePromptManager
 
     project_dir = await resolve_project_dir(ctx)
@@ -1152,8 +1152,8 @@ async def record_directive_outcomes_tool(
     Returns:
         JSON object with recorded count and new total.
     """
-    from odysseus.agents.review_models import DirectiveOutcome
-    from odysseus.agents.review_ops import load_directive_history, save_directive_history
+    from odysseus.agents.review.models import DirectiveOutcome
+    from odysseus.agents.review.ops import load_directive_history, save_directive_history
 
     project_dir = await resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
