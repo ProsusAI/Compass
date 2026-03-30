@@ -214,6 +214,7 @@ tests/fixtures/integration/outputs/
 
 # Local MCP / Claude Code config
 mcp.json
+.mcp.json
 .claude/settings.*
 
 # Pipeline runtime artifacts (created by `odysseus init` / MCP runs)
