@@ -269,8 +269,7 @@ Integration tests are Markdown runbooks in `tests/scenarios/`. Each scenario def
 
 **Prerequisites:**
 - The Odysseus MCP server must be connected to your AI coding assistant (see [Setup](#setup))
-- `ANTHROPIC_API_KEY` must be set (scenarios make real LLM API calls)
-- For scenario 49 only: `OPENAI_API_KEY` must be set
+- At least one LLM API key must be set (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) — scenarios make real LLM API calls
 
 **Running a scenario:**
 

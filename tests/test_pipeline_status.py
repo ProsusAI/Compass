@@ -32,33 +32,28 @@ class TestGetPipelineStatus:
         assert result["current_stage"] == 2
 
     def test_validation_complete(self, tmp_path: Path) -> None:
-        _setup_through_validation(tmp_path, "abc12345")
+        """Stage 2 is complete only when validation files AND split outputs are present."""
+        _setup_through_stage2(tmp_path, "abc12345")
         result = get_pipeline_status(tmp_path, "abc12345")
         assert result["stages"][1]["status"] == "complete"
         assert result["current_stage"] == 3
 
-    def test_analysis_complete(self, tmp_path: Path) -> None:
-        _setup_through_validation(tmp_path, "abc12345")
-        analysis = tmp_path / "abc12345" / "analysis"
-        analysis.mkdir(parents=True)
-        for f in [
-            "validation_report.json",
-            "dev.jsonl",
-            "holdout.jsonl",
-            "dev_rationale_card_set.json",
-            "holdout_rationale_card_set.json",
-            "vocabulary_registry.json",
-        ]:
-            (analysis / f).write_text("{}")
+    def test_validation_without_split_incomplete(self, tmp_path: Path) -> None:
+        """Stage 2 incomplete when split outputs (dev.jsonl, holdout.jsonl) are missing."""
+        _setup_stage1(tmp_path, "abc12345")
+        (tmp_path / "abc12345" / "validation").mkdir(parents=True, exist_ok=True)
+        for f in ["transformed.jsonl", "data_quality_report.json", "routing_context.json"]:
+            (tmp_path / "abc12345" / "validation" / f).write_text("{}")
         result = get_pipeline_status(tmp_path, "abc12345")
-        assert result["stages"][2]["status"] == "complete"
+        assert result["stages"][1]["status"] == "incomplete"
+        assert result["current_stage"] == 2
 
     def test_blocked_stages(self, tmp_path: Path) -> None:
         (tmp_path / "abc12345" / "input").mkdir(parents=True)
         (tmp_path / "abc12345" / "input" / "input_report.md").write_text("# Report")
         result = get_pipeline_status(tmp_path, "abc12345")
-        assert result["stages"][2]["status"] == "blocked"  # routing analysis
-        assert result["stages"][4]["status"] == "blocked"  # prompt v1
+        assert result["stages"][2]["status"] == "blocked"  # backend configured (stage 3)
+        assert result["stages"][3]["status"] == "blocked"  # prompt v1 (stage 4)
 
     def test_no_runs_returns_empty(self, tmp_path: Path) -> None:
         result = get_pipeline_status(tmp_path, run_id=None)
@@ -76,36 +71,70 @@ class TestGetPipelineStatus:
         assert result["run_id"] == "new_run"
 
     def test_prompt_v1_glob(self, tmp_path: Path) -> None:
-        """Stage 5 should detect v1.yaml, not just v1.txt."""
-        _setup_through_validation(tmp_path, "r1")
-        _setup_analysis(tmp_path, "r1")
+        """Stage 4 should detect v1.yaml, not just v1.txt."""
+        _setup_through_stage3(tmp_path, "r1")
         prompts = tmp_path / "r1" / "prompts"
         prompts.mkdir(parents=True)
         (prompts / "v1.yaml").write_text("prompt: test")
-        result = get_pipeline_status(tmp_path, "r1")
-        assert result["stages"][4]["status"] == "complete"
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][3]["status"] == "complete"
+
+
+def _setup_stage1(base: Path, run_id: str) -> None:
+    (base / run_id / "input").mkdir(parents=True, exist_ok=True)
+    (base / run_id / "input" / "input_report.md").write_text("# Report")
 
 
 def _setup_through_validation(base: Path, run_id: str) -> None:
-    (base / run_id / "input").mkdir(parents=True, exist_ok=True)
-    (base / run_id / "input" / "input_report.md").write_text("# Report")
+    """Set up stage 1 + validation files only (no split outputs). Stage 2 will be incomplete."""
+    _setup_stage1(base, run_id)
     (base / run_id / "validation").mkdir(parents=True, exist_ok=True)
     for f in ["transformed.jsonl", "data_quality_report.json", "routing_context.json"]:
         (base / run_id / "validation" / f).write_text("{}")
 
 
-def _setup_analysis(base: Path, run_id: str) -> None:
+def _setup_through_stage2(base: Path, run_id: str) -> None:
+    """Set up stages 1 and 2 complete: validation files + split outputs."""
+    _setup_through_validation(base, run_id)
     analysis = base / run_id / "analysis"
     analysis.mkdir(parents=True, exist_ok=True)
-    for f in [
-        "validation_report.json",
-        "dev.jsonl",
-        "holdout.jsonl",
-        "dev_rationale_card_set.json",
-        "holdout_rationale_card_set.json",
-        "vocabulary_registry.json",
-    ]:
+    for f in ["dev.jsonl", "holdout.jsonl"]:
         (analysis / f).write_text("{}")
+
+
+def _setup_analysis(base: Path, run_id: str) -> None:
+    """Create split output files required by stage 2."""
+    analysis = base / run_id / "analysis"
+    analysis.mkdir(parents=True, exist_ok=True)
+    for f in ["dev.jsonl", "holdout.jsonl"]:
+        (analysis / f).write_text("{}")
+
+
+def _setup_through_stage3(base: Path, run_id: str) -> None:
+    """Set up stages 1-3 complete: validation + split + backend."""
+    _setup_through_stage2(base, run_id)
+    (base / "backends").mkdir(parents=True, exist_ok=True)
+    (base / "backends" / "mock.yaml").write_text("label: mock")
+
+
+def _setup_through_stage4(base: Path, run_id: str) -> None:
+    """Set up stages 1-4 complete: validation + split + backend + prompt v1."""
+    _setup_through_stage3(base, run_id)
+    (base / run_id / "prompts").mkdir(parents=True, exist_ok=True)
+    (base / run_id / "prompts" / "v1.yaml").write_text("prompt: test")
+
+
+def _setup_through_stage5(base: Path, run_id: str) -> None:
+    """Alias for _setup_through_stage4 — stages 1-4 complete, refinement loop (stage 5) next."""
+    _setup_through_stage4(base, run_id)
+
+
+def _setup_through_stage6_converged(base: Path, run_id: str) -> None:
+    """Stage 5 complete (converged=True), Stage 6 not yet complete (no holdout report)."""
+    _setup_through_stage4(base, run_id)
+    search = base / run_id / "search"
+    search.mkdir(parents=True, exist_ok=True)
+    (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
 
 
 class TestSubagentInstruction:
@@ -139,26 +168,11 @@ class TestSubagentInstruction:
         assert "detect_and_parse_dataset" in instr
         assert "transform_dataset" in instr
         assert "save_routing_context" in instr
-
-    def test_stage3_has_subagent_instruction(self, tmp_path: Path) -> None:
-        _setup_through_validation(tmp_path, "r1")
-        result = get_pipeline_status(tmp_path, "r1")
-        instr = result["subagent_instruction"]
-        assert instr is not None
-        assert "<HARD_STOP>" in instr
-        assert "</HARD_STOP>" in instr
-        assert "<stage_system_prompt>" in instr
-        assert "</stage_system_prompt>" in instr
-        assert "odysseus_routing_analysis" in instr
-        assert "get_pipeline_status" in instr
-        assert "create_seed_registry_tool" in instr
-        assert "resolve_registry_tool" in instr
-        assert "validate_rationale_card_set_tool" in instr
-        assert "prune_registry_tool" in instr
         assert "stratified_split_tool" in instr
 
-    def test_stage5_has_subagent_instruction(self, tmp_path: Path) -> None:
-        _setup_through_stage4(tmp_path, "r1")
+    def test_stage4_has_subagent_instruction(self, tmp_path: Path) -> None:
+        """Stage 4 (Prompt v1 Compiled) has a subagent instruction."""
+        _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
         assert instr is not None
@@ -166,9 +180,9 @@ class TestSubagentInstruction:
         assert "<stage_system_prompt>" in instr
         assert "odysseus_prompt_builder" in instr
 
-    def test_stage5_available_tools_correct(self, tmp_path: Path) -> None:
-        """Stage 5 available_tools must not include optimize_routing_prompt (pipeline entry tool)."""
-        _setup_through_stage4(tmp_path, "r1")
+    def test_stage4_available_tools_correct(self, tmp_path: Path) -> None:
+        """Stage 4 available_tools must not include optimize_routing_prompt (pipeline entry tool)."""
+        _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
         assert "optimize_routing_prompt" not in tools
@@ -179,9 +193,9 @@ class TestSubagentInstruction:
         assert "get_search_state_tool" in tools
         assert "run_eval" in tools
 
-    def test_stage6_build_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
-        """Stage 6 with no search state file -> defaults to build phase -> Prompt Builder."""
-        _setup_through_stage5(tmp_path, "r1")
+    def test_stage5_build_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
+        """Stage 5 with no search state file -> defaults to build phase -> Prompt Builder."""
+        _setup_through_stage4(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
         assert instr is not None
@@ -194,9 +208,9 @@ class TestSubagentInstruction:
         assert "register_candidate_tool" in instr
         assert "run_eval" in instr
 
-    def test_stage6_review_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
-        """Stage 6 with loop_phase=review -> Review Agent instruction."""
-        _setup_through_stage5(tmp_path, "r1")
+    def test_stage5_review_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
+        """Stage 5 with loop_phase=review -> Review Agent instruction."""
+        _setup_through_stage4(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
         (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
@@ -207,11 +221,11 @@ class TestSubagentInstruction:
         assert "build_review_briefing_tool" in instr
         assert "record_directive_outcomes_tool" in instr
 
-    def test_stage7_has_null_subagent_instruction(self, tmp_path: Path) -> None:
-        # Stage 6 complete (converged=True), stage 7 not yet complete (no holdout report)
+    def test_stage6_has_null_subagent_instruction(self, tmp_path: Path) -> None:
+        # Stage 5 complete (converged=True), stage 6 not yet complete (no holdout report)
         _setup_through_stage6_converged(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["current_stage"] == 7
+        assert result["current_stage"] == 6
         assert result["subagent_instruction"] is None
 
     def test_no_runs_has_subagent_instruction(self, tmp_path: Path) -> None:
@@ -221,7 +235,7 @@ class TestSubagentInstruction:
         assert "odysseus_routing_input" in instr
 
     def test_stage2_available_tools_complete(self, tmp_path: Path) -> None:
-        """available_tools for stage 2 includes all 4 stage tools."""
+        """available_tools for stage 2 includes all stage tools including stratified_split_tool."""
         _setup_stage1(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1")
         tools = result["available_tools"]
@@ -229,21 +243,11 @@ class TestSubagentInstruction:
         assert "detect_and_parse_dataset" in tools
         assert "transform_dataset" in tools
         assert "save_routing_context" in tools
-
-    def test_stage3_available_tools_complete(self, tmp_path: Path) -> None:
-        """available_tools for stage 3 includes all 5 stage tools."""
-        _setup_through_validation(tmp_path, "r1")
-        result = get_pipeline_status(tmp_path, "r1")
-        tools = result["available_tools"]
-        assert "create_seed_registry_tool" in tools
-        assert "resolve_registry_tool" in tools
-        assert "validate_rationale_card_set_tool" in tools
-        assert "prune_registry_tool" in tools
         assert "stratified_split_tool" in tools
 
-    def test_stage6_build_phase_available_tools(self, tmp_path: Path) -> None:
+    def test_stage5_build_phase_available_tools(self, tmp_path: Path) -> None:
         """Build phase tools: eval tools present, review tools absent."""
-        _setup_through_stage5(tmp_path, "r1")
+        _setup_through_stage4(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
         for tool in [
@@ -258,9 +262,9 @@ class TestSubagentInstruction:
         assert "build_review_briefing_tool" not in tools
         assert "record_directive_outcomes_tool" not in tools
 
-    def test_stage6_review_phase_available_tools(self, tmp_path: Path) -> None:
+    def test_stage5_review_phase_available_tools(self, tmp_path: Path) -> None:
         """Review phase tools: review tools present, eval mutation tools absent."""
-        _setup_through_stage5(tmp_path, "r1")
+        _setup_through_stage4(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
         (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
@@ -273,39 +277,39 @@ class TestSubagentInstruction:
         assert "run_eval" not in tools
 
 
-class TestStage6NewBehavior:
-    """Stage 6 is complete only when converged == true."""
+class TestStage5NewBehavior:
+    """Stage 5 is complete only when converged == true."""
 
-    def test_stage6_incomplete_when_round_gte_1_but_not_converged(self, tmp_path: Path) -> None:
-        """round >= 1 no longer completes Stage 6."""
-        _setup_through_stage5(tmp_path, "r1")
+    def test_stage5_incomplete_when_round_gte_1_but_not_converged(self, tmp_path: Path) -> None:
+        """round >= 1 no longer completes Stage 5."""
+        _setup_through_stage4(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
         (search / "search_state.json").write_text(json.dumps({"round": 3, "converged": False, "loop_phase": "review"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["stages"][5]["status"] == "incomplete"  # Stage 6 index
-        assert result["current_stage"] == 6
+        assert result["stages"][4]["status"] == "incomplete"  # Stage 5 index
+        assert result["current_stage"] == 5
 
-    def test_stage6_complete_when_converged(self, tmp_path: Path) -> None:
-        _setup_through_stage5(tmp_path, "r1")
+    def test_stage5_complete_when_converged(self, tmp_path: Path) -> None:
+        _setup_through_stage4(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
         (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["stages"][5]["status"] == "complete"
-        assert result["current_stage"] == 7  # Holdout Validation
+        assert result["stages"][4]["status"] == "complete"
+        assert result["current_stage"] == 6  # Holdout Validation
 
 
-class TestStage6DynamicHardStop:
-    """Stage 6 HARD_STOP depends on loop_phase."""
+class TestStage5DynamicHardStop:
+    """Stage 5 HARD_STOP depends on loop_phase."""
 
     def test_build_phase_spawns_prompt_builder(self, tmp_path: Path) -> None:
-        _setup_through_stage5(tmp_path, "r1")
+        _setup_through_stage4(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
         (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["current_stage"] == 6
+        assert result["current_stage"] == 5
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "odysseus_prompt_builder" in instr
@@ -318,12 +322,12 @@ class TestStage6DynamicHardStop:
         assert "record_directive_outcomes_tool" not in result["available_tools"]
 
     def test_review_phase_spawns_review_agent(self, tmp_path: Path) -> None:
-        _setup_through_stage5(tmp_path, "r1")
+        _setup_through_stage4(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
         search.mkdir(parents=True, exist_ok=True)
         (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["current_stage"] == 6
+        assert result["current_stage"] == 5
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "odysseus_review_agent" in instr
@@ -335,40 +339,8 @@ class TestStage6DynamicHardStop:
         assert "run_eval" not in result["available_tools"]
 
     def test_no_search_state_defaults_to_build_phase(self, tmp_path: Path) -> None:
-        """Stage 6 before any search state exists: treat as build phase."""
-        _setup_through_stage5(tmp_path, "r1")
+        """Stage 5 before any search state exists: treat as build phase."""
+        _setup_through_stage4(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["current_stage"] == 6
+        assert result["current_stage"] == 5
         assert "odysseus_prompt_builder" in result["subagent_instruction"]
-
-
-def _setup_stage1(base: Path, run_id: str) -> None:
-    (base / run_id / "input").mkdir(parents=True, exist_ok=True)
-    (base / run_id / "input" / "input_report.md").write_text("# Report")
-
-
-def _setup_through_stage4(base: Path, run_id: str) -> None:
-    _setup_through_validation(base, run_id)
-    _setup_analysis(base, run_id)
-    (base / "backends").mkdir(parents=True, exist_ok=True)
-    (base / "backends" / "mock.yaml").write_text("label: mock")
-
-
-def _setup_through_stage5(base: Path, run_id: str) -> None:
-    _setup_through_validation(base, run_id)
-    _setup_analysis(base, run_id)
-    # Stage 4: backends dir under base so _check_stage_4 finds it when
-    # get_pipeline_status is called with project_dir=base.
-    (base / "backends").mkdir(parents=True, exist_ok=True)
-    (base / "backends" / "mock.yaml").write_text("label: mock")
-    # Stage 5: v1 prompt
-    (base / run_id / "prompts").mkdir(parents=True, exist_ok=True)
-    (base / run_id / "prompts" / "v1.yaml").write_text("prompt: test")
-
-
-def _setup_through_stage6_converged(base: Path, run_id: str) -> None:
-    """Stage 6 complete (converged=True), Stage 7 not yet complete (no holdout report)."""
-    _setup_through_stage5(base, run_id)
-    search = base / run_id / "search"
-    search.mkdir(parents=True, exist_ok=True)
-    (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
