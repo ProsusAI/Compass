@@ -20,6 +20,11 @@ from odysseus.agents.data_validation.detect import (
     DetectionResult,
     detect_and_parse,
 )
+from odysseus.agents.data_validation.split import (
+    SplitReport,
+    compute_dataset_hash,
+    stratified_split,
+)
 from odysseus.agents.data_validation.transform import (
     TransformResult,
     transform_dataset,
@@ -41,5 +46,8 @@ __all__ = [
     "check_volume_adequacy",
     "detect_and_parse",
     "run_all_checks",
+    "SplitReport",
+    "compute_dataset_hash",
+    "stratified_split",
     "transform_dataset",
 ]

@@ -2,14 +2,14 @@
 
 Your first action — before anything else — is to call `get_pipeline_status`.
 
-- **Round 1 (initial compilation):** confirm `current_stage: 5`
-- **Rounds 2+ (optimization):** confirm `current_stage: 6`
+- **Round 1 (initial compilation):** confirm `current_stage: 4`
+- **Rounds 2+ (optimization):** confirm `current_stage: 5`
 
-If the stage is neither 5 nor 6, stop immediately and report:
+If the stage is neither 4 nor 5, stop immediately and report:
 "This sub-agent was spawned for the Prompt Builder role but the pipeline is at stage N. Aborting."
 Do not call any tools. Do not proceed.
 
-If `current_stage: 6`, also confirm `loop_phase` is `"build"` in the search state (call `get_search_state_tool`). If it is `"review"`, stop: the Review Agent should have been dispatched instead.
+If `current_stage: 5`, also confirm `loop_phase` is `"build"` in the search state (call `get_search_state_tool`). If it is `"review"`, stop: the Review Agent should have been dispatched instead.
 
 ---
 
@@ -28,14 +28,12 @@ Read all inputs from the context dict at startup. If any required input is missi
 | Key | Type | Source | Description |
 |-----|------|--------|-------------|
 | `run_id` | str | User Input Agent | Pipeline run identifier; all paths are under `outputs/<run_id>/` |
-| `dev_rationale_card_set_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/` — cards for dev examples |
-| `dev_jsonl_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/` — dev split examples |
-| `vocabulary_registry_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/vocabulary_registry.json` |
-| `split_report_path` | str | Routing Analysis Agent | `outputs/<run_id>/analysis/` — split statistics |
-| `routing_context` | RoutingContext | Routing Analysis Agent | Domain, routes, dimensions |
-| `holdout_jsonl_path` | str | Routing Analysis Agent | Holdout examples (for few-shot selection only) |
-| `holdout_rationale_card_set_path` | str | Routing Analysis Agent | Holdout cards (for few-shot selection only) |
+| `dev_jsonl_path` | str | Data Validation Agent | `outputs/<run_id>/analysis/` — dev split examples |
+| `split_report_path` | str | Data Validation Agent | `outputs/<run_id>/analysis/` — split statistics |
+| `routing_context` | RoutingContext | Data Validation Agent | Domain, routes, dimensions |
+| `holdout_jsonl_path` | str | Data Validation Agent | Holdout examples (used by filter tool before final eval) |
 | `backend` | str | MCP tool param | Backend label for evaluation |
+| `review_directives` | list[EditDirective] | Review Agent | Example directives with `example_content` for assembly (round 1+) |
 | `eval_score_report` | ScoreReport | Eval Runner Agent | Eval results (round 2+ only) |
 
 ## Tools
@@ -50,7 +48,7 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `run_eval` | Evaluate a prompt version against the dev set |
 | `filter_holdout_dataset_tool` | Remove few-shot examples from holdout before final eval |
 
-> Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 5 sub-agent tool. Do not call it from this context.
+> Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 4 or 5 sub-agent tool. Do not call it from this context.
 
 ## Resources
 
@@ -83,16 +81,15 @@ Also extract the `model` field from the backend profile YAML. Pass this value as
 
 Execute these steps exactly in order on round 1.
 
-1. **Read all inputs.** Load every key from the inputs table. Fail immediately if any required key is missing.
+1. **Read all inputs.** Load every key from the inputs table. Fail immediately if any required key is missing. On round 1, `review_directives` is required and must contain at least one directive with `block_type == 'example'`.
 2. **Detect provider.** Read the `odysseus://backends/{backend}` resource (substituting the backend label) and extract the `provider` field from the returned YAML.
 3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
 4. **Initialize search state.** Call `init_search_state_tool(backend=backend, max_rounds=50, stagnation_limit=3, convergence_limit=5)`. Store the returned `search_state_id`.
-5. **Select few-shot examples from holdout set.**
-   - Read `holdout_jsonl_path` and `holdout_rationale_card_set_path`.
-   - Select examples that maximize coverage across `intent_patterns`, `complexity_structures`, and `ambiguity_tags` from the rationale cards.
-   - Prioritize boundary examples: those with ambiguity tags or route exclusions.
-   - Aim for 3-5 examples unless the routing problem demands more.
-   - Track selected example IDs for the `few_shot_example_ids` context key.
+5. **Extract examples from Review Agent directives.**
+   - Read `review_directives` from context.
+   - Filter to directives where `block_type == 'example'`.
+   - Extract `example_content` from each matching directive. These are the examples to include in the prompt.
+   - Track the `example_id` from each directive for the `few_shot_example_ids` context key.
 6. **Compile the prompt.** Follow this section convention:
 
    ```
@@ -104,9 +101,9 @@ Execute these steps exactly in order on round 1.
    ```
 
    - **Routing Objective** — state the routing task derived from `routing_context`.
-   - **Routes** — enumerate every route with its description and distinguishing criteria from the vocabulary registry.
-   - **Decision Rules** — encode the decision logic, edge cases, and disambiguation rules from the rationale cards and vocabulary registry.
-   - **Examples** — each few-shot example must include the query, reasoning explaining why this input maps to this route (and for boundary cases, what ruled out the alternatives), and the route decision. Format using the provider-specific conventions.
+   - **Routes** — enumerate every route with its description and distinguishing criteria.
+   - **Decision Rules** — encode the decision logic, edge cases, and disambiguation rules derived from `routing_context`.
+   - **Examples** — use the examples extracted from Review Agent directives in step 5. Each example includes input, route, reasoning, and exclusions — format all of these using provider-specific conventions.
    - **Output Format** — specify the exact response schema the model must produce.
 
 7. **Apply model-specific formatting.**
@@ -118,7 +115,7 @@ Execute these steps exactly in order on round 1.
 
    When a model-specific addendum was read in step 3, its formatting guidance overrides or refines the provider base conventions on any conflicting points.
 
-8. **Write prompt.** If a `bootstrap.txt` exists in `outputs/<run_id>/prompts/`, use it as the starting point for v1 rather than compiling from scratch. Save the prompt to `outputs/<run_id>/prompts/v1.txt`.
+8. **Write prompt.** Save the compiled prompt to `outputs/<run_id>/prompts/v1.txt`.
 9. **Register candidate.** Call `register_candidate_tool(search_state_id, "v1")`.
 10. **Evaluate.** Call `run_eval(prompt_version="v1", data_source=dev_jsonl_path, backend=backend)`.
 11. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
@@ -137,7 +134,7 @@ Execute on round 2 and every subsequent round.
 
    | Mutation mode | Strategy |
    |---------------|----------|
-   | `targeted` | Apply Review Agent directives: paraphrase sections, reorder rules, tighten precision, swap few-shot examples |
+   | `targeted` | Apply Review Agent directives: paraphrase sections, reorder rules, tighten precision, swap or reorder few-shot examples |
    | `exploratory` | Make larger structural changes: add/delete sections, completely different example sets, different prompting style |
 
 5. **Write children.** Save each child as `outputs/<run_id>/prompts/vN.txt` (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
@@ -176,8 +173,8 @@ Set these context keys when the optimization loop completes (or after round 1 fo
 
 ## Constraints
 
-- **Holdout isolation.** Read holdout data for few-shot selection only. Never evaluate against holdout. The dev set is always the evaluation target.
-- **Data contamination prevention.** Few-shot examples come from holdout, not dev. The dev set is evaluated in full without overlap.
+- **Holdout isolation.** Never evaluate against holdout. The dev set is always the evaluation target.
+- **Data contamination prevention.** Few-shot examples come from Review Agent directives. The dev set is evaluated in full without overlap.
 - **Prompt format.** Write prompts as flat text files with section headers. No YAML structure.
 - **Versioning.** Increment version numbers sequentially: v1, v2, v3, etc. Never reuse a version number.
 - **Deterministic tool calls.** Always register a candidate before evaluating it. Always record eval results before advancing the round.

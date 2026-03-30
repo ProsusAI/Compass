@@ -7,14 +7,13 @@ Quick re-orientation guide for the Odysseus multi-agent routing optimizer.
 ```mermaid
 graph TD
     U["User"] -->|problem + dataset| A1["User Input Agent<br/><em>LLM-driven</em><br/>Status: done"]
-    A1 -->|validated_input_report_path| A2["Data Validation Agent<br/><em>LLM-driven</em><br/>Phase 1: ingest &amp; map → Phase 2: validate<br/>Status: done"]
-    A2 -->|DataQualityReport| A3["Routing Analysis Agent<br/><em>LLM-driven</em><br/>Status: done"]
-    A3 -->|RationaleCardSet +<br/>RoutingContext| A4["Prompt Builder Agent<br/><em>LLM-driven</em><br/>Status: planned"]
-    A4 -->|prompt version| A5["Eval Runner Agent<br/><em>code-driven</em><br/>Status: done"]
-    A5 -->|eval_score_report| A6["Review Agent<br/><em>LLM-driven</em><br/>Status: planned"]
-    A6 -->|iterate| A4
-    A6 -->|accept| A7["Final Reporting Agent<br/><em>LLM-driven</em><br/>Status: planned"]
-    A7 -->|final report| U
+    A1 -->|validated_input_report_path| A2["Data Validation Agent<br/><em>LLM-driven</em><br/>Phase 1: ingest &amp; map → Phase 2: validate + split<br/>Status: done"]
+    A2 -->|RoutingContext + dev/holdout splits| A3["Prompt Builder Agent<br/><em>LLM-driven</em><br/>Status: planned"]
+    A3 -->|prompt version| A4["Eval Runner Agent<br/><em>code-driven</em><br/>Status: done"]
+    A4 -->|eval_score_report| A5["Review Agent<br/><em>LLM-driven</em><br/>Status: planned"]
+    A5 -->|iterate| A3
+    A5 -->|accept| A6["Final Reporting Agent<br/><em>LLM-driven</em><br/>Status: planned"]
+    A6 -->|final report| U
 ```
 
 ## 2. Agent Registry
@@ -22,11 +21,10 @@ graph TD
 | Agent | Type | Module / Prompt | Status | Reads from Context | Writes to Context |
 |---|---|---|---|---|---|
 | User Input | LLM-driven | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md), [`odysseus/agents/user_input/report.py`](../odysseus/agents/user_input/report.py) | Done | (user conversation) | `validated_input_report_path` |
-| Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path` |
-| Routing Analysis | LLM-driven | [`odysseus/agents/routing_analysis/models.py`](../odysseus/agents/routing_analysis/models.py), [`odysseus/agents/routing_analysis/checks.py`](../odysseus/agents/routing_analysis/checks.py), [`odysseus/agents/routing_analysis/registry.py`](../odysseus/agents/routing_analysis/registry.py), [`odysseus/agents/routing_analysis/split.py`](../odysseus/agents/routing_analysis/split.py) | Done | `validated_input_report_path`, `data_quality_report`, `routing_context`, `dataset_path` | `dev_rationale_card_set_path`, `dev_jsonl_path`, `vocabulary_registry_path`, `split_report_path`, `routing_context` (passthrough), `holdout_rationale_card_set_path`, `holdout_jsonl_path` |
+| Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py), [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path`, `dev_jsonl_path`, `holdout_jsonl_path`, `split_report_path` |
 | Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `config_path` | `eval_score_report` |
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
-| Prompt Builder | LLM-driven | (planned) | Planned | `RationaleCardSet`, `RoutingContext` | `prompt_version` |
+| Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
 | Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) | Done | `eval_score_report`, `review_briefing` | `review_result` |
 | Final Reporting | LLM-driven | (planned) | Planned | `eval_score_report`, full pipeline context | final report |
 
@@ -42,16 +40,13 @@ graph TD
 | `data_source` | `str` | MCP tool param | Eval Runner Agent, Data Validation Agent | Path to the JSONL dataset file |
 | `backend` | `str` | MCP tool param | Eval Runner Agent | Backend label matching a profile in `backends/` |
 | `config_path` | `str` | MCP tool param | Eval Runner Agent | Path to YAML run config (default `outputs/run_config.yaml`) |
-| `routing_context` | `RoutingContext` | Data Validation Agent | Routing Analysis Agent | Domain-agnostic routing config: routes, dimensions, ordering, seed vocabulary |
-| `data_quality_report` | `DataQualityReport` | Data Validation Agent | Routing Analysis Agent | Schema findings, label distribution, volume assessment |
-| `dataset_path` | `str` | Data Validation Agent | Routing Analysis Agent | Path to validated JSONL dataset |
+| `routing_context` | `RoutingContext` | Data Validation Agent | Prompt Builder Agent | Domain-agnostic routing config: routes, dimensions, ordering, seed vocabulary |
+| `data_quality_report` | `DataQualityReport` | Data Validation Agent | (diagnostics) | Schema findings, label distribution, volume assessment |
+| `dataset_path` | `str` | Data Validation Agent | (provenance tracking) | Path to validated JSONL dataset before splitting |
 | `original_dataset_path` | `str` | Data Validation Agent | (provenance tracking) | Path to the user's original dataset file before transformation |
-| `dev_rationale_card_set_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Cards for dev examples only |
-| `dev_jsonl_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Dev split examples path |
-| `vocabulary_registry_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Full vocabulary registry path |
-| `split_report_path` | `str` | Routing Analysis Agent | Prompt Builder Agent | Split statistics and distribution report |
-| `holdout_rationale_card_set_path` | `str` | Routing Analysis Agent | Final Reporting Agent | Cards for holdout examples only |
-| `holdout_jsonl_path` | `str` | Routing Analysis Agent | Final Reporting Agent | Holdout split examples path |
+| `dev_jsonl_path` | `str` | Data Validation Agent | Prompt Builder Agent | Dev split examples path |
+| `holdout_jsonl_path` | `str` | Data Validation Agent | Final Reporting Agent | Holdout split examples path |
+| `split_report_path` | `str` | Data Validation Agent | Prompt Builder Agent | Split statistics and distribution report |
 | `review_briefing` | `ReviewBriefing` | Review Agent (pre-processor) | Review Agent (LLM) | Pre-processed round data: candidate analyses, per-class recall, diversity metrics, mutation history, oracle metrics |
 | `review_result` | `ReviewResult` | Review Agent (LLM) | Prompt Builder Agent | Ranked candidates, edit directives, promotion decisions, loop signal, regression guards |
 
@@ -60,14 +55,8 @@ graph TD
 **`DataQualityReport`** ([`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py))
 Top-level report from the Data Validation agent containing `SchemaFinding` list, `LabelDistribution`, `VolumeAssessment`, and optional `QueryLengthDistribution`. The LLM agent writes the narrative `summary`; the Python checks populate the structured sections.
 
-**`RationaleCardSet` / `RationaleCard`** ([`odysseus/agents/routing_analysis/models.py`](../odysseus/agents/routing_analysis/models.py))
-A `RationaleCardSet` maps `example_id` to `RationaleCard` and bundles a `VocabularyRegistry` plus dataset hash. Each `RationaleCard` captures `assigned_route`, `intent_pattern` (kebab-case), `complexity_structure` (kebab-case), `route_exclusions` (list of `RouteExclusion`), and `ambiguity_tags` (SCREAMING_SNAKE_CASE).
-
-**`VocabularyRegistry`** ([`odysseus/agents/routing_analysis/models.py`](../odysseus/agents/routing_analysis/models.py))
-Dynamic registry of `VocabularyEntry` items across three dimensions: `intent_pattern`, `complexity_structure`, and `ambiguity_tags`. Naming conventions are enforced by cross-field validators. Registry persistence and merge/prune operations live in [`routing_analysis/registry.py`](../odysseus/agents/routing_analysis/registry.py).
-
-**`RoutingContext`** ([`odysseus/agents/routing_analysis/models.py`](../odysseus/agents/routing_analysis/models.py))
-Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Routing Analysis Agent to scope annotation.
+**`RoutingContext`** ([`odysseus/agents/routing_context.py`](../odysseus/agents/routing_context.py))
+Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Prompt Builder Agent.
 
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
 `ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `MutationHistory`, `OracleMetrics`, per-class recall, and holdout example summaries. `ReviewResult` is the LLM output: `candidate_ranking`, `edit_directives`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, mutation log, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py).
@@ -105,14 +94,10 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) |
 | `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation/detect.py`](../odysseus/agents/data_validation/detect.py) |
 | `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; accepts `run_id` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
-| `create_seed_registry` | Implemented | Initialize vocabulary registry with canonical ambiguity tags | [`odysseus/agents/routing_analysis/registry.py`](../odysseus/agents/routing_analysis/registry.py) |
-| `resolve_registry` | Implemented | Look up existing registry by dataset hash | [`odysseus/agents/routing_analysis/registry.py`](../odysseus/agents/routing_analysis/registry.py) |
-| `validate_rationale_card_set` | Implemented | Run deterministic validation checks on card set | [`odysseus/agents/routing_analysis/checks.py`](../odysseus/agents/routing_analysis/checks.py) |
-| `prune_registry` | Implemented | Remove entries below cluster threshold | [`odysseus/agents/routing_analysis/registry.py`](../odysseus/agents/routing_analysis/registry.py) |
-| `stratified_split` | Implemented | Split dataset + card set into dev/holdout | [`odysseus/agents/routing_analysis/split.py`](../odysseus/agents/routing_analysis/split.py) |
+| `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
 | `build_review_briefing_tool` | Planned | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py) |
 | `record_directive_outcomes_tool` | Planned | Persist directive outcome tracking after the Review Agent emits a ReviewResult | [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py) |
-| `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–6, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
+| `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–7, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
 | `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
@@ -131,8 +116,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 |---|---|
 | `orchestrator` | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage` |
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
-| `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_pipeline_status` |
-| `routing_analysis` | `create_seed_registry_tool`, `resolve_registry_tool`, `prune_registry_tool`, `validate_rationale_card_set_tool`, `stratified_split_tool`, `get_pipeline_status` |
+| `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
 | `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `filter_holdout_dataset_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
@@ -149,7 +133,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | Exit | Sub-agent | `get_pipeline_status` call; incomplete → fix before exiting | Hard (behavioural) |
 | Exit | Orchestrator | `<HARD_STOP>` post-exit instruction | Soft (advisory) |
 
-Each stage system prompt (stages 1–6) includes mandatory `## Entry verification` and `## Exit verification` blocks. Sequencing knowledge lives exclusively in `pipeline/status.py`; stage prompts know only their own stage number.
+Each stage system prompt (stages 1–7) includes mandatory `## Entry verification` and `## Exit verification` blocks. Sequencing knowledge lives exclusively in `pipeline/status.py`; stage prompts know only their own stage number.
 
 ### Prompts
 
@@ -157,7 +141,6 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 |---|---|---|
 | `odysseus_routing_input` | Activate the User Input agent conversation | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md) |
 | `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
-| `odysseus_routing_analysis` | Routing Analysis Agent system prompt | [`odysseus/agents/prompts/routing_analysis_system.md`](../odysseus/agents/prompts/routing_analysis_system.md) |
 | `odysseus_review_agent` | Review Agent system prompt — receives ReviewBriefing, emits ReviewResult JSON | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
 | `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
 
@@ -174,9 +157,6 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 | `odysseus://agents/input/defaults` | Default values and override mechanism for optional fields | [`odysseus/agents/user_input/defaults.md`](../odysseus/agents/user_input/defaults.md) |
 | `odysseus://agents/data-validation/format-spec` | Data format specification (THP-80) | [`odysseus/agents/data_validation_format.md`](../odysseus/agents/data_validation_format.md) |
 | `odysseus://agents/data-validation/output-spec` | Output format specification (THP-81) | [`odysseus/agents/data_validation_output.md`](../odysseus/agents/data_validation_output.md) |
-| `odysseus://agents/routing-analysis/classify-example-skill` | Classify-example skill for annotation | [`odysseus/skills/classify-example/SKILL.md`](../odysseus/skills/classify-example/SKILL.md) |
-| `odysseus://agents/routing-analysis/generate-rationale-skill` | Generate-routing-rationale skill for annotation | [`odysseus/skills/generate-routing-rationale/SKILL.md`](../odysseus/skills/generate-routing-rationale/SKILL.md) |
-| `odysseus://agents/routing-analysis/check-overlap-skill` | Check-semantic-overlap skill for validation | [`odysseus/skills/check-semantic-overlap/SKILL.md`](../odysseus/skills/check-semantic-overlap/SKILL.md) |
 | `odysseus://agents/review-agent/guidelines` | Review Agent operational guidelines — scoring criteria, promotion rules, loop exit heuristics | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
 | `odysseus://agents/backend-setup/clarification-skill` | Structured clarification skill for backend setup | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
 | `odysseus://agents/backend-setup/taxonomy` | Backend field taxonomy (blocking/non-blocking) | [`odysseus/agents/backend_setup_taxonomy.md`](../odysseus/agents/backend_setup_taxonomy.md) |
@@ -191,20 +171,18 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 | `odysseus/agents/` | Root-level modules: `base.py`, `eval_runner.py`; stage subdirectories below |
 | `odysseus/agents/user_input/` | User input: input report contract (`report.py`), context/defaults/taxonomy/template resources |
 | `odysseus/agents/pipeline/` | Pipeline guards (`guards.py`) and status detection (`status.py`) |
-| `odysseus/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform |
-| `odysseus/agents/routing_analysis/` | Routing analysis: rationale models, card checks, registry, stratified split |
+| `odysseus/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform, stratified split |
 | `odysseus/agents/prompt_builder/` | Prompt builder: search state, Pareto ops, holdout filter, best-practices docs |
 | `odysseus/agents/review/` | Review agent: models, preprocessor, ops |
 | `odysseus/agents/prompts/` | Agent system prompts (Markdown) surfaced via MCP |
 | `odysseus/eval/` | Evaluation engine: controller, backends, metrics, dataset loading, result collection |
 | `outputs/<run_id>/input/` | Pipeline run: validated input report |
 | `outputs/<run_id>/validation/` | Pipeline run: transformed dataset, quality report, routing context |
-| `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits, rationale cards, vocabulary registry |
+| `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
 | `outputs/<run_id>/eval/` | Pipeline run: evaluation results and reports |
 | `backends/` | Backend profiles (YAML, shared across runs) |
-| `scratch/` | Routing analysis checkpoints (temporary, content-addressed by dataset hash) |
 | `tests/` | Test suite (`pytest`) |
 | `tests/scenarios/` | MCP integration test scenarios |
 | `docs/` | Project documentation and specs |

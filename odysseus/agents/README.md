@@ -15,18 +15,17 @@ Two layers:
 |---|---|---|
 | [`pipeline/`](pipeline/) | Cross-stage | `status.py` — artifact-based stage detection, subagent instructions; `guards.py` — entry/exit guard helpers |
 | [`user_input/`](user_input/) | Stage 1 — User Input | `report.py` — `CONTEXT_KEY`, status constants, `read_status()`; plus `context.md`, `defaults.md`, `taxonomy.md`, `report_template.md` resources |
-| [`data_validation/`](data_validation/) | Stage 2 — Data Validation | `checks.py` (schema/volume validation), `detect.py` (format detection), `transform.py` (column mapping) |
-| [`routing_analysis/`](routing_analysis/) | Stage 3 — Routing Analysis & Split | `models.py` (RationaleCard, VocabularyRegistry, RoutingContext), `checks.py` (card validation), `checks_deterministic.py`, `registry.py` (seed/save/prune/merge), `split.py` (stratified split) |
-| [`prompt_builder/`](prompt_builder/) | Stages 5 & 6 build phase — Prompt Building | `search_ops.py` (search state, Pareto ops, round management), `search.py` (SearchState model), `holdout_filter.py`; plus `best_practices.md`, `conventions_*.md` resources |
-| [`review/`](review/) | Stage 6 review phase — Review Agent | `models.py` (ReviewBriefing, ReviewResult), `preprocessor.py` (pre-processing), `ops.py` (persistence) |
+| [`data_validation/`](data_validation/) | Stage 2 — Data Validation | `checks.py` (schema/volume validation), `detect.py` (format detection), `transform.py` (column mapping), `split.py` (stratified split) |
+| [`prompt_builder/`](prompt_builder/) | Stage 4 build phase — Prompt Building | `search_ops.py` (search state, Pareto ops, round management), `search.py` (SearchState model), `holdout_filter.py`; plus `best_practices.md`, `conventions_*.md` resources |
+| [`review/`](review/) | Stage 5 review phase — Review Agent | `models.py` (ReviewBriefing, ReviewResult), `preprocessor.py` (pre-processing), `ops.py` (persistence) |
 
 ### Cross-stage dependency direction
 
 ```
-data_validation → routing_analysis → prompt_builder ↔ review
+data_validation → prompt_builder ↔ review
 ```
 
-`routing_analysis` reads `DataQualityReport` and `RoutingContext` from data validation. `prompt_builder` and `review` share `SearchState` and exchange control via `loop_phase`.
+`prompt_builder` reads `RoutingContext` and dev split from data validation. `prompt_builder` and `review` share `SearchState` and exchange control via `loop_phase`.
 
 ---
 
@@ -36,6 +35,7 @@ data_validation → routing_analysis → prompt_builder ↔ review
 |--------|-------------|
 | [`base.py`](base.py) | `BaseAgent` abstract base class (`name` property, `run(context)` async method) |
 | [`eval_runner.py`](eval_runner.py) | `EvalRunnerAgent` — the one code-driven agent; orchestrates a full eval run and returns `ScoreReport` |
+| [`routing_context.py`](routing_context.py) | `RoutingContext` and related models (`RouteDefinition`, `RoutingDimension`, `RouteOrdering`, `SeedVocabulary`) — shared across data validation and prompt builder |
 
 ---
 
@@ -47,10 +47,9 @@ One system prompt per LLM-driven agent:
 |------|-------|
 | [`prompts/user_input_system.md`](prompts/user_input_system.md) | User Input Agent (Stage 1) |
 | [`prompts/data_validation_system.md`](prompts/data_validation_system.md) | Data Validation Agent (Stage 2) |
-| [`prompts/routing_analysis_system.md`](prompts/routing_analysis_system.md) | Routing Analysis Agent (Stage 3) |
-| [`prompts/backend_setup_system.md`](prompts/backend_setup_system.md) | Backend Setup Agent (Stage 4) |
-| [`prompts/prompt_builder_system.md`](prompts/prompt_builder_system.md) | Prompt Builder Agent (Stages 5 & 6 build) |
-| [`prompts/review_agent_system.md`](prompts/review_agent_system.md) | Review Agent (Stage 6 review) |
+| [`prompts/backend_setup_system.md`](prompts/backend_setup_system.md) | Backend Setup Agent (Stage 3) |
+| [`prompts/prompt_builder_system.md`](prompts/prompt_builder_system.md) | Prompt Builder Agent (Stage 4 build) |
+| [`prompts/review_agent_system.md`](prompts/review_agent_system.md) | Review Agent (Stage 5 review) |
 | [`prompts/eval_runner_system.md`](prompts/eval_runner_system.md) | Eval Runner Agent context |
 
 ---

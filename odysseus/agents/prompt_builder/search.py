@@ -63,7 +63,7 @@ class SearchState(BaseModel):
     max_rounds: int = 50
     mutation_mode: Literal["targeted", "exploratory"] = "targeted"
     converged: bool = False
-    loop_phase: Literal["build", "review"] = "build"
+    loop_phase: Literal["build", "review"] = "review"
 
     @field_validator("search_state_id")
     @classmethod

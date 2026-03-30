@@ -4,11 +4,9 @@
 - Dataset: `tests/scenarios/data/full_pipeline_dataset.jsonl`
 - System prompt (input): `odysseus/agents/prompts/user_input_system.md`
 - System prompt (validation): `odysseus/agents/prompts/data_validation_system.md`
-- System prompt (routing analysis): `odysseus/agents/prompts/routing_analysis_system.md`
 - System prompt (prompt builder): `odysseus/agents/prompts/prompt_builder_system.md`
 - Eval Runner: code-driven agent (no system prompt — `odysseus/agents/eval_runner.py`)
-- Skills: `odysseus/skills/classify-example/SKILL.md`, `odysseus/skills/generate-routing-rationale/SKILL.md`, `odysseus/skills/check-semantic-overlap/SKILL.md`
-- MCP tools: `submit_input_report`, `validate_dataset`, `create_seed_registry`, `resolve_registry`, `validate_rationale_card_set`, `prune_registry`, `stratified_split`, `init_search_state_tool`, `register_candidate_tool`, `record_eval_result_tool`, `advance_round_tool`, `run_eval`
+- MCP tools: `submit_input_report`, `validate_dataset`, `stratified_split`, `init_search_state_tool`, `register_candidate_tool`, `record_eval_result_tool`, `advance_round_tool`, `run_eval`
 - Backend profile: `tests/scenarios/data/backends/openai.yaml`
 - Requires environment variable: `OPENAI_API_KEY`
 
@@ -33,12 +31,11 @@ You are a data analyst with all information ready for the routing optimization p
 
 ## Verification Criteria
 
-### Stage 1–3 (same progression as scenario 48)
+### Stage 1–2 (same progression as scenario 48)
 - [ ] Input agent produced `proceed` report
 - [ ] Data validation produced routing_context with 3 routes
-- [ ] Routing analysis completed all 4 phases with 7 context keys
 
-### Stage 4 — Prompt Builder + Eval (OpenAI)
+### Stage 3 — Prompt Builder + Eval (OpenAI)
 - [ ] Agent detected OpenAI provider and applied Markdown/JSON conventions (not XML)
 - [ ] `run_eval` called with `backend=openai`
 - [ ] ScoreReport received with real accuracy metrics
@@ -47,5 +44,5 @@ You are a data analyst with all information ready for the routing optimization p
 - [ ] `record_eval_result_tool` and `advance_round_tool` called
 
 ### Pipeline Integrity
-- [ ] All 5 stages in sequence
+- [ ] All 4 stages in sequence
 - [ ] Total turn count is reasonable

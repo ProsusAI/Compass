@@ -5,12 +5,10 @@
 - Second dataset: `tests/scenarios/data/rationale_test_dataset.jsonl`
 - System prompt (input): `odysseus/agents/prompts/user_input_system.md`
 - System prompt (validation): `odysseus/agents/prompts/data_validation_system.md`
-- System prompt (routing analysis): `odysseus/agents/prompts/routing_analysis_system.md`
-- Skills: `odysseus/skills/classify-example/SKILL.md`, `odysseus/skills/generate-routing-rationale/SKILL.md`, `odysseus/skills/check-semantic-overlap/SKILL.md`
-- MCP tools: `submit_input_report`, `validate_dataset`, `create_seed_registry`, `resolve_registry`, `validate_rationale_card_set`, `prune_registry`, `stratified_split`
+- MCP tools: `submit_input_report`, `validate_dataset`
 
 ## Scenario Description
-The user initially provides a 2-route dataset (haiku + opus). Validation produces a 2-route routing_context. The user then says "actually, use this other dataset instead" and provides a 3-route dataset (haiku + sonnet + opus). Re-validation produces a different routing_context with 3 routes. Routing Analysis must use the final 3-route context, not the superseded 2-route one. Tests that context dict updates propagate correctly when the dataset changes mid-pipeline.
+The user initially provides a 2-route dataset (haiku + opus). Validation produces a 2-route routing_context. The user then says "actually, use this other dataset instead" and provides a 3-route dataset (haiku + sonnet + opus). Re-validation produces a different routing_context with 3 routes. Tests that context dict updates propagate correctly when the dataset changes mid-pipeline.
 
 ## User Simulator
 You are a data analyst who realizes they provided the wrong dataset version.
@@ -40,10 +38,6 @@ You are a data analyst who realizes they provided the wrong dataset version.
 - [ ] After user switched datasets, `validate_dataset` was called on `tests/scenarios/data/rationale_test_dataset.jsonl`
 - [ ] Second routing_context has 3 routes (haiku, sonnet, opus)
 
-### Stage 3 — Routing Analysis
-- [ ] Routing Analysis receives the 3-route routing_context (not the 2-route one)
-- [ ] route_exclusions per card have 2 entries (not 1, which would indicate stale 2-route context)
-- [ ] `stratified_split` strata cover 3 tiers
-- [ ] No references to the 2-route context appear in routing analysis output
-- [ ] All 4 phases complete
-- [ ] Output contract satisfied: all 7 context keys set
+### Pipeline Integrity
+- [ ] The final routing_context has 3 routes (haiku, sonnet, opus), not 2
+- [ ] No references to the superseded 2-route context appear in the final output

@@ -1,16 +1,14 @@
-# Scenario: Full Pipeline — Dataset Fix Mid-Pipeline, Then Full Analysis
+# Scenario: Full Pipeline — Dataset Fix Mid-Pipeline, Then Full Validation
 
 ## Setup
 - Broken dataset: `tests/scenarios/data/type_errors_dataset.jsonl`
 - Corrected dataset: `tests/scenarios/data/rationale_test_dataset.jsonl`
 - System prompt (input): `odysseus/agents/prompts/user_input_system.md`
 - System prompt (validation): `odysseus/agents/prompts/data_validation_system.md`
-- System prompt (routing analysis): `odysseus/agents/prompts/routing_analysis_system.md`
-- Skills: `odysseus/skills/classify-example/SKILL.md`, `odysseus/skills/generate-routing-rationale/SKILL.md`, `odysseus/skills/check-semantic-overlap/SKILL.md`
-- MCP tools: `submit_input_report`, `validate_dataset`, `create_seed_registry`, `resolve_registry`, `validate_rationale_card_set`, `prune_registry`, `stratified_split`
+- MCP tools: `submit_input_report`, `validate_dataset`
 
 ## Scenario Description
-The user provides a dataset with type errors. The User Input agent collects inputs and submits. Data Validation catches critical type errors. The user provides a corrected dataset path. Re-validation passes. Routing Analysis runs on the corrected dataset. Tests mid-pipeline recovery and that routing analysis receives the final validated state with no residual state from the failed validation.
+The user provides a dataset with type errors. The User Input agent collects inputs and submits. Data Validation catches critical type errors. The user provides a corrected dataset path. Re-validation passes. Tests mid-pipeline recovery and that validation receives the final corrected dataset with no residual state from the failed validation.
 
 ## User Simulator
 You are a data analyst who accidentally provided a dataset from a broken export pipeline.
@@ -42,9 +40,6 @@ You are a data analyst who accidentally provided a dataset from a broken export 
 - [ ] Second validation shows all schema findings with status `pass`
 - [ ] routing_context is derived from the corrected dataset
 
-### Stage 3 — Routing Analysis
-- [ ] Routing Analysis `dataset_path` is `tests/scenarios/data/rationale_test_dataset.jsonl` (not the broken one)
-- [ ] dataset_hash in routing analysis artifacts matches the corrected dataset contents
-- [ ] No residual state from the failed first validation leaks into routing analysis
-- [ ] All 4 phases complete
-- [ ] Output contract satisfied: all 7 context keys set
+### Pipeline Integrity
+- [ ] No residual state from the failed first validation leaks into subsequent processing
+- [ ] routing_context is derived from the corrected dataset (not the broken one)

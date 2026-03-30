@@ -9,10 +9,11 @@ from mcp.server.fastmcp.exceptions import ToolError
 import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.data_validation.checks import run_all_checks
 from odysseus.agents.data_validation.detect import detect_and_parse
+from odysseus.agents.data_validation.split import stratified_split
 from odysseus.agents.data_validation.transform import transform_dataset as _do_transform
 from odysseus.agents.pipeline.guards import check_artifacts
-from odysseus.agents.routing_analysis.models import RoutingContext
-from odysseus.mcp.server import mcp
+from odysseus.agents.routing_context import RoutingContext
+from odysseus.mcp.server import _load_examples, _write_jsonl, mcp
 
 
 @mcp.tool()
@@ -157,3 +158,59 @@ async def save_routing_context(ctx: Context, run_id: str, routing_context_json: 
     out_path = validation_dir / "routing_context.json"
     out_path.write_text(routing_context.model_dump_json(indent=2), encoding="utf-8")
     return f"Routing context saved to {out_path}"
+
+
+@mcp.tool()
+async def stratified_split_tool(
+    ctx: Context,
+    run_id: str,
+    dataset_path: str,
+    dev_ratio: float = 0.8,
+) -> str:
+    """[Stage 2: Data Validation] Split a dataset into dev and holdout partitions.
+
+    Writes dev.jsonl, holdout.jsonl, and split_report.json to
+    outputs/<run_id>/analysis/.
+
+    Args:
+        run_id: Pipeline run identifier.
+        dataset_path: Absolute path to the validated JSONL dataset file.
+        dev_ratio: Proportion allocated to dev set. Defaults to 0.8.
+
+    Returns:
+        JSON with paths to all output files.
+    """
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    check_artifacts(
+        project_dir / "outputs" / run_id / "validation" / "data_quality_report.json",
+        stage=2,
+        stage_name="Data Validation",
+        hint="Complete data validation first.",
+    )
+
+    path = Path(dataset_path)
+    if not path.is_file():
+        raise ToolError(f"Dataset file not found: {dataset_path}")
+
+    examples = _load_examples(path)
+
+    dev_examples, holdout_examples, split_report = stratified_split(examples, dev_ratio=dev_ratio)
+
+    output_dir = project_dir / "outputs" / run_id / "analysis"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    dev_path = output_dir / "dev.jsonl"
+    holdout_path = output_dir / "holdout.jsonl"
+    split_report_path = output_dir / "split_report.json"
+
+    _write_jsonl(dev_path, dev_examples)
+    _write_jsonl(holdout_path, holdout_examples)
+    split_report_path.write_text(split_report.model_dump_json(indent=2), encoding="utf-8")
+
+    return json.dumps(
+        {
+            "dev_path": str(dev_path),
+            "holdout_path": str(holdout_path),
+            "split_report_path": str(split_report_path),
+        },
+        indent=2,
+    )

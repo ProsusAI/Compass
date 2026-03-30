@@ -20,10 +20,10 @@ async def build_review_briefing_tool(
     candidate_versions: list[str],
     parent_versions: dict[str, str | None],
     report_paths: dict[str, str],
-    holdout_card_set_path: str = "",
+    holdout_jsonl_path: str = "",
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 6: Eval Loop -- Review] Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
+    """[Stage 5: Eval Loop -- Review] Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
 
     Loads search state, score reports, prompt texts, mutation log, and directive
     history, then computes candidate comparisons, per-class recall, diversity
@@ -34,7 +34,7 @@ async def build_review_briefing_tool(
         candidate_versions: Versions evaluated in the current round.
         parent_versions: Mapping of candidate -> parent version.
         report_paths: Mapping of version -> path to its ScoreReport JSON.
-        holdout_card_set_path: Path to holdout rationale card set JSON (optional).
+        holdout_jsonl_path: Path to holdout JSONL file (optional).
         output_dir: Output directory (default "outputs").
 
     Returns:
@@ -94,18 +94,19 @@ async def build_review_briefing_tool(
     mutation_log = load_mutation_log(run_id, output_dir=out)
     directive_history = load_directive_history(run_id, output_dir=out)
 
-    # Load holdout examples from rationale card set if path provided
+    # Load holdout examples from JSONL file if path provided
     holdout_examples: list[ExampleSummary] = []
-    if holdout_card_set_path:
-        card_set_data = json.loads(Path(holdout_card_set_path).read_text(encoding="utf-8"))
-        for card_id, card in card_set_data.get("cards", {}).items():
-            holdout_examples.append(
-                ExampleSummary(
-                    example_id=card_id,
-                    route=card.get("assigned_route", ""),
-                    ambiguity_tags=card.get("ambiguity_tags", []),
+    if holdout_jsonl_path:
+        holdout_path = Path(holdout_jsonl_path)
+        if holdout_path.exists():
+            for line in holdout_path.read_text(encoding="utf-8").strip().splitlines():
+                example = json.loads(line)
+                holdout_examples.append(
+                    ExampleSummary(
+                        example_id=example.get("id", ""),
+                        route=example.get("expected", {}).get("route", ""),
+                    )
                 )
-            )
 
     # Build briefing
     briefing = build_review_briefing(
@@ -134,7 +135,7 @@ async def record_directive_outcomes_tool(
     outcomes: list[dict[str, Any]],
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 6: Eval Loop -- Review] Record the outcomes of prior Review Agent directives.
+    """[Stage 5: Eval Loop -- Review] Record the outcomes of prior Review Agent directives.
 
     Args:
         run_id: Pipeline run identifier.

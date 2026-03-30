@@ -3,13 +3,11 @@
 ## Setup
 - Dev dataset: `tests/scenarios/data/dev.jsonl`
 - Holdout dataset: `tests/scenarios/data/holdout.jsonl`
-- Dev rationale cards: `tests/scenarios/data/dev_rationale_card_set.json`
-- Holdout rationale cards: `tests/scenarios/data/holdout_rationale_card_set.json`
 - Split report: `tests/scenarios/data/split_report.json`
 - Backend: `anthropic`
 
 ## Scenario Description
-The Routing Analysis agent has completed its work and produced annotated datasets, rationale card sets, and a split report. The Prompt Builder agent now reads these artifacts, detects the provider from the backend name, compiles an initial routing prompt with all required sections (system instruction, route definitions, few-shot examples, output format), initialises a search state via `init_search_state_tool`, registers the first candidate via `register_candidate_tool`, and writes the compiled prompt to the `prompts/` directory.
+The pipeline has produced split datasets and a split report. The Prompt Builder agent now reads these artifacts, detects the provider from the backend name, compiles an initial routing prompt with all required sections (system instruction, route definitions, few-shot examples, output format), initialises a search state via `init_search_state_tool`, registers the first candidate via `register_candidate_tool`, and writes the compiled prompt to the `prompts/` directory.
 
 ## User Simulator
 You are a pipeline orchestrator handing off routing analysis artifacts to the Prompt Builder agent.
@@ -28,11 +26,9 @@ You are a pipeline orchestrator handing off routing analysis artifacts to the Pr
 - Answer any clarifying questions the agent asks (there should be none for this happy-path scenario).
 - Do not provide the initial prompt text — the agent must compile it itself.
 
-**Opening message:** "Please compile an initial routing prompt. Here are the artifacts from the routing analysis step:
+**Opening message:** "Please compile an initial routing prompt. Here are the pipeline artifacts:
 - Dev dataset: `tests/scenarios/data/dev.jsonl`
 - Holdout dataset: `tests/scenarios/data/holdout.jsonl`
-- Dev rationale cards: `tests/scenarios/data/dev_rationale_card_set.json`
-- Holdout rationale cards: `tests/scenarios/data/holdout_rationale_card_set.json`
 - Split report: `tests/scenarios/data/split_report.json`
 - Backend: `anthropic`
 - Problem: Route customer support queries to haiku (simple), sonnet (moderate), or opus (complex reasoning) based on complexity."

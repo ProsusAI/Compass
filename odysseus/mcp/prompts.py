@@ -44,16 +44,6 @@ async def odysseus_backend_setup() -> list[Message]:
 
 
 @mcp.prompt()
-async def odysseus_routing_analysis() -> list[Message]:
-    """Activate the Odysseus routing analysis agent.
-
-    Annotates, validates, and splits the routing dataset.
-    """
-    system_prompt = _load_text("odysseus/agents/prompts/routing_analysis_system.md")
-    return [UserMessage(content=system_prompt)]
-
-
-@mcp.prompt()
 async def odysseus_review_agent() -> list[Message]:
     """System prompt for the Review Agent -- supervises the prompt optimization search loop."""
     return [UserMessage(content=_load_text("odysseus/agents/prompts/review_agent_system.md"))]

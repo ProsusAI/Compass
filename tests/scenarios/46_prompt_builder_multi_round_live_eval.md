@@ -2,7 +2,6 @@
 
 ## Setup
 - Dev dataset: `tests/scenarios/data/dev.jsonl`
-- Dev rationale cards: `tests/scenarios/data/dev_rationale_card_set.json`
 - Split report: `tests/scenarios/data/split_report.json`
 - Backend profile: `tests/scenarios/data/backends/mock-echo.yaml`
 - System prompt: `odysseus/agents/prompts/prompt_builder_system.md`
