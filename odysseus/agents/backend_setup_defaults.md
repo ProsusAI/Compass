@@ -36,8 +36,8 @@ Pricing is resolved by calling the `get_default_pricing` MCP tool with `provider
 
 For **OpenAI** and **Bedrock**, the two cache-write fields stay at `0.0` (writes are billed as normal input). For **Anthropic**, defaults include non-zero cache-write rates when auto-resolved from the table.
 
-- If found: show the resolved `ModelPricing` values and offer override
-- If not found: pricing becomes blocking — ask user for the required cost fields (at minimum input, cached/read, output; include cache-write fields for Anthropic if not using table defaults)
+- If found: apply the resolved `ModelPricing` values, show in confirmation summary
+- If not found: write YAML without pricing and exit — the orchestrator collects pricing from the user and re-dispatches the sub-agent in pricing update mode
 
 ## Override Mechanism
 

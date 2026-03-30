@@ -10,7 +10,7 @@ Classification rules for backend configuration fields.
 | 1 | `label` | Blocking | YAML filename; must be unique if creating new | — |
 | 2 | `provider` | Blocking | Determines SDK, pricing lookup, and api_key_env | — |
 | 3 | `model` | Blocking | Model identifier for API calls | — |
-| 4 | `pricing` | Conditionally blocking | Auto-resolved via `get_default_pricing(provider, model)`. Blocking only if lookup returns `None` — user must then provide `input_cost_per_million_tokens`, `cached_cost_per_million_tokens`, `output_cost_per_million_tokens` | Resolved from DEFAULT_PRICING |
+| 4 | `pricing` | Auto-resolved | Resolved silently via `get_default_pricing`. Escalates to orchestrator if lookup fails — never asked by this agent directly. | Resolved from DEFAULT_PRICING |
 | 5 | `requests_per_minute` | Blocking | Rate limit; no safe universal default | — |
 | 6 | `tokens_per_minute` | Blocking | Rate limit; no safe universal default | — |
 
@@ -27,6 +27,6 @@ Classification rules for backend configuration fields.
 
 1. User selects existing backend → short-circuit, no further fields needed
 2. Any blocking gap unresolved → continue conversing
-3. Pricing lookup succeeds → show resolved pricing, offer override, treat as resolved
-4. Pricing lookup fails → pricing becomes blocking, ask user
+3. Pricing lookup succeeds → apply resolved pricing, show in summary
+4. Pricing lookup fails → write YAML without pricing, exit with PRICING_MISSING — orchestrator collects pricing from user and re-dispatches
 5. All blocking fields resolved → apply non-blocking defaults → produce output
