@@ -21,15 +21,15 @@ from odysseus.agents.data_validation.checks import run_all_checks
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status
-from odysseus.agents.prompt_builder_holdout_filter import filter_holdout_dataset
-from odysseus.agents.prompt_builder_search_ops import (
+from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
+from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
     get_search_state,
     init_search_state,
     record_eval_result,
     register_candidate,
 )
-from odysseus.agents.prompt_builder_search_ops import (
+from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase as _set_loop_phase,
 )
 from odysseus.agents.routing_analysis.checks_deterministic import validate_deterministic
@@ -215,19 +215,19 @@ async def backend_profile(backend_label: str) -> str:
 @mcp.resource("odysseus://agents/prompt-builder/best-practices")
 async def prompt_builder_best_practices() -> str:
     """General prompt engineering principles for routing prompts."""
-    return _load_text("odysseus/agents/prompt_builder_best_practices.md")
+    return _load_text("odysseus/agents/prompt_builder/best_practices.md")
 
 
 @mcp.resource("odysseus://agents/prompt-builder/conventions-claude")
 async def prompt_builder_conventions_claude() -> str:
     """Claude conventions and Anthropic cookbook patterns for routing prompts."""
-    return _load_text("odysseus/agents/prompt_builder_conventions_claude.md")
+    return _load_text("odysseus/agents/prompt_builder/conventions_claude.md")
 
 
 @mcp.resource("odysseus://agents/prompt-builder/conventions-openai")
 async def prompt_builder_conventions_openai() -> str:
     """OpenAI GPT-5 conventions and cookbook patterns for routing prompts."""
-    return _load_text("odysseus/agents/prompt_builder_conventions_openai.md")
+    return _load_text("odysseus/agents/prompt_builder/conventions_openai.md")
 
 
 def _normalize_model_family(model: str) -> str:
@@ -249,7 +249,7 @@ async def model_specific_conventions(provider: str, model_family: str) -> str:
     lookup (gpt-5.2 → gpt-5-2).
     """
     sanitized = _normalize_model_family(model_family)
-    relative_path = f"odysseus/agents/prompt_builder_conventions_{provider}_{sanitized}.md"
+    relative_path = f"odysseus/agents/prompt_builder/conventions_{provider}_{sanitized}.md"
     path = _PROJECT_ROOT / relative_path
     if not path.is_file():
         return ""
@@ -1048,7 +1048,7 @@ async def build_review_briefing_tool(
     Returns:
         JSON-serialized ReviewBriefing.
     """
-    from odysseus.agents.prompt_builder_search_ops import get_search_state
+    from odysseus.agents.prompt_builder.search_ops import get_search_state
     from odysseus.agents.review_models import ExampleSummary
     from odysseus.agents.review_ops import (
         load_directive_history,

@@ -21,7 +21,7 @@ from odysseus.mcp import (
 _RUN_ID = "test_run"
 
 RESOLVE_PROJECT_DIR = "odysseus.mcp.resolve_project_dir"
-_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder_search_ops.get_project_dir"
+_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
 
 
 @contextmanager
@@ -252,7 +252,7 @@ class TestFilterHoldoutTool:
 class TestRecordDirectiveOutcomesToolLoopPhase:
     @pytest.mark.asyncio
     async def test_transitions_loop_phase_to_build(self, tmp_path: Path) -> None:
-        from odysseus.agents.prompt_builder_search_ops import get_search_state, init_search_state, set_loop_phase
+        from odysseus.agents.prompt_builder.search_ops import get_search_state, init_search_state, set_loop_phase
         from odysseus.mcp import record_directive_outcomes_tool
 
         with _patch_project_dir(tmp_path):

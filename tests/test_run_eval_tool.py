@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.agents.prompt_builder_search import SearchState
+from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
 

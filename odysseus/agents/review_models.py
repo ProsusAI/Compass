@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from odysseus.agents.prompt_builder_search import Candidate
+from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.eval.models import ScoreReport
 
 # ---------------------------------------------------------------------------

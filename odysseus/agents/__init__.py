@@ -15,6 +15,14 @@ from odysseus.agents.data_validation.checks import (
     run_all_checks,
 )
 from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.prompt_builder.search import (
+    Candidate,
+    RoundSummary,
+    SearchState,
+    dominates,
+    select_best,
+    update_pareto_front,
+)
 from odysseus.agents.review_models import (
     CandidateAnalysis,
     ClassRecallEntry,
@@ -88,9 +96,15 @@ from odysseus.agents.user_input_report import (
 )
 
 __all__ = [
+    "Candidate",
     "CandidateAnalysis",
     "ClassRecallEntry",
     "DataQualityReport",
+    "RoundSummary",
+    "SearchState",
+    "dominates",
+    "select_best",
+    "update_pareto_front",
     "DirectiveOutcome",
     "DiversityMetrics",
     "EditDirective",

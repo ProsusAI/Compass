@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from odysseus.agents.prompt_builder_search import Candidate, SearchState
+from odysseus.agents.prompt_builder.search import Candidate, SearchState
 from odysseus.agents.review_models import ExampleSummary, MutationRecord
 from odysseus.agents.review_preprocessor import (
     build_candidate_comparisons,

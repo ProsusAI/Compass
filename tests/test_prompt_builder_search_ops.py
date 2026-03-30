@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.agents.prompt_builder_search_ops import (
+from odysseus.agents.prompt_builder.search_ops import (
     _load_pending,
     advance_round,
     get_search_state,
