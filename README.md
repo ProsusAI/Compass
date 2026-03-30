@@ -131,6 +131,87 @@ For local development, the repo includes a `.mcp.json` that runs the server from
 
 ---
 
+## Usage
+
+After setup, start the pipeline by asking your MCP-connected assistant:
+
+> Optimize a routing prompt
+
+Odysseus walks through seven stages. Each stage runs as a sub-agent — you interact with it conversationally, and it calls the appropriate MCP tools behind the scenes. Here's what happens at each stage and what you need to provide.
+
+### Stage 1: Input Validation
+
+The pipeline starts by collecting and validating your input.
+
+**What you provide:**
+- **Routing dataset** — a JSONL, CSV, or JSON file where each row contains a query and a ground-truth routing decision
+- **Problem description** — a natural language explanation of the routing task (what each tier/class means, when to route where)
+- **Target metrics** — the metrics and thresholds that define success (e.g. "accuracy >= 0.90", "F1 >= 0.85 per class")
+
+The agent checks for blocking gaps (missing dataset, no problem description) and flags non-blocking issues (class imbalance, missing cost data) with assumed defaults. If anything is blocking, it asks for clarification before proceeding.
+
+### Stage 2: Data Validation
+
+Automatically detects your dataset format, maps fields to the canonical schema, and runs quality checks.
+
+**What you may be asked:**
+- **Field mapping confirmation** — if column names don't match the expected schema, the agent proposes a mapping and asks you to confirm
+
+The stage produces a data quality report covering schema conformance, label distribution, volume adequacy, and query diversity. It also builds a routing context document that downstream stages use.
+
+### Stage 3: Routing Analysis
+
+Analyses the dataset to extract routing patterns and decision boundaries.
+
+**What happens (no input needed):**
+- Creates a vocabulary registry of ambiguity tags
+- Builds rationale cards explaining the reasoning behind each routing decision
+- Validates the rationale cards for consistency
+- Splits the dataset into dev (80%) and holdout (20%) partitions
+
+The dev split is used for iterative prompt refinement; the holdout split is reserved for final validation.
+
+### Stage 4: Backend Setup
+
+Configures the LLM backend used for evaluation.
+
+**What you provide:**
+- **Backend selection** — which LLM provider and model to use for evaluation (e.g. "openai/gpt-4o-mini", "anthropic/claude-haiku")
+
+The agent looks up default pricing and writes a backend config file. A starter `mock-echo.yaml` config is included from `odysseus init` for testing.
+
+### Stage 5: Prompt Building + Eval Loop
+
+The core refinement loop. Builds an initial prompt, then iteratively evaluates and improves it.
+
+**What happens (no input needed):**
+1. **Initial prompt** — the Prompt Agent constructs a v0 routing prompt using the analysis output and rationale cards
+2. **Evaluation** — the eval engine runs the prompt against the dev dataset and produces a score report (accuracy, per-class F1, latency, cost)
+3. **Review** — the Review Agent analyses results, decides whether to accept or revert, and generates ranked improvement directives
+4. **Revision** — the Prompt Agent revises the prompt based on the Review Agent's directives
+5. Steps 2–4 repeat until the loop converges (no further improvement) or hits the round limit
+
+The loop tracks a Pareto front of candidates (quality vs. cost) and detects stagnation to avoid wasting iterations.
+
+### Stage 6: Holdout Validation
+
+Tests the best prompt from the eval loop on the held-out data.
+
+**What happens (no input needed):**
+- Filters few-shot examples out of the holdout set to prevent data contamination
+- Runs a final evaluation on unseen data
+- Produces a holdout score report with per-class breakdowns
+
+### Stage 7: Final Report
+
+Synthesises all pipeline artifacts into a structured evaluation report.
+
+**What you get:**
+- **Final versioned prompt** — the production-ready routing prompt (YAML/JSON)
+- **Evaluation report** — executive summary, data profile, iteration history, holdout performance, confidence assessment, deployment guidance, and reproducibility block
+
+---
+
 ## How It Works
 
 The pipeline runs through these stages:
