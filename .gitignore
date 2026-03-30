@@ -208,6 +208,9 @@ marimo/_lsp/
 __marimo__/
 
 docs/superpowers/
+docs/plans/
+docs/specs/
+docs/implementation-flow.md
 
 # Integration test outputs (generated at runtime)
 tests/fixtures/integration/outputs/
