@@ -123,7 +123,7 @@ Review Agent (cold-start / craft examples)
 | Stage 3 definition | Deleted (Routing Analysis & Split) |
 | `_check_stage_3` | Deleted (scratch-file in-progress detection) |
 | Stage 2 files | Add `dev.jsonl`, `holdout.jsonl` (in `analysis/` subfolder) |
-| Stage numbers | All shift down by one (current 4→3, 5→4, 6→5, 7→6, 8→7) |
+| Stage numbers | Stage 3 deleted; all subsequent shift down: 4→3, 5→4, 6→5, 7→6, 8→7 (8 stages → 7) |
 | `_NEXT_ACTION` | Stage 3 entry deleted; stage 2 includes `stratified_split_tool`; all keys renumbered |
 | Loop default phase | `loop_phase` defaults to `"review"` (was `"build"`) when no search state exists |
 | Stage 5 review instruction | Updated: Review Agent is loop entry point, handles cold-start and post-eval review |
@@ -156,9 +156,13 @@ Review Agent (cold-start / craft examples)
 | File | Reason |
 |------|--------|
 | `odysseus/agents/prompts/routing_analysis_system.md` | Agent removed |
-| `odysseus/agents/routing_rationale_models.py` | RationaleCard, RouteExclusion, VocabularyRegistry no longer needed |
+| `odysseus/agents/routing_rationale_models.py` | RationaleCard, RouteExclusion, VocabularyRegistry no longer needed. **Note:** `RoutingContext`, `RouteDefinition`, `RoutingDimension`, `RouteOrdering` must be relocated to `odysseus/agents/routing_context.py` before deletion — these models are used by `save_routing_context` and the Review Agent cold-start. `SeedVocabulary` and `VocabularyEntry` must also be relocated as `RoutingContext.seed_vocabulary` depends on them. **Decision:** drop the `seed_vocabulary` field from `RoutingContext` — it carried annotation-specific vocabulary (`intent_pattern`, `complexity_structure`, `ambiguity_tags`) that no longer exists. If `seed_vocabulary` is dropped, `SeedVocabulary` and `VocabularyEntry` do not need relocation. |
 | `odysseus/agents/routing_rationale_checks.py` | LLM-judged semantic overlap checks |
 | `odysseus/agents/routing_rationale_checks_deterministic.py` | Deterministic validation checks |
+| `odysseus/agents/routing_rationale_registry.py` | Vocabulary registry operations (`create_seed_registry`, `resolve_registry`, `prune_registry`, etc.). **Note:** `compute_dataset_hash` must be relocated to `odysseus/agents/stratified_split.py` — it is used by the split. |
+| `odysseus/skills/classify-example/` | Entire skill directory |
+| `odysseus/skills/generate-routing-rationale/` | Entire skill directory |
+| `odysseus/skills/check-semantic-overlap/` | Entire skill directory |
 
 ### Deleted MCP Tools
 
@@ -169,17 +173,17 @@ Review Agent (cold-start / craft examples)
 | `validate_rationale_card_set_tool` | Rationale cards removed |
 | `prune_registry_tool` | Vocabulary registry removed |
 
-### Deleted Skills
-
-| Skill | Reason |
-|-------|--------|
-| `classify-example` | Classification taxonomy removed |
-| `generate-routing-rationale` | Rationale generation removed |
-| `check-semantic-overlap` | Rationale validation removed |
-
 ### Deleted MCP Prompt
 
 - `odysseus_routing_analysis` prompt registration
+
+### Deleted MCP Resources
+
+| Resource | Reason |
+|----------|--------|
+| `odysseus://agents/routing-analysis/classify-example-skill` | Skill removed |
+| `odysseus://agents/routing-analysis/generate-rationale-skill` | Skill removed |
+| `odysseus://agents/routing-analysis/check-overlap-skill` | Skill removed |
 
 ### Deleted Pipeline Artifacts
 
@@ -192,8 +196,8 @@ Review Agent (cold-start / craft examples)
 
 | File | Change |
 |------|--------|
-| `odysseus/agents/stratified_split.py` | Simplified to route-only stratification; no rationale card set partitioning |
-| `stratified_split_tool` | No longer accepts/produces rationale card sets |
+| `odysseus/agents/stratified_split.py` | Simplified to route-only stratification; no rationale card set partitioning. Absorb `compute_dataset_hash` from deleted registry module. |
+| `stratified_split_tool` (in `mcp.py`) | Remove `card_set_path` parameter, remove card set output writes, update stage label from Stage 3 to Stage 2 |
 | `SplitReport` model | Drops intent/complexity/ambiguity breakdowns |
 | `odysseus/agents/pipeline_status.py` | Stage 3 removed, renumbered, loop defaults to review-first |
 | `odysseus/agents/pipeline_guards.py` | Stage numbers shifted, rationale artifact checks removed |
@@ -203,5 +207,41 @@ Review Agent (cold-start / craft examples)
 | `odysseus/agents/prompts/prompt_builder_system.md` | Drops rationale card references; receives example content from Review Agent |
 | `odysseus/agents/prompt_builder_search.py` | Init defaults to review phase |
 | `odysseus/agents/prompt_builder_search_ops.py` | Matching changes |
-| `odysseus/mcp.py` | Remove routing analysis tool/prompt registrations |
-| `docs/architecture.md` | Updated pipeline flow, agent table, stage definitions |
+| `odysseus/mcp.py` | Remove routing analysis tool/prompt/resource registrations; remove `validate_deterministic` import; update `save_routing_context` and `RoutingContext` imports to new location |
+| `odysseus/agents/prompts/data_validation_system.md` | Add Phase 3 split instructions; reference `stratified_split_tool`; update outputs list |
+| `odysseus/agents/__init__.py` | Remove all re-exports of deleted rationale/registry symbols; update `RoutingContext` import path |
+| `odysseus/agents/README.md` | Remove rationale card/registry documentation sections; update pipeline description |
+| `docs/architecture.md` | Substantial rewrite: pipeline flow, agent table, stage definitions, context dict keys, model docs, tool/prompt/resource tables, artifact directory descriptions |
+
+### New Files
+
+| File | Content |
+|------|---------|
+| `odysseus/agents/routing_context.py` | Relocated `RoutingContext`, `RouteDefinition`, `RoutingDimension`, `RouteOrdering` models from deleted `routing_rationale_models.py` |
+
+### Test Impact
+
+**Delete:**
+
+| File | Reason |
+|------|--------|
+| `tests/test_routing_rationale_models.py` | Models deleted |
+| `tests/test_routing_rationale_registry.py` | Registry deleted |
+| `tests/test_routing_rationale_checks.py` | Checks deleted |
+| `tests/test_deterministic_validation.py` | Deterministic checks deleted |
+| `tests/test_stratified_split_card_set.py` | Card set partitioning removed |
+
+**Modify:**
+
+| File | Change |
+|------|--------|
+| `tests/test_stratified_split.py` | Remove rationale card references; test route-only stratification |
+| `tests/test_pipeline_status.py` | Stage numbers shift; stage 3 checks removed |
+| `tests/test_review_models.py` | Updated example directive structure |
+| `tests/test_mcp.py` | Deleted tool/prompt/resource registrations |
+
+**Scenario files:** Routing-analysis-specific scenarios in `tests/scenarios/` (e.g. `23_classify_example_simple_queries.md` through `36_validation_to_analysis_borderline.md`) need deletion or rewrite. Exact scope determined during implementation.
+
+### Data Contamination Note
+
+Few-shot examples are selected from the holdout set. This is intentional — the existing `filter_holdout_dataset_tool` removes few-shot example IDs from the holdout JSONL before final evaluation, preventing contamination.
