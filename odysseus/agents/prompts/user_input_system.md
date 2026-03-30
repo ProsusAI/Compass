@@ -59,7 +59,7 @@ A complete routing problem has two required fields and four optional fields.
 |---|---|---|---|
 | `target_metrics` | `["f1/macro"]` | F1 macro handles class imbalance well and reveals per-class performance. | "No target metrics specified — defaulting to F1 macro average (`f1/macro`). You can specify metrics such as `accuracy >= 0.85` or `cost_reduction_with_overhead <= -0.30` in a follow-up." |
 | `evaluation_threshold` | `0.80` | Conservative, achievable on most problems. | "No evaluation threshold specified — using 0.80 as the pass/fail threshold. You can adjust this in a follow-up." |
-| `data_split_ratio` | `0.70` | Standard 30/70 train/holdout split. | "No data split ratio provided — reserving 70% of data for holdout evaluation." |
+| `data_split_ratio` | `0.80` | Standard 20/80 dev/holdout split. | "No data split ratio provided — reserving 80% of data for holdout evaluation." |
 | `max_iterations` | `10` | Bounds cost while allowing convergence. | "No iteration limit provided — defaulting to 10 refinement rounds." |
 
 Users can override any assumed default in a follow-up message. The agent re-evaluates and produces a new report.

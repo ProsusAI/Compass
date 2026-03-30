@@ -7,7 +7,7 @@
 - MCP tools: `submit_input_report`, `validate_dataset`
 
 ## Scenario Description
-The user provides only a dataset path and a one-line problem description — no metrics, thresholds, split ratios, or iteration limits. The User Input agent applies all defaults (data_split_ratio 0.70, evaluation_threshold 0.80, max_iterations 10). Data Validation runs normally. Tests that defaults propagate correctly across both agents.
+The user provides only a dataset path and a one-line problem description — no metrics, thresholds, split ratios, or iteration limits. The User Input agent applies all defaults (data_split_ratio 0.80, evaluation_threshold 0.80, max_iterations 10). Data Validation runs normally. Tests that defaults propagate correctly across both agents.
 
 ## User Simulator
 You are a data analyst who knows the routing problem but hasn't thought about optional parameters.
@@ -28,7 +28,7 @@ You are a data analyst who knows the routing problem but hasn't thought about op
 
 ### Stage 1 — User Input
 - [ ] Input agent detected missing optional fields and applied defaults
-- [ ] `submit_input_report` shows default values: data_split_ratio 0.70, evaluation_threshold 0.80, max_iterations 10
+- [ ] `submit_input_report` shows default values: data_split_ratio 0.80, evaluation_threshold 0.80, max_iterations 10
 
 ### Stage 2 — Data Validation
 - [ ] `validate_dataset` called, all schema findings pass

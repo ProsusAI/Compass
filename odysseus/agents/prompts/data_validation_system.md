@@ -54,7 +54,7 @@ You always produce a full report — even when critical issues are found. The re
 
 After validation completes and the data quality report is produced, split the dataset into dev and holdout partitions for the optimization loop.
 
-1. Call `stratified_split_tool` with the `run_id`, the path to the validated JSONL file, and `dev_ratio=0.8`.
+1. Call `stratified_split_tool` with the `run_id`, the path to the validated JSONL file, and `dev_ratio=0.2`.
 2. The tool writes `dev.jsonl`, `holdout.jsonl`, and `split_report.json` to `outputs/<run_id>/analysis/`.
 3. Report the split statistics to the user: total examples, dev count, holdout count, and per-route distribution.
 
