@@ -461,7 +461,6 @@ class TestGetPipelineStatus:
         from unittest.mock import patch
 
         import odysseus.mcp.orchestrator_tools as orch_mod
-
         from odysseus.mcp import get_pipeline_status
 
         with (
@@ -474,7 +473,6 @@ class TestGetPipelineStatus:
     async def test_get_pipeline_status_stage7_not_enriched(self, tmp_path: Path):
         """get_pipeline_status does not enrich subagent_instruction for stage 6 (None)."""
         import odysseus.mcp.orchestrator_tools as orch_mod
-
         from odysseus.mcp import get_pipeline_status
 
         stage7_result = {

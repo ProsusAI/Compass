@@ -137,7 +137,7 @@ After setup, start the pipeline by asking your MCP-connected assistant:
 
 > Optimize a routing prompt
 
-Odysseus walks through seven stages. Each stage runs as a sub-agent — you interact with it conversationally, and it calls the appropriate MCP tools behind the scenes. Here's what happens at each stage and what you need to provide.
+Odysseus walks through six stages. Each stage runs as a sub-agent — you interact with it conversationally, and it calls the appropriate MCP tools behind the scenes. Here's what happens at each stage and what you need to provide.
 
 ### Stage 1: Input Validation
 
@@ -171,7 +171,7 @@ Analyses the dataset to extract routing patterns and decision boundaries.
 
 The dev split is used for iterative prompt refinement; the holdout split is reserved for final validation.
 
-### Stage 4: Backend Setup
+### Stage 3: Backend Setup
 
 Configures the LLM backend used for evaluation.
 
@@ -180,20 +180,21 @@ Configures the LLM backend used for evaluation.
 
 The agent looks up default pricing and writes a backend config file. A starter `mock-echo.yaml` config is included from `odysseus init` for testing.
 
-### Stage 5: Prompt Building + Eval Loop
+### Stage 4: Refinement Loop
 
-The core refinement loop. Builds an initial prompt, then iteratively evaluates and improves it.
+The core refinement loop. Starts with seed example selection, compiles an initial prompt, then iteratively evaluates and improves it.
 
 **What happens (no input needed):**
-1. **Initial prompt** — the Prompt Agent constructs a v0 routing prompt using the analysis output and rationale cards
-2. **Evaluation** — the eval engine runs the prompt against the dev dataset and produces a score report (accuracy, per-class F1, latency, cost)
-3. **Review** — the Review Agent analyses results, decides whether to accept or revert, and generates ranked improvement directives
-4. **Revision** — the Prompt Agent revises the prompt based on the Review Agent's directives
-5. Steps 2–4 repeat until the loop converges (no further improvement) or hits the round limit
+1. **Seed selection** — the Review Agent performs a cold-start pass to select representative seed examples from the dev split
+2. **Initial prompt (v1)** — the Prompt Builder compiles the first versioned prompt using the analysis output, rationale cards, and selected seed examples
+3. **Evaluation** — the eval engine runs the prompt against the dev dataset and produces a score report (accuracy, per-class F1, latency, cost)
+4. **Review** — the Review Agent analyses results, decides whether to accept or revert, and generates ranked improvement directives
+5. **Revision** — the Prompt Builder revises the prompt based on the Review Agent's directives
+6. Steps 3–5 repeat until the loop converges (no further improvement) or hits the round limit
 
 The loop tracks a Pareto front of candidates (quality vs. cost) and detects stagnation to avoid wasting iterations.
 
-### Stage 6: Holdout Validation
+### Stage 5: Holdout Validation
 
 Tests the best prompt from the eval loop on the held-out data.
 
@@ -202,7 +203,7 @@ Tests the best prompt from the eval loop on the held-out data.
 - Runs a final evaluation on unseen data
 - Produces a holdout score report with per-class breakdowns
 
-### Stage 7: Final Report
+### Stage 6: Final Report
 
 Synthesises all pipeline artifacts into a structured evaluation report.
 

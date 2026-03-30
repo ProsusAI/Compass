@@ -17,57 +17,37 @@ from odysseus.project_dir import get_project_dir
 # ---------------------------------------------------------------------------
 
 _STAGES: list[dict[str, Any]] = [
-    {
-        "stage": 1,
-        "name": "Input Report",
-        "subfolder": "input",
-        "files": ["input_report.md"],
-    },
-    {
-        "stage": 2,
-        "name": "Data Validated",
-        "subfolder": None,  # custom checker spans validation/ and analysis/
-        "files": [],
-    },
-    {
-        "stage": 3,
-        "name": "Backend Configured",
-        "subfolder": None,
-        "files": [],  # special: checked via project_dir/backends/*.yaml
-    },
-    {
-        "stage": 4,
-        "name": "Prompt v1 Compiled",
-        "subfolder": "prompts",
-        "files": [],  # special: globs v1.*
-    },
-    {
-        "stage": 5,
-        "name": "Refinement Loop",
-        "subfolder": "search",
-        "files": [],  # special: parses search_state.json for converged == true
-    },
-    {
-        "stage": 6,
-        "name": "Holdout Validation",
-        "subfolder": "reports",
-        "files": [],  # special: holdout_report.json
-    },
-    {
-        "stage": 7,
-        "name": "Final Report",
-        "subfolder": None,
-        "files": [],  # future stub
-    },
+    {"stage": 1, "name": "Input Report", "subfolder": "input", "files": ["input_report.md"]},
+    {"stage": 2, "name": "Data Validated", "subfolder": None, "files": []},
+    {"stage": 3, "name": "Backend Configured", "subfolder": None, "files": []},
+    {"stage": 4, "name": "Refinement Loop", "subfolder": "search", "files": []},
+    {"stage": 5, "name": "Holdout Validation", "subfolder": "reports", "files": []},
+    {"stage": 6, "name": "Final Report", "subfolder": None, "files": []},
 ]
 
 # ---------------------------------------------------------------------------
-# Stage 5 dynamic HARD_STOP templates
+# Stage 4 dynamic HARD_STOP templates
 # ---------------------------------------------------------------------------
 
-_STAGE_5_BUILD_INSTRUCTION: str = (
+_STAGE_4_COLD_START_INSTRUCTION: str = (
     "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 5 build-phase tools from the current context.\n\n"
+    "You MUST NOT call any Stage 4 tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "build_review_briefing_tool, record_directive_outcomes_tool\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
+_STAGE_4_BUILD_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
@@ -78,15 +58,15 @@ _STAGE_5_BUILD_INSTRUCTION: str = (
     "Do not call it from within the sub-agent.\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call get_pipeline_status.\n"
-    "If Stage 5 is not complete, re-dispatch the appropriate sub-agent. "
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
     "Do not call stage tools yourself.\n"
     "</HARD_STOP>\n\n"
     "<stage_system_prompt></stage_system_prompt>"
 )
 
-_STAGE_5_REVIEW_INSTRUCTION: str = (
+_STAGE_4_REVIEW_INSTRUCTION: str = (
     "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 5 review-phase tools from the current context.\n\n"
+    "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
@@ -94,7 +74,7 @@ _STAGE_5_REVIEW_INSTRUCTION: str = (
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call get_pipeline_status.\n"
-    "If Stage 5 is not complete, re-dispatch the appropriate sub-agent. "
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
     "Do not call stage tools yourself.\n"
     "</HARD_STOP>\n\n"
     "<stage_system_prompt></stage_system_prompt>"
@@ -172,61 +152,30 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
-    4: (
-        "Compile the initial routing prompt (v1). "
-        "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any stage 4 tools.",
-        [
-            "init_search_state_tool",
-            "register_candidate_tool",
-            "record_eval_result_tool",
-            "advance_round_tool",
-            "get_search_state_tool",
-            "run_eval",
-            "filter_holdout_dataset_tool",
-        ],
-        ["odysseus_prompt_builder"],
-        (
-            "<HARD_STOP>\n"
-            "You MUST NOT call any Stage 4 tools from the current context.\n\n"
-            "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-            "Sub-agent tools: get_pipeline_status, init_search_state_tool, "
-            "register_candidate_tool, record_eval_result_tool, advance_round_tool, "
-            "get_search_state_tool, run_eval, filter_holdout_dataset_tool\n"
-            "Your tools: get_pipeline_status only\n\n"
-            "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only).\n"
-            "It is NOT a stage 4 sub-agent tool and must not be called from within the sub-agent.\n\n"
-            "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-            "then call get_pipeline_status.\n"
-            "If Stage 4 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
-            "</HARD_STOP>\n\n"
-            "<stage_system_prompt></stage_system_prompt>"
-        ),
-    ),
-    # Stage 5 is handled dynamically by _next_action_for_stage_5
-    6: (
+    # Stage 4 is handled dynamically by _next_action_for_stage_4
+    5: (
         "The refinement loop has converged. Run holdout validation.",
         ["run_holdout_eval", "filter_holdout_dataset_tool"],
         [],
         (
             "<HARD_STOP>\n"
-            "You MUST NOT call any Stage 6 tools from the current context.\n\n"
+            "You MUST NOT call any Stage 5 tools from the current context.\n\n"
             "REQUIRED: Spawn a sub-agent to run holdout validation.\n\n"
             "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='holdout') BEFORE spawning the sub-agent.\n\n"
             "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, run_holdout_eval\n"
             "Your tools: get_pipeline_status only\n\n"
             "Sub-agent instructions:\n"
-            "1. Call get_pipeline_status to verify current_stage is 6\n"
+            "1. Call get_pipeline_status to verify current_stage is 5\n"
             "2. Call filter_holdout_dataset_tool to remove few-shot examples from the holdout set\n"
             "3. Call run_holdout_eval to evaluate the best prompt against the filtered holdout set\n"
             "4. Call get_pipeline_status to verify stage completion\n\n"
             "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
             "then call get_pipeline_status.\n"
-            "If Stage 6 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "If Stage 5 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
             "</HARD_STOP>"
         ),
     ),
-    7: (
+    6: (
         "Generate the final report.",
         [],
         [],
@@ -326,17 +275,17 @@ def get_pipeline_status(
         else:
             found_incomplete = True
 
-    # Cap current_stage at 7 (max pipeline stage)
-    current_stage = min(current_stage, 7)
+    # Cap current_stage at 6 (max pipeline stage)
+    current_stage = min(current_stage, 6)
 
     current_stage_name = next(
         (s["name"] for s in _STAGES if s["stage"] == current_stage),
         _STAGES[-1]["name"],
     )
 
-    # Stage 5 uses dynamic next-action based on loop_phase
-    if current_stage == 5:
-        action, tools, prompts, subagent_instruction = _next_action_for_stage_5(run_dir)
+    # Stage 4 uses dynamic next-action based on three-phase detection
+    if current_stage == 4:
+        action, tools, prompts, subagent_instruction = _next_action_for_stage_4(run_dir)
     else:
         action, tools, prompts, subagent_instruction = _next_action_for_stage(current_stage)
 
@@ -380,9 +329,7 @@ def _check_stage(
         return _check_stage_4(run_dir)
     if stage_num == 5:
         return _check_stage_5(run_dir)
-    if stage_num == 6:
-        return _check_stage_6(run_dir)
-    if stage_num in (7,):
+    if stage_num in (6,):
         # Future stubs — always incomplete
         return "incomplete", [], ""
 
@@ -431,19 +378,7 @@ def _check_stage_3(project_dir: Path) -> tuple[str, list[str], str]:
 
 
 def _check_stage_4(run_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 4: Prompt v1 Compiled — globs v1.* in run_dir/prompts/."""
-    prompts_dir = run_dir / "prompts"
-    if not prompts_dir.is_dir():
-        return "incomplete", [], ""
-    matches = list(prompts_dir.glob("v1.*"))
-    if not matches:
-        return "incomplete", [], ""
-    artifacts = [str(f) for f in sorted(matches)]
-    return "complete", artifacts, ""
-
-
-def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 5: Refinement Loop — search_state.json with converged == true."""
+    """Stage 4: Refinement Loop — search_state.json with converged == true."""
     search_state = run_dir / "search" / "search_state.json"
     if not search_state.is_file():
         return "incomplete", [], ""
@@ -456,23 +391,65 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
     return "incomplete", [str(search_state)], ""
 
 
-def _check_stage_6(run_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 6: Holdout Validation — reports/holdout/holdout_report.json exists."""
+def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
+    """Stage 5: Holdout Validation — reports/holdout/holdout_report.json exists."""
     report = run_dir / "reports" / "holdout" / "holdout_report.json"
     if report.is_file():
         return "complete", [str(report)], ""
     return "incomplete", [], ""
 
 
-def _next_action_for_stage_5(
+def _next_action_for_stage_4(
     run_dir: Path,
 ) -> tuple[str, list[str], list[str], str]:
-    """Return (action, tools, prompts, subagent_instruction) for Stage 5.
+    """Return (action, tools, prompts, subagent_instruction) for Stage 4.
 
-    Reads search_state.json to determine loop_phase (defaults to 'build' if
-    state file is absent or malformed).
+    Three-phase detection:
+    1. No directive_history.json and no search_state.json -> cold-start (Review Agent)
+    2. directive_history.json exists but no v1.* -> build-v1 (Prompt Builder)
+    3. v1.* exists and search_state.json exists -> normal loop (read loop_phase)
     """
-    search_state_path = run_dir / "search" / "search_state.json"
+    search_dir = run_dir / "search"
+    directive_history = search_dir / "directive_history.json"
+    search_state_path = search_dir / "search_state.json"
+    prompts_dir = run_dir / "prompts"
+    has_v1 = prompts_dir.is_dir() and bool(list(prompts_dir.glob("v1.*")))
+
+    # Phase 1: Cold-start — no directives and no search state
+    if not directive_history.is_file() and not search_state_path.is_file():
+        return (
+            "Stage 4 — cold-start: spawn the Review Agent to select initial "
+            "few-shot seed examples from the dataset. "
+            "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
+            [
+                "get_search_state_tool",
+                "build_review_briefing_tool",
+                "record_directive_outcomes_tool",
+            ],
+            ["odysseus_review_agent"],
+            _STAGE_4_COLD_START_INSTRUCTION,
+        )
+
+    # Phase 2: Build v1 — directives exist but no compiled prompt yet
+    if not has_v1:
+        return (
+            "Stage 4 — build phase: spawn the Prompt Builder to compile the "
+            "initial routing prompt (v1) using seed examples from the Review Agent. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+            [
+                "get_search_state_tool",
+                "init_search_state_tool",
+                "register_candidate_tool",
+                "record_eval_result_tool",
+                "advance_round_tool",
+                "run_eval",
+                "filter_holdout_dataset_tool",
+            ],
+            ["odysseus_prompt_builder"],
+            _STAGE_4_BUILD_INSTRUCTION,
+        )
+
+    # Phase 3: Normal loop — read loop_phase from search state
     loop_phase = "review"
     if search_state_path.is_file():
         try:
@@ -483,7 +460,7 @@ def _next_action_for_stage_5(
 
     if loop_phase == "review":
         return (
-            "Stage 5 — review phase: spawn the Review Agent sub-agent to analyse "
+            "Stage 4 — review phase: spawn the Review Agent to analyse "
             "eval results and emit edit directives. "
             "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
             [
@@ -492,11 +469,11 @@ def _next_action_for_stage_5(
                 "record_directive_outcomes_tool",
             ],
             ["odysseus_review_agent"],
-            _STAGE_5_REVIEW_INSTRUCTION,
+            _STAGE_4_REVIEW_INSTRUCTION,
         )
     else:
         return (
-            "Stage 5 — build phase: spawn the Prompt Builder sub-agent to generate "
+            "Stage 4 — build phase: spawn the Prompt Builder to generate "
             "prompt variants and evaluate them. "
             "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
             [
@@ -509,7 +486,7 @@ def _next_action_for_stage_5(
                 "filter_holdout_dataset_tool",
             ],
             ["odysseus_prompt_builder"],
-            _STAGE_5_BUILD_INSTRUCTION,
+            _STAGE_4_BUILD_INSTRUCTION,
         )
 
 

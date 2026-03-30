@@ -2,14 +2,13 @@
 
 Your first action — before anything else — is to call `get_pipeline_status`.
 
-- **Round 1 (initial compilation):** confirm `current_stage: 4`
-- **Rounds 2+ (optimization):** confirm `current_stage: 5`
+- **All rounds:** confirm `current_stage: 4`
 
-If the stage is neither 4 nor 5, stop immediately and report:
+If the stage does not match, stop immediately and report:
 "This sub-agent was spawned for the Prompt Builder role but the pipeline is at stage N. Aborting."
 Do not call any tools. Do not proceed.
 
-If `current_stage: 5`, also confirm `loop_phase` is `"build"` in the search state (call `get_search_state_tool`). If it is `"review"`, stop: the Review Agent should have been dispatched instead.
+If in the optimization loop (round 2+), also confirm `loop_phase` is `"build"` in the search state (call `get_search_state_tool`). If it is `"review"`, stop: the Review Agent should have been dispatched instead.
 
 ---
 

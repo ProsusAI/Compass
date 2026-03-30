@@ -9,7 +9,7 @@ from odysseus.mcp.server import mcp
 
 @mcp.tool()
 async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, run_id: str) -> str:
-    """[Stage 7: Holdout Validation] Run evaluation on the holdout split.
+    """[Stage 5: Holdout Validation] Run evaluation on the holdout split.
 
     This tool must only be available to the Final Evaluation agent.
     It must NOT be in the Eval Runner agent's tool list.
@@ -25,7 +25,7 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "search" / "search_state.json",
-        stage=7,
+        stage=5,
         stage_name="Holdout Validation",
         hint="The eval loop must converge first.",
     )
