@@ -445,7 +445,7 @@ class TestLoopPhase:
             stagnation_limit=3,
             convergence_limit=5,
         )
-        assert state.loop_phase == "build"
+        assert state.loop_phase == "review"
 
     def test_loop_phase_accepts_review(self) -> None:
         state = SearchState(

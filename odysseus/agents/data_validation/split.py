@@ -36,7 +36,7 @@ class SplitReport(BaseModel):
     route_distribution: dict[str, dict[str, int]]
 
 
-def _compute_dataset_hash(examples: list[Example]) -> str:
+def compute_dataset_hash(examples: list[Example]) -> str:
     """Compute a deterministic SHA-256 hash over (id, input, expected.route) tuples."""
     tuples = sorted((ex.id, ex.input, ex.expected.route) for ex in examples)
     payload = "\n".join(f"{id_}\t{inp}\t{route}" for id_, inp, route in tuples)

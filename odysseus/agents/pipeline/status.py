@@ -468,11 +468,11 @@ def _next_action_for_stage_5(
     state file is absent or malformed).
     """
     search_state_path = run_dir / "search" / "search_state.json"
-    loop_phase = "build"
+    loop_phase = "review"
     if search_state_path.is_file():
         try:
             data = json.loads(search_state_path.read_text())
-            loop_phase = data.get("loop_phase", "build")
+            loop_phase = data.get("loop_phase", "review")
         except (json.JSONDecodeError, ValueError, TypeError):
             pass
 
