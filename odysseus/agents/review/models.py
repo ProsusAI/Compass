@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.eval.models import ScoreReport
@@ -97,12 +97,23 @@ class MutationHistory(BaseModel):
     untried_mutation_types: list[str]
 
 
+class ExampleContent(BaseModel):
+    """Concrete content for a few-shot example."""
+
+    input: str = Field(description="The example input/query text")
+    route: str = Field(description="The assigned route for this example")
+    reasoning: str = Field(description="Why this route fits")
+    exclusions: list[dict[str, str]] = Field(
+        description="List of {route, reason} for excluded routes"
+    )
+
+
 class ExampleSummary(BaseModel):
     """Lightweight reference to a holdout example for the exemplar bank."""
 
     example_id: str
     route: str
-    ambiguity_tags: list[str]
+    ambiguity_tags: list[str] = Field(default_factory=list)
 
 
 class OracleMetrics(BaseModel):
@@ -152,6 +163,7 @@ class EditDirective(BaseModel):
     granularity: Literal["macro", "micro"]
     directive: str
     priority: Literal["high", "medium", "low"]
+    example_content: ExampleContent | None = None
 
 
 class PromotionDecision(BaseModel):

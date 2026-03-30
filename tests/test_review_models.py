@@ -711,3 +711,60 @@ class TestReviewResult:
         )
         assert result.candidate_ranking == []
         assert result.edit_directives == []
+
+
+# ---------------------------------------------------------------------------
+# ExampleContent
+# ---------------------------------------------------------------------------
+
+
+from odysseus.agents.review.models import ExampleContent
+
+
+def test_example_content_model():
+    content = ExampleContent(
+        input="Build a multi-step data pipeline",
+        route="complex",
+        reasoning="Requires chained operations with control flow",
+        exclusions=[
+            {"route": "simple", "reason": "Single-step tasks only"},
+            {"route": "moderate", "reason": "No error handling at this tier"},
+        ],
+    )
+    assert content.route == "complex"
+    assert len(content.exclusions) == 2
+
+
+def test_edit_directive_with_example_content():
+    from odysseus.agents.review.models import EditDirective, ExampleContent
+    directive = EditDirective(
+        directive_id="d1",
+        target_version="v2",
+        block_type="example",
+        block_identifier="example_0",
+        granularity="macro",
+        directive="Replace with boundary case example",
+        priority="high",
+        example_content=ExampleContent(
+            input="Translate this document",
+            route="moderate",
+            reasoning="Requires language understanding but no multi-step logic",
+            exclusions=[{"route": "simple", "reason": "Needs domain knowledge"}],
+        ),
+    )
+    assert directive.example_content is not None
+    assert directive.example_content.route == "moderate"
+
+
+def test_edit_directive_without_example_content():
+    from odysseus.agents.review.models import EditDirective
+    directive = EditDirective(
+        directive_id="d2",
+        target_version="v2",
+        block_type="rule",
+        block_identifier="rule_1",
+        granularity="micro",
+        directive="Paraphrase for clarity",
+        priority="medium",
+    )
+    assert directive.example_content is None
