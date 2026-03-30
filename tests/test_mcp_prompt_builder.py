@@ -20,7 +20,7 @@ from odysseus.mcp import (
 
 _RUN_ID = "test_run"
 
-RESOLVE_PROJECT_DIR = "odysseus.mcp.resolve_project_dir"
+RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
 
 

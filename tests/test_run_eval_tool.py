@@ -21,7 +21,7 @@ from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
-RESOLVE_PROJECT_DIR = "odysseus.mcp.resolve_project_dir"
+RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 
 
 def _stub_score_report(
@@ -206,8 +206,8 @@ async def test_run_eval_permission_error_raises_tool_error() -> None:
 # Pre-flight check
 # ---------------------------------------------------------------------------
 
-GET_SEARCH_STATE = "odysseus.mcp.get_search_state"
-BACKEND_REGISTRY = "odysseus.mcp.BackendRegistry"
+GET_SEARCH_STATE = "odysseus.mcp.prompt_building_tools.get_search_state"
+BACKEND_REGISTRY = "odysseus.mcp.prompt_building_tools.BackendRegistry"
 
 
 def _setup_run_eval_guard(tmp_path: Path, run_id: str = "test-123") -> None:

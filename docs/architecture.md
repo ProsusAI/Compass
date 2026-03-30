@@ -98,10 +98,10 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 
 | Name | Status | Purpose | Backing Module |
 |---|---|---|---|
-| `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`odysseus/mcp.py`](../odysseus/mcp.py) |
+| `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `run_eval` | Implemented | Run an evaluation of a prompt version against a dataset (dev split) | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py) |
-| `run_holdout_eval` | Stub | Run evaluation on the holdout split (Final Evaluation agent only) | [`odysseus/mcp.py`](../odysseus/mcp.py) |
-| `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp.py`](../odysseus/mcp.py) |
+| `run_holdout_eval` | Stub | Run evaluation on the holdout split (Final Evaluation agent only) | [`odysseus/mcp/`](../odysseus/mcp/) |
+| `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation_checks.py`](../odysseus/agents/data_validation_checks.py) |
 | `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation_checks.py`](../odysseus/agents/data_validation_checks.py) |
 | `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; accepts `run_id` | [`odysseus/agents/data_validation_checks.py`](../odysseus/agents/data_validation_checks.py) |
