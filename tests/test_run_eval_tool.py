@@ -325,7 +325,12 @@ async def test_run_eval_pipeline_builds_config_from_state(tmp_path: Path) -> Non
         backend="anthropic",
         primary_metric_name="f1/macro",
         round=1,
-        round_history=[RoundSummary(round=1, candidates_evaluated=["v1"], new_pareto_points=1, front_size=1, mutation_mode="targeted", stagnation_count=0, converged=False)],
+        round_history=[
+            RoundSummary(
+                round=1, candidates_evaluated=["v1"], new_pareto_points=1,
+                front_size=1, mutation_mode="targeted", stagnation_count=0, converged=False,
+            ),
+        ],
     )
     score_report = _stub_score_report(
         report_path=str(tmp_path / "outputs" / run_id / "eval" / "report.json"),

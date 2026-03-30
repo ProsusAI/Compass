@@ -386,11 +386,13 @@ class TestEvalRunnerAgentPipelineConfig:
             "run_config": run_config,
         }
 
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+        with (
+            patch("odysseus.agents.eval_runner.controller") as mock_ctrl,
+            patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"),
+            patch.object(agent, "_load_config") as mock_load,
+        ):
             mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                with patch.object(agent, "_load_config") as mock_load:
-                    result = await agent.run(context)
-                    mock_load.assert_not_called()
+            result = await agent.run(context)
+            mock_load.assert_not_called()
 
         assert ScoreReport.CONTEXT_KEY in result

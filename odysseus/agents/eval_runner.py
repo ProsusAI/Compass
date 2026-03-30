@@ -130,10 +130,7 @@ class EvalRunnerAgent(BaseAgent):
         profile = registry.get_profile(config.backend)
         backend_instance = registry.create_backend(config.backend)
 
-        if run_id is not None:
-            prompts_dir = project / "outputs" / run_id / "prompts"
-        else:
-            prompts_dir = project / "prompts"
+        prompts_dir = project / "outputs" / run_id / "prompts" if run_id is not None else project / "prompts"
 
         return RunDependencies(
             backend=backend_instance,
