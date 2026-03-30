@@ -268,17 +268,17 @@ uv run pytest
 Integration tests are Markdown runbooks in `tests/scenarios/`. Each scenario defines a simulated user conversation that exercises one or more pipeline agents end-to-end through the MCP server.
 
 **Prerequisites:**
-- The Odysseus MCP server must be connected to Claude Code (see [Setup](#setup))
+- The Odysseus MCP server must be connected to your AI coding assistant (see [Setup](#setup))
 - `ANTHROPIC_API_KEY` must be set (scenarios make real LLM API calls)
 - For scenario 49 only: `OPENAI_API_KEY` must be set
 
 **Running a scenario:**
 
-Open Claude Code in the project directory and say:
+Open your MCP-connected AI assistant (Claude Code, Cursor, or any MCP-compatible client) in the project directory and say:
 
 > Run the integration test in `tests/scenarios/01_complete_submission.md`
 
-Claude Code reads the scenario file, spins up a User Simulator sub-agent to play the user role, brokers a multi-turn conversation with the agent under test, then runs a Verification Agent to check the outcome against the scenario's pass/fail criteria. Each scenario has a 20-turn safety limit.
+The assistant reads the scenario file, spins up a User Simulator sub-agent to play the user role, brokers a multi-turn conversation with the agent under test, then runs a Verification Agent to check the outcome against the scenario's pass/fail criteria. Each scenario has a 20-turn safety limit.
 
 **Running multiple scenarios:**
 
