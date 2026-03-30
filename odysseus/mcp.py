@@ -28,6 +28,7 @@ from odysseus.agents.prompt_builder_search_ops import (
     init_search_state,
     record_eval_result,
     register_candidate,
+    set_loop_phase as _set_loop_phase,
 )
 from odysseus.agents.routing_rationale_checks_deterministic import validate_deterministic
 from odysseus.agents.routing_rationale_models import RationaleCardSet, RoutingContext, VocabularyRegistry
@@ -40,13 +41,15 @@ from odysseus.project_dir import get_project_dir, resolve_project_dir
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-_STAGE_PROMPT_MAP: dict[int, str] = {
+_STAGE_PROMPT_MAP: dict[int | str, str] = {
     1: "odysseus/agents/prompts/user_input_system.md",
     2: "odysseus/agents/prompts/data_validation_system.md",
     3: "odysseus/agents/prompts/routing_analysis_system.md",
     4: "odysseus/agents/prompts/backend_setup_system.md",
     5: "odysseus/agents/prompts/prompt_builder_system.md",
-    6: "odysseus/agents/prompts/review_agent_system.md",
+    # Stage 6 is dynamic — looked up by activate_prompt name:
+    "odysseus_prompt_builder": "odysseus/agents/prompts/prompt_builder_system.md",
+    "odysseus_review_agent": "odysseus/agents/prompts/review_agent_system.md",
 }
 
 
@@ -1157,6 +1160,12 @@ async def record_directive_outcomes_tool(
     parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
     existing = load_directive_history(run_id, output_dir=out)
     save_directive_history(run_id, existing + parsed, output_dir=out)
+
+    # Transition search loop to build phase so orchestrator spawns Prompt Builder next
+    try:
+        _set_loop_phase(run_id, "build", output_dir=out)
+    except FileNotFoundError:
+        pass  # No search state yet (Round 1 path — directives not applicable)
     return json.dumps({"recorded": len(parsed), "total": len(existing) + len(parsed)})
 
 
@@ -1186,19 +1195,29 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     outputs_dir = project_dir / "outputs"
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
     current_stage = result.get("current_stage")
+    activate_prompt = result.get("activate_prompt")
     subagent_instruction = result.get("subagent_instruction")
-    if current_stage in _STAGE_PROMPT_MAP and subagent_instruction:
+
+    # For Stage 6, look up system prompt by activate_prompt name (dynamic per loop_phase).
+    # For all other stages, look up by stage number.
+    lookup_key: int | str | None = (
+        activate_prompt if current_stage == 6 and activate_prompt
+        else current_stage
+    )
+
+    if lookup_key in _STAGE_PROMPT_MAP and subagent_instruction:
         placeholder = "<stage_system_prompt></stage_system_prompt>"
         if placeholder in subagent_instruction:
             try:
-                system_prompt = _load_text(_STAGE_PROMPT_MAP[current_stage])
+                system_prompt = _load_text(_STAGE_PROMPT_MAP[lookup_key])
                 result["subagent_instruction"] = subagent_instruction.replace(
                     placeholder,
                     f"<stage_system_prompt>\n{system_prompt}\n</stage_system_prompt>",
                 )
             except FileNotFoundError as e:
                 raise ToolError(
-                    f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
+                    f"Stage {current_stage} system prompt not found — "
+                    f"MCP server installation may be broken: {e}"
                 ) from e
     return json.dumps(result, indent=2)
 

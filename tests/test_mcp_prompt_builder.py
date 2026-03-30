@@ -237,3 +237,30 @@ class TestFilterHoldoutTool:
                 await filter_holdout_dataset_tool(ctx=None, holdout_jsonl_path=str(holdout), exclude_ids=[], run_id=_RUN_ID)
             )
         assert "holdout_filtered" in result["filtered_holdout_path"]
+
+
+class TestRecordDirectiveOutcomesToolLoopPhase:
+    @pytest.mark.asyncio
+    async def test_transitions_loop_phase_to_build(self, tmp_path: Path) -> None:
+        from odysseus.agents.prompt_builder_search_ops import get_search_state, init_search_state, set_loop_phase
+        from odysseus.mcp import record_directive_outcomes_tool
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+            # Init search state in review phase
+            init_search_state(
+                "anthropic",
+                run_id=_RUN_ID,
+                output_dir=tmp_path / "outputs",
+            )
+            set_loop_phase(_RUN_ID, "review", output_dir=tmp_path / "outputs")
+
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                outcomes=[],
+                output_dir=str(tmp_path / "outputs"),
+            )
+
+            state = get_search_state(run_id=_RUN_ID, output_dir=tmp_path / "outputs")
+            assert state.loop_phase == "build"
