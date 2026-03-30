@@ -164,8 +164,8 @@ async def run_eval(
 
         state = get_search_state(run_id=run_id)
 
-        # Pre-flight: on first run in loop, signal backend setup needed
-        if state.round == 0 and len(state.round_history) == 0:
+        # Pre-flight: signal backend setup needed when backend is missing
+        if not state.backend:
             registry = BackendRegistry.from_directory(project_dir / "backends")
             return json.dumps(
                 {

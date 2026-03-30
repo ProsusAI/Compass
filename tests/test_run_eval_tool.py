@@ -222,12 +222,12 @@ def _setup_run_eval_guard(tmp_path: Path, run_id: str = "test-123") -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_eval_preflight_triggers_on_round_zero(tmp_path: Path) -> None:
-    """First run in loop (round 0, no history) returns action_required."""
+async def test_run_eval_preflight_triggers_when_backend_missing(tmp_path: Path) -> None:
+    """Missing backend on search state returns action_required."""
     _setup_run_eval_guard(tmp_path)
     state = SearchState(
         search_state_id="test-123",
-        backend="anthropic",
+        backend="",
         round=0,
         round_history=[],
     )
@@ -245,7 +245,6 @@ async def test_run_eval_preflight_triggers_on_round_zero(tmp_path: Path) -> None
             ctx=None,
             prompt_version="v1",
             data_source="data/test.jsonl",
-            backend="anthropic",
             run_id="test-123",
         )
 
@@ -256,13 +255,13 @@ async def test_run_eval_preflight_triggers_on_round_zero(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_run_eval_preflight_skipped_after_round_zero(tmp_path: Path) -> None:
-    """After first round, run_eval proceeds normally (no action_required)."""
+async def test_run_eval_preflight_skipped_when_backend_set(tmp_path: Path) -> None:
+    """When backend is set on search state, run_eval proceeds normally."""
     _setup_run_eval_guard(tmp_path)
     state = SearchState(
         search_state_id="test-123",
         backend="anthropic",
-        round=1,
+        round=0,
         round_history=[],
     )
     score_report = _stub_score_report()
