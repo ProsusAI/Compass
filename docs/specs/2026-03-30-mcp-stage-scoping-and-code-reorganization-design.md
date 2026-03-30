@@ -79,11 +79,11 @@ odysseus/mcp/
   orchestrator_tools.py       # optimize_routing_prompt, get_pipeline_status, start_stage, complete_stage
   input_report_tools.py       # submit_input_report
   data_validation_tools.py    # detect_and_parse_dataset, transform_dataset, validate_dataset, save_routing_context
-  routing_analysis_tools.py   # create_seed_registry, resolve_registry, prune_registry, validate_rationale_card_set, stratified_split
+  routing_analysis_tools.py   # create_seed_registry_tool, resolve_registry_tool, prune_registry_tool, validate_rationale_card_set_tool, stratified_split_tool
   backend_setup_tools.py      # get_default_pricing
-  prompt_building_tools.py    # init_search_state, register_candidate, run_eval, record_eval_result, advance_round, get_search_state, filter_holdout
-  review_tools.py             # build_review_briefing, record_directive_outcomes
-  holdout_tools.py            # filter_holdout_dataset, run_holdout_eval
+  prompt_building_tools.py    # init_search_state_tool, register_candidate_tool, run_eval, record_eval_result_tool, advance_round_tool, get_search_state_tool, filter_holdout_dataset_tool
+  review_tools.py             # build_review_briefing_tool, record_directive_outcomes_tool
+  holdout_tools.py            # filter_holdout_dataset_tool, run_holdout_eval
   resources.py                # All 16 MCP resources (no stage scoping needed)
   prompts.py                  # All 6 MCP prompt templates
 ```
@@ -92,6 +92,8 @@ Each `*_tools.py` file:
 - Defines tool functions with `@mcp.tool()` decorators
 - Imports business logic from corresponding `agents/` subdirectory
 - Contains no business logic itself — pure MCP interface layer
+
+**Shared tools across stages:** Some tools appear in multiple stages (e.g., `run_eval` in both `prompt_building` and `review`, `get_search_state_tool` in both). Each tool function is defined in exactly one `*_tools.py` file (its primary stage). The stage registry controls visibility — a tool can appear in multiple stages without being defined in multiple files. `server.py` owns the stage → tool mapping; tool files define functions, not stage membership.
 
 `server.py` responsibilities:
 - Create FastMCP app
@@ -145,7 +147,15 @@ odysseus/agents/
 
 #### Import Compatibility
 
-`agents/__init__.py` re-exports all public symbols from subdirectories. Any existing code doing `from odysseus.agents import SearchState` continues to work unchanged.
+`agents/__init__.py` re-exports all public symbols from subdirectories. Any existing code doing `from odysseus.agents import SearchState` continues to work unchanged. Each subdirectory `__init__.py` must re-export all symbols that the current flat `agents/__init__.py` exports from the corresponding source files. The implementer should derive these lists from the existing `agents/__init__.py` at migration time.
+
+#### Resource Files
+
+Markdown resource files currently in `agents/` (e.g., `backend_setup_defaults.md`, `data_validation_format.md`, `prompt_builder_best_practices.md`) move to their corresponding subdirectory. The MCP resource loader paths in `mcp/resources.py` must be updated accordingly.
+
+#### Backend Setup Stage
+
+The `backend_setup` stage has no dedicated subdirectory under `agents/` because its sole tool (`get_default_pricing`) delegates directly to `eval/pricing.py`. No agent-level business logic exists for this stage.
 
 #### Dependency Direction
 
@@ -155,6 +165,17 @@ mcp/*_tools.py  →  agents/<stage>/*  →  agents/pipeline/*  →  eval/*
 ```
 
 The dependency is always `mcp/ → agents/`, never the reverse. Agents modules never import from `mcp/`.
+
+**Cross-stage dependencies within `agents/`:** Some subdirectories import from others. Known cross-stage imports:
+
+| From | To | Symbol(s) |
+|------|----|-----------|
+| `review/models.py` | `prompt_builder/search.py` | `Candidate` |
+| `routing_analysis/checks.py` | `routing_analysis/checks_semantic.py` | validation helpers |
+| `routing_analysis/split.py` | `routing_analysis/models.py`, `routing_analysis/registry.py` | domain models |
+| `data_validation/transform.py` | `data_validation/detect.py` | `DetectionResult` |
+
+These cross-stage imports are acceptable — they follow the data model dependency direction (models → consumers). The key invariant is: `mcp/` → `agents/`, never the reverse.
 
 ### 4. Documentation Updates
 
@@ -177,12 +198,13 @@ Four phases, each independently committable and testable.
 ### Phase 1: Reorganize `agents/`
 
 1. Create subdirectories: `pipeline/`, `data_validation/`, `routing_analysis/`, `prompt_builder/`, `review/`
-2. Move files into subdirectories (renaming where clearer, e.g., `data_ingestion_detect.py` → `data_validation/detect.py`)
-3. Create `__init__.py` for each subdirectory with appropriate exports
-4. Update `agents/__init__.py` to re-export from subdirectories
-5. Update all internal imports across the codebase
-6. Run `uv run pytest` — all tests must pass
-7. Run `uv run ruff check .` and `uv run pyright` — no regressions
+2. Move `.py` files into subdirectories (renaming where clearer, e.g., `data_ingestion_detect.py` → `data_validation/detect.py`)
+3. Move `.md` resource files to their corresponding subdirectory (e.g., `data_validation_format.md` → `data_validation/format.md`)
+4. Create `__init__.py` for each subdirectory — re-export all symbols currently exported by `agents/__init__.py` from the corresponding source files
+5. Update `agents/__init__.py` to re-export from subdirectories
+6. Update all internal imports across the codebase
+7. Run `uv run pytest` — all tests must pass
+8. Run `uv run ruff check .` and `uv run pyright` — no regressions
 
 ### Phase 2: Split `mcp.py` into `mcp/`
 
