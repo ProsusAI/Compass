@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.lowlevel import NotificationOptions
 from mcp.types import Tool as MCPTool
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -130,6 +131,21 @@ def _normalize_model_family(model: str) -> str:
 
 
 mcp = FastMCP("odysseus")
+
+# Declare that the tool list can change at runtime (stage transitions).
+# FastMCP defaults to tools_changed=False; override so clients know to
+# honour ``notifications/tools/list_changed`` from start_stage / complete_stage.
+_original_create_init_options = mcp._mcp_server.create_initialization_options
+
+
+def _create_init_options_with_tool_list_changed(**kwargs):  # type: ignore[no-untyped-def]
+    return _original_create_init_options(
+        notification_options=NotificationOptions(tools_changed=True),
+        **kwargs,
+    )
+
+
+mcp._mcp_server.create_initialization_options = _create_init_options_with_tool_list_changed  # type: ignore[assignment]
 
 
 def get_active_stage() -> str | None:

@@ -1,5 +1,6 @@
 """Orchestrator tools — pipeline entry point and status."""
 
+import contextlib
 import json
 
 from mcp.server.fastmcp import Context
@@ -103,12 +104,15 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
 
 
 @mcp.tool()
-async def start_stage(stage: str, run_id: str | None = None) -> str:  # noqa: ARG001
+async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> str:  # noqa: ARG001
     """Activate a pipeline stage, scoping visible tools to that stage.
 
     The orchestrator calls this before spawning a sub-agent so the sub-agent
     only sees the tools relevant to its stage.  After the sub-agent finishes,
     call ``complete_stage`` to return to orchestrator scope.
+
+    Sends a ``notifications/tools/list_changed`` notification so the client
+    refreshes its cached tool list with the newly visible stage tools.
 
     Args:
         stage: Stage name — must be a key in ``STAGE_REGISTRY``.
@@ -136,6 +140,8 @@ async def start_stage(stage: str, run_id: str | None = None) -> str:  # noqa: AR
         )
 
     set_active_stage(stage)
+    with contextlib.suppress(Exception):
+        await ctx.session.send_tool_list_changed()
     tools = STAGE_REGISTRY[stage]
     run_label = f" for run {run_id}" if run_id else ""
     return (
@@ -145,11 +151,14 @@ async def start_stage(stage: str, run_id: str | None = None) -> str:  # noqa: AR
 
 
 @mcp.tool()
-async def complete_stage(run_id: str) -> str:  # noqa: ARG001
+async def complete_stage(ctx: Context, run_id: str) -> str:  # noqa: ARG001
     """Complete the current stage and return to orchestrator scope.
 
     Resets the active stage to ``orchestrator`` so the orchestrator's full
     tool set is visible again.
+
+    Sends a ``notifications/tools/list_changed`` notification so the client
+    refreshes its cached tool list.
 
     Args:
         run_id: Pipeline run identifier.
@@ -166,6 +175,8 @@ async def complete_stage(run_id: str) -> str:  # noqa: ARG001
         )
 
     set_active_stage("orchestrator")
+    with contextlib.suppress(Exception):
+        await ctx.session.send_tool_list_changed()
     return (
         f"Stage '{previous}' completed for run {run_id}. "
         f"Returned to orchestrator scope."
