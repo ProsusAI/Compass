@@ -117,6 +117,13 @@ async def start_stage(run_id: str, stage: str) -> str:  # noqa: ARG001
     Returns:
         Confirmation message listing the tools now available.
     """
+    current = get_active_stage()
+    if current != "orchestrator":
+        raise ToolError(
+            f"start_stage can only be called from orchestrator scope "
+            f"(current scope: '{current}'). Call complete_stage first."
+        )
+
     if stage not in STAGE_REGISTRY:
         valid = ", ".join(sorted(STAGE_REGISTRY))
         raise ToolError(f"Unknown stage '{stage}'. Valid stages: {valid}")
@@ -143,6 +150,13 @@ async def complete_stage(run_id: str) -> str:  # noqa: ARG001
         Confirmation message with the previously active stage name.
     """
     previous = get_active_stage()
+    if previous == "orchestrator":
+        raise ToolError(
+            "complete_stage can only be called from within a stage scope "
+            "(current scope is already 'orchestrator'). "
+            "Call start_stage first to enter a stage."
+        )
+
     set_active_stage("orchestrator")
     return (
         f"Stage '{previous}' completed for run {run_id}. "

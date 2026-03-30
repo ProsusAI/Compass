@@ -84,6 +84,12 @@ STAGE_REGISTRY: dict[str, list[str]] = {
 # this to ``"orchestrator"`` at startup.
 _active_stage: str | None = "orchestrator"
 
+# Lifecycle tools that must always be visible regardless of active stage.
+# Without this, calling ``start_stage`` locks the orchestrator out of
+# ``complete_stage`` (and vice-versa) because they only appear in the
+# ``"orchestrator"`` stage registry entry.
+_LIFECYCLE_TOOLS: set[str] = {"start_stage", "complete_stage"}
+
 
 def _load_text(relative_path: str) -> str:
     """Load a text file relative to the project root.
@@ -154,7 +160,7 @@ async def _filtered_list_tools() -> list[MCPTool]:
     allowed = STAGE_REGISTRY.get(_active_stage)
     if allowed is None:
         return all_tools
-    allowed_set = set(allowed)
+    allowed_set = set(allowed) | _LIFECYCLE_TOOLS
     return [t for t in all_tools if t.name in allowed_set]
 
 

@@ -220,12 +220,18 @@ class TestSubagentInstruction:
         assert "build_review_briefing_tool" in instr
         assert "record_directive_outcomes_tool" in instr
 
-    def test_stage6_has_null_subagent_instruction(self, tmp_path: Path) -> None:
+    def test_stage6_has_subagent_instruction(self, tmp_path: Path) -> None:
         # Stage 5 complete (converged=True), stage 6 not yet complete (no holdout report)
         _setup_through_stage6_converged(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 6
-        assert result["subagent_instruction"] is None
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "HARD_STOP" in instr
+        assert "start_stage" in instr
+        assert "holdout" in instr
+        assert "filter_holdout_dataset_tool" in instr
+        assert "run_holdout_eval" in instr
 
     def test_no_runs_has_subagent_instruction(self, tmp_path: Path) -> None:
         result = get_pipeline_status(tmp_path, run_id=None)

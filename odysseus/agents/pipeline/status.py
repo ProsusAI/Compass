@@ -223,7 +223,25 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         "The refinement loop has converged. Run holdout validation.",
         ["run_holdout_eval", "filter_holdout_dataset_tool"],
         [],
-        None,
+        (
+            "<HARD_STOP>\n"
+            "You MUST NOT call any Stage 6 tools from the current context.\n\n"
+            "REQUIRED: Spawn a sub-agent before proceeding.\n"
+            "- Claude Code (Task tool): instruct the sub-agent to run holdout validation\n"
+            "- Cursor: open a new agent context for holdout validation\n\n"
+            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='holdout') BEFORE spawning the sub-agent.\n\n"
+            "The sub-agent handles: get_pipeline_status, filter_holdout_dataset_tool, run_holdout_eval\n"
+            "You handle only: get_pipeline_status\n\n"
+            "Sub-agent instructions:\n"
+            "1. Call get_pipeline_status to verify current_stage is 6\n"
+            "2. Call filter_holdout_dataset_tool to remove few-shot examples from the holdout set\n"
+            "3. Call run_holdout_eval to evaluate the best prompt against the filtered holdout set\n"
+            "4. Call get_pipeline_status to verify stage completion\n\n"
+            "POST-EXIT REQUIRED: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+            "then call get_pipeline_status.\n"
+            "If Stage 6 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "</HARD_STOP>"
+        ),
     ),
     7: (
         "Generate the final report.",
@@ -338,6 +356,10 @@ def get_pipeline_status(
         action, tools, prompts, subagent_instruction = _next_action_for_stage_5(run_dir)
     else:
         action, tools, prompts, subagent_instruction = _next_action_for_stage(current_stage)
+
+    # Replace {run_id} placeholders in subagent instruction templates.
+    if subagent_instruction:
+        subagent_instruction = subagent_instruction.format(run_id=run_id or "new")
 
     return {
         "run_id": run_id,

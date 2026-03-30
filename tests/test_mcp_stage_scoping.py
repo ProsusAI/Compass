@@ -76,12 +76,12 @@ async def test_all_registered_tools_appear_in_at_least_one_stage():
 # ---------------------------------------------------------------------------
 
 
-async def test_filtering_returns_only_stage_tools():
-    """When a stage is active, list_tools returns only that stage's tools."""
+async def test_filtering_returns_stage_tools_plus_lifecycle():
+    """When a stage is active, list_tools returns stage tools plus lifecycle tools."""
     set_active_stage("input_report")
     tools = await mcp.list_tools()
     tool_names = {t.name for t in tools}
-    assert tool_names == {"submit_input_report", "get_pipeline_status"}
+    assert tool_names == {"submit_input_report", "get_pipeline_status", "start_stage", "complete_stage"}
 
 
 async def test_filtering_disabled_returns_all_tools():
@@ -109,11 +109,11 @@ async def test_orchestrator_stage_filtering():
 
 
 async def test_prompt_building_stage_filtering():
-    """Prompt building stage returns all its tools."""
+    """Prompt building stage returns its tools plus lifecycle tools."""
     set_active_stage("prompt_building")
     tools = await mcp.list_tools()
     tool_names = {t.name for t in tools}
-    expected = set(STAGE_REGISTRY["prompt_building"])
+    expected = set(STAGE_REGISTRY["prompt_building"]) | {"start_stage", "complete_stage"}
     assert tool_names == expected
 
 
@@ -139,8 +139,27 @@ async def test_start_stage_rejects_unknown_stage():
     """start_stage raises ToolError for an unknown stage name."""
     from odysseus.mcp.orchestrator_tools import start_stage
 
+    set_active_stage("orchestrator")
     with pytest.raises(ToolError, match="Unknown stage"):
         await start_stage(run_id="test-run", stage="nonexistent")
+
+
+async def test_start_stage_rejects_from_non_orchestrator_scope():
+    """start_stage raises ToolError when called from a stage scope."""
+    from odysseus.mcp.orchestrator_tools import start_stage
+
+    set_active_stage("input_report")
+    with pytest.raises(ToolError, match="only be called from orchestrator scope"):
+        await start_stage(run_id="test-run", stage="data_validation")
+
+
+async def test_complete_stage_rejects_from_orchestrator_scope():
+    """complete_stage raises ToolError when already in orchestrator scope."""
+    from odysseus.mcp.orchestrator_tools import complete_stage
+
+    set_active_stage("orchestrator")
+    with pytest.raises(ToolError, match="only be called from within a stage scope"):
+        await complete_stage(run_id="test-run")
 
 
 async def test_complete_stage_resets_to_orchestrator():
@@ -148,6 +167,7 @@ async def test_complete_stage_resets_to_orchestrator():
     from odysseus.mcp.orchestrator_tools import complete_stage, start_stage
     from odysseus.mcp.server import get_active_stage
 
+    set_active_stage("orchestrator")
     await start_stage(run_id="test-run", stage="review")
     assert get_active_stage() == "review"
 
