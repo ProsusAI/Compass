@@ -9,10 +9,10 @@ from mcp.server.fastmcp.exceptions import ToolError
 import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.data_validation.checks import run_all_checks
 from odysseus.agents.data_validation.detect import detect_and_parse
-from odysseus.agents.data_validation.split import stratified_split
 from odysseus.agents.data_validation.transform import transform_dataset as _do_transform
 from odysseus.agents.pipeline.guards import check_artifacts
-from odysseus.agents.routing_analysis.models import RoutingContext
+from odysseus.agents.routing_analysis.models import RationaleCardSet, RoutingContext
+from odysseus.agents.routing_analysis.split import stratified_split
 from odysseus.mcp.server import _load_examples, _write_jsonl, mcp
 
 
@@ -165,20 +165,23 @@ async def stratified_split_tool(
     ctx: Context,
     run_id: str,
     dataset_path: str,
+    card_set_path: str,
     dev_ratio: float = 0.8,
 ) -> str:
-    """[Stage 2: Data Validation] Split a dataset into dev and holdout partitions.
+    """[Stage 2: Data Validation] Split a dataset and card set into dev and holdout partitions.
 
-    Writes dev.jsonl, holdout.jsonl, and split_report.json to
-    outputs/<run_id>/validation/.
+    Writes dev.jsonl, holdout.jsonl, dev_rationale_card_set.json,
+    holdout_rationale_card_set.json, and split_report.json to
+    outputs/<run_id>/analysis/.
 
     Args:
         run_id: Pipeline run identifier.
         dataset_path: Absolute path to the JSONL dataset file.
+        card_set_path: Absolute path to the JSON file containing a serialized RationaleCardSet.
         dev_ratio: Proportion allocated to dev set. Defaults to 0.8.
 
     Returns:
-        JSON with paths to dev_path, holdout_path, and split_report_path.
+        JSON with paths to all output files.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     check_artifacts(
@@ -192,24 +195,37 @@ async def stratified_split_tool(
     if not path.is_file():
         raise ToolError(f"Dataset file not found: {dataset_path}")
 
+    card_set_file = Path(card_set_path)
+    if not card_set_file.is_file():
+        raise ToolError(f"Card set file not found: {card_set_path}")
+
     examples = _load_examples(path)
+    card_set = RationaleCardSet.model_validate_json(card_set_file.read_text(encoding="utf-8"))
 
-    dev_examples, holdout_examples, split_report = stratified_split(examples, dev_ratio)
+    dev_examples, holdout_examples, dev_card_set, holdout_card_set, split_report = stratified_split(
+        examples, card_set, dev_ratio
+    )
 
-    output_dir = project_dir / "outputs" / run_id / "validation"
+    output_dir = project_dir / "outputs" / run_id / "analysis"
     output_dir.mkdir(parents=True, exist_ok=True)
     dev_path = output_dir / "dev.jsonl"
     holdout_path = output_dir / "holdout.jsonl"
+    dev_card_set_path = output_dir / "dev_rationale_card_set.json"
+    holdout_card_set_path = output_dir / "holdout_rationale_card_set.json"
     split_report_path = output_dir / "split_report.json"
 
     _write_jsonl(dev_path, dev_examples)
     _write_jsonl(holdout_path, holdout_examples)
+    dev_card_set_path.write_text(dev_card_set.model_dump_json(indent=2), encoding="utf-8")
+    holdout_card_set_path.write_text(holdout_card_set.model_dump_json(indent=2), encoding="utf-8")
     split_report_path.write_text(split_report.model_dump_json(indent=2), encoding="utf-8")
 
     return json.dumps(
         {
             "dev_path": str(dev_path),
             "holdout_path": str(holdout_path),
+            "dev_card_set_path": str(dev_card_set_path),
+            "holdout_card_set_path": str(holdout_card_set_path),
             "split_report_path": str(split_report_path),
         },
         indent=2,

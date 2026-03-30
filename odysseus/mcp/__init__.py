@@ -9,6 +9,7 @@ from odysseus.mcp.backend_setup_tools import get_default_pricing
 from odysseus.mcp.data_validation_tools import (
     detect_and_parse_dataset,
     save_routing_context,
+    stratified_split_tool,
     transform_dataset,
     validate_dataset,
 )
@@ -34,7 +35,6 @@ from odysseus.mcp.prompts import (
     odysseus_data_validation,
     odysseus_prompt_builder,
     odysseus_review_agent,
-    odysseus_routing_analysis,
     odysseus_routing_input,
 )
 from odysseus.mcp.resources import (
@@ -42,11 +42,8 @@ from odysseus.mcp.resources import (
     backend_setup_clarification_skill,
     backend_setup_defaults,
     backend_setup_taxonomy,
-    check_overlap_skill,
-    classify_example_skill,
     data_validation_format_spec,
     data_validation_output_spec,
-    generate_rationale_skill,
     input_clarification_skill,
     input_defaults,
     model_specific_conventions,
@@ -58,13 +55,6 @@ from odysseus.mcp.resources import (
 from odysseus.mcp.review_tools import (
     build_review_briefing_tool,
     record_directive_outcomes_tool,
-)
-from odysseus.mcp.routing_analysis_tools import (
-    create_seed_registry_tool,
-    prune_registry_tool,
-    resolve_registry_tool,
-    stratified_split_tool,
-    validate_rationale_card_set_tool,
 )
 from odysseus.mcp.server import (
     _PROJECT_ROOT,
@@ -89,7 +79,6 @@ __all__ = [
     "advance_round_tool",
     "build_review_briefing_tool",
     "complete_stage",
-    "create_seed_registry_tool",
     "detect_and_parse_dataset",
     "filter_holdout_dataset_tool",
     "get_default_pricing",
@@ -97,11 +86,9 @@ __all__ = [
     "get_search_state_tool",
     "init_search_state_tool",
     "optimize_routing_prompt",
-    "prune_registry_tool",
     "record_directive_outcomes_tool",
     "record_eval_result_tool",
     "register_candidate_tool",
-    "resolve_registry_tool",
     "run_eval",
     "run_holdout_eval",
     "save_routing_context",
@@ -110,24 +97,19 @@ __all__ = [
     "submit_input_report",
     "transform_dataset",
     "validate_dataset",
-    "validate_rationale_card_set_tool",
     # Prompts
     "odysseus_backend_setup",
     "odysseus_data_validation",
     "odysseus_prompt_builder",
     "odysseus_review_agent",
-    "odysseus_routing_analysis",
     "odysseus_routing_input",
     # Resources
     "backend_profile",
     "backend_setup_clarification_skill",
     "backend_setup_defaults",
     "backend_setup_taxonomy",
-    "check_overlap_skill",
-    "classify_example_skill",
     "data_validation_format_spec",
     "data_validation_output_spec",
-    "generate_rationale_skill",
     "input_clarification_skill",
     "input_defaults",
     "model_specific_conventions",

@@ -108,24 +108,6 @@ async def model_specific_conventions(provider: str, model_family: str) -> str:
     return path.read_text()
 
 
-@mcp.resource("odysseus://agents/routing-analysis/classify-example-skill")
-async def classify_example_skill() -> str:
-    """Classify-example skill for the Routing Analysis Agent."""
-    return _load_text("odysseus/skills/classify-example/SKILL.md")
-
-
-@mcp.resource("odysseus://agents/routing-analysis/generate-rationale-skill")
-async def generate_rationale_skill() -> str:
-    """Generate-routing-rationale skill for the Routing Analysis Agent."""
-    return _load_text("odysseus/skills/generate-routing-rationale/SKILL.md")
-
-
-@mcp.resource("odysseus://agents/routing-analysis/check-overlap-skill")
-async def check_overlap_skill() -> str:
-    """Check-semantic-overlap skill for the Routing Analysis Agent."""
-    return _load_text("odysseus/skills/check-semantic-overlap/SKILL.md")
-
-
 @mcp.resource("odysseus://agents/review-agent/guidelines")
 async def review_agent_guidelines() -> str:
     """Review criteria and evaluation priority reference for the Review Agent."""
