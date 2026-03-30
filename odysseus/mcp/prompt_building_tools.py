@@ -285,6 +285,38 @@ async def get_search_state_tool(run_id: str) -> str:
 
 
 @mcp.tool()
+async def save_prompt_tool(
+    ctx: Context,
+    run_id: str,
+    prompt_version: str,
+    content: str,
+) -> str:
+    """[Stage 6: Eval Loop] Save a compiled routing prompt to disk.
+
+    Writes the prompt content to outputs/<run_id>/prompts/<prompt_version>.txt.
+    Use this instead of writing prompt files directly — it ensures correct
+    encoding and avoids content truncation from special characters.
+
+    Args:
+        run_id: Pipeline run identifier.
+        prompt_version: Version identifier (e.g. "v1", "v2").
+        content: Full prompt text to save.
+
+    Returns:
+        JSON object with prompt_path pointing to the written file.
+    """
+    if not content:
+        raise ToolError("content must not be empty")
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    prompt_path = project_dir / "outputs" / run_id / "prompts" / f"{prompt_version}.txt"
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    prompt_path.write_text(content, encoding="utf-8")
+
+    return json.dumps({"prompt_path": str(prompt_path)})
+
+
+@mcp.tool()
 async def filter_holdout_dataset_tool(
     ctx: Context,
     holdout_jsonl_path: str,
