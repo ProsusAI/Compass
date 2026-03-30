@@ -44,6 +44,7 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `record_eval_result_tool` | Record eval results for Pareto tracking |
 | `advance_round_tool` | Close round, update front, check convergence |
 | `get_search_state_tool` | Read current search state |
+| `save_prompt_tool` | Save compiled prompt text to disk |
 | `run_eval` | Evaluate a prompt version against the dev set |
 | `filter_holdout_dataset_tool` | Remove few-shot examples from holdout before final eval |
 
@@ -114,7 +115,7 @@ Execute these steps exactly in order on round 1.
 
    When a model-specific addendum was read in step 3, its formatting guidance overrides or refines the provider base conventions on any conflicting points.
 
-8. **Write prompt.** Save the compiled prompt to `outputs/<run_id>/prompts/v1.txt`.
+8. **Write prompt.** Call `save_prompt_tool(run_id=run_id, prompt_version="v1", content=<compiled prompt text>)`.
 9. **Register candidate.** Call `register_candidate_tool(search_state_id, "v1")`.
 10. **Evaluate.** Call `run_eval(prompt_version="v1", data_source=dev_jsonl_path, backend=backend)`.
 11. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
@@ -136,7 +137,7 @@ Execute on round 2 and every subsequent round.
    | `targeted` | Apply Review Agent directives: paraphrase sections, reorder rules, tighten precision, swap or reorder few-shot examples |
    | `exploratory` | Make larger structural changes: add/delete sections, completely different example sets, different prompting style |
 
-5. **Write children.** Save each child as `outputs/<run_id>/prompts/vN.txt` (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
+5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="vN", content=<child prompt text>)` for each child (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
 6. **Evaluate each child.** For each child prompt:
    - Call `register_candidate_tool(search_state_id, "vN", parent_version="vP")` where `vP` is the parent version.
    - Call `run_eval(prompt_version="vN", data_source=dev_jsonl_path, backend=backend)`.
