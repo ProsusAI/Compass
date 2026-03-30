@@ -14,7 +14,12 @@ from odysseus.mcp.data_validation_tools import (
 )
 from odysseus.mcp.holdout_tools import run_holdout_eval
 from odysseus.mcp.input_report_tools import submit_input_report
-from odysseus.mcp.orchestrator_tools import get_pipeline_status, optimize_routing_prompt
+from odysseus.mcp.orchestrator_tools import (
+    complete_stage,
+    get_pipeline_status,
+    optimize_routing_prompt,
+    start_stage,
+)
 from odysseus.mcp.prompt_building_tools import (
     advance_round_tool,
     filter_holdout_dataset_tool,
@@ -63,6 +68,7 @@ from odysseus.mcp.routing_analysis_tools import (
 )
 from odysseus.mcp.server import (
     _PROJECT_ROOT,
+    STAGE_REGISTRY,
     _load_text,
     create_app,
     main,
@@ -79,8 +85,10 @@ __all__ = [
     "main",
     "mcp",
     # Tools
+    "STAGE_REGISTRY",
     "advance_round_tool",
     "build_review_briefing_tool",
+    "complete_stage",
     "create_seed_registry_tool",
     "detect_and_parse_dataset",
     "filter_holdout_dataset_tool",
@@ -97,6 +105,7 @@ __all__ = [
     "run_eval",
     "run_holdout_eval",
     "save_routing_context",
+    "start_stage",
     "stratified_split_tool",
     "submit_input_report",
     "transform_dataset",

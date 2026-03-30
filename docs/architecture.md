@@ -120,6 +120,23 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `advance_round_tool` | Implemented | Close round, update Pareto front, check convergence | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
 | `get_search_state_tool` | Implemented | Load current search state | [`odysseus/agents/prompt_builder_search_ops.py`](../odysseus/agents/prompt_builder_search_ops.py) |
 | `filter_holdout_dataset_tool` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder_holdout_filter.py`](../odysseus/agents/prompt_builder_holdout_filter.py) |
+| `start_stage` | Implemented | Activate a pipeline stage, scoping `tools/list` to that stage's tools | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
+| `complete_stage` | Implemented | Reset to orchestrator scope after a sub-agent finishes | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
+
+#### Stage-Scoped Tool Filtering
+
+The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent and `complete_stage(run_id)` when it returns. While a stage is active, `tools/list` returns only the tools in `STAGE_REGISTRY[stage]` (defined in [`odysseus/mcp/server.py`](../odysseus/mcp/server.py)). This prevents sub-agents from calling tools outside their scope.
+
+| Stage | Tools |
+|---|---|
+| `orchestrator` | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage` |
+| `input_report` | `submit_input_report`, `get_pipeline_status` |
+| `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_pipeline_status` |
+| `routing_analysis` | `create_seed_registry_tool`, `resolve_registry_tool`, `prune_registry_tool`, `validate_rationale_card_set_tool`, `stratified_split_tool`, `get_pipeline_status` |
+| `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `filter_holdout_dataset_tool`, `get_pipeline_status` |
+| `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
+| `holdout` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `get_pipeline_status` |
 
 #### Sub-Agent Guard Pattern
 

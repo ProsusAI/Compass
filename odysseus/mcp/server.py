@@ -5,10 +5,13 @@ all business logic.  The MCP layer only translates between tool
 parameters/return values and agent context dicts.
 """
 
+from __future__ import annotations
+
 import re
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.types import Tool as MCPTool
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -22,6 +25,72 @@ _STAGE_PROMPT_MAP: dict[int | str, str] = {
     "odysseus_prompt_builder": "odysseus/agents/prompts/prompt_builder_system.md",
     "odysseus_review_agent": "odysseus/agents/prompts/review_agent_system.md",
 }
+
+# ---------------------------------------------------------------------------
+# Stage registry — maps each pipeline stage to the tool names visible to the
+# sub-agent operating in that stage.  ``get_pipeline_status`` is available in
+# every stage so sub-agents can always check pipeline progress.
+# ---------------------------------------------------------------------------
+
+STAGE_REGISTRY: dict[str, list[str]] = {
+    "orchestrator": [
+        "optimize_routing_prompt",
+        "get_pipeline_status",
+        "start_stage",
+        "complete_stage",
+    ],
+    "input_report": [
+        "submit_input_report",
+        "get_pipeline_status",
+    ],
+    "data_validation": [
+        "detect_and_parse_dataset",
+        "transform_dataset",
+        "validate_dataset",
+        "save_routing_context",
+        "get_pipeline_status",
+    ],
+    "routing_analysis": [
+        "create_seed_registry_tool",
+        "resolve_registry_tool",
+        "prune_registry_tool",
+        "validate_rationale_card_set_tool",
+        "stratified_split_tool",
+        "get_pipeline_status",
+    ],
+    "backend_setup": [
+        "get_default_pricing",
+        "get_pipeline_status",
+    ],
+    "prompt_building": [
+        "init_search_state_tool",
+        "register_candidate_tool",
+        "run_eval",
+        "record_eval_result_tool",
+        "advance_round_tool",
+        "get_search_state_tool",
+        "filter_holdout_dataset_tool",
+        "get_pipeline_status",
+    ],
+    "review": [
+        "build_review_briefing_tool",
+        "record_directive_outcomes_tool",
+        "get_search_state_tool",
+        "run_eval",
+        "get_pipeline_status",
+    ],
+    "holdout": [
+        "filter_holdout_dataset_tool",
+        "run_holdout_eval",
+        "get_pipeline_status",
+    ],
+}
+
+# Module-level active stage — safe because stdio transport means one client
+# per process.  Tools mutate this via ``start_stage`` / ``complete_stage``.
+# ``None`` disables filtering (all tools visible); the MCP entrypoint sets
+# this to ``"orchestrator"`` at startup.
+_active_stage: str | None = "orchestrator"
 
 
 def _load_text(relative_path: str) -> str:
@@ -63,6 +132,41 @@ def _normalize_model_family(model: str) -> str:
 
 
 mcp = FastMCP("odysseus")
+
+
+def get_active_stage() -> str | None:
+    """Return the current active stage name, or ``None`` if filtering is disabled."""
+    return _active_stage
+
+
+def set_active_stage(stage: str | None) -> None:
+    """Set the active stage.  Only ``start_stage`` / ``complete_stage`` should call this.
+
+    Pass ``None`` to disable stage filtering (all tools visible).
+    """
+    global _active_stage  # noqa: PLW0603
+    _active_stage = stage
+
+
+# ---------------------------------------------------------------------------
+# Override ``list_tools`` so that ``tools/list`` only returns tools visible
+# in the current stage.
+# ---------------------------------------------------------------------------
+
+_original_list_tools = mcp.list_tools
+
+
+async def _filtered_list_tools() -> list[MCPTool]:
+    """Return only the tools allowed in the current active stage."""
+    all_tools = await _original_list_tools()
+    allowed = STAGE_REGISTRY.get(_active_stage)
+    if allowed is None:
+        return all_tools
+    allowed_set = set(allowed)
+    return [t for t in all_tools if t.name in allowed_set]
+
+
+mcp.list_tools = _filtered_list_tools  # type: ignore[assignment]
 
 
 def create_app() -> FastMCP:

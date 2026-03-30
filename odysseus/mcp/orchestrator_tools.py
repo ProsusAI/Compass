@@ -8,7 +8,14 @@ from mcp.server.fastmcp.exceptions import ToolError
 import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.pipeline.guards import check_artifacts  # noqa: F401
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status
-from odysseus.mcp.server import _STAGE_PROMPT_MAP, _load_text, mcp
+from odysseus.mcp.server import (
+    _STAGE_PROMPT_MAP,
+    STAGE_REGISTRY,
+    _load_text,
+    get_active_stage,
+    mcp,
+    set_active_stage,
+)
 
 
 @mcp.tool()
@@ -93,3 +100,51 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
                     f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
                 ) from e
     return json.dumps(result, indent=2)
+
+
+@mcp.tool()
+async def start_stage(run_id: str, stage: str) -> str:  # noqa: ARG001
+    """Activate a pipeline stage, scoping visible tools to that stage.
+
+    The orchestrator calls this before spawning a sub-agent so the sub-agent
+    only sees the tools relevant to its stage.  After the sub-agent finishes,
+    call ``complete_stage`` to return to orchestrator scope.
+
+    Args:
+        run_id: Pipeline run identifier (for logging / future per-run state).
+        stage: Stage name — must be a key in ``STAGE_REGISTRY``.
+
+    Returns:
+        Confirmation message listing the tools now available.
+    """
+    if stage not in STAGE_REGISTRY:
+        valid = ", ".join(sorted(STAGE_REGISTRY))
+        raise ToolError(f"Unknown stage '{stage}'. Valid stages: {valid}")
+
+    set_active_stage(stage)
+    tools = STAGE_REGISTRY[stage]
+    return (
+        f"Stage '{stage}' activated for run {run_id}. "
+        f"Available tools: {', '.join(tools)}"
+    )
+
+
+@mcp.tool()
+async def complete_stage(run_id: str) -> str:  # noqa: ARG001
+    """Complete the current stage and return to orchestrator scope.
+
+    Resets the active stage to ``orchestrator`` so the orchestrator's full
+    tool set is visible again.
+
+    Args:
+        run_id: Pipeline run identifier.
+
+    Returns:
+        Confirmation message with the previously active stage name.
+    """
+    previous = get_active_stage()
+    set_active_stage("orchestrator")
+    return (
+        f"Stage '{previous}' completed for run {run_id}. "
+        f"Returned to orchestrator scope."
+    )
