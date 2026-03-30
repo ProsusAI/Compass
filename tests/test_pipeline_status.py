@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 
-from odysseus.agents.pipeline_status import discover_runs, get_pipeline_status
+from odysseus.agents.pipeline.status import discover_runs, get_pipeline_status
 
 
 class TestDiscoverRuns:

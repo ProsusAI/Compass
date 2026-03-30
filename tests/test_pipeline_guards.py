@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.agents.pipeline_guards import check_artifacts, require_artifacts
+from odysseus.agents.pipeline.guards import check_artifacts, require_artifacts
 
 
 class TestRequireArtifacts:
