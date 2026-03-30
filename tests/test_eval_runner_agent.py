@@ -13,6 +13,7 @@ from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.eval.models import (
     EvalResult,
     MetricConfig,
+    OutputConfig,
     RunConfig,
     RunReport,
     RunSummary,
@@ -323,3 +324,73 @@ class TestEvalRunnerAgentErrors:
 
         assert "error" in result
         assert result["error"]["category"] == "not_found"
+
+
+# ---------------------------------------------------------------------------
+# Pipeline config (direct RunConfig) path
+# ---------------------------------------------------------------------------
+
+
+class TestEvalRunnerAgentPipelineConfig:
+    """Tests for direct RunConfig (pipeline) path."""
+
+    async def test_uses_prebuilt_run_config(self, tmp_path: Path) -> None:
+        """When context has 'run_config', agent uses it directly — no YAML."""
+        report = _stub_run_report()
+        eval_dir = tmp_path / "outputs" / "test-run" / "eval"
+        run_config = RunConfig(
+            backend="anthropic",
+            prompt_version="v1",
+            data_source="data/dev.jsonl",
+            metrics=[MetricConfig(name="accuracy")],
+            output=OutputConfig(
+                results_path=str(eval_dir / "results.jsonl"),
+                report_path=str(eval_dir / "report.json"),
+            ),
+        )
+
+        agent = EvalRunnerAgent()
+        context = {
+            "prompt_version": "v1",
+            "data_source": "data/dev.jsonl",
+            "backend": "anthropic",
+            "run_id": "test-run",
+            "run_config": run_config,
+        }
+
+        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+            mock_ctrl.run = AsyncMock(return_value=report)
+            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
+                result = await agent.run(context)
+
+        assert ScoreReport.CONTEXT_KEY in result
+        called_config = mock_ctrl.run.call_args.args[0]
+        assert called_config.backend == "anthropic"
+        assert called_config.output.results_path == str(eval_dir / "results.jsonl")
+
+    async def test_prebuilt_config_skips_yaml_loading(self, tmp_path: Path) -> None:
+        """When run_config is in context, _load_config is never called."""
+        report = _stub_run_report()
+        run_config = RunConfig(
+            backend="anthropic",
+            prompt_version="v1",
+            data_source="data/dev.jsonl",
+            metrics=[MetricConfig(name="accuracy")],
+        )
+
+        agent = EvalRunnerAgent()
+        context = {
+            "prompt_version": "v1",
+            "data_source": "data/dev.jsonl",
+            "backend": "anthropic",
+            "run_config": run_config,
+        }
+
+        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+            mock_ctrl.run = AsyncMock(return_value=report)
+            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
+                with patch.object(agent, "_load_config") as mock_load:
+                    result = await agent.run(context)
+                    mock_load.assert_not_called()
+
+        assert ScoreReport.CONTEXT_KEY in result

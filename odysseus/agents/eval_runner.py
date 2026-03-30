@@ -43,9 +43,12 @@ class EvalRunnerAgent(BaseAgent):
             prompt_version: str — prompt version to evaluate.
             data_source: str — path to the JSONL dataset.
             backend: str — backend label matching a profile in backends/.
-            config_path: str — path to YAML run config (optional, defaults to outputs/run_config.yaml).
-            run_id: str | None — pipeline run identifier; when provided, prompts are loaded
-                from outputs/<run_id>/prompts/ instead of the top-level prompts/ directory.
+            run_id: str | None — pipeline run identifier; when provided, prompts
+                are loaded from outputs/<run_id>/prompts/.
+
+        Config resolution (one of):
+            run_config: RunConfig — pre-built config (pipeline runs). Skips YAML.
+            config_path: str — path to YAML run config (standalone runs).
 
         Returns:
             Dict with ScoreReport.CONTEXT_KEY -> ScoreReport on success,
@@ -54,21 +57,25 @@ class EvalRunnerAgent(BaseAgent):
         prompt_version = context.get("prompt_version", "latest")
         data_source = context.get("data_source", "")
         backend_label = context.get("backend", "default")
-        config_path = context.get("config_path", "outputs/run_config.yaml")
         run_id: str | None = context.get("run_id")
 
-        # 1. Load and validate run config from YAML
-        try:
-            config = self._load_config(
-                config_path=config_path,
-                prompt_version=prompt_version,
-                data_source=data_source,
-                backend=backend_label,
-            )
-        except FileNotFoundError as e:
-            return {"error": {"category": "not_found", "detail": str(e)}}
-        except (ValueError, ValidationError) as e:
-            return {"error": {"category": "validation_error", "detail": str(e)}}
+        # 1. Resolve config: pre-built (pipeline) or YAML (standalone)
+        pre_built: RunConfig | None = context.get("run_config")
+        if pre_built is not None:
+            config = pre_built
+        else:
+            config_path = context.get("config_path", "outputs/run_config.yaml")
+            try:
+                config = self._load_config(
+                    config_path=config_path,
+                    prompt_version=prompt_version,
+                    data_source=data_source,
+                    backend=backend_label,
+                )
+            except FileNotFoundError as e:
+                return {"error": {"category": "not_found", "detail": str(e)}}
+            except (ValueError, ValidationError) as e:
+                return {"error": {"category": "validation_error", "detail": str(e)}}
 
         # 2. Wire dependencies
         try:
