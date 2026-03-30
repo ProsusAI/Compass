@@ -83,9 +83,9 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     activate_prompt = result.get("activate_prompt")
     subagent_instruction = result.get("subagent_instruction")
 
-    # For Stage 6, look up system prompt by activate_prompt name (dynamic per loop_phase).
-    # For all other stages, look up by stage number.
-    lookup_key: int | str | None = activate_prompt if current_stage == 6 and activate_prompt else current_stage
+    # Stage 4 has dynamic prompt lookup by activate_prompt name (cold-start/review/build phase).
+    # All other stages look up by stage number.
+    lookup_key: int | str | None = activate_prompt if current_stage == 4 and activate_prompt else current_stage
 
     if lookup_key in _STAGE_PROMPT_MAP and subagent_instruction:
         placeholder = "<stage_system_prompt></stage_system_prompt>"

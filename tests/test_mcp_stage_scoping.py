@@ -23,7 +23,7 @@ def mock_ctx() -> Context:
 
 
 def test_stage_registry_has_all_stages():
-    """All 7 stages are defined."""
+    """All stage scopes are defined."""
     expected = {
         "orchestrator",
         "input_report",

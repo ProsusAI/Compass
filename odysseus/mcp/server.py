@@ -20,8 +20,7 @@ _STAGE_PROMPT_MAP: dict[int | str, str] = {
     1: "odysseus/agents/prompts/user_input_system.md",
     2: "odysseus/agents/prompts/data_validation_system.md",
     3: "odysseus/agents/prompts/backend_setup_system.md",
-    4: "odysseus/agents/prompts/prompt_builder_system.md",
-    # Stage 5 is dynamic — looked up by activate_prompt name:
+    # Stage 4 is dynamic — looked up by activate_prompt name:
     "odysseus_prompt_builder": "odysseus/agents/prompts/prompt_builder_system.md",
     "odysseus_review_agent": "odysseus/agents/prompts/review_agent_system.md",
 }
