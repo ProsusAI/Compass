@@ -45,6 +45,7 @@ class RoundSummary(BaseModel):
     front_size: int
     mutation_mode: Literal["targeted", "exploratory"]
     stagnation_count: int
+    converged: bool = False
 
 
 class SearchState(BaseModel):
@@ -62,6 +63,7 @@ class SearchState(BaseModel):
     max_rounds: int = 50
     mutation_mode: Literal["targeted", "exploratory"] = "targeted"
     converged: bool = False
+    loop_phase: Literal["build", "review"] = "build"
 
     @field_validator("search_state_id")
     @classmethod

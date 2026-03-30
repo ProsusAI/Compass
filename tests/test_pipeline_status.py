@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -164,8 +165,6 @@ class TestSubagentInstruction:
         assert "<HARD_STOP>" in instr
         assert "<stage_system_prompt>" in instr
         assert "odysseus_prompt_builder" in instr
-        # optimize_routing_prompt appears in the NOTE clause, not as a sub-agent tool —
-        # verify via available_tools list, not the instruction string (see test_stage5_available_tools_correct)
 
     def test_stage5_available_tools_correct(self, tmp_path: Path) -> None:
         """Stage 5 available_tools must not include optimize_routing_prompt (pipeline entry tool)."""
@@ -180,7 +179,8 @@ class TestSubagentInstruction:
         assert "get_search_state_tool" in tools
         assert "run_eval" in tools
 
-    def test_stage6_has_subagent_instruction(self, tmp_path: Path) -> None:
+    def test_stage6_build_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
+        """Stage 6 with no search state file -> defaults to build phase -> Prompt Builder."""
         _setup_through_stage5(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
@@ -189,17 +189,27 @@ class TestSubagentInstruction:
         assert "</HARD_STOP>" in instr
         assert "<stage_system_prompt>" in instr
         assert "</stage_system_prompt>" in instr
-        assert "odysseus_review_agent" in instr
+        assert "odysseus_prompt_builder" in instr
         assert "get_pipeline_status" in instr
-        assert "init_search_state_tool" in instr
+        assert "register_candidate_tool" in instr
         assert "run_eval" in instr
+
+    def test_stage6_review_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
+        """Stage 6 with loop_phase=review -> Review Agent instruction."""
+        _setup_through_stage5(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_review_agent" in instr
         assert "build_review_briefing_tool" in instr
         assert "record_directive_outcomes_tool" in instr
 
     def test_stage7_has_null_subagent_instruction(self, tmp_path: Path) -> None:
-        # stage 6 complete (round >= 1), stage 7 not yet complete (converged=False)
-        # → current_stage == 7, subagent_instruction is null
-        _setup_through_stage6(tmp_path, "r1")
+        # Stage 6 complete (converged=True), stage 7 not yet complete (no holdout report)
+        _setup_through_stage6_converged(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 7
         assert result["subagent_instruction"] is None
@@ -231,8 +241,8 @@ class TestSubagentInstruction:
         assert "prune_registry_tool" in tools
         assert "stratified_split_tool" in tools
 
-    def test_stage6_available_tools_complete(self, tmp_path: Path) -> None:
-        """available_tools for stage 6 includes all 8 stage tools."""
+    def test_stage6_build_phase_available_tools(self, tmp_path: Path) -> None:
+        """Build phase tools: eval tools present, review tools absent."""
         _setup_through_stage5(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
@@ -243,10 +253,93 @@ class TestSubagentInstruction:
             "advance_round_tool",
             "get_search_state_tool",
             "run_eval",
-            "build_review_briefing_tool",
-            "record_directive_outcomes_tool",
         ]:
             assert tool in tools
+        assert "build_review_briefing_tool" not in tools
+        assert "record_directive_outcomes_tool" not in tools
+
+    def test_stage6_review_phase_available_tools(self, tmp_path: Path) -> None:
+        """Review phase tools: review tools present, eval mutation tools absent."""
+        _setup_through_stage5(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        tools = result["available_tools"]
+        assert "build_review_briefing_tool" in tools
+        assert "record_directive_outcomes_tool" in tools
+        assert "get_search_state_tool" in tools
+        assert "register_candidate_tool" not in tools
+        assert "run_eval" not in tools
+
+
+class TestStage6NewBehavior:
+    """Stage 6 is complete only when converged == true."""
+
+    def test_stage6_incomplete_when_round_gte_1_but_not_converged(self, tmp_path: Path) -> None:
+        """round >= 1 no longer completes Stage 6."""
+        _setup_through_stage5(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 3, "converged": False, "loop_phase": "review"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][5]["status"] == "incomplete"  # Stage 6 index
+        assert result["current_stage"] == 6
+
+    def test_stage6_complete_when_converged(self, tmp_path: Path) -> None:
+        _setup_through_stage5(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][5]["status"] == "complete"
+        assert result["current_stage"] == 7  # Holdout Validation
+
+
+class TestStage6DynamicHardStop:
+    """Stage 6 HARD_STOP depends on loop_phase."""
+
+    def test_build_phase_spawns_prompt_builder(self, tmp_path: Path) -> None:
+        _setup_through_stage5(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["current_stage"] == 6
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_prompt_builder" in instr
+        # Eval tools present
+        assert "register_candidate_tool" in result["available_tools"]
+        assert "run_eval" in result["available_tools"]
+        assert "advance_round_tool" in result["available_tools"]
+        # Review tools absent
+        assert "build_review_briefing_tool" not in result["available_tools"]
+        assert "record_directive_outcomes_tool" not in result["available_tools"]
+
+    def test_review_phase_spawns_review_agent(self, tmp_path: Path) -> None:
+        _setup_through_stage5(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["current_stage"] == 6
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "odysseus_review_agent" in instr
+        # Review tools present
+        assert "build_review_briefing_tool" in result["available_tools"]
+        assert "record_directive_outcomes_tool" in result["available_tools"]
+        # Eval tools absent
+        assert "register_candidate_tool" not in result["available_tools"]
+        assert "run_eval" not in result["available_tools"]
+
+    def test_no_search_state_defaults_to_build_phase(self, tmp_path: Path) -> None:
+        """Stage 6 before any search state exists: treat as build phase."""
+        _setup_through_stage5(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["current_stage"] == 6
+        assert "odysseus_prompt_builder" in result["subagent_instruction"]
 
 
 def _setup_stage1(base: Path, run_id: str) -> None:
@@ -273,15 +366,9 @@ def _setup_through_stage5(base: Path, run_id: str) -> None:
     (base / run_id / "prompts" / "v1.yaml").write_text("prompt: test")
 
 
-def _setup_through_stage6(base: Path, run_id: str) -> None:
-    """Stage 6 complete (round >= 1), stage 7 not yet complete (converged=False).
-
-    Call get_pipeline_status(..., project_dir=base) after this to reach stage 7.
-    """
-    import json
+def _setup_through_stage6_converged(base: Path, run_id: str) -> None:
+    """Stage 6 complete (converged=True), Stage 7 not yet complete (no holdout report)."""
     _setup_through_stage5(base, run_id)
     search = base / run_id / "search"
     search.mkdir(parents=True, exist_ok=True)
-    (search / "search_state.json").write_text(
-        json.dumps({"round": 2, "converged": False})
-    )
+    (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))

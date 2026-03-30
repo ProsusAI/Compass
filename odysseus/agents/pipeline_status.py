@@ -56,29 +56,64 @@ _STAGES: list[dict[str, Any]] = [
     },
     {
         "stage": 6,
-        "name": "Eval Loop Active",
-        "subfolder": "search",
-        "files": [],  # special: parses search_state.json for round >= 1
-    },
-    {
-        "stage": 7,
-        "name": "Converged",
+        "name": "Refinement Loop",
         "subfolder": "search",
         "files": [],  # special: parses search_state.json for converged == true
     },
     {
-        "stage": 8,
+        "stage": 7,
         "name": "Holdout Validation",
-        "subfolder": None,
-        "files": [],  # future stub
+        "subfolder": "reports",
+        "files": [],  # special: holdout_report.json
     },
     {
-        "stage": 9,
+        "stage": 8,
         "name": "Final Report",
         "subfolder": None,
         "files": [],  # future stub
     },
 ]
+
+# ---------------------------------------------------------------------------
+# Stage 6 dynamic HARD_STOP templates
+# ---------------------------------------------------------------------------
+
+_STAGE_6_BUILD_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 6 build-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent before proceeding.\n"
+    "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+    "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+    "The sub-agent activates prompt: odysseus_prompt_builder\n"
+    "The sub-agent handles: get_pipeline_status, get_search_state_tool, "
+    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "advance_round_tool, run_eval, filter_holdout_dataset_tool\n"
+    "You handle only: get_pipeline_status\n\n"
+    "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
+    "Do not call it from within the sub-agent.\n\n"
+    "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+    "If Stage 6 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
+_STAGE_6_REVIEW_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 6 review-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent before proceeding.\n"
+    "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
+    "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
+    "The sub-agent activates prompt: odysseus_review_agent\n"
+    "The sub-agent handles: get_pipeline_status, get_search_state_tool, "
+    "build_review_briefing_tool, record_directive_outcomes_tool\n"
+    "You handle only: get_pipeline_status\n\n"
+    "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
+    "If Stage 6 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
 
 # ---------------------------------------------------------------------------
 # Next-action mapping
@@ -205,52 +240,15 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
-    6: (
-        "Start the eval loop to iteratively refine the routing prompt. "
-        "REQUIRED: activate prompt 'odysseus_review_agent' before calling any stage 6 tools.",
-        [
-            "init_search_state_tool",
-            "register_candidate_tool",
-            "record_eval_result_tool",
-            "advance_round_tool",
-            "get_search_state_tool",
-            "run_eval",
-            "build_review_briefing_tool",
-            "record_directive_outcomes_tool",
-        ],
-        ["odysseus_review_agent"],
-        (
-            "<HARD_STOP>\n"
-            "You MUST NOT call any Stage 6 tools from the current context.\n\n"
-            "REQUIRED: Spawn a sub-agent before proceeding.\n"
-            "- Claude Code (Task tool): use the content of <stage_system_prompt> as the sub-agent's system prompt\n"
-            "- Cursor: open a new agent context with the content of <stage_system_prompt>\n\n"
-            "The sub-agent activates prompt: odysseus_review_agent\n"
-            "The sub-agent handles: get_pipeline_status, init_search_state_tool, "
-            "register_candidate_tool, record_eval_result_tool, advance_round_tool, "
-            "get_search_state_tool, run_eval, build_review_briefing_tool, "
-            "record_directive_outcomes_tool\n"
-            "You handle only: get_pipeline_status\n\n"
-            "POST-EXIT REQUIRED: After the sub-agent returns, call get_pipeline_status.\n"
-            "If Stage 6 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
-            "</HARD_STOP>\n\n"
-            "<stage_system_prompt></stage_system_prompt>"
-        ),
-    ),
+    # Stage 6 is handled dynamically by _next_action_for_stage_6
     7: (
-        "The eval loop has converged. Run holdout validation.",
+        "The refinement loop has converged. Run holdout validation.",
         ["run_holdout_eval", "filter_holdout_dataset_tool"],
         [],
         None,
     ),
     8: (
         "Generate the final report.",
-        [],
-        [],
-        None,
-    ),
-    9: (
-        "Pipeline complete.",
         [],
         [],
         None,
@@ -349,21 +347,26 @@ def get_pipeline_status(
         else:
             found_incomplete = True
 
-    # Cap current_stage at 9
-    current_stage = min(current_stage, 9)
+    # Cap current_stage at 8 (Stage 9 removed; max is now 8)
+    current_stage = min(current_stage, 8)
 
     current_stage_name = next(
         (s["name"] for s in _STAGES if s["stage"] == current_stage),
         _STAGES[-1]["name"],
     )
-    next_action, tools, prompts, subagent_instruction = _next_action_for_stage(current_stage)
+
+    # Stage 6 uses dynamic next-action based on loop_phase
+    if current_stage == 6:
+        action, tools, prompts, subagent_instruction = _next_action_for_stage_6(run_dir)
+    else:
+        action, tools, prompts, subagent_instruction = _next_action_for_stage(current_stage)
 
     return {
         "run_id": run_id,
         "stages": stage_results,
         "current_stage": current_stage,
         "current_stage_name": current_stage_name,
-        "next_action": next_action,
+        "next_action": action,
         "available_tools": tools,
         "activate_prompt": prompts[0] if prompts else None,
         "subagent_instruction": subagent_instruction,
@@ -394,7 +397,7 @@ def _check_stage(
         return _check_stage_6(run_dir)
     if stage_num == 7:
         return _check_stage_7(run_dir)
-    if stage_num in (8, 9):
+    if stage_num in (8,):
         # Future stubs — always incomplete
         return "incomplete", [], ""
     if stage_num == 3:
@@ -476,21 +479,7 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
 
 
 def _check_stage_6(run_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 6: Eval Loop Active — search_state.json with round >= 1."""
-    search_state = run_dir / "search" / "search_state.json"
-    if not search_state.is_file():
-        return "incomplete", [], ""
-    try:
-        data = json.loads(search_state.read_text())
-        if int(data.get("round", 0)) >= 1:
-            return "complete", [str(search_state)], ""
-    except (json.JSONDecodeError, ValueError, TypeError):
-        pass
-    return "incomplete", [str(search_state)], ""
-
-
-def _check_stage_7(run_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 7: Converged — search_state.json with converged == true."""
+    """Stage 6: Refinement Loop — search_state.json with converged == true."""
     search_state = run_dir / "search" / "search_state.json"
     if not search_state.is_file():
         return "incomplete", [], ""
@@ -501,6 +490,63 @@ def _check_stage_7(run_dir: Path) -> tuple[str, list[str], str]:
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
     return "incomplete", [str(search_state)], ""
+
+
+def _check_stage_7(run_dir: Path) -> tuple[str, list[str], str]:
+    """Stage 7: Holdout Validation — reports/holdout/holdout_report.json exists."""
+    report = run_dir / "reports" / "holdout" / "holdout_report.json"
+    if report.is_file():
+        return "complete", [str(report)], ""
+    return "incomplete", [], ""
+
+
+def _next_action_for_stage_6(
+    run_dir: Path,
+) -> tuple[str, list[str], list[str], str]:
+    """Return (action, tools, prompts, subagent_instruction) for Stage 6.
+
+    Reads search_state.json to determine loop_phase (defaults to 'build' if
+    state file is absent or malformed).
+    """
+    search_state_path = run_dir / "search" / "search_state.json"
+    loop_phase = "build"
+    if search_state_path.is_file():
+        try:
+            data = json.loads(search_state_path.read_text())
+            loop_phase = data.get("loop_phase", "build")
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pass
+
+    if loop_phase == "review":
+        return (
+            "Stage 6 — review phase: spawn the Review Agent sub-agent to analyse "
+            "eval results and emit edit directives. "
+            "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
+            [
+                "get_search_state_tool",
+                "build_review_briefing_tool",
+                "record_directive_outcomes_tool",
+            ],
+            ["odysseus_review_agent"],
+            _STAGE_6_REVIEW_INSTRUCTION,
+        )
+    else:
+        return (
+            "Stage 6 — build phase: spawn the Prompt Builder sub-agent to generate "
+            "prompt variants and evaluate them. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+            [
+                "get_search_state_tool",
+                "init_search_state_tool",
+                "register_candidate_tool",
+                "record_eval_result_tool",
+                "advance_round_tool",
+                "run_eval",
+                "filter_holdout_dataset_tool",
+            ],
+            ["odysseus_prompt_builder"],
+            _STAGE_6_BUILD_INSTRUCTION,
+        )
 
 
 def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str | None]:

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
+from typing import Literal
 
 from odysseus.agents.prompt_builder_search import (
     Candidate,
@@ -321,6 +322,7 @@ def advance_round(
         front_size=len(new_front),
         mutation_mode=new_mutation_mode,
         stagnation_count=new_stagnation_count,
+        converged=converged,
     )
 
     # Persist updated state
@@ -332,6 +334,7 @@ def advance_round(
             "stagnation_count": new_stagnation_count,
             "mutation_mode": new_mutation_mode,
             "converged": converged,
+            "loop_phase": "build" if converged else "review",
         }
     )
     _save_state(run_id, updated_state, output_dir)
@@ -340,3 +343,20 @@ def advance_round(
     _save_pending(run_id, [], output_dir)
 
     return summary
+
+
+def set_loop_phase(
+    run_id: str,
+    phase: Literal["build", "review"],
+    output_dir: Path | None = None,
+) -> None:
+    """Set the loop_phase on the search state.
+
+    Called by record_directive_outcomes_tool to signal that the Review Agent
+    has finished and the Prompt Builder should be spawned next.
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    state = _load_state(run_id, output_dir)
+    updated = state.model_copy(update={"loop_phase": phase})
+    _save_state(run_id, updated, output_dir)
