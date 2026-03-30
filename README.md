@@ -263,21 +263,44 @@ The eval framework is a Python-based async engine built on `asyncio` + `aiohttp`
 uv run pytest
 ```
 
-### MCP integration tests
+### MCP integration tests (scenario runbooks)
 
-Agent integration tests live in `tests/scenarios/`. Each scenario is a Markdown runbook executed by a Claude Code instance with the Odysseus MCP server connected.
+Integration tests are Markdown runbooks in `tests/scenarios/`. Each scenario defines a simulated user conversation that exercises one or more pipeline agents end-to-end through the MCP server.
 
-To run a scenario:
+**Prerequisites:**
+- The Odysseus MCP server must be connected to Claude Code (see [Setup](#setup))
+- `ANTHROPIC_API_KEY` must be set (scenarios make real LLM API calls)
+- For scenario 49 only: `OPENAI_API_KEY` must be set
+
+**Running a scenario:**
+
+Open Claude Code in the project directory and say:
 
 > Run the integration test in `tests/scenarios/01_complete_submission.md`
 
-| Range | Agent | Count |
-|-------|-------|-------|
-| 01-12 | User Input Agent | 12 scenarios |
-| 13-18 | Data Validation Agent | 6 scenarios |
-| 19-22 | Input + Data Validation integration | 4 scenarios |
+Claude Code reads the scenario file, spins up a User Simulator sub-agent to play the user role, brokers a multi-turn conversation with the agent under test, then runs a Verification Agent to check the outcome against the scenario's pass/fail criteria. Each scenario has a 20-turn safety limit.
 
-See `tests/scenarios/README.md` for the full protocol and how to add new scenarios.
+**Running multiple scenarios:**
+
+> Run all integration tests in `tests/scenarios/` from 01 to 12
+
+**Scenario coverage:**
+
+| Range | Stage | Count |
+|-------|-------|-------|
+| 01-12 | User Input Agent | 12 |
+| 13-18 | Data Validation Agent | 6 |
+| 19-22 | Input + Data Validation integration | 4 |
+| 23-30 | Routing Analysis Agent | 8 |
+| 31-36 | Validation + Routing Analysis integration | 6 |
+| 37-42 | Input + Validation + Routing Analysis integration | 6 |
+| 43-44 | Prompt Builder Agent | 2 |
+| 45-47 | Prompt Builder + Eval Runner integration | 3 |
+| 48-50 | Full pipeline (all 5 stages) | 3 |
+| 51-53 | Review Agent | 3 |
+| 54-55 | Backend Setup Agent | 2 |
+
+See `tests/scenarios/README.md` for the full protocol, scenario file format, and how to add new scenarios.
 
 ---
 
