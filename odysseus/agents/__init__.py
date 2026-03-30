@@ -33,7 +33,7 @@ from odysseus.agents.review_models import (
     ReviewBriefing,
     ReviewResult,
 )
-from odysseus.agents.routing_rationale_checks import (
+from odysseus.agents.routing_analysis.checks import (
     RationaleCheckResult,
     check_ambiguity_tag_membership,
     check_cluster_thresholds,
@@ -46,10 +46,10 @@ from odysseus.agents.routing_rationale_checks import (
     find_orphaned_examples,
     validate_rationale_card_set,
 )
-from odysseus.agents.routing_rationale_checks_deterministic import (
+from odysseus.agents.routing_analysis.checks_deterministic import (
     validate_deterministic,
 )
-from odysseus.agents.routing_rationale_models import (
+from odysseus.agents.routing_analysis.models import (
     RationaleCard,
     RationaleCardSet,
     RouteDefinition,
@@ -61,7 +61,7 @@ from odysseus.agents.routing_rationale_models import (
     VocabularyEntry,
     VocabularyRegistry,
 )
-from odysseus.agents.routing_rationale_registry import (
+from odysseus.agents.routing_analysis.registry import (
     RegistryMergeError,
     compute_dataset_hash,
     create_seed_registry,
@@ -71,7 +71,7 @@ from odysseus.agents.routing_rationale_registry import (
     resolve_registry,
     save_registry,
 )
-from odysseus.agents.stratified_split import (
+from odysseus.agents.routing_analysis.split import (
     SplitMismatchError,
     SplitReport,
     stratified_split,
