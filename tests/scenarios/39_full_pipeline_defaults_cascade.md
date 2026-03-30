@@ -4,12 +4,10 @@
 - Dataset: `tests/scenarios/data/rationale_test_dataset.jsonl`
 - System prompt (input): `odysseus/agents/prompts/user_input_system.md`
 - System prompt (validation): `odysseus/agents/prompts/data_validation_system.md`
-- System prompt (routing analysis): `odysseus/agents/prompts/routing_analysis_system.md`
-- Skills: `odysseus/skills/classify-example/SKILL.md`, `odysseus/skills/generate-routing-rationale/SKILL.md`, `odysseus/skills/check-semantic-overlap/SKILL.md`
-- MCP tools: `submit_input_report`, `validate_dataset`, `create_seed_registry`, `resolve_registry`, `validate_rationale_card_set`, `prune_registry`, `stratified_split`
+- MCP tools: `submit_input_report`, `validate_dataset`
 
 ## Scenario Description
-The user provides only a dataset path and a one-line problem description — no metrics, thresholds, split ratios, or iteration limits. The User Input agent applies all defaults (data_split_ratio 0.70, evaluation_threshold 0.80, max_iterations 10). Data Validation runs normally. Routing Analysis inherits the defaulted split ratio for Phase 4. Tests that defaults propagate correctly across all 3 agents.
+The user provides only a dataset path and a one-line problem description — no metrics, thresholds, split ratios, or iteration limits. The User Input agent applies all defaults (data_split_ratio 0.70, evaluation_threshold 0.80, max_iterations 10). Data Validation runs normally. Tests that defaults propagate correctly across both agents.
 
 ## User Simulator
 You are a data analyst who knows the routing problem but hasn't thought about optional parameters.
@@ -36,9 +34,5 @@ You are a data analyst who knows the routing problem but hasn't thought about op
 - [ ] `validate_dataset` called, all schema findings pass
 - [ ] Defaults did not affect validation results
 
-### Stage 3 — Routing Analysis
-- [ ] Routing Analysis reads the split ratio from the validated input report
-- [ ] Phase 4 `stratified_split` uses the defaulted dev_ratio (0.30 dev / 0.70 holdout) from the input report — this matches the routing analysis agent's internal default, confirming the input report value flows through correctly
-- [ ] Dev/holdout split proportions match the defaulted ratio (3 dev, 7 holdout for 10 rows)
-- [ ] All 4 phases complete
-- [ ] Output contract satisfied: all 7 context keys set
+### Pipeline Integrity
+- [ ] Default values from stage 1 are visible in the validated input report and flow into validation

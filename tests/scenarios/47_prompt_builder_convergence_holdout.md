@@ -3,7 +3,6 @@
 ## Setup
 - Dev dataset: `tests/scenarios/data/dev.jsonl`
 - Holdout dataset: `tests/scenarios/data/holdout.jsonl`
-- Holdout rationale cards: `tests/scenarios/data/holdout_rationale_card_set.json`
 - Backend profile: `tests/scenarios/data/backends/mock-echo.yaml`
 - System prompt: `odysseus/agents/prompts/prompt_builder_system.md`
 - MCP tools: `init_search_state_tool`, `register_candidate_tool`, `record_eval_result_tool`, `advance_round_tool`, `run_eval`, `get_search_state_tool`, `filter_holdout_dataset_tool`

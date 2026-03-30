@@ -3,10 +3,9 @@
 ## Setup
 - Dev dataset: `tests/scenarios/data/dev.jsonl`
 - Holdout dataset: `tests/scenarios/data/holdout.jsonl`
-- Dev rationale cards: `tests/scenarios/data/dev_rationale_card_set.json`
 - Split report: `tests/scenarios/data/split_report.json`
 - Backend: `anthropic`
-- Precondition: A search state has already been initialised (scenario 23 completed).
+- Precondition: A search state has already been initialised (scenario 43 completed).
 
 ## Scenario Description
 The Prompt Builder agent is mid-optimization. The orchestrator provides a ScoreReport showing the initial candidate scored 0.72 accuracy at $0.002 cost, along with review directives (improve route exclusion reasoning, add more sonnet examples). The agent must:

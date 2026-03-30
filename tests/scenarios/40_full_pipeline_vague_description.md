@@ -4,12 +4,10 @@
 - Dataset: `tests/scenarios/data/rationale_test_dataset.jsonl`
 - System prompt (input): `odysseus/agents/prompts/user_input_system.md`
 - System prompt (validation): `odysseus/agents/prompts/data_validation_system.md`
-- System prompt (routing analysis): `odysseus/agents/prompts/routing_analysis_system.md`
-- Skills: `odysseus/skills/classify-example/SKILL.md`, `odysseus/skills/generate-routing-rationale/SKILL.md`, `odysseus/skills/check-semantic-overlap/SKILL.md`
-- MCP tools: `submit_input_report`, `validate_dataset`, `create_seed_registry`, `resolve_registry`, `validate_rationale_card_set`, `prune_registry`, `stratified_split`
+- MCP tools: `submit_input_report`, `validate_dataset`
 
 ## Scenario Description
-The user provides the dataset but only a vague problem description: "sort queries by difficulty." The User Input agent attempts clarification, but the user gives minimal follow-up. Data Validation synthesizes a routing_context using both the weak description and the data, but the data signal dominates. Routing Analysis works with that weaker context. Tests that the pipeline completes even with degraded routing context quality.
+The user provides the dataset but only a vague problem description: "sort queries by difficulty." The User Input agent attempts clarification, but the user gives minimal follow-up. Data Validation synthesizes a routing_context using both the weak description and the data, but the data signal dominates. Tests that the pipeline completes even with degraded routing context quality.
 
 ## User Simulator
 You are a manager who has a dataset but hasn't thought deeply about the routing problem.
@@ -37,8 +35,6 @@ You are a manager who has a dataset but hasn't thought deeply about the routing 
 - [ ] routing_context `domain` field is structurally valid but relies primarily on data patterns due to weak user-provided intent
 - [ ] Route descriptions are derived primarily from observed data patterns (the vague description provides minimal signal)
 
-### Stage 3 — Routing Analysis
-- [ ] Routing Analysis does not fail — it uses the data-derived context for classification
-- [ ] Classification quality may be lower but annotations are structurally complete (all required fields present)
-- [ ] All 4 phases complete
-- [ ] Output contract satisfied: all 7 context keys set despite weak context
+### Pipeline Integrity
+- [ ] Validation completes without error despite weak problem description
+- [ ] routing_context is structurally valid (has route names and descriptions) even if descriptions are sparse

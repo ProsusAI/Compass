@@ -2,8 +2,7 @@
 
 ## Setup
 - Dev dataset: `tests/scenarios/data/dev.jsonl`
-- Dev rationale cards: `tests/scenarios/data/dev_rationale_card_set.json`
-- Holdout rationale cards: `tests/scenarios/data/holdout_rationale_card_set.json`
+- Holdout dataset: `tests/scenarios/data/holdout.jsonl`
 - Backend: `anthropic`
 - Fixture directory: `tests/scenarios/data/review` (pass as `output_dir` to `build_review_briefing_tool`)
 - Precondition: Fixture data exists at `tests/scenarios/data/review/abc123/`. Search state has `search_state_id="abc123"`, round 1 completed with 2 candidates: `v1` (quality=0.72, cost=0.002) and `v2` (quality=0.78, cost=0.0025). Score reports at `tests/scenarios/data/review/abc123/v1_score_report.json` and `tests/scenarios/data/review/abc123/v2_score_report.json`. `v1` is on the Pareto front from a prior round.
@@ -19,7 +18,7 @@ You are a pipeline orchestrator handing off round 1 results to the Review Agent.
 - Candidates in this round: `v1` (parent: none, quality=0.72, cost=0.002), `v2` (parent: `v1`, mutation: "added second sonnet example", quality=0.78, cost=0.0025)
 - `v1` is on the current Pareto front (from prior round)
 - Score report paths: `tests/scenarios/data/review/abc123/v1_score_report.json`, `tests/scenarios/data/review/abc123/v2_score_report.json`
-- Holdout card set: `tests/scenarios/data/holdout_rationale_card_set.json`
+- Holdout dataset: `tests/scenarios/data/holdout.jsonl`
 - Output dir: `tests/scenarios/data/review`
 - Per-class recall: haiku=0.85, sonnet=0.70, opus=0.75 for `v2`
 
@@ -29,7 +28,7 @@ You are a pipeline orchestrator handing off round 1 results to the Review Agent.
 3. When the agent presents its `ReviewResult` JSON, accept it and confirm the review is complete.
 4. Do not volunteer scores beyond what is listed above.
 
-**Opening message:** "Round 1 is complete. Please build the review briefing and conduct the review. Search state ID: `abc123`. Candidates: `v1` (parent: none) and `v2` (parent: `v1`, mutation: added second sonnet example). Score reports: `tests/scenarios/data/review/abc123/v1_score_report.json` and `tests/scenarios/data/review/abc123/v2_score_report.json`. Holdout cards: `tests/scenarios/data/holdout_rationale_card_set.json`. Use output_dir: `tests/scenarios/data/review`."
+**Opening message:** "Round 1 is complete. Please build the review briefing and conduct the review. Search state ID: `abc123`. Candidates: `v1` (parent: none) and `v2` (parent: `v1`, mutation: added second sonnet example). Score reports: `tests/scenarios/data/review/abc123/v1_score_report.json` and `tests/scenarios/data/review/abc123/v2_score_report.json`. Holdout dataset: `tests/scenarios/data/holdout.jsonl`. Use output_dir: `tests/scenarios/data/review`."
 
 ## Verification Criteria
 

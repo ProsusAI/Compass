@@ -4,11 +4,9 @@
 - Dataset: `tests/scenarios/data/two_route_dataset.jsonl`
 - System prompt (input): `odysseus/agents/prompts/user_input_system.md`
 - System prompt (validation): `odysseus/agents/prompts/data_validation_system.md`
-- System prompt (routing analysis): `odysseus/agents/prompts/routing_analysis_system.md`
 - System prompt (prompt builder): `odysseus/agents/prompts/prompt_builder_system.md`
 - Eval Runner: code-driven agent (no system prompt — `odysseus/agents/eval_runner.py`)
-- Skills: `odysseus/skills/classify-example/SKILL.md`, `odysseus/skills/generate-routing-rationale/SKILL.md`, `odysseus/skills/check-semantic-overlap/SKILL.md`
-- MCP tools: `submit_input_report`, `validate_dataset`, `create_seed_registry`, `resolve_registry`, `validate_rationale_card_set`, `prune_registry`, `stratified_split`, `init_search_state_tool`, `register_candidate_tool`, `record_eval_result_tool`, `advance_round_tool`, `run_eval`
+- MCP tools: `submit_input_report`, `validate_dataset`, `stratified_split`, `init_search_state_tool`, `register_candidate_tool`, `record_eval_result_tool`, `advance_round_tool`, `run_eval`
 - Backend profile: `tests/scenarios/data/backends/mock-echo.yaml`
 
 ## Scenario Description
@@ -40,17 +38,13 @@ You are a data analyst setting up a binary routing problem.
 - [ ] routing_context produced with exactly 2 routes (haiku, opus)
 - [ ] No reference to sonnet in routing_context
 
-### Stage 3 — Routing Analysis
-- [ ] All 4 phases complete
-- [ ] Rationale cards and vocabulary registry reflect only haiku and opus routes
-
-### Stage 4 — Prompt Builder + Eval
+### Stage 3 — Prompt Builder + Eval
 - [ ] Compiled prompt has route definitions for only haiku and opus
 - [ ] No references to sonnet in the compiled prompt
 - [ ] `run_eval` called and ScoreReport received
 - [ ] `record_eval_result_tool` and `advance_round_tool` called
 
 ### Pipeline Integrity
-- [ ] All 5 stages in sequence
+- [ ] All 4 stages in sequence
 - [ ] Two-route context flows correctly through all agents (no phantom third route)
 - [ ] Total turn count is reasonable
