@@ -81,5 +81,5 @@ _(Section omitted entirely if status is `proceed`.)_
 **Optional (non-blocking, defaulted if absent):**
 - `target_metrics` — default: `["f1/macro"]`
 - `evaluation_threshold` — default: `0.80`
-- `data_split_ratio` — default: `0.70`
+- `data_split_ratio` — default: `0.80`
 - `max_iterations` — default: `10`

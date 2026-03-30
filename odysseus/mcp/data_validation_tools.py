@@ -165,7 +165,7 @@ async def stratified_split_tool(
     ctx: Context,
     run_id: str,
     dataset_path: str,
-    dev_ratio: float = 0.8,
+    dev_ratio: float = 0.2,
 ) -> str:
     """[Stage 2: Data Validation] Split a dataset into dev and holdout partitions.
 
@@ -175,7 +175,7 @@ async def stratified_split_tool(
     Args:
         run_id: Pipeline run identifier.
         dataset_path: Absolute path to the validated JSONL dataset file.
-        dev_ratio: Proportion allocated to dev set. Defaults to 0.8.
+        dev_ratio: Proportion allocated to dev set. Defaults to 0.2.
 
     Returns:
         JSON with paths to all output files.

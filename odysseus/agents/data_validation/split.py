@@ -45,13 +45,13 @@ def compute_dataset_hash(examples: list[Example]) -> str:
 
 def stratified_split(
     examples: list[Example],
-    dev_ratio: float = 0.8,
+    dev_ratio: float = 0.2,
 ) -> tuple[list[Example], list[Example], SplitReport]:
     """Split examples into dev and holdout sets, stratified by route.
 
     Args:
         examples: Full dataset examples.
-        dev_ratio: Proportion allocated to dev set. Default 0.8.
+        dev_ratio: Proportion allocated to dev set. Default 0.2.
 
     Returns:
         (dev_examples, holdout_examples, report)
