@@ -10,6 +10,7 @@ import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase as _set_loop_phase,
 )
+from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.mcp.server import mcp
 
 
@@ -56,8 +57,11 @@ async def build_review_briefing_tool(
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
 
-    # Load search state
-    state = get_search_state(run_id=run_id, output_dir=out)
+    # Load search state; cold start (no loop initialised yet) gets a bare default
+    try:
+        state = get_search_state(run_id=run_id, output_dir=out)
+    except FileNotFoundError:
+        state = SearchState(search_state_id=run_id, backend="")
 
     # Load score reports for current candidates + front + parents
     all_versions: set[str] = set(candidate_versions)
