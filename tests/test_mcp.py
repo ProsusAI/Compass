@@ -350,7 +350,8 @@ class TestModelSpecificConventions:
         with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
             agents_dir = tmp_path / "odysseus" / "agents"
             agents_dir.mkdir(parents=True)
-            (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text(
+            (agents_dir / "prompt_builder").mkdir()
+            (agents_dir / "prompt_builder" / "conventions_openai_gpt-5-2.md").write_text(
                 "# GPT-5.2 Addendum\nTest content."
             )
             result = await model_specific_conventions("openai", "gpt-5.2")
@@ -368,7 +369,8 @@ class TestModelSpecificConventions:
         """Date suffixes like -2025-03-11 are stripped before lookup."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text("content")
+        (agents_dir / "prompt_builder").mkdir()
+        (agents_dir / "prompt_builder" / "conventions_openai_gpt-5-2.md").write_text("content")
         with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-5.2-2025-03-11")
             assert result == "content"
@@ -377,7 +379,8 @@ class TestModelSpecificConventions:
         """Compact date suffixes like -20250311 are stripped before lookup."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text("content")
+        (agents_dir / "prompt_builder").mkdir()
+        (agents_dir / "prompt_builder" / "conventions_openai_gpt-5-2.md").write_text("content")
         with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-5.2-20250311")
             assert result == "content"
@@ -386,7 +389,8 @@ class TestModelSpecificConventions:
         """Model string dots become dashes in filename lookup."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "prompt_builder_conventions_claude_claude-sonnet-4-6.md").write_text("sonnet content")
+        (agents_dir / "prompt_builder").mkdir()
+        (agents_dir / "prompt_builder" / "conventions_claude_claude-sonnet-4-6.md").write_text("sonnet content")
         with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("claude", "claude-sonnet-4.6")
             assert result == "sonnet content"
