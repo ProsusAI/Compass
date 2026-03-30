@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from odysseus.agents.routing_rationale_checks_deterministic import (
+from odysseus.agents.routing_analysis.checks_deterministic import (
     validate_deterministic,
 )
-from odysseus.agents.routing_rationale_models import (
+from odysseus.agents.routing_analysis.models import (
     RationaleCard,
     RationaleCardSet,
     RouteDefinition,

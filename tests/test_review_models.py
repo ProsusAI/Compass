@@ -36,7 +36,7 @@ def _make_score_report(**metric_overrides: float) -> ScoreReport:
 
 class TestMetricDeltas:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import MetricDeltas
+        from odysseus.agents.review.models import MetricDeltas
 
         delta = MetricDeltas(
             quality_delta=0.05,
@@ -48,7 +48,7 @@ class TestMetricDeltas:
         assert delta.per_class_recall_deltas["route_a"] == 0.03
 
     def test_empty_per_class_recalls(self) -> None:
-        from odysseus.agents.review_models import MetricDeltas
+        from odysseus.agents.review.models import MetricDeltas
 
         delta = MetricDeltas(quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={})
         assert delta.per_class_recall_deltas == {}
@@ -61,7 +61,7 @@ class TestMetricDeltas:
 
 class TestFrontComparison:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import FrontComparison
+        from odysseus.agents.review.models import FrontComparison
 
         fc = FrontComparison(
             front_candidate_version="v1",
@@ -80,7 +80,7 @@ class TestFrontComparison:
 
 class TestCandidateAnalysis:
     def test_with_parent(self) -> None:
-        from odysseus.agents.review_models import CandidateAnalysis, FrontComparison, MetricDeltas
+        from odysseus.agents.review.models import CandidateAnalysis, FrontComparison, MetricDeltas
 
         ca = CandidateAnalysis(
             candidate_version="v2",
@@ -94,7 +94,7 @@ class TestCandidateAnalysis:
         assert ca.parent_version == "v1"
 
     def test_no_parent(self) -> None:
-        from odysseus.agents.review_models import CandidateAnalysis, MetricDeltas
+        from odysseus.agents.review.models import CandidateAnalysis, MetricDeltas
 
         ca = CandidateAnalysis(
             candidate_version="v1",
@@ -114,7 +114,7 @@ class TestCandidateAnalysis:
 
 class TestClassRecallEntry:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import ClassRecallEntry
+        from odysseus.agents.review.models import ClassRecallEntry
 
         entry = ClassRecallEntry(
             recall=0.85,
@@ -127,7 +127,7 @@ class TestClassRecallEntry:
         assert entry.regression_flag is False
 
     def test_regression_flag_set(self) -> None:
-        from odysseus.agents.review_models import ClassRecallEntry
+        from odysseus.agents.review.models import ClassRecallEntry
 
         entry = ClassRecallEntry(recall=0.60, support=50, trend=[0.80, 0.70, 0.60], regression_flag=True)
         assert entry.regression_flag is True
@@ -140,7 +140,7 @@ class TestClassRecallEntry:
 
 class TestDiversityMetrics:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import DiversityMetrics
+        from odysseus.agents.review.models import DiversityMetrics
 
         dm = DiversityMetrics(
             example_overlap_ratio=0.3,
@@ -158,7 +158,7 @@ class TestDiversityMetrics:
 
 class TestDiminishingReturns:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import DiminishingReturns
+        from odysseus.agents.review.models import DiminishingReturns
 
         dr = DiminishingReturns(
             score_trajectory=[0.70, 0.72, 0.73, 0.73],
@@ -176,7 +176,7 @@ class TestDiminishingReturns:
 
 class TestMutationRecord:
     def test_with_directive_ids(self) -> None:
-        from odysseus.agents.review_models import MutationRecord
+        from odysseus.agents.review.models import MutationRecord
 
         mr = MutationRecord(
             child_version="v3",
@@ -189,7 +189,7 @@ class TestMutationRecord:
         assert mr.directive_ids == ["d1", "d2"]
 
     def test_directive_ids_optional_none(self) -> None:
-        from odysseus.agents.review_models import MutationRecord
+        from odysseus.agents.review.models import MutationRecord
 
         mr = MutationRecord(
             child_version="v3",
@@ -200,7 +200,7 @@ class TestMutationRecord:
         assert mr.directive_ids is None
 
     def test_invalid_mutation_type(self) -> None:
-        from odysseus.agents.review_models import MutationRecord
+        from odysseus.agents.review.models import MutationRecord
 
         with pytest.raises(ValidationError):
             MutationRecord(
@@ -211,7 +211,7 @@ class TestMutationRecord:
             )
 
     def test_all_mutation_types_valid(self) -> None:
-        from odysseus.agents.review_models import MutationRecord, MutationType
+        from odysseus.agents.review.models import MutationRecord, MutationType
 
         valid_types: list[MutationType] = [
             "example_swap",
@@ -238,7 +238,7 @@ class TestMutationRecord:
 
 class TestMutationHistory:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import MutationHistory, MutationRecord
+        from odysseus.agents.review.models import MutationHistory, MutationRecord
 
         record = MutationRecord(
             child_version="v2",
@@ -262,7 +262,7 @@ class TestMutationHistory:
 
 class TestExampleSummary:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import ExampleSummary
+        from odysseus.agents.review.models import ExampleSummary
 
         es = ExampleSummary(
             example_id="ex-001",
@@ -273,7 +273,7 @@ class TestExampleSummary:
         assert "low_confidence" in es.ambiguity_tags
 
     def test_empty_ambiguity_tags(self) -> None:
-        from odysseus.agents.review_models import ExampleSummary
+        from odysseus.agents.review.models import ExampleSummary
 
         es = ExampleSummary(example_id="ex-002", route="route_b", ambiguity_tags=[])
         assert es.ambiguity_tags == []
@@ -286,7 +286,7 @@ class TestExampleSummary:
 
 class TestOracleMetrics:
     def test_required_fields_only(self) -> None:
-        from odysseus.agents.review_models import OracleMetrics
+        from odysseus.agents.review.models import OracleMetrics
 
         om = OracleMetrics(
             oracle_cost_reduction=0.15,
@@ -297,7 +297,7 @@ class TestOracleMetrics:
         assert om.candidate_quality_captured is None
 
     def test_all_fields(self) -> None:
-        from odysseus.agents.review_models import OracleMetrics
+        from odysseus.agents.review.models import OracleMetrics
 
         om = OracleMetrics(
             oracle_cost_reduction=0.15,
@@ -316,8 +316,8 @@ class TestOracleMetrics:
 
 class TestReviewBriefing:
     def _make_briefing(self) -> ReviewBriefing:  # noqa: F821
-        from odysseus.agents.prompt_builder_search import Candidate
-        from odysseus.agents.review_models import (
+        from odysseus.agents.prompt_builder.search import Candidate
+        from odysseus.agents.review.models import (
             CandidateAnalysis,
             ClassRecallEntry,
             DiminishingReturns,
@@ -379,7 +379,7 @@ class TestReviewBriefing:
         assert "route_a" in briefing.per_class_recall
 
     def test_empty_collections(self) -> None:
-        from odysseus.agents.review_models import (
+        from odysseus.agents.review.models import (
             DiminishingReturns,
             DiversityMetrics,
             MutationHistory,
@@ -422,7 +422,7 @@ class TestReviewBriefing:
 
 class TestRankedCandidate:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import RankedCandidate
+        from odysseus.agents.review.models import RankedCandidate
 
         rc = RankedCandidate(version="v2", rank=1, rationale="best accuracy")
         assert rc.version == "v2"
@@ -436,7 +436,7 @@ class TestRankedCandidate:
 
 class TestEditDirective:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import EditDirective
+        from odysseus.agents.review.models import EditDirective
 
         ed = EditDirective(
             directive_id="d1",
@@ -453,7 +453,7 @@ class TestEditDirective:
         assert ed.priority == "high"
 
     def test_invalid_block_type(self) -> None:
-        from odysseus.agents.review_models import EditDirective
+        from odysseus.agents.review.models import EditDirective
 
         with pytest.raises(ValidationError):
             EditDirective(
@@ -467,7 +467,7 @@ class TestEditDirective:
             )
 
     def test_all_block_types_valid(self) -> None:
-        from odysseus.agents.review_models import EditDirective
+        from odysseus.agents.review.models import EditDirective
 
         for bt in ("rule", "example", "output_schema", "assembly_policy"):
             ed = EditDirective(
@@ -489,25 +489,25 @@ class TestEditDirective:
 
 class TestPromotionDecision:
     def test_promote(self) -> None:
-        from odysseus.agents.review_models import PromotionDecision
+        from odysseus.agents.review.models import PromotionDecision
 
         pd = PromotionDecision(version="v2", decision="promote", reason="best candidate")
         assert pd.decision == "promote"
 
     def test_prune(self) -> None:
-        from odysseus.agents.review_models import PromotionDecision
+        from odysseus.agents.review.models import PromotionDecision
 
         pd = PromotionDecision(version="v3", decision="prune", reason="dominated")
         assert pd.decision == "prune"
 
     def test_refine(self) -> None:
-        from odysseus.agents.review_models import PromotionDecision
+        from odysseus.agents.review.models import PromotionDecision
 
         pd = PromotionDecision(version="v4", decision="refine", reason="promising but needs work")
         assert pd.decision == "refine"
 
     def test_invalid_decision(self) -> None:
-        from odysseus.agents.review_models import PromotionDecision
+        from odysseus.agents.review.models import PromotionDecision
 
         with pytest.raises(ValidationError):
             PromotionDecision(version="v5", decision="reject", reason="bad")  # type: ignore[arg-type]
@@ -520,7 +520,7 @@ class TestPromotionDecision:
 
 class TestLoopSignal:
     def test_refine_with_budget(self) -> None:
-        from odysseus.agents.review_models import LoopSignal
+        from odysseus.agents.review.models import LoopSignal
 
         ls = LoopSignal(
             action="refine",
@@ -533,7 +533,7 @@ class TestLoopSignal:
         assert ls.suggested_mutation_mode == "targeted"
 
     def test_exit_no_optional_fields(self) -> None:
-        from odysseus.agents.review_models import LoopSignal
+        from odysseus.agents.review.models import LoopSignal
 
         ls = LoopSignal(action="exit", reason="converged")
         assert ls.action == "exit"
@@ -541,13 +541,13 @@ class TestLoopSignal:
         assert ls.suggested_mutation_mode is None
 
     def test_invalid_action(self) -> None:
-        from odysseus.agents.review_models import LoopSignal
+        from odysseus.agents.review.models import LoopSignal
 
         with pytest.raises(ValidationError):
             LoopSignal(action="continue", reason="test")  # type: ignore[arg-type]
 
     def test_invalid_mutation_mode(self) -> None:
-        from odysseus.agents.review_models import LoopSignal
+        from odysseus.agents.review.models import LoopSignal
 
         with pytest.raises(ValidationError):
             LoopSignal(
@@ -564,7 +564,7 @@ class TestLoopSignal:
 
 class TestRegressionFlag:
     def test_warning(self) -> None:
-        from odysseus.agents.review_models import RegressionFlag
+        from odysseus.agents.review.models import RegressionFlag
 
         rf = RegressionFlag(
             version="v2",
@@ -577,7 +577,7 @@ class TestRegressionFlag:
         assert rf.previous_value == 0.85
 
     def test_block(self) -> None:
-        from odysseus.agents.review_models import RegressionFlag
+        from odysseus.agents.review.models import RegressionFlag
 
         rf = RegressionFlag(
             version="v2",
@@ -589,7 +589,7 @@ class TestRegressionFlag:
         assert rf.severity == "block"
 
     def test_invalid_severity(self) -> None:
-        from odysseus.agents.review_models import RegressionFlag
+        from odysseus.agents.review.models import RegressionFlag
 
         with pytest.raises(ValidationError):
             RegressionFlag(
@@ -608,7 +608,7 @@ class TestRegressionFlag:
 
 class TestDirectiveOutcome:
     def test_improved(self) -> None:
-        from odysseus.agents.review_models import DirectiveOutcome
+        from odysseus.agents.review.models import DirectiveOutcome
 
         do = DirectiveOutcome(
             prior_directive_id="d1",
@@ -619,7 +619,7 @@ class TestDirectiveOutcome:
         assert do.was_attempted is True
 
     def test_not_attempted(self) -> None:
-        from odysseus.agents.review_models import DirectiveOutcome
+        from odysseus.agents.review.models import DirectiveOutcome
 
         do = DirectiveOutcome(
             prior_directive_id="d2",
@@ -629,7 +629,7 @@ class TestDirectiveOutcome:
         assert do.was_attempted is False
 
     def test_invalid_outcome(self) -> None:
-        from odysseus.agents.review_models import DirectiveOutcome
+        from odysseus.agents.review.models import DirectiveOutcome
 
         with pytest.raises(ValidationError):
             DirectiveOutcome(
@@ -639,7 +639,7 @@ class TestDirectiveOutcome:
             )
 
     def test_all_outcomes_valid(self) -> None:
-        from odysseus.agents.review_models import DirectiveOutcome
+        from odysseus.agents.review.models import DirectiveOutcome
 
         for outcome in ("improved", "no_effect", "regressed"):
             do = DirectiveOutcome(prior_directive_id="d", was_attempted=True, outcome=outcome)  # type: ignore[arg-type]
@@ -653,7 +653,7 @@ class TestDirectiveOutcome:
 
 class TestReviewResult:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review_models import (
+        from odysseus.agents.review.models import (
             DirectiveOutcome,
             EditDirective,
             LoopSignal,
@@ -699,7 +699,7 @@ class TestReviewResult:
         assert len(result.directive_history_update) == 1
 
     def test_empty_lists(self) -> None:
-        from odysseus.agents.review_models import LoopSignal, ReviewResult
+        from odysseus.agents.review.models import LoopSignal, ReviewResult
 
         result = ReviewResult(
             candidate_ranking=[],

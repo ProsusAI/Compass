@@ -300,7 +300,11 @@ The system exposes a `run_eval` MCP tool that wraps the Run Controller, enabling
 
 ```
 odysseus/
-  mcp.py              # MCP server entrypoint
+  mcp/                # MCP server package
+    server.py         # FastMCP app, shared helpers, main()
+    *_tools.py        # Stage-specific tool modules
+    resources.py      # MCP resource definitions
+    prompts.py        # MCP prompt definitions
   agents/             # Agent implementations (in progress)
     prompts/          # Agent system prompts
   eval/               # Evaluation engine (complete)

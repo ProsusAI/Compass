@@ -12,7 +12,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from odysseus.mcp import validate_dataset
 
 RUN_ID = "test_run"
-RESOLVE_PROJECT_DIR = "odysseus.mcp.resolve_project_dir"
+RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 
 
 def _setup_guard(tmp_path: Path) -> None:

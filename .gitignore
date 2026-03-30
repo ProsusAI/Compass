@@ -212,17 +212,18 @@ docs/superpowers/
 # Integration test outputs (generated at runtime)
 tests/fixtures/integration/outputs/
 
-# Pipeline runtime outputs
-outputs/
-scratch/
+# Local MCP / Claude Code config
+mcp.json
+.mcp.json
+.claude/settings.*
 
-# Generated routing prompt versions (created by pipeline runs)
-prompts/*.txt
-prompts/*.yaml
-prompts/*.yml
-# Keep README and .gitkeep
-!prompts/README.md
-!prompts/.gitkeep
+# Pipeline runtime artifacts (created by `odysseus init` / MCP runs)
+backends/
+configs/
+data/
+outputs/
+prompts/
+scratch/
 
 # Generated test artifacts
 tests/scenarios/data/holdout_filtered.jsonl

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.data_ingestion_detect import (
+from odysseus.agents.data_validation.detect import (
     DetectionResult,
     detect_and_parse,
 )
