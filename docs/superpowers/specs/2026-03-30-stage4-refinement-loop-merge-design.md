@@ -73,6 +73,47 @@ The integer `4` entry is removed from `_STAGE_PROMPT_MAP` (it pointed to `prompt
 
 No new `STAGE_REGISTRY` entries. Cold-start and normal review both use `"review"` scope. Build-v1 and optimization build both use `"prompt_building"` scope.
 
+### Precondition guards
+
+`check_artifacts()` calls in MCP tool modules enforce that prerequisite artifacts exist before a tool runs. Each guard has a hardcoded `stage` number and `stage_name` string. Renumbering map:
+
+| Tool module | Guard | Old `stage` | New `stage` | New `stage_name` |
+|-------------|-------|-------------|-------------|------------------|
+| `prompt_building_tools.py` (`init_search_state_tool`) | `dev.jsonl` exists | 4 / "Search Init" | 4 / "Refinement Loop" |
+| `prompt_building_tools.py` (`run_eval`) | `dev.jsonl` exists | 5 / "Prompt Evaluation" | 4 / "Refinement Loop" |
+| `prompt_building_tools.py` (`filter_holdout_dataset_tool`) | `dev.jsonl` exists | 7 / "Holdout Validation" | 5 / "Holdout Validation" |
+| `holdout_tools.py` (`run_holdout_eval`) | `search_state.json` exists | 7 / "Holdout Validation" | 5 / "Holdout Validation" |
+
+Data validation guards (`data_validation_tools.py`, `stage=2`) are unchanged.
+
+### Stage progression and sub-agent re-dispatch loop
+
+Stage 4 is the only stage where the orchestrator must re-dispatch **different** sub-agents within a single stage. The POST-EXIT pattern in each HARD_STOP template ensures this:
+
+```
+1. Orchestrator calls complete_stage(run_id) → returns to orchestrator scope
+2. Orchestrator calls get_pipeline_status(run_id)
+3. If Stage 4 status != "complete":
+   a. _next_action_for_stage_4 re-evaluates the three-phase detection
+   b. Returns the appropriate HARD_STOP + system prompt for the NEXT sub-phase
+   c. Orchestrator spawns the indicated sub-agent (may differ from previous)
+4. If Stage 4 status == "complete" (converged):
+   a. Pipeline advances to Stage 5 (Holdout Validation)
+```
+
+The key difference from Stages 1-3 (single sub-agent per stage): each `complete_stage` → `get_pipeline_status` cycle may yield a **different** sub-agent instruction. The orchestrator must not assume the same agent runs again — it reads the new `subagent_instruction` each time.
+
+Example full progression through Stage 4:
+1. `get_pipeline_status` → cold-start → HARD_STOP dispatches Review Agent
+2. Review Agent selects seed examples → `record_directive_outcomes_tool` saves directives → exits
+3. `complete_stage` → `get_pipeline_status` → build-v1 → HARD_STOP dispatches Prompt Builder
+4. Prompt Builder compiles v1, evaluates, advances round → exits
+5. `complete_stage` → `get_pipeline_status` → normal loop, `loop_phase="review"` → HARD_STOP dispatches Review Agent
+6. Review Agent analyses results → `record_directive_outcomes_tool` sets `loop_phase="build"` → exits
+7. `complete_stage` → `get_pipeline_status` → normal loop, `loop_phase="build"` → HARD_STOP dispatches Prompt Builder
+8. ... repeat 5-7 until `converged == true` ...
+9. `complete_stage` → `get_pipeline_status` → Stage 4 complete → advances to Stage 5
+
 ## Bug fix included
 
 **`orchestrator_tools.py:88`** — currently `current_stage == 5`; changes to `current_stage == 4` to match the merged stage number. This is the only stage that uses dynamic prompt lookup by `activate_prompt` name.
