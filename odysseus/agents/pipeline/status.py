@@ -366,14 +366,34 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
 
 
 def _check_stage_3(project_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 3: Backend Configured — checks project_dir/backends/*.yaml."""
+    """Stage 3: Backend Configured — checks project_dir/backends/*.yaml.
+
+    At least one backend must have valid pricing for the stage to be complete.
+    Malformed YAML files are silently skipped (treated as incomplete).
+    """
+    from odysseus.eval.backends.profile import BackendProfile
+
     backends_dir = project_dir / "backends"
     if not backends_dir.is_dir():
         return "incomplete", [], ""
     yaml_files = list(backends_dir.glob("*.yaml"))
     if not yaml_files:
         return "incomplete", [], ""
+
     artifacts = [str(f) for f in sorted(yaml_files)]
+    has_priced_backend = False
+
+    for yf in yaml_files:
+        try:
+            profile = BackendProfile.from_yaml(yf)
+            if profile.pricing is not None:
+                has_priced_backend = True
+                break
+        except Exception:
+            continue
+
+    if not has_priced_backend:
+        return "incomplete", artifacts, "pricing_missing"
     return "complete", artifacts, ""
 
 

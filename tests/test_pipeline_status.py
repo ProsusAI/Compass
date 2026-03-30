@@ -34,7 +34,7 @@ class TestGetPipelineStatus:
     def test_validation_complete(self, tmp_path: Path) -> None:
         """Stage 2 is complete only when validation files AND split outputs are present."""
         _setup_through_stage2(tmp_path, "abc12345")
-        result = get_pipeline_status(tmp_path, "abc12345")
+        result = get_pipeline_status(tmp_path, "abc12345", project_dir=tmp_path)
         assert result["stages"][1]["status"] == "complete"
         assert result["current_stage"] == 3
 
@@ -105,7 +105,16 @@ def _setup_through_stage3(base: Path, run_id: str) -> None:
     """Set up stages 1-3 complete: validation + split + backend."""
     _setup_through_stage2(base, run_id)
     (base / "backends").mkdir(parents=True, exist_ok=True)
-    (base / "backends" / "mock.yaml").write_text("label: mock")
+    (base / "backends" / "mock.yaml").write_text(
+        "model: mock-model\n"
+        "provider: mock_echo\n"
+        "requests_per_minute: 100\n"
+        "tokens_per_minute: 100000\n"
+        "pricing:\n"
+        "  input_cost_per_million_tokens: 0.0\n"
+        "  cached_cost_per_million_tokens: 0.0\n"
+        "  output_cost_per_million_tokens: 0.0\n"
+    )
 
 
 def _setup_stage4_cold_start_done(base: Path, run_id: str) -> None:
@@ -290,9 +299,87 @@ class TestStage4ThreePhaseDetection:
         assert "register_candidate_tool" not in tools
 
 
+class TestStage3PricingValidation:
+    def test_incomplete_when_yaml_has_no_pricing(self, tmp_path: Path) -> None:
+        """Stage 3 is incomplete when backend YAML exists but has no pricing."""
+        _setup_through_stage2(tmp_path, "r1")
+        backends = tmp_path / "backends"
+        backends.mkdir(parents=True, exist_ok=True)
+        (backends / "mock.yaml").write_text(
+            "model: claude-haiku-4-5\nprovider: anthropic\nrequests_per_minute: 100\ntokens_per_minute: 100000\n"
+        )
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][1]["status"] == "complete"
+        assert result["stages"][2]["status"] == "incomplete"
+        assert result["stages"][2]["detail"] == "pricing_missing"
+
+    def test_incomplete_when_yaml_is_malformed(self, tmp_path: Path) -> None:
+        """Stage 3 treats malformed YAML as incomplete, not a crash."""
+        _setup_through_stage2(tmp_path, "r1")
+        backends = tmp_path / "backends"
+        backends.mkdir(parents=True, exist_ok=True)
+        (backends / "bad.yaml").write_text("not: valid: yaml: [")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "incomplete"
+
+    def test_complete_when_one_backend_has_pricing(self, tmp_path: Path) -> None:
+        """Stage 3 is complete when at least one backend has valid pricing (any-semantics)."""
+        _setup_through_stage2(tmp_path, "r1")
+        backends = tmp_path / "backends"
+        backends.mkdir(parents=True, exist_ok=True)
+        (backends / "no_pricing.yaml").write_text(
+            "model: custom-model\nprovider: openai\nrequests_per_minute: 50\ntokens_per_minute: 50000\n"
+        )
+        (backends / "with_pricing.yaml").write_text(
+            "model: claude-haiku-4-5\n"
+            "provider: anthropic\n"
+            "requests_per_minute: 100\n"
+            "tokens_per_minute: 100000\n"
+            "pricing:\n"
+            "  input_cost_per_million_tokens: 0.80\n"
+            "  cached_cost_per_million_tokens: 0.08\n"
+            "  output_cost_per_million_tokens: 4.00\n"
+        )
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "complete"
+
+
 class TestStage5Holdout:
     def test_holdout_has_subagent_instruction(self, tmp_path: Path) -> None:
         _setup_stage4_converged(tmp_path, "r1")
+
+
+class TestStage5NewBehavior:
+    """Stage 5 is complete only when converged == true."""
+
+    def test_stage5_incomplete_when_round_gte_1_but_not_converged(self, tmp_path: Path) -> None:
+        """round >= 1 no longer completes Stage 5."""
+        _setup_through_stage4(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 3, "converged": False, "loop_phase": "review"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][4]["status"] == "incomplete"  # Stage 5 index
+        assert result["current_stage"] == 5
+
+    def test_stage5_complete_when_converged(self, tmp_path: Path) -> None:
+        _setup_through_stage4(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][4]["status"] == "complete"
+        assert result["current_stage"] == 6  # Holdout Validation
+
+
+class TestStage5DynamicHardStop:
+    """Stage 5 HARD_STOP depends on loop_phase."""
+
+    def test_build_phase_spawns_prompt_builder(self, tmp_path: Path) -> None:
+        _setup_through_stage4(tmp_path, "r1")
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 5
         instr = result["subagent_instruction"]
