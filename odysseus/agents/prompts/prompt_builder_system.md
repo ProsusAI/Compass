@@ -183,6 +183,11 @@ Set these context keys when the optimization loop completes (or after round 1 fo
 
 ## Exit verification
 
-Before you finish, call `get_pipeline_status` and confirm your stage shows `status: complete`.
-If any required artifacts are missing, fix them before exiting — do not exit with an incomplete stage.
-Only exit once `get_pipeline_status` confirms your stage is complete.
+You are a **sub-agent** within Stage 4's refinement loop. Do not wait for Stage 4 to show `status: complete` — that only happens when the loop converges.
+
+After calling `advance_round_tool`, check the returned `RoundSummary`:
+
+- **If `converged: true`:** The loop is done. Call `get_pipeline_status` and confirm Stage 4 shows `status: complete`. Exit.
+- **If `converged: false`:** Your build phase is complete. Call `get_search_state_tool` and confirm `loop_phase` is `"review"`. Then exit immediately — the orchestrator will spawn the Review Agent next.
+
+Do not attempt review-phase work. If you see a `next_action` mentioning the Review Agent, that is the orchestrator's responsibility, not yours.

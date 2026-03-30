@@ -392,6 +392,8 @@ Avoid these failure modes:
 
 ## Exit verification
 
-Before you finish, call `get_pipeline_status` and confirm your stage shows `status: complete`.
-If any required artifacts are missing, fix them before exiting — do not exit with an incomplete stage.
-Only exit once `get_pipeline_status` confirms your stage is complete.
+You are a **sub-agent** within Stage 4's refinement loop. Do not wait for Stage 4 to show `status: complete` — that only happens when the loop converges.
+
+After calling `record_directive_outcomes_tool`, call `get_search_state_tool` and confirm `loop_phase` is `"build"`. Then exit immediately — the orchestrator will spawn the Prompt Builder next.
+
+Do not attempt build-phase work. If you see a `next_action` mentioning the Prompt Builder, that is the orchestrator's responsibility, not yours.
