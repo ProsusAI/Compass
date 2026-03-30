@@ -15,9 +15,9 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.fastmcp.prompts.base import Message, UserMessage
 
+from odysseus.agents.data_validation.checks import run_all_checks
 from odysseus.agents.data_validation.detect import detect_and_parse
 from odysseus.agents.data_validation.transform import transform_dataset as _do_transform
-from odysseus.agents.data_validation.checks import run_all_checks
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status

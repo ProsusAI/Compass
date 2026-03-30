@@ -1,21 +1,45 @@
-"""Agent implementations for the Odysseus pipeline."""
+"""Odysseus agents — domain logic for each pipeline stage.
 
-from odysseus.agents.data_validation.checks import (
+Subdirectories:
+  pipeline/          — status detection and artifact guards
+  data_validation/   — format detection, field mapping, quality checks
+  routing_analysis/  — rationale models, vocabulary registry, validation, split
+  prompt_builder/    — search state, candidate management, holdout filtering
+  review/            — briefing models, directive persistence, preprocessing
+
+Root-level modules:
+  base.py            — BaseAgent abstract interface
+  user_input_report.py — Input report constants
+  eval_runner.py     — EvalRunnerAgent (cross-cutting)
+"""
+
+from __future__ import annotations
+
+# --- Data Validation ---
+from odysseus.agents.data_validation import (
     DataQualityReport,
+    DetectionResult,
     LabelDistribution,
     QueryLengthDistribution,
     SchemaFinding,
     TierDistribution,
     TierVolume,
+    TransformResult,
     VolumeAssessment,
     check_label_distribution,
     check_query_length_distribution,
     check_schema_conformance,
     check_volume_adequacy,
+    detect_and_parse,
     run_all_checks,
+    transform_dataset,
 )
+
+# --- Root-level modules ---
 from odysseus.agents.eval_runner import EvalRunnerAgent
-from odysseus.agents.prompt_builder.search import (
+
+# --- Prompt Builder ---
+from odysseus.agents.prompt_builder import (
     Candidate,
     RoundSummary,
     SearchState,
@@ -23,7 +47,9 @@ from odysseus.agents.prompt_builder.search import (
     select_best,
     update_pareto_front,
 )
-from odysseus.agents.review.models import (
+
+# --- Review ---
+from odysseus.agents.review import (
     CandidateAnalysis,
     ClassRecallEntry,
     DirectiveOutcome,
@@ -41,8 +67,23 @@ from odysseus.agents.review.models import (
     ReviewBriefing,
     ReviewResult,
 )
-from odysseus.agents.routing_analysis.checks import (
+
+# --- Routing Analysis ---
+from odysseus.agents.routing_analysis import (
+    RationaleCard,
+    RationaleCardSet,
     RationaleCheckResult,
+    RegistryMergeError,
+    RouteDefinition,
+    RouteExclusion,
+    RouteOrdering,
+    RoutingContext,
+    RoutingDimension,
+    SeedVocabulary,
+    SplitMismatchError,
+    SplitReport,
+    VocabularyEntry,
+    VocabularyRegistry,
     check_ambiguity_tag_membership,
     check_cluster_thresholds,
     check_exclusion_coverage,
@@ -51,38 +92,17 @@ from odysseus.agents.routing_analysis.checks import (
     check_registry_consistency,
     check_required_fields,
     check_vocabulary_membership,
-    find_orphaned_examples,
-    validate_rationale_card_set,
-)
-from odysseus.agents.routing_analysis.checks_deterministic import (
-    validate_deterministic,
-)
-from odysseus.agents.routing_analysis.models import (
-    RationaleCard,
-    RationaleCardSet,
-    RouteDefinition,
-    RouteExclusion,
-    RouteOrdering,
-    RoutingContext,
-    RoutingDimension,
-    SeedVocabulary,
-    VocabularyEntry,
-    VocabularyRegistry,
-)
-from odysseus.agents.routing_analysis.registry import (
-    RegistryMergeError,
     compute_dataset_hash,
     create_seed_registry,
+    find_orphaned_examples,
     load_registry,
     merge_registry,
     prune_registry,
     resolve_registry,
     save_registry,
-)
-from odysseus.agents.routing_analysis.split import (
-    SplitMismatchError,
-    SplitReport,
     stratified_split,
+    validate_deterministic,
+    validate_rationale_card_set,
 )
 from odysseus.agents.user_input_report import (
     CONTEXT_KEY as USER_INPUT_REPORT_CONTEXT_KEY,
@@ -96,19 +116,77 @@ from odysseus.agents.user_input_report import (
 )
 
 __all__ = [
-    "Candidate",
-    "CandidateAnalysis",
-    "ClassRecallEntry",
+    # Root
+    "EvalRunnerAgent",
+    "STATUS_PROCEED",
+    "STATUS_PROCEED_WITH_DEFAULTS",
+    "USER_INPUT_REPORT_CONTEXT_KEY",
+    "read_user_input_report_status",
+    # Data Validation
     "DataQualityReport",
+    "DetectionResult",
+    "LabelDistribution",
+    "QueryLengthDistribution",
+    "SchemaFinding",
+    "TierDistribution",
+    "TierVolume",
+    "TransformResult",
+    "VolumeAssessment",
+    "check_label_distribution",
+    "check_query_length_distribution",
+    "check_schema_conformance",
+    "check_volume_adequacy",
+    "detect_and_parse",
+    "run_all_checks",
+    "transform_dataset",
+    # Routing Analysis
+    "RationaleCard",
+    "RationaleCardSet",
+    "RationaleCheckResult",
+    "RegistryMergeError",
+    "RouteDefinition",
+    "RouteExclusion",
+    "RouteOrdering",
+    "RoutingContext",
+    "RoutingDimension",
+    "SeedVocabulary",
+    "SplitMismatchError",
+    "SplitReport",
+    "VocabularyEntry",
+    "VocabularyRegistry",
+    "check_ambiguity_tag_membership",
+    "check_cluster_thresholds",
+    "check_exclusion_coverage",
+    "check_exclusion_format",
+    "check_pruning_cleanup",
+    "check_registry_consistency",
+    "check_required_fields",
+    "check_vocabulary_membership",
+    "compute_dataset_hash",
+    "create_seed_registry",
+    "find_orphaned_examples",
+    "load_registry",
+    "merge_registry",
+    "prune_registry",
+    "resolve_registry",
+    "run_all_checks",
+    "save_registry",
+    "stratified_split",
+    "validate_deterministic",
+    "validate_rationale_card_set",
+    # Prompt Builder
+    "Candidate",
     "RoundSummary",
     "SearchState",
     "dominates",
     "select_best",
     "update_pareto_front",
+    # Review
+    "CandidateAnalysis",
+    "ClassRecallEntry",
     "DirectiveOutcome",
     "DiversityMetrics",
     "EditDirective",
-    "EvalRunnerAgent",
     "ExampleSummary",
     "LoopSignal",
     "MetricDeltas",
@@ -120,52 +198,4 @@ __all__ = [
     "RegressionFlag",
     "ReviewBriefing",
     "ReviewResult",
-    "LabelDistribution",
-    "QueryLengthDistribution",
-    "RationaleCard",
-    "RationaleCardSet",
-    "RationaleCheckResult",
-    "RegistryMergeError",
-    "SchemaFinding",
-    "SplitMismatchError",
-    "SplitReport",
-    "STATUS_PROCEED",
-    "STATUS_PROCEED_WITH_DEFAULTS",
-    "RouteDefinition",
-    "RouteExclusion",
-    "RouteOrdering",
-    "RoutingContext",
-    "RoutingDimension",
-    "SeedVocabulary",
-    "TierDistribution",
-    "TierVolume",
-    "USER_INPUT_REPORT_CONTEXT_KEY",
-    "VocabularyEntry",
-    "VocabularyRegistry",
-    "VolumeAssessment",
-    "check_ambiguity_tag_membership",
-    "check_cluster_thresholds",
-    "check_exclusion_coverage",
-    "check_exclusion_format",
-    "check_label_distribution",
-    "check_pruning_cleanup",
-    "check_query_length_distribution",
-    "check_registry_consistency",
-    "check_required_fields",
-    "check_schema_conformance",
-    "check_vocabulary_membership",
-    "check_volume_adequacy",
-    "compute_dataset_hash",
-    "create_seed_registry",
-    "find_orphaned_examples",
-    "load_registry",
-    "merge_registry",
-    "prune_registry",
-    "read_user_input_report_status",
-    "resolve_registry",
-    "run_all_checks",
-    "save_registry",
-    "stratified_split",
-    "validate_deterministic",
-    "validate_rationale_card_set",
 ]
