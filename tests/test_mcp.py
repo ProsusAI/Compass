@@ -49,21 +49,6 @@ async def test_run_holdout_eval_tool_registered():
     assert "run_holdout_eval" in tool_names
 
 
-async def test_run_eval_does_not_expose_data_split():
-    """run_eval must not expose data_split as a parameter."""
-    tools = await mcp.list_tools()
-    run_eval_tool = next(t for t in tools if t.name == "run_eval")
-    schema_properties = run_eval_tool.inputSchema.get("properties", {})
-    assert "data_split" not in schema_properties, "data_split must not be exposed as a tool parameter"
-
-
-async def test_run_holdout_eval_does_not_expose_data_split():
-    """run_holdout_eval must not expose data_split as a parameter."""
-    tools = await mcp.list_tools()
-    holdout_tool = next(t for t in tools if t.name == "run_holdout_eval")
-    schema_properties = holdout_tool.inputSchema.get("properties", {})
-    assert "data_split" not in schema_properties, "data_split must not be exposed as a tool parameter"
-
 
 async def test_optimize_routing_prompt_has_no_user_params():
     """optimize_routing_prompt must expose no user-facing parameters."""

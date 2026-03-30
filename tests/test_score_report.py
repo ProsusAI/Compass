@@ -89,7 +89,6 @@ def _make_run_report(
         config=RunConfig(
             backend="test-backend",
             data_source="data/test.jsonl",
-            data_split="dev",
             metrics=[MetricConfig(name="accuracy")],
         ),
         metrics=metrics or {"accuracy": 0.85},

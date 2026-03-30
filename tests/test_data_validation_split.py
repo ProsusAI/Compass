@@ -15,7 +15,6 @@ def _make_example(eid: str, route: str) -> Example:
         id=eid,
         input=f"query for {eid}",
         expected=Expected(route=route, routes={route: ModelCostQuality(cost=0.01)}),
-        split="dev",
     )
 
 

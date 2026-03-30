@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 # TC001: These imports must be at runtime (not under TYPE_CHECKING) for @runtime_checkable
 # isinstance checks to work correctly with the protocol classes.
@@ -40,9 +40,9 @@ class PromptManager(Protocol):
 
 @runtime_checkable
 class DatasetManager(Protocol):
-    """Loads and splits evaluation datasets."""
+    """Loads evaluation datasets."""
 
-    def load(self, path: str, split: Literal["dev", "holdout"]) -> list[Example]: ...
+    def load(self, path: str) -> list[Example]: ...
 
 
 @runtime_checkable

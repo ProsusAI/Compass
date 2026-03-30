@@ -29,5 +29,5 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, data_source: str, 
         stage_name="Holdout Validation",
         hint="The eval loop must converge first.",
     )
-    # TODO: implement holdout eval wiring (same pattern as run_eval with data_split="holdout")
+    # TODO: implement holdout eval wiring (same pattern as run_eval with holdout dataset path)
     return f"run_holdout_eval stub: prompt_version={prompt_version}, data_source={data_source}, run_id={run_id}"

@@ -131,7 +131,6 @@ class RunConfig(BaseModel):
         backend: Backend identifier (non-empty). Required.
         prompt_version: Prompt version string (non-empty). Default: "latest".
         data_source: Path to dataset (non-empty). Required.
-        data_split: "dev" or "holdout". Required.
         metrics: At least one MetricConfig. Required.
         concurrency: ConcurrencyConfig. Default: ConcurrencyConfig().
         retry: RetryConfig. Default: RetryConfig().
@@ -141,7 +140,6 @@ class RunConfig(BaseModel):
     backend: str
     prompt_version: str = "latest"
     data_source: str
-    data_split: Literal["dev", "holdout"]
     metrics: list[MetricConfig]
     concurrency: ConcurrencyConfig = ConcurrencyConfig()
     retry: RetryConfig = RetryConfig()
@@ -195,7 +193,6 @@ class Example(BaseModel):
     id: str
     input: str
     expected: Expected
-    split: Literal["dev", "holdout"]
 
 
 class TokenUsage(BaseModel):
@@ -220,7 +217,6 @@ class RunFingerprint(BaseModel):
     prompt_version: str
     backend: str
     data_source: str
-    data_split: Literal["dev", "holdout"]
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -230,7 +226,6 @@ class RunFingerprint(BaseModel):
             prompt_version=config.prompt_version,
             backend=config.backend,
             data_source=config.data_source,
-            data_split=config.data_split,
         )
 
 

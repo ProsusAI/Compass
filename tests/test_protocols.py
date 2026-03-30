@@ -1,6 +1,6 @@
 """Tests for protocol conformance and RunDependencies."""
 
-from typing import Any, Literal
+from typing import Any
 
 from odysseus.eval.models import (
     EvalResult,
@@ -39,7 +39,7 @@ class StubPromptManager:
 
 
 class StubDatasetManager:
-    def load(self, path: str, split: Literal["dev", "holdout"]) -> list[Example]:
+    def load(self, path: str) -> list[Example]:
         return []
 
 

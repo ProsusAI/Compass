@@ -19,7 +19,6 @@ def _make_example(id_: str) -> dict:
             "route": "a",
             "routes": {"a": {"cost": 0.01, "quality_score": 0.9}},
         },
-        "split": "holdout",
     }
 
 

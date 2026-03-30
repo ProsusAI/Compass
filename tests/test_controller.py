@@ -132,7 +132,6 @@ def _make_examples(n: int) -> list[Example]:
                 "route": f"class-{i % 3}",
                 "routes": {f"class-{j}": {"cost": 0.01, "quality_score": 0.8} for j in range(3)},
             },
-            split="dev",
         )
         for i in range(n)
     ]
@@ -158,7 +157,6 @@ def _make_config(tmp_path: Path, **overrides: Any) -> RunConfig:
     defaults: dict[str, Any] = {
         "backend": "test-model",
         "data_source": str(tmp_path / "data.jsonl"),
-        "data_split": "dev",
         "metrics": [MetricConfig(name="accuracy")],
         "output": OutputConfig(
             results_path=str(tmp_path / "outputs" / "results.jsonl"),
@@ -364,8 +362,7 @@ async def test_backoff_sleeps_outside_semaphore():
                 id="ex-0",
                 input="q1",
                 expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
-                split="dev",
-            ),
+                ),
             RetryConfig(max_attempts=2, backoff_factor=1.0),
             rate_limiter,
             semaphore,
@@ -396,7 +393,6 @@ async def test_timeout_wraps_only_backend_call():
             id="ex-0",
             input="q1",
             expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
-            split="dev",
         ),
         RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1),
         rate_limiter,
@@ -426,7 +422,6 @@ async def test_token_accounting_post_call():
             id="ex-0",
             input="q1",
             expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
-            split="dev",
         ),
         RetryConfig(max_attempts=1, backoff_factor=1.0),
         rate_limiter,
@@ -488,7 +483,6 @@ async def test_resume_from_partial_results(tmp_path: Path):
         prompt_version="latest",
         backend="test-model",
         data_source=str(tmp_path / "data.jsonl"),
-        data_split="dev",
     )
     with open(partial_path, "w") as f:
         f.write(fp.model_dump_json(by_alias=True) + "\n")
@@ -556,7 +550,6 @@ async def test_resume_all_completed(tmp_path: Path):
         prompt_version="latest",
         backend="test-model",
         data_source=str(tmp_path / "data.jsonl"),
-        data_split="dev",
     )
     with open(partial_path, "w") as f:
         f.write(fp.model_dump_json(by_alias=True) + "\n")
@@ -617,7 +610,6 @@ async def test_resume_discards_stale_results_on_fingerprint_mismatch(tmp_path: P
         prompt_version="v_old",
         backend="test-model",
         data_source=str(tmp_path / "data.jsonl"),
-        data_split="dev",
     )
     with open(partial_path, "w") as f:
         f.write(old_fp.model_dump_json(by_alias=True) + "\n")
@@ -676,7 +668,6 @@ async def test_resume_continues_with_matching_fingerprint(tmp_path: Path):
         prompt_version="v1",
         backend="test-model",
         data_source=str(tmp_path / "data.jsonl"),
-        data_split="dev",
     )
     with open(partial_path, "w") as f:
         f.write(fp.model_dump_json(by_alias=True) + "\n")

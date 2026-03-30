@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 class EvalRunnerAgent(BaseAgent):
-    """Orchestrates a single evaluation run against the dev split.
+    """Orchestrates a single evaluation run.
 
     This agent is used inside the Odysseus pipeline. It extracts parameters
     from the pipeline context, calls the eval controller directly, and returns
@@ -114,8 +114,6 @@ class EvalRunnerAgent(BaseAgent):
         config_data["backend"] = backend
         config_data["prompt_version"] = prompt_version
         config_data["data_source"] = data_source
-        config_data["data_split"] = "dev"  # Always dev; holdout requires separate tool (THP-115)
-
         return RunConfig.model_validate(config_data)
 
     def _wire_dependencies(self, config: RunConfig, run_id: str | None = None) -> RunDependencies:

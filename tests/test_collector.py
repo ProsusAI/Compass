@@ -60,7 +60,6 @@ def _make_report(metrics: dict[str, float] | None = None) -> RunReport:
     config = RunConfig(
         backend="test-model",
         data_source="data/test.jsonl",
-        data_split="dev",
         metrics=[MetricConfig(name="accuracy")],
         output=OutputConfig(),
     )
@@ -153,7 +152,6 @@ def _make_report_with_overhead(
     config = RunConfig(
         backend="test-model",
         data_source="data/test.jsonl",
-        data_split="dev",
         metrics=[MetricConfig(name="accuracy")],
         output=OutputConfig(),
     )
@@ -271,7 +269,6 @@ def test_run_fingerprint_round_trip():
         prompt_version="v3",
         backend="anthropic",
         data_source="data/routing.jsonl",
-        data_split="dev",
     )
     dumped = fp.model_dump(by_alias=True)
     assert dumped["__meta__"] == "run_fingerprint"
@@ -289,7 +286,6 @@ def test_write_and_read_fingerprint(tmp_path):
         prompt_version="v3",
         backend="anthropic",
         data_source="data/routing.jsonl",
-        data_split="dev",
     )
     collector.write_fingerprint(fp, path)
 
@@ -322,7 +318,6 @@ def test_read_completed_ids_skips_meta_line(tmp_path):
         prompt_version="v1",
         backend="test",
         data_source="data.jsonl",
-        data_split="dev",
     )
     lines = [
         fp.model_dump_json(by_alias=True),
@@ -342,7 +337,6 @@ def test_write_results_with_fingerprint(tmp_path):
         prompt_version="v1",
         backend="test",
         data_source="data.jsonl",
-        data_split="dev",
     )
     results = [_make_result("ex-1"), _make_result("ex-2")]
     collector.write_results(results, path, fingerprint=fp)

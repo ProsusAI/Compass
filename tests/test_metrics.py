@@ -30,7 +30,6 @@ def _example(id: str, route: str = "gpt-4o") -> Example:
                 "haiku": {"cost": 0.002, "quality_score": 0.72},
             },
         },
-        split="dev",
     )
 
 
@@ -262,7 +261,6 @@ def _cost_quality_example(id: str, route: str, routes: dict[str, dict[str, float
         id=id,
         input=f"q-{id}",
         expected={"route": route, "routes": routes},
-        split="dev",
     )
 
 

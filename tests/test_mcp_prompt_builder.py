@@ -176,8 +176,8 @@ class TestFilterHoldoutTool:
         _setup_guard_artifacts(tmp_path, stage="search")
         holdout = tmp_path / "holdout.jsonl"
         holdout.write_text(
-            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},"split":"holdout"}\n'
-            '{"id":"ex2","input":"q2","expected":{"route":"b","routes":{"b":{"cost":0.02,"quality_score":0.8}}},"split":"holdout"}\n'
+            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}\n'
+            '{"id":"ex2","input":"q2","expected":{"route":"b","routes":{"b":{"cost":0.02,"quality_score":0.8}}}}\n'
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(
@@ -205,8 +205,8 @@ class TestFilterHoldoutTool:
         _setup_guard_artifacts(tmp_path, stage="search")
         holdout = tmp_path / "holdout.jsonl"
         holdout.write_text(
-            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},"split":"holdout"}\n'
-            '{"id":"ex2","input":"q2","expected":{"route":"b","routes":{"b":{"cost":0.02,"quality_score":0.8}}},"split":"holdout"}\n'
+            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}\n'
+            '{"id":"ex2","input":"q2","expected":{"route":"b","routes":{"b":{"cost":0.02,"quality_score":0.8}}}}\n'
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(
@@ -222,7 +222,7 @@ class TestFilterHoldoutTool:
         _setup_guard_artifacts(tmp_path, stage="search")
         holdout = tmp_path / "holdout.jsonl"
         holdout.write_text(
-            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},"split":"holdout"}\n'
+            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}\n'
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(
@@ -238,7 +238,7 @@ class TestFilterHoldoutTool:
         _setup_guard_artifacts(tmp_path, stage="search")
         holdout = tmp_path / "holdout.jsonl"
         holdout.write_text(
-            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},"split":"holdout"}\n'
+            '{"id":"ex1","input":"q1","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}\n'
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(

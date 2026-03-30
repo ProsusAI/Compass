@@ -26,7 +26,6 @@ async def test_echoes_expected_route():
             "route": "billing",
             "routes": {"billing": {"cost": 0.01, "quality_score": 0.9}},
         },
-        split="dev",
     )
     output, usage = await backend.call("prompt", example)
     assert output == {"route": "billing"}

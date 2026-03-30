@@ -50,7 +50,6 @@ def test_run_config_minimal():
     config = RunConfig(
         backend="claude-sonnet",
         data_source="data/test.jsonl",
-        data_split="dev",
         metrics=[MetricConfig(name="accuracy")],
     )
     assert config.prompt_version == "latest"
@@ -62,7 +61,6 @@ def test_run_config_from_yaml():
     data = {
         "backend": "claude-sonnet",
         "data_source": "data/test.jsonl",
-        "data_split": "dev",
         "metrics": [{"name": "accuracy"}],
         "concurrency": {"max_concurrent_requests": 10},
     }
@@ -193,7 +191,6 @@ def _valid_run_kwargs(**overrides: Any) -> dict[str, Any]:
     base = {
         "backend": "claude-sonnet",
         "data_source": "data/test.jsonl",
-        "data_split": "dev",
         "metrics": [{"name": "accuracy"}],
     }
     base.update(overrides)
@@ -220,11 +217,6 @@ def test_run_config_empty_metrics_rejected():
         RunConfig(**_valid_run_kwargs(metrics=[]))
 
 
-def test_run_config_invalid_data_split_rejected():
-    with pytest.raises(ValidationError):
-        RunConfig(**_valid_run_kwargs(data_split="test"))
-
-
 def test_run_config_backend_stripped():
     config = RunConfig(**_valid_run_kwargs(backend="  claude-sonnet  "))
     assert config.backend == "claude-sonnet"
@@ -233,7 +225,6 @@ def test_run_config_backend_stripped():
 def test_example_config_round_trip():
     config = RunConfig.from_yaml("configs/example-run.yaml")
     assert config.backend == "claude-sonnet-4-20250514"
-    assert config.data_split == "dev"
     assert len(config.metrics) == 2
     assert config.concurrency.max_concurrent_requests == 20
     assert config.retry.max_attempts == 3
@@ -302,22 +293,6 @@ class TestExampleNewSchema:
                     "sonnet": {"cost": 0.01, "quality_score": 0.88},
                 },
             },
-            split="dev",
         )
         assert ex.input == "Explain quantum entanglement"
         assert ex.expected.route == "opus"
-        assert ex.split == "dev"
-
-    def test_split_must_be_dev_or_holdout(self):
-        from odysseus.eval.models import Example
-
-        with pytest.raises(ValueError):
-            Example(
-                id="ex-1",
-                input="test",
-                expected={
-                    "route": "opus",
-                    "routes": {"opus": {"cost": 0.05, "quality_score": 0.98}},
-                },
-                split="train",
-            )

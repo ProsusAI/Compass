@@ -37,15 +37,14 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     """
     start_time = datetime.now(UTC)
     logger.info(
-        "Starting evaluation run: backend=%s, data=%s, split=%s",
+        "Starting evaluation run: backend=%s, data=%s",
         config.backend,
         config.data_source,
-        config.data_split,
     )
 
     # 1. Load prompt and data
     prompt = deps.prompt_manager.load(config.prompt_version)
-    examples = deps.dataset_manager.load(config.data_source, config.data_split)
+    examples = deps.dataset_manager.load(config.data_source)
     logger.info("Loaded %d examples", len(examples))
 
     # 2. Create parent directories for output

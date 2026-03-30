@@ -27,7 +27,6 @@ SAMPLE_RECORDS = [
                 "farewell": {"cost": 0.01, "quality_score": 0.5},
             },
         },
-        "split": "dev",
     },
     {
         "id": "2",
@@ -39,103 +38,40 @@ SAMPLE_RECORDS = [
                 "farewell": {"cost": 0.01, "quality_score": 0.95},
             },
         },
-        "split": "dev",
     },
     {
         "id": "3",
         "input": "secret",
         "expected": {"route": "hidden", "routes": {"hidden": {"cost": 0.02, "quality_score": 0.8}}},
-        "split": "holdout",
     },
 ]
 
 
-class TestJsonlDatasetManagerDevSplit:
-    def test_load_dev_returns_only_dev_examples(self, tmp_path: Path):
+class TestJsonlDatasetManagerLoad:
+    def test_load_returns_all_examples(self, tmp_path: Path):
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "data.jsonl"
         _write_jsonl(path, SAMPLE_RECORDS)
 
         manager = JsonlDatasetManager()
-        examples = manager.load(str(path), "dev")
+        examples = manager.load(str(path))
 
-        assert len(examples) == 2
+        assert len(examples) == 3
         assert all(isinstance(e, Example) for e in examples)
-        assert [e.id for e in examples] == ["1", "2"]
+        assert [e.id for e in examples] == ["1", "2", "3"]
 
-    def test_load_dev_parses_fields_correctly(self, tmp_path: Path):
+    def test_load_parses_fields_correctly(self, tmp_path: Path):
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "data.jsonl"
         _write_jsonl(path, SAMPLE_RECORDS)
 
         manager = JsonlDatasetManager()
-        examples = manager.load(str(path), "dev")
+        examples = manager.load(str(path))
 
         assert examples[0].input == "hello"
         assert examples[0].expected.route == "greeting"
-        assert examples[0].split == "dev"
-
-    def test_load_returns_empty_list_when_no_matching_split(self, tmp_path: Path):
-        from odysseus.eval.dataset import JsonlDatasetManager
-
-        path = tmp_path / "data.jsonl"
-        _write_jsonl(
-            path,
-            [
-                {
-                    "id": "1",
-                    "input": "a",
-                    "expected": {"route": "b", "routes": {"b": {"cost": 0.01, "quality_score": 0.9}}},
-                    "split": "holdout",
-                },
-            ],
-        )
-
-        manager = JsonlDatasetManager()
-        examples = manager.load(str(path), "dev")
-
-        assert examples == []
-
-
-class TestJsonlDatasetManagerHoldoutGuard:
-    def test_holdout_blocked_by_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        from odysseus.eval.dataset import JsonlDatasetManager
-
-        path = tmp_path / "data.jsonl"
-        _write_jsonl(path, SAMPLE_RECORDS)
-
-        monkeypatch.delenv("ALLOW_HOLDOUT", raising=False)
-        manager = JsonlDatasetManager()
-
-        with pytest.raises(PermissionError, match="Holdout access denied"):
-            manager.load(str(path), "holdout")
-
-    def test_holdout_allowed_with_env_var(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        from odysseus.eval.dataset import JsonlDatasetManager
-
-        path = tmp_path / "data.jsonl"
-        _write_jsonl(path, SAMPLE_RECORDS)
-
-        monkeypatch.setenv("ALLOW_HOLDOUT", "1")
-        manager = JsonlDatasetManager()
-        examples = manager.load(str(path), "holdout")
-
-        assert len(examples) == 1
-        assert examples[0].id == "3"
-
-    def test_holdout_blocked_with_wrong_env_value(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        from odysseus.eval.dataset import JsonlDatasetManager
-
-        path = tmp_path / "data.jsonl"
-        _write_jsonl(path, SAMPLE_RECORDS)
-
-        monkeypatch.setenv("ALLOW_HOLDOUT", "true")
-        manager = JsonlDatasetManager()
-
-        with pytest.raises(PermissionError):
-            manager.load(str(path), "holdout")
 
 
 class TestJsonlDatasetManagerErrors:
@@ -144,7 +80,7 @@ class TestJsonlDatasetManagerErrors:
 
         manager = JsonlDatasetManager()
         with pytest.raises(FileNotFoundError):
-            manager.load("/nonexistent/path.jsonl", "dev")
+            manager.load("/nonexistent/path.jsonl")
 
     def test_malformed_json_line(self, tmp_path: Path):
         from odysseus.eval.dataset import JsonlDatasetManager
@@ -152,38 +88,37 @@ class TestJsonlDatasetManagerErrors:
         path = tmp_path / "bad.jsonl"
         valid = (
             '{"id":"1","input":"hi","expected":'
-            '{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}},'
-            '"split":"dev"}'
+            '{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}'
         )
         path.write_text(f"{valid}\nNOT JSON\n")
 
         manager = JsonlDatasetManager()
         with pytest.raises(ValueError, match="Line 2: invalid JSON"):
-            manager.load(str(path), "dev")
+            manager.load(str(path))
 
     def test_missing_required_field(self, tmp_path: Path):
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "incomplete.jsonl"
         # Missing "expected" field
-        path.write_text('{"id":"1","input":"hi","split":"dev"}\n')
+        path.write_text('{"id":"1","input":"hi"}\n')
 
         manager = JsonlDatasetManager()
         with pytest.raises(ValueError, match="Line 1: failed to construct Example"):
-            manager.load(str(path), "dev")
+            manager.load(str(path))
 
     def test_blank_lines_are_skipped(self, tmp_path: Path):
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "blanks.jsonl"
         path.write_text(
-            '{"id":"1","input":"a","expected":{"route":"b","routes":{"b":{"cost":0.01,"quality_score":0.9}}},"split":"dev"}\n'
+            '{"id":"1","input":"a","expected":{"route":"b","routes":{"b":{"cost":0.01,"quality_score":0.9}}}}\n'
             "\n"
-            '{"id":"2","input":"c","expected":{"route":"d","routes":{"d":{"cost":0.01,"quality_score":0.9}}},"split":"dev"}\n'
+            '{"id":"2","input":"c","expected":{"route":"d","routes":{"d":{"cost":0.01,"quality_score":0.9}}}}\n'
         )
 
         manager = JsonlDatasetManager()
-        examples = manager.load(str(path), "dev")
+        examples = manager.load(str(path))
         assert len(examples) == 2
 
 
@@ -196,9 +131,9 @@ class TestJsonlDatasetManagerLogging:
 
         manager = JsonlDatasetManager()
         with caplog.at_level(logging.INFO, logger="odysseus.eval.dataset"):
-            manager.load(str(path), "dev")
+            manager.load(str(path))
 
-        assert any("Loaded 2 dev examples" in msg for msg in caplog.messages)
+        assert any("Loaded 3" in msg for msg in caplog.messages)
 
 
 class TestJsonlDatasetManagerProtocol:

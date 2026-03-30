@@ -51,7 +51,6 @@ def _stub_run_report(
         config=RunConfig(
             backend="stub",
             data_source="data/test.jsonl",
-            data_split="dev",
             metrics=[MetricConfig(name="accuracy")],
         ),
         metrics={"accuracy": accuracy},
@@ -156,58 +155,6 @@ class TestEvalRunnerAgentSuccess:
         """Agent name is 'eval_runner'."""
         agent = EvalRunnerAgent()
         assert agent.name == "eval_runner"
-
-    async def test_hardcodes_dev_split(self, tmp_path: Path) -> None:
-        """Agent always passes data_split='dev' to controller."""
-        config_path = _write_run_config(tmp_path)
-        report = _stub_run_report()
-
-        agent = EvalRunnerAgent()
-        context = {
-            **_default_context(),
-            "config_path": str(config_path),
-        }
-
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
-            mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                await agent.run(context)
-
-        run_config: RunConfig = mock_ctrl.run.call_args.args[0]
-        assert run_config.data_split == "dev"
-
-
-# ---------------------------------------------------------------------------
-# THP-131 Case 2: Holdout access blocked
-# ---------------------------------------------------------------------------
-
-
-class TestEvalRunnerAgentHoldout:
-    """Holdout enforcement tests.
-
-    The agent hardcodes data_split='dev'. Even if the pipeline context
-    contains data_split='holdout', it is ignored.
-    """
-
-    async def test_context_holdout_is_ignored(self, tmp_path: Path) -> None:
-        """Even if context contains data_split=holdout, agent uses dev."""
-        config_path = _write_run_config(tmp_path)
-        report = _stub_run_report()
-
-        agent = EvalRunnerAgent()
-        context = {
-            **_default_context(),
-            "config_path": str(config_path),
-            "data_split": "holdout",  # Should be ignored
-        }
-
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
-            mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                await agent.run(context)
-
-        run_config: RunConfig = mock_ctrl.run.call_args.args[0]
-        assert run_config.data_split == "dev"
 
 
 # ---------------------------------------------------------------------------
