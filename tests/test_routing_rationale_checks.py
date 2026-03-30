@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from odysseus.agents.routing_rationale_models import (
+from odysseus.agents.routing_analysis.models import (
     RationaleCard,
     RationaleCardSet,
     RouteDefinition,
@@ -109,7 +109,7 @@ async def _always_overlap_judge(a: str, b: str) -> bool:
 # Import the module under test
 # ---------------------------------------------------------------------------
 
-from odysseus.agents.routing_rationale_checks import (  # noqa: E402
+from odysseus.agents.routing_analysis.checks import (  # noqa: E402
     RationaleCheckResult,
     check_ambiguity_tag_membership,
     check_card_completeness,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.prompt_builder_holdout_filter import filter_holdout_dataset
+from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
 
 
 def _make_example(id_: str) -> dict:

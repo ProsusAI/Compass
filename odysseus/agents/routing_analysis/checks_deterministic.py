@@ -8,7 +8,7 @@ check-semantic-overlap skill instead.
 
 from __future__ import annotations
 
-from odysseus.agents.routing_rationale_checks import (
+from odysseus.agents.routing_analysis.checks import (
     RationaleCheckResult,
     check_ambiguity_tag_membership,
     check_card_completeness,
@@ -20,7 +20,7 @@ from odysseus.agents.routing_rationale_checks import (
     check_vocabulary_membership,
     find_orphaned_examples,
 )
-from odysseus.agents.routing_rationale_models import (
+from odysseus.agents.routing_analysis.models import (
     RationaleCardSet,
     RoutingContext,
 )

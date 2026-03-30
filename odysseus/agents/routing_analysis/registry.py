@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from odysseus.agents.routing_rationale_models import VocabularyEntry, VocabularyRegistry
+from odysseus.agents.routing_analysis.models import VocabularyEntry, VocabularyRegistry
 from odysseus.eval.models import Example
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from odysseus.agents.prompt_builder_search import (
+from odysseus.agents.prompt_builder.search import (
     Candidate,
     RoundSummary,
     SearchState,

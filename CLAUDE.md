@@ -30,7 +30,11 @@ For detailed architecture, see [`docs/architecture.md`](docs/architecture.md).
 
 ```
 odysseus/              # Main package
-  mcp.py               # MCP server entrypoint
+  mcp/                 # MCP server package (see below)
+    server.py          # FastMCP app, shared helpers, main()
+    *_tools.py         # Stage-specific tool modules
+    resources.py       # MCP resource definitions
+    prompts.py         # MCP prompt definitions
   agents/              # Domain models, validation, registry ops (see agents/README.md)
     prompts/           # Agent system prompts (Markdown, surfaced via MCP)
   eval/                # Evaluation engine (see eval/README.md)

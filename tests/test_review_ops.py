@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from odysseus.agents.review_models import DirectiveOutcome, MutationRecord
-from odysseus.agents.review_ops import (
+from odysseus.agents.review.models import DirectiveOutcome, MutationRecord
+from odysseus.agents.review.ops import (
     load_directive_history,
     load_mutation_log,
     load_round_reports,

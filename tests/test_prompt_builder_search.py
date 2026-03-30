@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from odysseus.agents.prompt_builder_search import (
+from odysseus.agents.prompt_builder.search import (
     Candidate,
     RoundSummary,
     SearchState,

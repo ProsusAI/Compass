@@ -1,0 +1,161 @@
+"""Review tools — briefing builder and directive outcomes."""
+
+import json
+from pathlib import Path
+from typing import Any
+
+from mcp.server.fastmcp import Context
+
+import odysseus.project_dir as _project_dir_mod
+from odysseus.agents.prompt_builder.search_ops import (
+    set_loop_phase as _set_loop_phase,
+)
+from odysseus.mcp.server import mcp
+
+
+@mcp.tool()
+async def build_review_briefing_tool(
+    ctx: Context,
+    run_id: str,
+    candidate_versions: list[str],
+    parent_versions: dict[str, str | None],
+    report_paths: dict[str, str],
+    holdout_card_set_path: str = "",
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 6: Eval Loop -- Review] Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
+
+    Loads search state, score reports, prompt texts, mutation log, and directive
+    history, then computes candidate comparisons, per-class recall, diversity
+    metrics, diminishing returns, mutation correlation, and oracle metrics.
+
+    Args:
+        run_id: Pipeline run identifier.
+        candidate_versions: Versions evaluated in the current round.
+        parent_versions: Mapping of candidate -> parent version.
+        report_paths: Mapping of version -> path to its ScoreReport JSON.
+        holdout_card_set_path: Path to holdout rationale card set JSON (optional).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON-serialized ReviewBriefing.
+    """
+    from odysseus.agents.prompt_builder.search_ops import get_search_state
+    from odysseus.agents.review.models import ExampleSummary
+    from odysseus.agents.review.ops import (
+        load_directive_history,
+        load_mutation_log,
+        load_round_reports,
+        save_round_report,
+    )
+    from odysseus.agents.review.preprocessor import build_review_briefing
+    from odysseus.prompts.manager import FilePromptManager
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    # Load search state
+    state = get_search_state(run_id=run_id, output_dir=out)
+
+    # Load score reports for current candidates + front + parents
+    all_versions: set[str] = set(candidate_versions)
+    for c in state.pareto_front:
+        all_versions.add(c.prompt_version)
+    for parent in parent_versions.values():
+        if parent is not None:
+            all_versions.add(parent)
+
+    # Load historical round reports
+    historical = load_round_reports(run_id, output_dir=out)
+
+    # Load current round reports via report_paths param; fall back to historical for front members
+    score_reports: dict[str, Any] = {}
+    for version in all_versions:
+        if version in report_paths:
+            rp = Path(report_paths[version])
+            if rp.exists():
+                score_reports[version] = json.loads(rp.read_text(encoding="utf-8"))
+        elif version not in score_reports:
+            for round_data in historical.values():
+                if version in round_data:
+                    score_reports[version] = round_data[version]
+                    break
+
+    # Load prompt texts
+    import contextlib
+
+    prompt_mgr = FilePromptManager(project_dir / "prompts")
+    prompt_texts: dict[str, str] = {}
+    for version in all_versions:
+        with contextlib.suppress(FileNotFoundError):
+            prompt_texts[version] = prompt_mgr.load(version)
+
+    # Load mutation log and directive history
+    mutation_log = load_mutation_log(run_id, output_dir=out)
+    directive_history = load_directive_history(run_id, output_dir=out)
+
+    # Load holdout examples from rationale card set if path provided
+    holdout_examples: list[ExampleSummary] = []
+    if holdout_card_set_path:
+        card_set_data = json.loads(Path(holdout_card_set_path).read_text(encoding="utf-8"))
+        for card_id, card in card_set_data.get("cards", {}).items():
+            holdout_examples.append(
+                ExampleSummary(
+                    example_id=card_id,
+                    route=card.get("assigned_route", ""),
+                    ambiguity_tags=card.get("ambiguity_tags", []),
+                )
+            )
+
+    # Build briefing
+    briefing = build_review_briefing(
+        search_state=state,
+        score_reports=score_reports,
+        historical_reports=historical,
+        prompt_texts=prompt_texts,
+        mutation_log=mutation_log,
+        directive_history=directive_history,
+        holdout_examples=holdout_examples,
+        candidate_versions=candidate_versions,
+        parent_versions=parent_versions,
+    )
+
+    # Save current round's reports for future historical access
+    current_round_reports = {v: score_reports[v] for v in candidate_versions if v in score_reports}
+    save_round_report(run_id, state.round, current_round_reports, output_dir=out)
+
+    return briefing.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def record_directive_outcomes_tool(
+    ctx: Context,
+    run_id: str,
+    outcomes: list[dict[str, Any]],
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 6: Eval Loop -- Review] Record the outcomes of prior Review Agent directives.
+
+    Args:
+        run_id: Pipeline run identifier.
+        outcomes: List of DirectiveOutcome dicts to record.
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON object with recorded count and new total.
+    """
+    from odysseus.agents.review.models import DirectiveOutcome
+    from odysseus.agents.review.ops import load_directive_history, save_directive_history
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+    parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
+    existing = load_directive_history(run_id, output_dir=out)
+    save_directive_history(run_id, existing + parsed, output_dir=out)
+
+    # Transition search loop to build phase so orchestrator spawns Prompt Builder next
+    import contextlib
+
+    with contextlib.suppress(FileNotFoundError):
+        _set_loop_phase(run_id, "build", output_dir=out)
+    return json.dumps({"recorded": len(parsed), "total": len(existing) + len(parsed)})

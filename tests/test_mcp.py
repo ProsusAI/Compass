@@ -12,7 +12,7 @@ from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp, model_specific_conventions
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
-RESOLVE_PROJECT_DIR = "odysseus.mcp.resolve_project_dir"
+RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 
 
 async def test_server_has_tools():
@@ -347,10 +347,11 @@ class TestLoadText:
 class TestModelSpecificConventions:
     async def test_returns_content_when_file_exists(self, tmp_path: Path) -> None:
         """Model-specific cookbook is returned when the file exists."""
-        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+        with patch("odysseus.mcp.server._PROJECT_ROOT", tmp_path):
             agents_dir = tmp_path / "odysseus" / "agents"
             agents_dir.mkdir(parents=True)
-            (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text(
+            (agents_dir / "prompt_builder").mkdir()
+            (agents_dir / "prompt_builder" / "conventions_openai_gpt-5-2.md").write_text(
                 "# GPT-5.2 Addendum\nTest content."
             )
             result = await model_specific_conventions("openai", "gpt-5.2")
@@ -360,7 +361,7 @@ class TestModelSpecificConventions:
         """Missing model cookbook returns empty string, not an error."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+        with patch("odysseus.mcp.server._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-99")
             assert result == ""
 
@@ -368,8 +369,9 @@ class TestModelSpecificConventions:
         """Date suffixes like -2025-03-11 are stripped before lookup."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text("content")
-        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+        (agents_dir / "prompt_builder").mkdir()
+        (agents_dir / "prompt_builder" / "conventions_openai_gpt-5-2.md").write_text("content")
+        with patch("odysseus.mcp.server._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-5.2-2025-03-11")
             assert result == "content"
 
@@ -377,8 +379,9 @@ class TestModelSpecificConventions:
         """Compact date suffixes like -20250311 are stripped before lookup."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "prompt_builder_conventions_openai_gpt-5-2.md").write_text("content")
-        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+        (agents_dir / "prompt_builder").mkdir()
+        (agents_dir / "prompt_builder" / "conventions_openai_gpt-5-2.md").write_text("content")
+        with patch("odysseus.mcp.server._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-5.2-20250311")
             assert result == "content"
 
@@ -386,8 +389,9 @@ class TestModelSpecificConventions:
         """Model string dots become dashes in filename lookup."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        (agents_dir / "prompt_builder_conventions_claude_claude-sonnet-4-6.md").write_text("sonnet content")
-        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+        (agents_dir / "prompt_builder").mkdir()
+        (agents_dir / "prompt_builder" / "conventions_claude_claude-sonnet-4-6.md").write_text("sonnet content")
+        with patch("odysseus.mcp.server._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("claude", "claude-sonnet-4.6")
             assert result == "sonnet content"
 
@@ -395,7 +399,7 @@ class TestModelSpecificConventions:
         """Unrecognized model strings pass through and miss gracefully."""
         agents_dir = tmp_path / "odysseus" / "agents"
         agents_dir.mkdir(parents=True)
-        with patch("odysseus.mcp._PROJECT_ROOT", tmp_path):
+        with patch("odysseus.mcp.server._PROJECT_ROOT", tmp_path):
             result = await model_specific_conventions("openai", "gpt-5.2-turbo-preview")
             assert result == ""
 
@@ -471,20 +475,20 @@ class TestGetPipelineStatus:
         """get_pipeline_status raises ToolError when stage prompt file is not found."""
         from unittest.mock import patch
 
-        import odysseus.mcp as mcp_module
+        import odysseus.mcp.orchestrator_tools as orch_mod
 
         from odysseus.mcp import get_pipeline_status
 
         with (
             patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            patch.object(mcp_module, "_load_text", side_effect=FileNotFoundError("prompt not found")),
+            patch.object(orch_mod, "_load_text", side_effect=FileNotFoundError("prompt not found")),
             pytest.raises(ToolError, match="installation may be broken"),
         ):
             await get_pipeline_status(ctx=None, run_id=None)
 
     async def test_get_pipeline_status_stage7_not_enriched(self, tmp_path: Path):
         """get_pipeline_status does not enrich subagent_instruction for stage 7 (None)."""
-        import odysseus.mcp as mcp_module
+        import odysseus.mcp.orchestrator_tools as orch_mod
 
         from odysseus.mcp import get_pipeline_status
 
@@ -500,7 +504,7 @@ class TestGetPipelineStatus:
         }
         with (
             patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            patch.object(mcp_module, "_get_pipeline_status", return_value=stage7_result),
+            patch.object(orch_mod, "_get_pipeline_status", return_value=stage7_result),
         ):
             result = await get_pipeline_status(ctx=None, run_id=None)
         data = json.loads(result)
@@ -561,7 +565,7 @@ class TestOptimizeRoutingPrompt:
         from odysseus.mcp import optimize_routing_prompt
 
         with (
-            patch("odysseus.mcp._load_text", side_effect=FileNotFoundError("no such file")),
+            patch("odysseus.mcp.orchestrator_tools._load_text", side_effect=FileNotFoundError("no such file")),
             patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
             pytest.raises(ToolError, match="installation may be broken"),
         ):
@@ -574,7 +578,7 @@ class TestOptimizeRoutingPrompt:
         with (
             patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
             patch(
-                "odysseus.mcp._get_pipeline_status",
+                "odysseus.mcp.orchestrator_tools._get_pipeline_status",
                 side_effect=OSError("disk read error"),
             ),
             pytest.raises(ToolError, match="outputs"),

@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-DEFAULTS_PATH = Path(__file__).resolve().parent.parent / "odysseus" / "agents" / "user_input_defaults.md"
-TAXONOMY_PATH = Path(__file__).resolve().parent.parent / "odysseus" / "agents" / "user_input_taxonomy.md"
+DEFAULTS_PATH = Path(__file__).resolve().parent.parent / "odysseus" / "agents" / "user_input" / "defaults.md"
+TAXONOMY_PATH = Path(__file__).resolve().parent.parent / "odysseus" / "agents" / "user_input" / "taxonomy.md"
 
 
 class TestDefaultsFileExists:

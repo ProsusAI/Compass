@@ -16,7 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from odysseus.agents.routing_rationale_models import (
+from odysseus.agents.routing_analysis.models import (
     RationaleCard,
     RationaleCardSet,
     RoutingContext,

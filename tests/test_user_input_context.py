@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-CONTEXT_PATH = Path(__file__).resolve().parent.parent / "odysseus" / "agents" / "user_input_context.md"
+CONTEXT_PATH = Path(__file__).resolve().parent.parent / "odysseus" / "agents" / "user_input" / "context.md"
 
 
 class TestContextFileExists:

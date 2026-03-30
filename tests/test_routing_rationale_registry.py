@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.routing_rationale_models import VocabularyEntry, VocabularyRegistry
-from odysseus.agents.routing_rationale_registry import (
+from odysseus.agents.routing_analysis.models import VocabularyEntry, VocabularyRegistry
+from odysseus.agents.routing_analysis.registry import (
     RegistryMergeError,
     compute_dataset_hash,
     create_seed_registry,

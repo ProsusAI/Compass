@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from odysseus.agents.routing_rationale_models import (
+from odysseus.agents.routing_analysis.models import (
     KEBAB_CASE_RE,
     SCREAMING_SNAKE_RE,
     RationaleCard,
