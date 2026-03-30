@@ -11,6 +11,7 @@ from odysseus.agents.prompt_builder_search_ops import (
     init_search_state,
     record_eval_result,
     register_candidate,
+    set_loop_phase,
 )
 
 # ---------------------------------------------------------------------------
@@ -362,3 +363,53 @@ class TestAdvanceRound:
         updated = get_search_state("run041", output_dir=tmp_path)
         assert len(updated.pareto_front) == 1
         assert updated.pareto_front[0].prompt_version == "v1"
+
+
+# ---------------------------------------------------------------------------
+# advance_round loop_phase behavior
+# ---------------------------------------------------------------------------
+
+
+class TestAdvanceRoundLoopPhase:
+    def test_sets_loop_phase_review_when_not_converged(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path,
+                          convergence_limit=5, stagnation_limit=3)
+        _register_and_score("r1", "v1", 0.8, 0.5, tmp_path)
+        summary = advance_round("r1", output_dir=tmp_path)
+        state = get_search_state(run_id="r1", output_dir=tmp_path)
+        assert not summary.converged
+        assert state.loop_phase == "review"
+
+    def test_sets_loop_phase_build_when_converged(self, tmp_path) -> None:
+        # convergence_limit=2, stagnation_limit=1: converges after 2 stagnation rounds
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path,
+                          convergence_limit=2, stagnation_limit=1)
+        # Round 1: v1 added to empty front → new_pareto_points=1, stagnation_count=0
+        _register_and_score("r1", "v1", 0.8, 0.5, tmp_path)
+        advance_round("r1", output_dir=tmp_path)
+        # Round 2: dominated → stagnation_count=1
+        _register_and_score("r1", "v2", 0.7, 0.6, tmp_path, parent_version="v1")
+        advance_round("r1", output_dir=tmp_path)
+        # Round 3: dominated → stagnation_count=2 >= convergence_limit → converged
+        _register_and_score("r1", "v3", 0.6, 0.7, tmp_path, parent_version="v1")
+        summary = advance_round("r1", output_dir=tmp_path)
+        state = get_search_state(run_id="r1", output_dir=tmp_path)
+        assert summary.converged
+        assert state.loop_phase == "build"
+
+
+# ---------------------------------------------------------------------------
+# set_loop_phase
+# ---------------------------------------------------------------------------
+
+
+class TestSetLoopPhase:
+    def test_sets_phase(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path)
+        set_loop_phase("r1", "review", output_dir=tmp_path)
+        state = get_search_state(run_id="r1", output_dir=tmp_path)
+        assert state.loop_phase == "review"
+
+    def test_raises_if_no_state(self, tmp_path) -> None:
+        with pytest.raises(FileNotFoundError):
+            set_loop_phase("no_such_run", "build", output_dir=tmp_path)

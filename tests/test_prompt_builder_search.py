@@ -430,3 +430,69 @@ class TestSelectBest:
         c1 = _candidate(prompt_version="v1", quality_score=0.9, cost=0.01)
         c2 = _candidate(prompt_version="v2", quality_score=0.85, cost=0.005)
         assert select_best([c1, c2]) == select_best([c2, c1])
+
+
+# ---------------------------------------------------------------------------
+# loop_phase field
+# ---------------------------------------------------------------------------
+
+
+class TestLoopPhase:
+    def test_default_loop_phase_is_build(self) -> None:
+        state = SearchState(
+            search_state_id="s1",
+            backend="anthropic",
+            stagnation_limit=3,
+            convergence_limit=5,
+        )
+        assert state.loop_phase == "build"
+
+    def test_loop_phase_accepts_review(self) -> None:
+        state = SearchState(
+            search_state_id="s1",
+            backend="anthropic",
+            stagnation_limit=3,
+            convergence_limit=5,
+            loop_phase="review",
+        )
+        assert state.loop_phase == "review"
+
+    def test_loop_phase_rejects_invalid(self) -> None:
+        with pytest.raises(ValidationError):
+            SearchState(
+                search_state_id="s1",
+                backend="anthropic",
+                stagnation_limit=3,
+                convergence_limit=5,
+                loop_phase="invalid",
+            )
+
+
+# ---------------------------------------------------------------------------
+# converged field on RoundSummary
+# ---------------------------------------------------------------------------
+
+
+class TestRoundSummaryConverged:
+    def test_converged_defaults_false(self) -> None:
+        rs = RoundSummary(
+            round=1,
+            candidates_evaluated=["v1"],
+            new_pareto_points=1,
+            front_size=1,
+            mutation_mode="targeted",
+            stagnation_count=0,
+        )
+        assert rs.converged is False
+
+    def test_converged_can_be_true(self) -> None:
+        rs = RoundSummary(
+            round=1,
+            candidates_evaluated=["v1"],
+            new_pareto_points=0,
+            front_size=1,
+            mutation_mode="targeted",
+            stagnation_count=5,
+            converged=True,
+        )
+        assert rs.converged is True
