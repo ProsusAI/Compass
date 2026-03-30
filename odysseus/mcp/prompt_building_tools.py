@@ -1,6 +1,8 @@
 """Prompt building tools — search state, candidates, eval, holdout filter."""
 
 import json
+from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
@@ -9,6 +11,7 @@ import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
+from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
     get_search_state,
@@ -17,8 +20,40 @@ from odysseus.agents.prompt_builder.search_ops import (
     register_candidate,
 )
 from odysseus.eval.backends.registry import BackendRegistry
-from odysseus.eval.models import ScoreReport
+from odysseus.eval.models import MetricConfig, OutputConfig, RunConfig, ScoreReport
 from odysseus.mcp.server import mcp
+
+
+def _build_pipeline_config(
+    state: SearchState,
+    prompt_version: str,
+    data_source: str,
+    run_id: str,
+    project_dir: Path,
+) -> RunConfig:
+    """Build a RunConfig from pipeline state — no YAML file needed."""
+    metrics: list[MetricConfig] = [MetricConfig(name="accuracy")]
+    if state.primary_metric_name:
+        metric_name = state.primary_metric_name.split("/")[0]
+        if metric_name != "accuracy":
+            params = {}
+            if "/" in state.primary_metric_name:
+                params["average"] = state.primary_metric_name.split("/", 1)[1]
+            metrics.append(MetricConfig(name=metric_name, params=params))
+
+    eval_dir = project_dir / "outputs" / run_id / "eval"
+    output = OutputConfig(
+        results_path=str(eval_dir / "results.jsonl"),
+        report_path=str(eval_dir / "report.json"),
+    )
+
+    return RunConfig(
+        backend=state.backend,
+        prompt_version=prompt_version,
+        data_source=data_source,
+        metrics=metrics,
+        output=output,
+    )
 
 
 @mcp.tool()
@@ -97,7 +132,7 @@ async def run_eval(
     ctx: Context,
     prompt_version: str,
     data_source: str,
-    backend: str,
+    backend: str = "",
     config_path: str = "outputs/run_config.yaml",
     run_id: str | None = None,
 ) -> str:
@@ -106,14 +141,10 @@ async def run_eval(
     Args:
         prompt_version: Prompt version identifier (e.g. "v3", "latest").
         data_source: Path to the JSONL dataset file.
-        backend: Backend label matching a profile in backends/ directory.
-        config_path: Path to YAML config with metrics, concurrency, retry,
-                     and output settings. Defaults to "outputs/run_config.yaml".
-        run_id: Pipeline run identifier for the optimization loop. When
-                provided and the loop is at round 0 with no history,
-                returns an action_required response instead of running
-                the eval, signalling the orchestrator to collect
-                backend configuration first.
+        backend: Backend label. Optional for pipeline runs (resolved from search state).
+        config_path: Path to YAML config. Ignored for pipeline runs.
+        run_id: Pipeline run identifier. When provided, config is built
+                from pipeline state instead of reading a YAML file.
 
     Returns:
         JSON object with report_path and results_path pointing to
@@ -121,6 +152,8 @@ async def run_eval(
         object on first run.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+
+    run_config: RunConfig | None = None
     if run_id is not None:
         check_artifacts(
             project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
@@ -129,9 +162,9 @@ async def run_eval(
             hint="Complete routing analysis and dataset split first.",
         )
 
-    # Pre-flight: on first run in loop, signal backend setup needed
-    if run_id is not None:
         state = get_search_state(run_id=run_id)
+
+        # Pre-flight: on first run in loop, signal backend setup needed
         if state.round == 0 and len(state.round_history) == 0:
             registry = BackendRegistry.from_directory(project_dir / "backends")
             return json.dumps(
@@ -142,16 +175,28 @@ async def run_eval(
                 }
             )
 
+        # Build config from pipeline state
+        run_config = _build_pipeline_config(
+            state=state,
+            prompt_version=prompt_version,
+            data_source=data_source,
+            run_id=run_id,
+            project_dir=project_dir,
+        )
+
     agent = EvalRunnerAgent()
-    result = await agent.run(
-        {
-            "prompt_version": prompt_version,
-            "data_source": data_source,
-            "backend": backend,
-            "config_path": config_path,
-            "run_id": run_id,
-        }
-    )
+    context: dict[str, Any] = {
+        "prompt_version": prompt_version,
+        "data_source": data_source,
+        "backend": run_config.backend if run_config else backend,
+        "run_id": run_id,
+    }
+    if run_config is not None:
+        context["run_config"] = run_config
+    else:
+        context["config_path"] = config_path
+
+    result = await agent.run(context)
 
     if "error" in result:
         err = result["error"]

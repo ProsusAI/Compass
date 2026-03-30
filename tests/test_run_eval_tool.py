@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.agents.prompt_builder.search import SearchState
+from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
 
@@ -306,3 +306,59 @@ async def test_run_eval_no_search_state_id_skips_preflight() -> None:
     parsed = json.loads(result)
     assert "action_required" not in parsed
     assert "report_path" in parsed
+
+
+# ---------------------------------------------------------------------------
+# Pipeline config building
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_eval_pipeline_builds_config_from_state(tmp_path: Path) -> None:
+    """Pipeline run (run_id set) builds RunConfig from search state, no YAML needed."""
+    run_id = "test-cfg"
+    _setup_run_eval_guard(tmp_path, run_id=run_id)
+
+    state = SearchState(
+        search_state_id=run_id,
+        backend="anthropic",
+        primary_metric_name="f1/macro",
+        round=1,
+        round_history=[RoundSummary(round=1, candidates_evaluated=["v1"], new_pareto_points=1, front_size=1, mutation_mode="targeted", stagnation_count=0, converged=False)],
+    )
+    score_report = _stub_score_report(
+        report_path=str(tmp_path / "outputs" / run_id / "eval" / "report.json"),
+        results_path=str(tmp_path / "outputs" / run_id / "eval" / "results.jsonl"),
+    )
+
+    with (
+        patch(GET_SEARCH_STATE, return_value=state),
+        patch(AGENT_RUN, new_callable=AsyncMock) as mock_run,
+        patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+    ):
+        mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
+
+        result = await run_eval(
+            ctx=None,
+            prompt_version="v1",
+            data_source="data/dev.jsonl",
+            run_id=run_id,
+        )
+
+    parsed = json.loads(result)
+    assert "report_path" in parsed
+
+    context = mock_run.call_args.args[0]
+    assert "run_config" in context
+    assert context["run_config"].backend == "anthropic"
+    assert any(m.name == "f1" for m in context["run_config"].metrics)
+    assert run_id in context["run_config"].output.results_path
+
+
+@pytest.mark.asyncio
+async def test_run_eval_backend_optional_for_pipeline() -> None:
+    """run_eval can be called without backend when run_id is provided."""
+    import inspect
+    sig = inspect.signature(run_eval)
+    param = sig.parameters["backend"]
+    assert param.default is not inspect.Parameter.empty, "backend should have a default"
