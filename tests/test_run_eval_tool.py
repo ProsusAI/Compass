@@ -19,6 +19,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
+from odysseus.mcp.prompt_building_tools import _build_pipeline_config
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
@@ -362,3 +363,104 @@ async def test_run_eval_backend_optional_for_pipeline() -> None:
     sig = inspect.signature(run_eval)
     param = sig.parameters["backend"]
     assert param.default is not inspect.Parameter.empty, "backend should have a default"
+
+
+# ---------------------------------------------------------------------------
+# Standalone run_eval context forwarding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_eval_standalone_forwards_backend_and_config() -> None:
+    """Standalone run_eval (no run_id) passes backend and config_path to agent."""
+    score_report = _stub_score_report()
+
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
+        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
+    ):
+        mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
+
+        await run_eval(
+            ctx=None,
+            prompt_version="v5",
+            data_source="data/new.jsonl",
+            backend="tool-backend",
+            config_path="custom/config.yaml",
+        )
+
+    context = mock_run.call_args.args[0]
+    assert context["backend"] == "tool-backend"
+    assert context["config_path"] == "custom/config.yaml"
+    assert "run_config" not in context
+
+
+# ---------------------------------------------------------------------------
+# _build_pipeline_config helper
+# ---------------------------------------------------------------------------
+
+
+class TestBuildPipelineConfig:
+    """Tests for _build_pipeline_config helper."""
+
+    def test_default_metric_when_no_primary(self, tmp_path: Path) -> None:
+        """No primary_metric_name → just accuracy."""
+        state = SearchState(
+            search_state_id="r1", backend="anthropic", primary_metric_name=None
+        )
+        config = _build_pipeline_config(
+            state=state, prompt_version="v1", data_source="d.jsonl",
+            run_id="r1", project_dir=tmp_path,
+        )
+        assert len(config.metrics) == 1
+        assert config.metrics[0].name == "accuracy"
+
+    def test_primary_metric_with_slash(self, tmp_path: Path) -> None:
+        """primary_metric_name='f1/macro' → accuracy + f1 with params."""
+        state = SearchState(
+            search_state_id="r1", backend="anthropic", primary_metric_name="f1/macro"
+        )
+        config = _build_pipeline_config(
+            state=state, prompt_version="v1", data_source="d.jsonl",
+            run_id="r1", project_dir=tmp_path,
+        )
+        assert len(config.metrics) == 2
+        names = [m.name for m in config.metrics]
+        assert "accuracy" in names
+        assert "f1" in names
+        f1_metric = next(m for m in config.metrics if m.name == "f1")
+        assert f1_metric.params == {"average": "macro"}
+
+    def test_primary_metric_accuracy_no_duplicate(self, tmp_path: Path) -> None:
+        """primary_metric_name='accuracy' → just one accuracy metric."""
+        state = SearchState(
+            search_state_id="r1", backend="anthropic", primary_metric_name="accuracy"
+        )
+        config = _build_pipeline_config(
+            state=state, prompt_version="v1", data_source="d.jsonl",
+            run_id="r1", project_dir=tmp_path,
+        )
+        assert len(config.metrics) == 1
+        assert config.metrics[0].name == "accuracy"
+
+    def test_output_paths_scoped_to_run(self, tmp_path: Path) -> None:
+        """Output paths are under outputs/<run_id>/eval/."""
+        state = SearchState(
+            search_state_id="r1", backend="anthropic"
+        )
+        config = _build_pipeline_config(
+            state=state, prompt_version="v1", data_source="d.jsonl",
+            run_id="r1", project_dir=tmp_path,
+        )
+        assert "r1/eval/results.jsonl" in config.output.results_path
+        assert "r1/eval/report.json" in config.output.report_path
+
+    def test_backend_from_state(self, tmp_path: Path) -> None:
+        """Backend comes from search state."""
+        state = SearchState(
+            search_state_id="r1", backend="openai"
+        )
+        config = _build_pipeline_config(
+            state=state, prompt_version="v1", data_source="d.jsonl",
+            run_id="r1", project_dir=tmp_path,
+        )
+        assert config.backend == "openai"
