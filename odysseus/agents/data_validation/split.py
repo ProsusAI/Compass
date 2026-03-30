@@ -64,7 +64,7 @@ def stratified_split(
     for ex in examples:
         strata[ex.expected.route].append(ex)
 
-    dataset_hash = _compute_dataset_hash(examples)
+    dataset_hash = compute_dataset_hash(examples)
     rng = random.Random(dataset_hash)
 
     dev: list[Example] = []
@@ -105,7 +105,7 @@ def _build_result(
     singleton_strata_count: int = 0,
 ) -> tuple[list[Example], list[Example], SplitReport]:
     """Construct the split result with report."""
-    dataset_hash = _compute_dataset_hash(all_examples)
+    dataset_hash = compute_dataset_hash(all_examples)
 
     dev_ids = {ex.id for ex in dev}
 

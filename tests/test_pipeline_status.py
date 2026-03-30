@@ -193,8 +193,8 @@ class TestSubagentInstruction:
         assert "get_search_state_tool" in tools
         assert "run_eval" in tools
 
-    def test_stage5_build_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
-        """Stage 5 with no search state file -> defaults to build phase -> Prompt Builder."""
+    def test_stage5_no_search_state_defaults_to_review_phase(self, tmp_path: Path) -> None:
+        """Stage 5 with no search state file -> defaults to review phase -> Review Agent (cold-start)."""
         _setup_through_stage4(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
@@ -203,10 +203,9 @@ class TestSubagentInstruction:
         assert "</HARD_STOP>" in instr
         assert "<stage_system_prompt>" in instr
         assert "</stage_system_prompt>" in instr
-        assert "odysseus_prompt_builder" in instr
-        assert "get_pipeline_status" in instr
-        assert "register_candidate_tool" in instr
-        assert "run_eval" in instr
+        assert "odysseus_review_agent" in instr
+        assert "build_review_briefing_tool" in instr
+        assert "record_directive_outcomes_tool" in instr
 
     def test_stage5_review_phase_has_subagent_instruction(self, tmp_path: Path) -> None:
         """Stage 5 with loop_phase=review -> Review Agent instruction."""
@@ -248,6 +247,10 @@ class TestSubagentInstruction:
     def test_stage5_build_phase_available_tools(self, tmp_path: Path) -> None:
         """Build phase tools: eval tools present, review tools absent."""
         _setup_through_stage4(tmp_path, "r1")
+        # Explicitly set loop_phase to build
+        search = tmp_path / "r1" / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
         for tool in [
@@ -338,9 +341,9 @@ class TestStage5DynamicHardStop:
         assert "register_candidate_tool" not in result["available_tools"]
         assert "run_eval" not in result["available_tools"]
 
-    def test_no_search_state_defaults_to_build_phase(self, tmp_path: Path) -> None:
-        """Stage 5 before any search state exists: treat as build phase."""
+    def test_no_search_state_defaults_to_review_phase(self, tmp_path: Path) -> None:
+        """Stage 5 before any search state exists: defaults to review phase (cold-start)."""
         _setup_through_stage4(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 5
-        assert "odysseus_prompt_builder" in result["subagent_instruction"]
+        assert "odysseus_review_agent" in result["subagent_instruction"]
