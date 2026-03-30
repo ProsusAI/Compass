@@ -212,6 +212,10 @@ docs/superpowers/
 # Integration test outputs (generated at runtime)
 tests/fixtures/integration/outputs/
 
+# Local MCP / Claude Code config
+mcp.json
+.claude/settings.*
+
 # Pipeline runtime artifacts (created by `odysseus init` / MCP runs)
 backends/
 configs/
