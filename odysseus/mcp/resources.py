@@ -16,7 +16,7 @@ async def input_clarification_skill() -> str:
 @mcp.resource("odysseus://agents/input/defaults")
 async def input_defaults() -> str:
     """Default values and override mechanism for optional fields."""
-    return _load_text("odysseus/agents/user_input_defaults.md")
+    return _load_text("odysseus/agents/user_input/defaults.md")
 
 
 @mcp.resource("odysseus://agents/backend-setup/clarification-skill")

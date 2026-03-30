@@ -2,6 +2,7 @@
 
 Subdirectories:
   pipeline/          — status detection and artifact guards
+  user_input/        — input report constants and status handling
   data_validation/   — format detection, field mapping, quality checks
   routing_analysis/  — rationale models, vocabulary registry, validation, split
   prompt_builder/    — search state, candidate management, holdout filtering
@@ -9,7 +10,6 @@ Subdirectories:
 
 Root-level modules:
   base.py            — BaseAgent abstract interface
-  user_input_report.py — Input report constants
   eval_runner.py     — EvalRunnerAgent (cross-cutting)
 """
 
@@ -104,14 +104,14 @@ from odysseus.agents.routing_analysis import (
     validate_deterministic,
     validate_rationale_card_set,
 )
-from odysseus.agents.user_input_report import (
+from odysseus.agents.user_input.report import (
     CONTEXT_KEY as USER_INPUT_REPORT_CONTEXT_KEY,
 )
-from odysseus.agents.user_input_report import (
+from odysseus.agents.user_input.report import (
     STATUS_PROCEED,
     STATUS_PROCEED_WITH_DEFAULTS,
 )
-from odysseus.agents.user_input_report import (
+from odysseus.agents.user_input.report import (
     read_status as read_user_input_report_status,
 )
 

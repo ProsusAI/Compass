@@ -21,7 +21,7 @@ graph TD
 
 | Agent | Type | Module / Prompt | Status | Reads from Context | Writes to Context |
 |---|---|---|---|---|---|
-| User Input | LLM-driven | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md), [`odysseus/agents/user_input_report.py`](../odysseus/agents/user_input_report.py) | Done | (user conversation) | `validated_input_report_path` |
+| User Input | LLM-driven | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md), [`odysseus/agents/user_input/report.py`](../odysseus/agents/user_input/report.py) | Done | (user conversation) | `validated_input_report_path` |
 | Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path` |
 | Routing Analysis | LLM-driven | [`odysseus/agents/routing_analysis/models.py`](../odysseus/agents/routing_analysis/models.py), [`odysseus/agents/routing_analysis/checks.py`](../odysseus/agents/routing_analysis/checks.py), [`odysseus/agents/routing_analysis/registry.py`](../odysseus/agents/routing_analysis/registry.py), [`odysseus/agents/routing_analysis/split.py`](../odysseus/agents/routing_analysis/split.py) | Done | `validated_input_report_path`, `data_quality_report`, `routing_context`, `dataset_path` | `dev_rationale_card_set_path`, `dev_jsonl_path`, `vocabulary_registry_path`, `split_report_path`, `routing_context` (passthrough), `holdout_rationale_card_set_path`, `holdout_jsonl_path` |
 | Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `config_path` | `eval_score_report` |
@@ -171,7 +171,7 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 | `odysseus://agents/prompt-builder/conventions-openai` | OpenAI GPT-5 conventions and cookbook patterns for routing prompts | [`odysseus/agents/prompt_builder_conventions_openai.md`](../odysseus/agents/prompt_builder_conventions_openai.md) |
 | `odysseus://agents/prompt-builder/conventions-{provider}/{model_family}` | Model-specific conventions addendum (resource template) — returns empty if no addendum exists | `odysseus/agents/prompt_builder_conventions_{provider}_{model_family}.md` |
 | `odysseus://agents/input/clarification-skill` | Structured clarification skill — conversational strategy for the input agent | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
-| `odysseus://agents/input/defaults` | Default values and override mechanism for optional fields | [`odysseus/agents/user_input_defaults.md`](../odysseus/agents/user_input_defaults.md) |
+| `odysseus://agents/input/defaults` | Default values and override mechanism for optional fields | [`odysseus/agents/user_input/defaults.md`](../odysseus/agents/user_input/defaults.md) |
 | `odysseus://agents/data-validation/format-spec` | Data format specification (THP-80) | [`odysseus/agents/data_validation_format.md`](../odysseus/agents/data_validation_format.md) |
 | `odysseus://agents/data-validation/output-spec` | Output format specification (THP-81) | [`odysseus/agents/data_validation_output.md`](../odysseus/agents/data_validation_output.md) |
 | `odysseus://agents/routing-analysis/classify-example-skill` | Classify-example skill for annotation | [`odysseus/skills/classify-example/SKILL.md`](../odysseus/skills/classify-example/SKILL.md) |
@@ -188,7 +188,8 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 |---|---|
 | `odysseus/` | Main Python package: MCP server, agents, eval engine, prompt manager |
 | `odysseus/mcp/` | MCP server package: `server.py` (app + stage registry), `*_tools.py` (per-stage tools), `resources.py`, `prompts.py` |
-| `odysseus/agents/` | Root-level modules: `base.py`, `user_input_report.py`, `eval_runner.py`; stage subdirectories below |
+| `odysseus/agents/` | Root-level modules: `base.py`, `eval_runner.py`; stage subdirectories below |
+| `odysseus/agents/user_input/` | User input: input report contract (`report.py`), context/defaults/taxonomy/template resources |
 | `odysseus/agents/pipeline/` | Pipeline guards (`guards.py`) and status detection (`status.py`) |
 | `odysseus/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform |
 | `odysseus/agents/routing_analysis/` | Routing analysis: rationale models, card checks, registry, stratified split |

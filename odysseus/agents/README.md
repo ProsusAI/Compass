@@ -14,6 +14,7 @@ Two layers:
 | Subdirectory | Pipeline stage | Contents |
 |---|---|---|
 | [`pipeline/`](pipeline/) | Cross-stage | `status.py` — artifact-based stage detection, subagent instructions; `guards.py` — entry/exit guard helpers |
+| [`user_input/`](user_input/) | Stage 1 — User Input | `report.py` — `CONTEXT_KEY`, status constants, `read_status()`; plus `context.md`, `defaults.md`, `taxonomy.md`, `report_template.md` resources |
 | [`data_validation/`](data_validation/) | Stage 2 — Data Validation | `checks.py` (schema/volume validation), `detect.py` (format detection), `transform.py` (column mapping) |
 | [`routing_analysis/`](routing_analysis/) | Stage 3 — Routing Analysis & Split | `models.py` (RationaleCard, VocabularyRegistry, RoutingContext), `checks.py` (card validation), `checks_deterministic.py`, `registry.py` (seed/save/prune/merge), `split.py` (stratified split) |
 | [`prompt_builder/`](prompt_builder/) | Stages 5 & 6 build phase — Prompt Building | `search_ops.py` (search state, Pareto ops, round management), `search.py` (SearchState model), `holdout_filter.py`; plus `best_practices.md`, `conventions_*.md` resources |
@@ -34,7 +35,6 @@ data_validation → routing_analysis → prompt_builder ↔ review
 | Module | Description |
 |--------|-------------|
 | [`base.py`](base.py) | `BaseAgent` abstract base class (`name` property, `run(context)` async method) |
-| [`user_input_report.py`](user_input_report.py) | Contract for the User Input Agent's output: `CONTEXT_KEY`, status constants, `read_status()` |
 | [`eval_runner.py`](eval_runner.py) | `EvalRunnerAgent` — the one code-driven agent; orchestrates a full eval run and returns `ScoreReport` |
 
 ---
