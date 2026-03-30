@@ -25,6 +25,7 @@ from odysseus.agents.prompt_builder.search import (
     SearchState,
     update_pareto_front,
 )
+from odysseus.agents.review.models import LoopSignal
 from odysseus.project_dir import get_project_dir
 
 # ---------------------------------------------------------------------------
@@ -60,6 +61,26 @@ def _load_state(run_id: str, output_dir: Path) -> SearchState:
     if not path.exists():
         raise FileNotFoundError(f"Search state not found: {path}")
     return SearchState.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _loop_signal_path(run_id: str, output_dir: Path) -> Path:
+    return output_dir / run_id / "search" / "loop_signal.json"
+
+
+def _save_loop_signal(run_id: str, signal: LoopSignal, output_dir: Path) -> None:
+    path = _loop_signal_path(run_id, output_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(signal.model_dump_json(indent=2), encoding="utf-8")
+
+
+def _consume_loop_signal(run_id: str, output_dir: Path) -> LoopSignal | None:
+    """Read and delete the loop signal file (consume-once semantics)."""
+    path = _loop_signal_path(run_id, output_dir)
+    if not path.exists():
+        return None
+    signal = LoopSignal.model_validate_json(path.read_text(encoding="utf-8"))
+    path.unlink()
+    return signal
 
 
 def _save_pending(
@@ -312,6 +333,18 @@ def advance_round(
 
     # Check convergence
     converged = new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
+    new_convergence_limit = state.convergence_limit
+
+    # Apply Review Agent loop signal (if present)
+    signal = _consume_loop_signal(run_id, output_dir)
+    if signal is not None and signal.action == "refine":
+        if signal.suggested_budget is not None and signal.suggested_budget > 0:
+            new_stagnation_count = 0
+            new_convergence_limit = max(signal.suggested_budget, state.stagnation_limit + 1)
+            # Re-check: only max_rounds is a hard cap
+            converged = new_round >= state.max_rounds
+        if signal.suggested_mutation_mode is not None:
+            new_mutation_mode = signal.suggested_mutation_mode
 
     candidates_evaluated = [c.prompt_version for c in pending]
 
@@ -332,6 +365,7 @@ def advance_round(
             "pareto_front": new_front,
             "round_history": [*state.round_history, summary],
             "stagnation_count": new_stagnation_count,
+            "convergence_limit": new_convergence_limit,
             "mutation_mode": new_mutation_mode,
             "converged": converged,
             "loop_phase": "build" if converged else "review",

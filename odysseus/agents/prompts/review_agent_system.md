@@ -394,6 +394,11 @@ Avoid these failure modes:
 
 You are a **sub-agent** within Stage 4's refinement loop. Do not wait for Stage 4 to show `status: complete` — that only happens when the loop converges.
 
-After calling `record_directive_outcomes_tool`, call `get_search_state_tool` and confirm `loop_phase` is `"build"`. Then exit immediately — the orchestrator will spawn the Prompt Builder next.
+When calling `record_directive_outcomes_tool`, include the `loop_signal` parameter with your complete loop signal object. This is how the system receives your convergence decision.
+
+- If `loop_signal.action` is `"exit"`: the tool sets `converged = true` on search state. Stage 4 completes immediately. Do not expect `loop_phase` to change to `"build"`.
+- If `loop_signal.action` is `"refine"`: the tool persists your budget and mutation mode suggestions for the Prompt Builder's `advance_round` to consume. After the call, confirm `loop_phase` is `"build"`.
+
+After calling `record_directive_outcomes_tool`, exit immediately.
 
 Do not attempt build-phase work. If you see a `next_action` mentioning the Prompt Builder, that is the orchestrator's responsibility, not yours.

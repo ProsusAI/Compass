@@ -6,6 +6,8 @@ import pytest
 
 from odysseus.agents.prompt_builder.search_ops import (
     _load_pending,
+    _loop_signal_path,
+    _save_loop_signal,
     advance_round,
     get_search_state,
     init_search_state,
@@ -13,6 +15,7 @@ from odysseus.agents.prompt_builder.search_ops import (
     register_candidate,
     set_loop_phase,
 )
+from odysseus.agents.review.models import LoopSignal
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -411,3 +414,92 @@ class TestSetLoopPhase:
     def test_raises_if_no_state(self, tmp_path) -> None:
         with pytest.raises(FileNotFoundError):
             set_loop_phase("no_such_run", "build", output_dir=tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# advance_round + loop_signal integration
+# ---------------------------------------------------------------------------
+
+
+class TestAdvanceRoundLoopSignal:
+    def test_refine_signal_resets_stagnation(self, tmp_path) -> None:
+        """A refine signal with suggested_budget prevents convergence by resetting stagnation."""
+        # convergence_limit=5, stagnation_limit=3 — would converge at stagnation_count=5
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path, stagnation_limit=3, convergence_limit=5)
+        _register_and_score("r1", "v1", 0.9, 0.01, tmp_path)
+        advance_round("r1", output_dir=tmp_path)
+        # 4 stagnating rounds → stagnation_count=4, one away from convergence
+        for i in range(2, 6):
+            _register_and_score("r1", f"stag-{i}", 0.1, 10.0, tmp_path)
+            advance_round("r1", output_dir=tmp_path)
+        state = get_search_state("r1", output_dir=tmp_path)
+        assert state.stagnation_count == 4
+        assert not state.converged
+
+        # Write refine signal with budget extension
+        _save_loop_signal("r1", LoopSignal(action="refine", reason="untried mutations", suggested_budget=3), tmp_path)
+
+        # Next stagnating round would normally hit convergence_limit=5
+        _register_and_score("r1", "stag-6", 0.1, 10.0, tmp_path)
+        summary = advance_round("r1", output_dir=tmp_path)
+        assert not summary.converged
+        assert summary.stagnation_count == 0
+        state = get_search_state("r1", output_dir=tmp_path)
+        assert state.convergence_limit == 4  # max(suggested_budget=3, stagnation_limit+1=4)
+
+    def test_refine_signal_overrides_mutation_mode(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path)
+        _register_and_score("r1", "v1", 0.9, 0.01, tmp_path)
+        advance_round("r1", output_dir=tmp_path)
+
+        _save_loop_signal(
+            "r1",
+            LoopSignal(action="refine", reason="diversity collapse", suggested_mutation_mode="exploratory"),
+            tmp_path,
+        )
+
+        _register_and_score("r1", "v2", 0.95, 0.005, tmp_path)
+        summary = advance_round("r1", output_dir=tmp_path)
+        assert summary.mutation_mode == "exploratory"
+
+    def test_refine_signal_consumed_once(self, tmp_path) -> None:
+        """Signal file is deleted after advance_round consumes it."""
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path)
+        _register_and_score("r1", "v1", 0.9, 0.01, tmp_path)
+        advance_round("r1", output_dir=tmp_path)
+
+        _save_loop_signal(
+            "r1", LoopSignal(action="refine", reason="test", suggested_mutation_mode="exploratory"), tmp_path
+        )
+        assert _loop_signal_path("r1", tmp_path).exists()
+
+        _register_and_score("r1", "v2", 0.95, 0.005, tmp_path)
+        advance_round("r1", output_dir=tmp_path)
+        assert not _loop_signal_path("r1", tmp_path).exists()
+
+    def test_max_rounds_hard_cap_not_overridable(self, tmp_path) -> None:
+        """max_rounds is a hard cap — refine signal cannot prevent it."""
+        init_search_state(
+            "anthropic", run_id="r1", output_dir=tmp_path, max_rounds=2, stagnation_limit=3, convergence_limit=5
+        )
+        _register_and_score("r1", "v1", 0.9, 0.01, tmp_path)
+        advance_round("r1", output_dir=tmp_path)
+
+        _save_loop_signal("r1", LoopSignal(action="refine", reason="keep going", suggested_budget=10), tmp_path)
+
+        # Round 2 = max_rounds → must converge regardless of signal
+        _register_and_score("r1", "v2", 0.95, 0.005, tmp_path)
+        summary = advance_round("r1", output_dir=tmp_path)
+        assert summary.converged
+
+    def test_no_signal_file_uses_mechanical_logic(self, tmp_path) -> None:
+        """Without a signal file, advance_round behaves identically to before."""
+        init_search_state("anthropic", run_id="r1", output_dir=tmp_path, stagnation_limit=2, convergence_limit=3)
+        _register_and_score("r1", "v1", 0.9, 0.01, tmp_path)
+        advance_round("r1", output_dir=tmp_path)
+        # 3 stagnating rounds → converges mechanically
+        for i in range(2, 5):
+            _register_and_score("r1", f"stag-{i}", 0.1, 10.0, tmp_path)
+            summary = advance_round("r1", output_dir=tmp_path)
+        assert summary.converged
+        assert summary.stagnation_count == 3

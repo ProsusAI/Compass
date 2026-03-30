@@ -6,12 +6,17 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-import odysseus.project_dir as _project_dir_mod
+from odysseus.agents.prompt_builder.search import SearchState
+from odysseus.agents.prompt_builder.search_ops import (
+    _load_state,
+    _save_loop_signal,
+    _save_state,
+)
 from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase as _set_loop_phase,
 )
-from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.mcp.server import mcp
+from odysseus.project_dir import resolve_project_dir as _resolve_project_dir
 
 
 @mcp.tool()
@@ -54,7 +59,7 @@ async def build_review_briefing_tool(
     from odysseus.agents.review.preprocessor import build_review_briefing
     from odysseus.prompts.manager import FilePromptManager
 
-    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
 
     # Load search state; cold start (no loop initialised yet) gets a bare default
@@ -139,30 +144,59 @@ async def record_directive_outcomes_tool(
     ctx: Context,
     run_id: str,
     outcomes: list[dict[str, Any]],
+    loop_signal: dict[str, Any] | None = None,
     output_dir: str = "outputs",
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Record the outcomes of prior Review Agent directives.
 
+    Also accepts the Review Agent's loop_signal to control search convergence.
+    When loop_signal.action is "exit", the search loop is terminated immediately
+    (converged=true). When "refine", the signal is persisted for advance_round
+    to consume (budget extensions, mutation mode overrides).
+
     Args:
         run_id: Pipeline run identifier.
         outcomes: List of DirectiveOutcome dicts to record.
+        loop_signal: Optional LoopSignal dict from the Review Agent.
         output_dir: Output directory (default "outputs").
 
     Returns:
-        JSON object with recorded count and new total.
+        JSON object with recorded count, new total, and loop_signal status.
     """
-    from odysseus.agents.review.models import DirectiveOutcome
+    import contextlib
+
+    from odysseus.agents.review.models import DirectiveOutcome, LoopSignal
     from odysseus.agents.review.ops import load_directive_history, save_directive_history
 
-    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
     parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
     existing = load_directive_history(run_id, output_dir=out)
     save_directive_history(run_id, existing + parsed, output_dir=out)
 
-    # Transition search loop to build phase so orchestrator spawns Prompt Builder next
-    import contextlib
+    result: dict[str, Any] = {
+        "recorded": len(parsed),
+        "total": len(existing) + len(parsed),
+    }
 
+    # Handle loop signal from Review Agent
+    if loop_signal is not None:
+        parsed_signal = LoopSignal.model_validate(loop_signal)
+
+        if parsed_signal.action == "exit":
+            # Terminate the loop — set converged=true, skip build phase
+            with contextlib.suppress(FileNotFoundError):
+                state = _load_state(run_id, out)
+                updated = state.model_copy(update={"converged": True})
+                _save_state(run_id, updated, out)
+            result["loop_signal_applied"] = "exit"
+            return json.dumps(result)
+
+        # action == "refine": persist signal for advance_round to consume
+        _save_loop_signal(run_id, parsed_signal, out)
+        result["loop_signal_applied"] = "refine"
+
+    # Transition search loop to build phase so orchestrator spawns Prompt Builder next
     with contextlib.suppress(FileNotFoundError):
         _set_loop_phase(run_id, "build", output_dir=out)
-    return json.dumps({"recorded": len(parsed), "total": len(existing) + len(parsed)})
+    return json.dumps(result)

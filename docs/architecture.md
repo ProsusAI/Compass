@@ -96,7 +96,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; accepts `run_id` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
 | `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
 | `build_review_briefing_tool` | Planned | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py) |
-| `record_directive_outcomes_tool` | Planned | Persist directive outcome tracking after the Review Agent emits a ReviewResult | [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py) |
+| `record_directive_outcomes_tool` | Implemented | Persist directive outcomes and apply the Review Agent's `loop_signal` (early exit or budget/mode overrides) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–6, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
 | `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
