@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from odysseus.agents.data_ingestion_detect import _parse_csv, detect_and_parse
+from odysseus.agents.data_validation.detect import _parse_csv, detect_and_parse
 
 
 class TransformResult(BaseModel):

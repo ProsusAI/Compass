@@ -1,6 +1,6 @@
 """Agent implementations for the Odysseus pipeline."""
 
-from odysseus.agents.data_validation_checks import (
+from odysseus.agents.data_validation.checks import (
     DataQualityReport,
     LabelDistribution,
     QueryLengthDistribution,

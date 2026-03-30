@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from odysseus.agents.data_validation_checks import (
+from odysseus.agents.data_validation.checks import (
     DataQualityReport,
     LabelDistribution,
     QueryLengthDistribution,
