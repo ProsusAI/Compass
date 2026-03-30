@@ -159,6 +159,10 @@ async def _filtered_list_tools() -> list[MCPTool]:
 
 
 mcp.list_tools = _filtered_list_tools  # type: ignore[assignment]
+# Re-register with the low-level server — ``_setup_handlers`` already ran
+# during ``__init__`` and captured the *original* bound method, so the
+# monkey-patch above alone is not enough.
+mcp._mcp_server.list_tools()(_filtered_list_tools)  # type: ignore[attr-defined]
 
 
 def create_app() -> FastMCP:
