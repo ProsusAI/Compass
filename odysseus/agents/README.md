@@ -17,7 +17,7 @@ Two layers:
 | [`user_input/`](user_input/) | Stage 1 — User Input | `report.py` — `CONTEXT_KEY`, status constants, `read_status()`; plus `context.md`, `defaults.md`, `taxonomy.md`, `report_template.md` resources |
 | [`data_validation/`](data_validation/) | Stage 2 — Data Validation | `checks.py` (schema/volume validation), `detect.py` (format detection), `transform.py` (column mapping), `split.py` (stratified split) |
 | [`prompt_builder/`](prompt_builder/) | Stage 4 build phase — Prompt Building | `search_ops.py` (search state, Pareto ops, round management), `search.py` (SearchState model), `holdout_filter.py`; plus `best_practices.md`, `conventions_*.md` resources |
-| [`review/`](review/) | Stage 5 review phase — Review Agent | `models.py` (ReviewBriefing, ReviewResult), `preprocessor.py` (pre-processing), `ops.py` (persistence) |
+| [`review/`](review/) | Stage 4 review phase — Review Agent | `models.py` (ReviewBriefing, ReviewResult), `preprocessor.py` (pre-processing), `ops.py` (persistence) |
 
 ### Cross-stage dependency direction
 
@@ -49,7 +49,7 @@ One system prompt per LLM-driven agent:
 | [`prompts/data_validation_system.md`](prompts/data_validation_system.md) | Data Validation Agent (Stage 2) |
 | [`prompts/backend_setup_system.md`](prompts/backend_setup_system.md) | Backend Setup Agent (Stage 3) |
 | [`prompts/prompt_builder_system.md`](prompts/prompt_builder_system.md) | Prompt Builder Agent (Stage 4 build) |
-| [`prompts/review_agent_system.md`](prompts/review_agent_system.md) | Review Agent (Stage 5 review) |
+| [`prompts/review_agent_system.md`](prompts/review_agent_system.md) | Review Agent (Stage 4 review) |
 | [`prompts/eval_runner_system.md`](prompts/eval_runner_system.md) | Eval Runner Agent context |
 
 ---

@@ -23,7 +23,9 @@ async def build_review_briefing_tool(
     holdout_jsonl_path: str = "",
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 5: Eval Loop -- Review] Build a ReviewBriefing for the Review Agent by pre-processing all numerical data.
+    """[Stage 4: Refinement Loop -- Review] Build a ReviewBriefing for the Review Agent.
+
+    Pre-processes all numerical data.
 
     Loads search state, score reports, prompt texts, mutation log, and directive
     history, then computes candidate comparisons, per-class recall, diversity
@@ -135,7 +137,7 @@ async def record_directive_outcomes_tool(
     outcomes: list[dict[str, Any]],
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 5: Eval Loop -- Review] Record the outcomes of prior Review Agent directives.
+    """[Stage 4: Refinement Loop -- Review] Record the outcomes of prior Review Agent directives.
 
     Args:
         run_id: Pipeline run identifier.

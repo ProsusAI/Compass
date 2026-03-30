@@ -66,7 +66,7 @@ async def init_search_state_tool(
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
 ) -> str:
-    """[Stage 6: Eval Loop] Initialise a new prompt-builder search state.
+    """[Stage 4: Refinement Loop] Initialise a new prompt-builder search state.
 
     Args:
         run_id: Pipeline run identifier.
@@ -83,7 +83,7 @@ async def init_search_state_tool(
     check_artifacts(
         project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
         stage=4,
-        stage_name="Search Init",
+        stage_name="Refinement Loop",
         hint="Complete routing analysis and dataset split first.",
     )
 
@@ -104,7 +104,7 @@ async def register_candidate_tool(
     prompt_version: str,
     parent_version: str | None = None,
 ) -> str:
-    """[Stage 6: Eval Loop] Register a new candidate prompt version for the current search round.
+    """[Stage 4: Refinement Loop] Register a new candidate prompt version for the current search round.
 
     Args:
         run_id: Pipeline run identifier.
@@ -136,7 +136,7 @@ async def run_eval(
     config_path: str = "outputs/run_config.yaml",
     run_id: str | None = None,
 ) -> str:
-    """[Stage 6: Eval Loop] Run an evaluation of a prompt version against a dataset.
+    """[Stage 4: Refinement Loop] Run an evaluation of a prompt version against a dataset.
 
     Args:
         prompt_version: Prompt version identifier (e.g. "v3", "latest").
@@ -157,8 +157,8 @@ async def run_eval(
     if run_id is not None:
         check_artifacts(
             project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
-            stage=5,
-            stage_name="Prompt Evaluation",
+            stage=4,
+            stage_name="Refinement Loop",
             hint="Complete routing analysis and dataset split first.",
         )
 
@@ -220,7 +220,7 @@ async def record_eval_result_tool(
     quality_score: float,
     cost: float,
 ) -> str:
-    """[Stage 6: Eval Loop] Record evaluation results for a pending candidate.
+    """[Stage 4: Refinement Loop] Record evaluation results for a pending candidate.
 
     Args:
         run_id: Pipeline run identifier.
@@ -247,7 +247,7 @@ async def record_eval_result_tool(
 
 @mcp.tool()
 async def advance_round_tool(run_id: str) -> str:
-    """[Stage 6: Eval Loop] Advance the search loop by one round.
+    """[Stage 4: Refinement Loop] Advance the search loop by one round.
 
     Processes all pending candidates, updates the Pareto front, adjusts
     stagnation tracking, and checks for convergence.
@@ -269,7 +269,7 @@ async def advance_round_tool(run_id: str) -> str:
 
 @mcp.tool()
 async def get_search_state_tool(run_id: str) -> str:
-    """[Stage 6: Eval Loop] Load and return the current search state.
+    """[Stage 4: Refinement Loop] Load and return the current search state.
 
     Args:
         run_id: Pipeline run identifier.
@@ -291,7 +291,7 @@ async def filter_holdout_dataset_tool(
     exclude_ids: list[str],
     run_id: str,
 ) -> str:
-    """[Stage 7: Holdout Validation] Filter a holdout JSONL dataset by removing rows with specified IDs.
+    """[Stage 5: Holdout Validation] Filter a holdout JSONL dataset by removing rows with specified IDs.
 
     Removes few-shot examples from the holdout set to prevent data
     contamination before final evaluation.
@@ -307,7 +307,7 @@ async def filter_holdout_dataset_tool(
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     check_artifacts(
         project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
-        stage=7,
+        stage=5,
         stage_name="Holdout Validation",
         hint="Complete routing analysis and dataset split first.",
     )

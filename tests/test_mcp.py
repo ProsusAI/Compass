@@ -461,7 +461,6 @@ class TestGetPipelineStatus:
         from unittest.mock import patch
 
         import odysseus.mcp.orchestrator_tools as orch_mod
-
         from odysseus.mcp import get_pipeline_status
 
         with (
@@ -472,16 +471,15 @@ class TestGetPipelineStatus:
             await get_pipeline_status(ctx=None, run_id=None)
 
     async def test_get_pipeline_status_stage7_not_enriched(self, tmp_path: Path):
-        """get_pipeline_status does not enrich subagent_instruction for stage 7 (None)."""
+        """get_pipeline_status does not enrich subagent_instruction for stage 6 (None)."""
         import odysseus.mcp.orchestrator_tools as orch_mod
-
         from odysseus.mcp import get_pipeline_status
 
         stage7_result = {
             "run_id": "test-run",
             "stages": [],
-            "current_stage": 7,
-            "current_stage_name": "Converged",
+            "current_stage": 6,
+            "current_stage_name": "Final Report",
             "next_action": "The eval loop has converged. Run holdout validation.",
             "available_tools": ["run_holdout_eval", "filter_holdout_dataset_tool"],
             "activate_prompt": None,
