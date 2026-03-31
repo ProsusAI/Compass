@@ -555,3 +555,41 @@ class TestStage5FinalReport:
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert all(s["status"] == "complete" for s in result["stages"])
         assert "Pipeline complete" in result["next_action"]
+
+
+class TestDiscoveredRuns:
+    """get_pipeline_status includes discovered_runs with per-run summaries."""
+
+    def test_discovered_runs_empty_when_no_outputs(self, tmp_path: Path) -> None:
+        result = get_pipeline_status(tmp_path, run_id=None)
+        assert result.get("discovered_runs") == []
+
+    def test_discovered_runs_lists_all_runs(self, tmp_path: Path) -> None:
+        _setup_stage1(tmp_path, "run_a")
+        _setup_stage1(tmp_path, "run_b")
+        result = get_pipeline_status(tmp_path, run_id=None)
+        run_ids = [r["run_id"] for r in result["discovered_runs"]]
+        assert "run_a" in run_ids
+        assert "run_b" in run_ids
+
+    def test_discovered_runs_has_converged_prompt_false_for_incomplete_stage4(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_stage4_v1_done(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
+        assert entry["has_converged_prompt"] is False
+
+    def test_discovered_runs_has_converged_prompt_true_for_converged(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_stage4_converged(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
+        assert entry["has_converged_prompt"] is True
+
+    def test_discovered_runs_includes_current_stage(self, tmp_path: Path) -> None:
+        _setup_stage1(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1")
+        entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
+        assert entry["current_stage"] == 2

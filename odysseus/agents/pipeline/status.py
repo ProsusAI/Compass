@@ -237,6 +237,41 @@ def discover_runs(outputs_dir: Path) -> list[str]:
     return [run_id for _, run_id in runs]
 
 
+def _run_summary_for(run_id: str, outputs_dir: Path, project_dir: Path) -> dict:
+    """Return a minimal summary dict for a single run_id.
+
+    Used to populate the discovered_runs array in get_pipeline_status responses.
+    """
+    run_dir = outputs_dir / run_id
+
+    s1_status, _, _ = _check_stage(
+        {"stage": 1, "name": "Input Report", "subfolder": "input", "files": ["input_report.md"]},
+        run_dir,
+        project_dir,
+    )
+    if s1_status != "complete":
+        return {"run_id": run_id, "current_stage": 1, "has_converged_prompt": False}
+
+    s2_status, _, _ = _check_stage_2(run_dir)
+    if s2_status != "complete":
+        return {"run_id": run_id, "current_stage": 2, "has_converged_prompt": False}
+
+    s3_status, _, _ = _check_stage_3(project_dir, run_dir)
+    if s3_status != "complete":
+        return {"run_id": run_id, "current_stage": 3, "has_converged_prompt": False}
+
+    s4_status, _, _ = _check_stage_4(run_dir)
+    has_converged = s4_status == "complete"
+    if not has_converged:
+        return {"run_id": run_id, "current_stage": 4, "has_converged_prompt": False}
+
+    s5_status, _, _ = _check_stage_5(run_dir)
+    if s5_status != "complete":
+        return {"run_id": run_id, "current_stage": 5, "has_converged_prompt": True}
+
+    return {"run_id": run_id, "current_stage": 6, "has_converged_prompt": True}
+
+
 def get_pipeline_status(
     outputs_dir: Path,
     run_id: str | None,
@@ -264,6 +299,7 @@ def get_pipeline_status(
                 "available_tools": tools,
                 "activate_prompt": prompts[0] if prompts else None,
                 "subagent_instruction": subagent_instruction,
+                "discovered_runs": [],
             }
         run_id = runs[0]
 
@@ -326,6 +362,10 @@ def get_pipeline_status(
     if subagent_instruction:
         subagent_instruction = subagent_instruction.format(run_id=run_id or "new")
 
+    # Populate discovered_runs for all known runs
+    all_run_ids = discover_runs(outputs_dir)
+    discovered_runs = [_run_summary_for(rid, outputs_dir, project_dir) for rid in all_run_ids]
+
     return {
         "run_id": run_id,
         "stages": stage_results,
@@ -335,6 +375,7 @@ def get_pipeline_status(
         "available_tools": tools,
         "activate_prompt": prompts[0] if prompts else None,
         "subagent_instruction": subagent_instruction,
+        "discovered_runs": discovered_runs,
     }
 
 
