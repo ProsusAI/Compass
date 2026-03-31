@@ -33,63 +33,13 @@ You perform the final holdout evaluation and generate a comprehensive report sum
 
 ## Report template
 
-Write the report using this structure. Use the briefing JSON as your data source. Do not invent numbers -- use only what the briefing provides. Where the briefing has `null` or empty values, omit that section gracefully.
+Follow the report structure defined in `final_report_template.md`. Use it as the skeleton — fill in data from the briefing JSON. Omit sections where data is null.
 
-```
-# Routing Prompt Optimization Report
+Additional rendering instructions:
 
-## Executive Summary
-3-5 sentence overview: what was the routing problem, what was achieved, and the key recommendation.
-
-## Problem Definition
-Summarise from the problem_summary field. Include what is being routed, the available routes, and the optimization objective.
-
-## Dataset Overview
-Table with total examples, dev/holdout split counts, and route distribution.
-
-## Optimization Process
-- Number of rounds and convergence reason.
-- Embed the quality progression chart: ![Quality Progression](charts/quality_progression.png)
-- Embed the cost progression chart: ![Cost Progression](charts/cost_progression.png)
-- What mutation strategies were effective vs ineffective.
-- Final mutation mode and stagnation count.
-
-## Results
-
-### Best Prompt
-Version, quality score, cost, and round introduced.
-
-### Dev vs Holdout Comparison
-Table comparing each metric between dev and holdout evaluation. Flag large deltas (>5%) as potential overfitting.
-
-### Per-Class Performance
-Table with route, precision, recall, F1, and support from holdout.
-
-### Pareto Front
-Embed the Pareto front chart: ![Pareto Front](charts/pareto_front.png)
-Table listing all Pareto front members with version, quality, cost, round.
-
-## Oracle Analysis
-If available: how much of the theoretical cost reduction was captured vs the oracle optimum. If not available, omit this section.
-
-## Error Analysis
-Error rate on holdout. Table of sample misrouted examples (ID, input preview, expected route, predicted route). Identify common failure patterns from the samples.
-
-## Strengths & Weaknesses
-Synthesise from all data above:
-- What the prompt does well (high-recall routes, cost savings captured).
-- Where it struggles (low-recall routes, overfitting signals, error patterns).
-
-## Recommended Prompt
-
-The full text of the best prompt, in a fenced code block.
-
-## Usage Guide
-- How to deploy this prompt (what model, what input format).
-- Expected accuracy and cost characteristics.
-- When to re-run the optimization (data drift, new routes, performance degradation).
-- Limitations and caveats.
-```
+- **Confusion matrix:** Render `error_analysis.confusion_matrix` as a proper matrix table with expected routes as rows and predicted routes as columns. The briefing provides a flat list of ConfusionEntry objects with (expected, predicted, count) — pivot these into the matrix format.
+- **Baseline comparison:** If `baseline_comparison` is present in the briefing, render the comparison table showing always-cheapest, always-capable, and optimized prompt strategies with their quality and cost. Add a contextual sentence positioning the optimized prompt between the two baselines.
+- **Cross-link:** The Recommended Prompt section must include this callout: `> See [Usage Guide](#usage-guide) for deployment instructions and limitations.`
 
 ## Metric interpretation
 
@@ -100,7 +50,7 @@ The briefing contains `quality_reduction` and `cost_reduction` fields. These are
 
 For cost reduction, negative is good (cheaper). For quality reduction, positive is good (better quality). Present these clearly in the report — do not confuse the sign direction. When reporting, prefer natural language like "quality improved by X%" or "quality decreased by X%" rather than raw signed numbers.
 
-The same sign convention applies to `oracle_quality_reduction` and `oracle_cost_reduction`.
+The same sign convention applies to `oracle_cost_reduction` and `oracle_quality_reduction` which appear as a brief note in the Optimization Process section.
 
 ## Guidelines
 
