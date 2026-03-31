@@ -112,31 +112,6 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
             }
         )
     )
-    (run_dir / "search" / "mutation_log.json").write_text(
-        json.dumps(
-            [
-                {
-                    "mutation_type": "example_swap",
-                    "child_version": "v2",
-                    "parent_version": "v1",
-                    "description": "swapped example",
-                },
-                {
-                    "mutation_type": "rule_edit",
-                    "child_version": "v3",
-                    "parent_version": "v2",
-                    "description": "edited rule",
-                },
-                {
-                    "mutation_type": "rule_add",
-                    "child_version": "v4",
-                    "parent_version": "v1",
-                    "description": "added rule",
-                },
-            ]
-        )
-    )
-
     (run_dir / "prompts").mkdir(parents=True)
     (run_dir / "prompts" / "v1.txt").write_text("Route to haiku for simple requests.")
     (run_dir / "prompts" / "v2.txt").write_text("Route based on complexity analysis.")
@@ -196,7 +171,7 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
     # Holdout eval results with some misrouted
     holdout_results = [
         json.dumps(
-            {"meta": "__meta__", "prompt_version": "v3", "backend": "anthropic", "data_source": "holdout.jsonl"}
+            {"__meta__": "run_fingerprint", "prompt_version": "v3", "backend": "anthropic", "data_source": "holdout.jsonl"}  # noqa: E501
         ),
     ]
     for i in range(20):

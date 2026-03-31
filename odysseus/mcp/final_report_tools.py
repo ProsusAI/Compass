@@ -1,6 +1,7 @@
 """Final Report tools — holdout evaluation and report generation."""
 
 import json
+import logging
 
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
@@ -307,8 +308,6 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
             baseline_path = project_dir / "outputs" / run_id / "holdout_eval" / "baseline_comparison.json"
             baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
     except Exception:
-        import logging
-
         logging.getLogger(__name__).debug("Failed to compute baselines", exc_info=True)
 
     return json.dumps(

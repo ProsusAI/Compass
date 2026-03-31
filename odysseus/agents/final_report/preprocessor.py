@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 
 from odysseus.agents.final_report.models import (
@@ -350,8 +351,6 @@ def _extract_per_class_performance(
 
 def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
     """Build confusion matrix from holdout eval results."""
-    from collections import Counter
-
     examples_by_id: dict[str, dict] = {}
     holdout_path = run_dir / "analysis" / "holdout.jsonl"
     try:
@@ -372,7 +371,7 @@ def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
             if not stripped:
                 continue
             row = json.loads(stripped)
-            if row.get("meta") == "__meta__":
+            if row.get("__meta__"):
                 continue
             eval_results.append(row)
     except Exception:
