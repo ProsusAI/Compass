@@ -165,6 +165,7 @@ Each stage system prompt (stages 1–5) includes mandatory `## Entry verificatio
 | `odysseus://agents/backend-setup/clarification-skill` | Structured clarification skill for backend setup | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
 | `odysseus://agents/backend-setup/taxonomy` | Backend field taxonomy (blocking/non-blocking) | [`odysseus/agents/backend_setup_taxonomy.md`](../odysseus/agents/backend_setup_taxonomy.md) |
 | `odysseus://agents/backend-setup/defaults` | Backend defaults and pricing resolution | [`odysseus/agents/backend_setup_defaults.md`](../odysseus/agents/backend_setup_defaults.md) |
+| `odysseus://agents/final-report/template` | Markdown skeleton for the final report — section order and placeholders | [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) |
 
 ## 6. Directory Guide
 

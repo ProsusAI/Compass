@@ -33,13 +33,18 @@ You perform the final holdout evaluation and generate a comprehensive report sum
 
 ## Report template
 
-Follow the report structure defined in `final_report_template.md`. Use it as the skeleton — fill in data from the briefing JSON. Omit sections where data is null.
+Read the resource `odysseus://agents/final-report/template` — it contains the complete report skeleton with section headings and placeholders. Fill in each section with data from the briefing JSON.
+
+Rules:
+- Do NOT reorder sections. The template uses an inverted pyramid: actionable content first, supporting detail after the `---` separator.
+- Do NOT add sections or headings not in the template.
+- Do NOT merge sections (e.g., do not combine Per-Class Performance into Results).
+- Omit a section entirely (including its heading) only when all its data fields are null in the briefing.
 
 Additional rendering instructions:
 
-- **Confusion matrix:** Render `error_analysis.confusion_matrix` as a proper matrix table with expected routes as rows and predicted routes as columns. The briefing provides a flat list of ConfusionEntry objects with (expected, predicted, count) — pivot these into the matrix format.
-- **Baseline comparison:** If `baseline_comparison` is present in the briefing, render the comparison table showing always-cheapest, always-capable, and optimized prompt strategies with their quality and cost. Add a contextual sentence positioning the optimized prompt between the two baselines.
-- **Cross-link:** The Recommended Prompt section must include this callout: `> See [Usage Guide](#usage-guide) for deployment instructions and limitations.`
+- **Confusion matrix:** The briefing provides `error_analysis.confusion_matrix` as a flat list of ConfusionEntry objects with (expected, predicted, count). Pivot these into the matrix table format shown in the template, with expected routes as rows and predicted routes as columns.
+- **Baseline comparison:** If `baseline_comparison` is present, add a contextual sentence positioning the optimized prompt between the always-cheapest and always-capable baselines.
 
 ## Metric interpretation
 

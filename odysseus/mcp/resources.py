@@ -112,3 +112,9 @@ async def model_specific_conventions(provider: str, model_family: str) -> str:
 async def review_agent_guidelines() -> str:
     """Review criteria and evaluation priority reference for the Review Agent."""
     return _load_text("odysseus/agents/prompts/review_agent_system.md")
+
+
+@mcp.resource("odysseus://agents/final-report/template")
+async def final_report_template() -> str:
+    """Markdown skeleton for the final report — section order and placeholders."""
+    return _load_text("odysseus/agents/prompts/final_report_template.md")

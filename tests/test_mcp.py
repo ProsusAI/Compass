@@ -212,6 +212,20 @@ class TestInputAgentResources:
         assert len(content) > 0
         assert "Default" in content
 
+    async def test_final_report_template_registered(self):
+        """Final report template resource is listed."""
+        resources = await mcp.list_resources()
+        uris = [str(r.uri) for r in resources]
+        assert "odysseus://agents/final-report/template" in uris
+
+    async def test_final_report_template_returns_content(self):
+        """Final report template resource returns non-empty content."""
+        from odysseus.mcp import final_report_template
+
+        content = await final_report_template()
+        assert len(content) > 0
+        assert "Executive Summary" in content
+
 
 class TestSubmitInputReport:
     """Tests for the submit_input_report stub tool."""
