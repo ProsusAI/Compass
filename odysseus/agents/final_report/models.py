@@ -11,7 +11,7 @@ class DatasetOverview(BaseModel):
     total_examples: int
     dev_count: int
     holdout_count: int
-    route_distribution: dict[str, int]
+    route_distribution: dict[str, dict[str, int]]
     routes: list[str]
     dimensions: list[str]
 

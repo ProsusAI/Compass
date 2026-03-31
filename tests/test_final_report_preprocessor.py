@@ -34,7 +34,15 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
     (run_dir / "analysis" / "holdout.jsonl").write_text("\n".join(json.dumps(e) for e in holdout_examples))
     (run_dir / "analysis" / "split_report.json").write_text(
         json.dumps(
-            {"dev_count": 80, "holdout_count": 20, "route_distribution": {"haiku": 60, "sonnet": 30, "opus": 10}}
+            {
+                "dev_count": 80,
+                "holdout_count": 20,
+                "route_distribution": {
+                    "haiku": {"dev": 48, "holdout": 12},
+                    "sonnet": {"dev": 24, "holdout": 6},
+                    "opus": {"dev": 8, "holdout": 2},
+                },
+            }
         )
     )
 
