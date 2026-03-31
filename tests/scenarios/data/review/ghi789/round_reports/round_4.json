@@ -6,6 +6,7 @@
       "oracle_cost_reduction": 0.003,
       "oracle_quality_reduction": 0.15,
       "cost_reduction": 0.0018275,
+      "cost_reduction_with_overhead": 0.0015533749999999999,
       "quality_reduction": 0.11544,
       "recall/haiku": 0.91,
       "recall/sonnet": 0.79,

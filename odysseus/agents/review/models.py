@@ -122,6 +122,7 @@ class OracleMetrics(BaseModel):
     oracle_cost_reduction: float
     oracle_quality_reduction: float
     candidate_cost_captured: float | None = None
+    candidate_cost_captured_with_overhead: float | None = None
     candidate_quality_captured: float | None = None
 
 
@@ -135,7 +136,7 @@ class ReviewBriefing(BaseModel):
     diversity_metrics: DiversityMetrics
     diminishing_returns: DiminishingReturns
     mutation_history: MutationHistory
-    oracle_metrics: OracleMetrics
+    oracle_metrics: OracleMetrics | None = None
     prompt_versions: dict[str, str]
     holdout_examples: list[ExampleSummary]
 
