@@ -74,6 +74,22 @@ class ErrorAnalysis(BaseModel):
     confusion_matrix: list[ConfusionEntry]
 
 
+class BaselineResult(BaseModel):
+    """Performance of a single baseline strategy."""
+
+    strategy: str
+    route: str
+    quality_score: float
+    cost: float
+
+
+class BaselineComparison(BaseModel):
+    """Comparison of optimized prompt against naive baselines."""
+
+    baselines: list[BaselineResult]
+    optimized: BaselineResult
+
+
 class ChartPaths(BaseModel):
     """Paths to generated chart images (relative to run_dir)."""
 
@@ -96,4 +112,5 @@ class FinalReportBriefing(BaseModel):
     eval_comparison: list[EvalMetricComparison]
     per_class_performance: list[PerClassPerformance]
     error_analysis: ErrorAnalysis
+    baseline_comparison: BaselineComparison | None = None
     charts: ChartPaths

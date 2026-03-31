@@ -13,6 +13,7 @@ import logging
 from pathlib import Path
 
 from odysseus.agents.final_report.models import (
+    BaselineComparison,
     ChartPaths,
     ConfusionEntry,
     DatasetOverview,
@@ -55,6 +56,7 @@ def build_final_report_briefing(
     eval_comparison = _build_eval_comparison(dev_report, holdout_report)
     per_class = _extract_per_class_performance(holdout_report)
     error_analysis = _build_error_analysis(run_dir)
+    baseline_comparison = _build_baseline_comparison(run_dir)
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
     backend_name = search_state.get("backend", "unknown") if search_state else "unknown"
@@ -71,6 +73,7 @@ def build_final_report_briefing(
         eval_comparison=eval_comparison,
         per_class_performance=per_class,
         error_analysis=error_analysis,
+        baseline_comparison=baseline_comparison,
         charts=charts,
     )
 
@@ -402,6 +405,23 @@ def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
         error_rate=round(errors / total, 4) if total > 0 else 0.0,
         confusion_matrix=confusion_matrix,
     )
+
+
+# ---------------------------------------------------------------------------
+# Baseline comparison
+# ---------------------------------------------------------------------------
+
+
+def _build_baseline_comparison(run_dir: Path) -> BaselineComparison | None:
+    """Load baseline comparison results computed during holdout eval."""
+    data = _load_json(run_dir / "holdout_eval" / "baseline_comparison.json")
+    if not data or not isinstance(data, dict):
+        return None
+    try:
+        return BaselineComparison(**data)
+    except Exception:
+        logger.debug("Could not parse baseline_comparison.json")
+        return None
 
 
 # ---------------------------------------------------------------------------

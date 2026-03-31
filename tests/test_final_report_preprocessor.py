@@ -358,3 +358,28 @@ class TestErrorAnalysis:
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         assert briefing.error_analysis.total_evaluated == 0
         assert briefing.error_analysis.confusion_matrix == []
+
+
+class TestBaselineComparison:
+    def test_loads_baseline_comparison(self, tmp_path: Path) -> None:
+        run_dir = _setup_minimal_run(tmp_path)
+        (run_dir / "holdout_eval" / "baseline_comparison.json").write_text(
+            json.dumps(
+                {
+                    "baselines": [
+                        {"strategy": "always_cheapest", "route": "haiku", "quality_score": 0.65, "cost": 0.1},
+                        {"strategy": "always_capable", "route": "opus", "quality_score": 0.95, "cost": 0.9},
+                    ],
+                    "optimized": {"strategy": "optimized_prompt", "route": "mixed", "quality_score": 0.88, "cost": 0.35},
+                }
+            )
+        )
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert briefing.baseline_comparison is not None
+        assert len(briefing.baseline_comparison.baselines) == 2
+        assert briefing.baseline_comparison.optimized.cost == 0.35
+
+    def test_missing_baseline_returns_none(self, tmp_path: Path) -> None:
+        run_dir = _setup_minimal_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert briefing.baseline_comparison is None
