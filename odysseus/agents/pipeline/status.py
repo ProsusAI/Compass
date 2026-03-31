@@ -162,14 +162,18 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
     5: (
         "The refinement loop has converged. Run holdout evaluation and generate the final report. "
         "REQUIRED: activate prompt 'odysseus_final_report' before calling any stage 5 tools.",
-        ["filter_holdout_dataset_tool", "run_holdout_eval", "build_final_report_briefing_tool", "save_final_report"],
+        [
+            "filter_holdout_dataset_tool", "list_pareto_candidates", "run_holdout_eval",
+            "build_final_report_briefing_tool", "save_final_report",
+        ],
         ["odysseus_final_report"],
         (
             "<HARD_STOP>\n"
             "You MUST NOT call any Stage 5 tools from the current context.\n\n"
             "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
             "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='final_report') BEFORE spawning the sub-agent.\n\n"
-            "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, run_holdout_eval, "
+            "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, "
+            "list_pareto_candidates, run_holdout_eval, "
             "build_final_report_briefing_tool, save_final_report\n"
             "Your tools: get_pipeline_status only\n\n"
             "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "

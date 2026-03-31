@@ -10,6 +10,7 @@ from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.agents.final_report.preprocessor import build_final_report_briefing
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
+from odysseus.agents.prompt_builder.search import select_best
 from odysseus.agents.prompt_builder.search_ops import get_search_state
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import ScoreReport
@@ -56,7 +57,57 @@ async def filter_holdout_dataset_tool(
 
 
 @mcp.tool()
-async def run_holdout_eval(ctx: Context, run_id: str) -> str:
+async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
+    """[Stage 5: Final Report] List all Pareto front candidates with dev-set metrics.
+
+    Returns the full Pareto front so the user can choose which prompt
+    version to evaluate on the holdout set.  The ``auto_selected`` field
+    indicates which version would be chosen automatically (highest
+    quality, lowest cost tiebreak).
+
+    Args:
+        run_id: Pipeline run identifier.
+
+    Returns:
+        JSON with candidates list, auto_selected version, and total count.
+    """
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    check_artifacts(
+        project_dir / "outputs" / run_id / "search" / "search_state.json",
+        stage=5,
+        stage_name="Final Report",
+        hint="The eval loop must converge first.",
+    )
+
+    state = get_search_state(run_id=run_id)
+    if not state.pareto_front:
+        raise ToolError("No Pareto front candidates found in search state.")
+
+    auto_version = select_best(state.pareto_front)
+
+    candidates = sorted(
+        [
+            {
+                "prompt_version": c.prompt_version,
+                "quality_score": c.quality_score,
+                "cost": c.cost,
+                "round_introduced": c.round_introduced,
+                "is_auto_selected": c.prompt_version == auto_version,
+            }
+            for c in state.pareto_front
+        ],
+        key=lambda c: (-c["quality_score"], c["cost"]),
+    )
+
+    return json.dumps({
+        "candidates": candidates,
+        "auto_selected": auto_version,
+        "total_candidates": len(candidates),
+    })
+
+
+@mcp.tool()
+async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str | None = None) -> str:
     """[Stage 5: Final Report] Run evaluation on the holdout split.
 
     Automatically selects the best prompt from the Pareto front (highest
@@ -66,6 +117,8 @@ async def run_holdout_eval(ctx: Context, run_id: str) -> str:
 
     Args:
         run_id: Pipeline run identifier.
+        prompt_version: Prompt version to evaluate. When omitted the best
+            Pareto front candidate is selected automatically.
 
     Returns:
         Serialized score report including the auto-selected prompt_version.
@@ -85,8 +138,16 @@ async def run_holdout_eval(ctx: Context, run_id: str) -> str:
     if not state.pareto_front:
         raise ToolError("No candidates on the Pareto front — cannot determine best prompt.")
 
-    best = max(state.pareto_front, key=lambda c: (c.quality_score, -c.cost))
-    prompt_version = best.prompt_version
+    # Resolve prompt version: auto-select or validate user choice
+    if prompt_version is None:
+        prompt_version = select_best(state.pareto_front)
+    else:
+        valid_versions = {c.prompt_version for c in state.pareto_front}
+        if prompt_version not in valid_versions:
+            raise ToolError(
+                f"Prompt version '{prompt_version}' is not on the Pareto front. "
+                f"Valid versions: {sorted(valid_versions)}"
+            )
 
     if not state.backend:
         registry = BackendRegistry.from_directory(project_dir / "backends")

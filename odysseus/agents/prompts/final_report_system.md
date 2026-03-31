@@ -20,17 +20,19 @@ You perform the final holdout evaluation and generate a comprehensive report sum
 ### Phase 1: Holdout evaluation
 
 1. Call `get_pipeline_status` to retrieve the `run_id`.
-2. Call `filter_holdout_dataset_tool` to remove few-shot examples from the holdout set, preventing data contamination. You need:
+2. Call `list_pareto_candidates` with the `run_id`. This returns all Pareto front candidates with their dev-set quality scores and costs, and indicates which version would be auto-selected.
+3. Present the candidates to the user as a table (version, quality score, cost, round introduced) and ask which prompt version they want to evaluate on the holdout set. Mention the auto-selected version. If the user says "auto", has no preference, or defers to your judgment, omit `prompt_version` in the next step.
+4. Call `filter_holdout_dataset_tool` to remove few-shot examples from the holdout set, preventing data contamination. You need:
    - `holdout_jsonl_path`: the path to `outputs/<run_id>/analysis/holdout.jsonl`
-   - `exclude_ids`: the IDs of examples used as few-shots in the best prompt. Read the prompt text or search state to identify these.
+   - `exclude_ids`: the IDs of examples used as few-shots in the chosen prompt. Read the prompt text or search state to identify these.
    - `run_id`: the pipeline run identifier.
-3. Call `run_holdout_eval` with the `run_id`. The tool automatically selects the best prompt from the Pareto front and runs the holdout evaluation. The response includes the `prompt_version` that was evaluated.
+5. Call `run_holdout_eval` with the `run_id` and optionally the chosen `prompt_version`. If the user chose a specific version, pass it; otherwise omit it for auto-selection. The tool hardcodes the holdout dataset path.
 
 ### Phase 2: Report generation
 
-4. Call `build_final_report_briefing_tool` with the `run_id`. This returns a structured JSON briefing with all metrics, comparisons, error analysis, and chart paths.
-5. Write a markdown report following the template below.
-6. Call `save_final_report` with the `run_id` and the full markdown report.
+6. Call `build_final_report_briefing_tool` with the `run_id`. This returns a structured JSON briefing with all metrics, comparisons, error analysis, and chart paths.
+7. Write a markdown report following the template below.
+8. Call `save_final_report` with the `run_id` and the full markdown report.
 
 ## Report template
 

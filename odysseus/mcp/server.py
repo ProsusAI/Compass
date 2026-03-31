@@ -74,6 +74,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
     ],
     "final_report": [
         "filter_holdout_dataset_tool",
+        "list_pareto_candidates",
         "run_holdout_eval",
         "build_final_report_briefing_tool",
         "save_final_report",
