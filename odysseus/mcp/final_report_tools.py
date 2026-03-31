@@ -284,6 +284,29 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
         raise ToolError(f"run_holdout_eval failed: [{err['category']}] {err['detail']}")
 
     score_report: ScoreReport = result[ScoreReport.CONTEXT_KEY]
+
+    # Compute and write baseline comparison
+    try:
+        holdout_jsonl_path = project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl"
+        holdout_text = holdout_jsonl_path.read_text(encoding="utf-8")
+        holdout_examples = [json.loads(line) for line in holdout_text.splitlines() if line.strip()]
+
+        results_path = project_dir / "outputs" / run_id / "holdout_eval" / "results.jsonl"
+        results_text = results_path.read_text(encoding="utf-8")
+        eval_result_rows = [
+            json.loads(line)
+            for line in results_text.splitlines()
+            if line.strip() and '"__meta__"' not in line
+        ]
+
+        baseline_data = _compute_baselines(holdout_examples, eval_result_rows)
+        if baseline_data:
+            baseline_path = project_dir / "outputs" / run_id / "holdout_eval" / "baseline_comparison.json"
+            baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
+    except Exception:
+        import logging
+        logging.getLogger(__name__).debug("Failed to compute baselines", exc_info=True)
+
     return json.dumps(
         {
             "prompt_version": prompt_version,
