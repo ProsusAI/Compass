@@ -181,3 +181,47 @@ async def complete_stage(ctx: Context, run_id: str) -> str:  # noqa: ARG001
         f"Stage '{previous}' completed for run {run_id}. "
         f"Returned to orchestrator scope."
     )
+
+
+@mcp.tool()
+async def initiate_rerun(
+    ctx: Context,
+    run_id: str,
+    source_prompt_version: str | None = None,
+) -> str:
+    """Initiate a rerun of a completed pipeline run with a different backend.
+
+    Only valid when Stage 4 has converged for the given run_id (a final prompt
+    version exists). This tool:
+    - Finds the best prompt version from the Pareto front (or uses source_prompt_version if provided)
+    - Renames search/search_state.json to search/search_state_original.json
+    - Writes outputs/<run_id>/rerun_config.json with mode="rerun" and new_backend=null
+
+    After this tool returns, proceed to Stage 3 to configure the new backend. The
+    pipeline will then route through a restructure-only Stage 4 (single eval round)
+    followed by Stage 5 for the final report.
+
+    Args:
+        run_id: Pipeline run identifier. Must have a converged Stage 4.
+        source_prompt_version: Optional override for which prompt version to rerun.
+            If None, the best candidate on the Pareto front is selected automatically
+            (highest quality, ties broken by lowest cost).
+
+    Returns:
+        JSON confirmation with source_prompt_version, original_backend, and instructions.
+    """
+    from odysseus.mcp._initiate_rerun import initiate_rerun_logic
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    outputs_dir = project_dir / "outputs"
+
+    try:
+        result = initiate_rerun_logic(
+            outputs_dir=outputs_dir,
+            run_id=run_id,
+            source_prompt_version=source_prompt_version,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        raise ToolError(str(e)) from e
+
+    return json.dumps(result, indent=2)
