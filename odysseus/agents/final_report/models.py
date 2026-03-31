@@ -69,22 +69,21 @@ class OracleAnalysis(BaseModel):
     candidate_quality_reduction: float | None = None
 
 
-class MisroutedExample(BaseModel):
-    """A single misrouted example from holdout evaluation."""
+class ConfusionEntry(BaseModel):
+    """Single cell in the confusion matrix."""
 
-    example_id: str
-    input_preview: str
-    expected_route: str
-    predicted_route: str
+    expected: str
+    predicted: str
+    count: int
 
 
-class ErrorSummary(BaseModel):
-    """Error analysis from holdout evaluation."""
+class ErrorAnalysis(BaseModel):
+    """Holdout error analysis with confusion matrix."""
 
     total_evaluated: int
     total_errors: int
     error_rate: float
-    misrouted_samples: list[MisroutedExample]
+    confusion_matrix: list[ConfusionEntry]
 
 
 class ChartPaths(BaseModel):
@@ -109,5 +108,5 @@ class FinalReportBriefing(BaseModel):
     eval_comparison: list[EvalMetricComparison]
     per_class_performance: list[PerClassPerformance]
     oracle_analysis: OracleAnalysis | None = None
-    error_summary: ErrorSummary
+    error_analysis: ErrorAnalysis
     charts: ChartPaths

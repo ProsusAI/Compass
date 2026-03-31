@@ -14,11 +14,11 @@ from pathlib import Path
 
 from odysseus.agents.final_report.models import (
     ChartPaths,
+    ConfusionEntry,
     DatasetOverview,
-    ErrorSummary,
+    ErrorAnalysis,
     EvalMetricComparison,
     FinalReportBriefing,
-    MisroutedExample,
     OptimizationJourney,
     OracleAnalysis,
     PerClassPerformance,
@@ -57,7 +57,7 @@ def build_final_report_briefing(
     eval_comparison = _build_eval_comparison(dev_report, holdout_report)
     per_class = _extract_per_class_performance(holdout_report)
     oracle_analysis = _extract_oracle_analysis(holdout_report)
-    error_summary = _build_error_summary(run_dir)
+    error_analysis = _build_error_analysis(run_dir)
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
     backend_name = search_state.get("backend", "unknown") if search_state else "unknown"
@@ -74,7 +74,7 @@ def build_final_report_briefing(
         eval_comparison=eval_comparison,
         per_class_performance=per_class,
         oracle_analysis=oracle_analysis,
-        error_summary=error_summary,
+        error_analysis=error_analysis,
         charts=charts,
     )
 
@@ -386,13 +386,12 @@ def _extract_oracle_analysis(holdout_report: dict | list | None) -> OracleAnalys
 # ---------------------------------------------------------------------------
 
 
-def _build_error_summary(run_dir: Path) -> ErrorSummary:
-    """Build error summary from holdout eval results."""
-    results_path = run_dir / "holdout_eval" / "results.jsonl"
-    holdout_path = run_dir / "analysis" / "holdout.jsonl"
+def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
+    """Build confusion matrix from holdout eval results."""
+    from collections import Counter
 
-    # Load holdout examples for expected routes and input text
     examples_by_id: dict[str, dict] = {}
+    holdout_path = run_dir / "analysis" / "holdout.jsonl"
     try:
         for line in holdout_path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
@@ -403,8 +402,8 @@ def _build_error_summary(run_dir: Path) -> ErrorSummary:
     except Exception:
         pass
 
-    # Load eval results
     eval_results: list[dict] = []
+    results_path = run_dir / "holdout_eval" / "results.jsonl"
     try:
         for line in results_path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
@@ -415,44 +414,40 @@ def _build_error_summary(run_dir: Path) -> ErrorSummary:
                 continue
             eval_results.append(row)
     except Exception:
-        return ErrorSummary(total_evaluated=0, total_errors=0, error_rate=0, misrouted_samples=[])
+        return ErrorAnalysis(total_evaluated=0, total_errors=0, error_rate=0.0, confusion_matrix=[])
 
-    total = len(eval_results)
-    misrouted: list[MisroutedExample] = []
+    if not eval_results:
+        return ErrorAnalysis(total_evaluated=0, total_errors=0, error_rate=0.0, confusion_matrix=[])
 
+    pairs: list[tuple[str, str]] = []
     for r in eval_results:
         eid = r.get("example_id", "")
+        ex = examples_by_id.get(eid, {})
+        expected = ex.get("expected", {}).get("route", "unknown")
         output = r.get("output")
         error = r.get("error")
-        ex = examples_by_id.get(eid, {})
-        expected_route = ex.get("expected", {}).get("route", "unknown")
-
         if error:
             predicted = "(error)"
         elif output:
             predicted = output.get("route", "(no route)")
         else:
             predicted = "(no output)"
+        pairs.append((expected, predicted))
 
-        if predicted != expected_route:
-            input_text = ex.get("input", "")
-            misrouted.append(
-                MisroutedExample(
-                    example_id=eid,
-                    input_preview=input_text[:200],
-                    expected_route=expected_route,
-                    predicted_route=predicted,
-                )
-            )
+    counts = Counter(pairs)
+    confusion_matrix = [
+        ConfusionEntry(expected=exp, predicted=pred, count=cnt)
+        for (exp, pred), cnt in sorted(counts.items())
+    ]
 
-    # Sample up to 10
-    samples = misrouted[:10]
+    total = len(pairs)
+    errors = sum(1 for exp, pred in pairs if exp != pred)
 
-    return ErrorSummary(
+    return ErrorAnalysis(
         total_evaluated=total,
-        total_errors=len(misrouted),
-        error_rate=round(len(misrouted) / total, 4) if total > 0 else 0,
-        misrouted_samples=samples,
+        total_errors=errors,
+        error_rate=round(errors / total, 4) if total > 0 else 0.0,
+        confusion_matrix=confusion_matrix,
     )
 
 

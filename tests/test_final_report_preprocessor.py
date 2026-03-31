@@ -287,13 +287,6 @@ class TestBuildFinalReportBriefing:
         assert briefing.oracle_analysis is not None
         assert briefing.oracle_analysis.oracle_cost_reduction == -0.40
 
-    def test_error_summary(self, tmp_path: Path) -> None:
-        run_dir = _setup_minimal_run(tmp_path)
-        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
-        assert briefing.error_summary.total_evaluated == 20
-        assert briefing.error_summary.total_errors == 3
-        assert len(briefing.error_summary.misrouted_samples) == 3
-
     def test_charts_generated(self, tmp_path: Path) -> None:
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
@@ -326,12 +319,12 @@ class TestGracefulDegradation:
         assert briefing.optimization_journey.mutation_type_counts == {}
 
     def test_missing_holdout_results(self, tmp_path: Path) -> None:
-        """Error summary works without holdout results.jsonl."""
+        """Error analysis works without holdout results.jsonl."""
         run_dir = _setup_minimal_run(tmp_path)
         (run_dir / "holdout_eval" / "results.jsonl").unlink()
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
-        assert briefing.error_summary.total_evaluated == 0
-        assert briefing.error_summary.total_errors == 0
+        assert briefing.error_analysis.total_evaluated == 0
+        assert briefing.error_analysis.total_errors == 0
 
     def test_missing_dev_report(self, tmp_path: Path) -> None:
         """Eval comparison is empty without dev report."""
@@ -347,3 +340,22 @@ class TestGracefulDegradation:
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         assert briefing.dataset_overview.dev_count == 80
         assert briefing.dataset_overview.holdout_count == 20
+
+
+class TestErrorAnalysis:
+    def test_confusion_matrix_computed(self, tmp_path: Path) -> None:
+        run_dir = _setup_minimal_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        ea = briefing.error_analysis
+        assert ea.total_evaluated == 20
+        assert ea.total_errors == 3
+        matrix_dict = {(e.expected, e.predicted): e.count for e in ea.confusion_matrix}
+        assert matrix_dict[("sonnet", "sonnet")] == 17
+        assert matrix_dict[("sonnet", "haiku")] == 3
+
+    def test_empty_results(self, tmp_path: Path) -> None:
+        run_dir = _setup_minimal_run(tmp_path)
+        (run_dir / "holdout_eval" / "results.jsonl").unlink()
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert briefing.error_analysis.total_evaluated == 0
+        assert briefing.error_analysis.confusion_matrix == []
