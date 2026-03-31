@@ -95,6 +95,17 @@ The full text of the best prompt, in a fenced code block.
 - Limitations and caveats.
 ```
 
+## Metric interpretation
+
+The briefing contains `quality_reduction` and `cost_reduction` fields. These are percentage changes computed as `(predicted − baseline) / baseline`:
+
+- **Negative values** mean a **decrease** (quality or cost went down compared to baseline).
+- **Positive values** mean an **increase** (quality or cost went up compared to baseline).
+
+For cost reduction, negative is good (cheaper). For quality reduction, positive is good (better quality). Present these clearly in the report — do not confuse the sign direction. When reporting, prefer natural language like "quality improved by X%" or "quality decreased by X%" rather than raw signed numbers.
+
+The same sign convention applies to `oracle_quality_reduction` and `oracle_cost_reduction`.
+
 ## Guidelines
 
 - Use tables for structured data. Use markdown tables, not code blocks.
