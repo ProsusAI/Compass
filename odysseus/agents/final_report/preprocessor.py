@@ -398,8 +398,7 @@ def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
 
     counts = Counter(pairs)
     confusion_matrix = [
-        ConfusionEntry(expected=exp, predicted=pred, count=cnt)
-        for (exp, pred), cnt in sorted(counts.items())
+        ConfusionEntry(expected=exp, predicted=pred, count=cnt) for (exp, pred), cnt in sorted(counts.items())
     ]
 
     total = len(pairs)

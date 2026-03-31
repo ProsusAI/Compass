@@ -291,6 +291,7 @@ class TestBuildFinalReportBriefing:
         assert (run_dir / briefing.charts.quality_progression).is_file()
         assert (run_dir / briefing.charts.pareto_front).is_file()
 
+
 class TestOptimizationJourneyUpdated:
     def test_no_mutation_fields(self, tmp_path: Path) -> None:
         from odysseus.agents.final_report.models import OptimizationJourney
@@ -370,7 +371,12 @@ class TestBaselineComparison:
                         {"strategy": "always_cheapest", "route": "haiku", "quality_score": 0.65, "cost": 0.1},
                         {"strategy": "always_capable", "route": "opus", "quality_score": 0.95, "cost": 0.9},
                     ],
-                    "optimized": {"strategy": "optimized_prompt", "route": "mixed", "quality_score": 0.88, "cost": 0.35},
+                    "optimized": {
+                        "strategy": "optimized_prompt",
+                        "route": "mixed",
+                        "quality_score": 0.88,
+                        "cost": 0.35,
+                    },
                 }
             )
         )
@@ -391,6 +397,7 @@ class TestSupportFromConfusionMatrix:
         run_dir = _setup_minimal_run(tmp_path)
         # Remove support/ keys from holdout report to simulate real compute_f1 output
         import json as _json
+
         report_path = run_dir / "holdout_eval" / "report.json"
         report = _json.loads(report_path.read_text())
         metrics = report["metrics"]

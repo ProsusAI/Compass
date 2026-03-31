@@ -183,16 +183,22 @@ async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
 
     marker_path = project_dir / "outputs" / run_id / "pareto_candidates_listed.json"
     marker_path.parent.mkdir(parents=True, exist_ok=True)
-    marker_path.write_text(json.dumps({
-        "candidates": [c["prompt_version"] for c in candidates],
-        "auto_selected": auto_version,
-    }))
+    marker_path.write_text(
+        json.dumps(
+            {
+                "candidates": [c["prompt_version"] for c in candidates],
+                "auto_selected": auto_version,
+            }
+        )
+    )
 
-    return json.dumps({
-        "candidates": candidates,
-        "auto_selected": auto_version,
-        "total_candidates": len(candidates),
-    })
+    return json.dumps(
+        {
+            "candidates": candidates,
+            "auto_selected": auto_version,
+            "total_candidates": len(candidates),
+        }
+    )
 
 
 @mcp.tool()
@@ -245,8 +251,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
     valid_versions = {c.prompt_version for c in state.pareto_front}
     if prompt_version not in valid_versions:
         raise ToolError(
-            f"Prompt version '{prompt_version}' is not on the Pareto front. "
-            f"Valid versions: {sorted(valid_versions)}"
+            f"Prompt version '{prompt_version}' is not on the Pareto front. Valid versions: {sorted(valid_versions)}"
         )
 
     if not state.backend:
@@ -294,9 +299,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
         results_path = project_dir / "outputs" / run_id / "holdout_eval" / "results.jsonl"
         results_text = results_path.read_text(encoding="utf-8")
         eval_result_rows = [
-            json.loads(line)
-            for line in results_text.splitlines()
-            if line.strip() and '"__meta__"' not in line
+            json.loads(line) for line in results_text.splitlines() if line.strip() and '"__meta__"' not in line
         ]
 
         baseline_data = _compute_baselines(holdout_examples, eval_result_rows)
@@ -305,6 +308,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
             baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
     except Exception:
         import logging
+
         logging.getLogger(__name__).debug("Failed to compute baselines", exc_info=True)
 
     return json.dumps(
