@@ -372,6 +372,73 @@ class TestStage3PricingValidation:
         assert result["stages"][2]["status"] == "complete"
 
 
+class TestStage3RerunMode:
+    """Stage 3 in rerun mode: checks specific new_backend instead of any-with-pricing."""
+
+    def _write_rerun_config(self, run_dir: Path, new_backend: str | None) -> None:
+        config = {
+            "mode": "rerun",
+            "source_prompt_version": "v3",
+            "original_backend": "anthropic",
+            "new_backend": new_backend,
+        }
+        (run_dir / "rerun_config.json").write_text(json.dumps(config))
+
+    def test_stage3_incomplete_when_new_backend_is_null(self, tmp_path: Path) -> None:
+        """rerun_config.json present but new_backend is null → Stage 3 incomplete."""
+        _setup_through_stage2(tmp_path, "r1")
+        # Add an existing (priced) backend that would satisfy normal Stage 3
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "backends" / "anthropic.yaml").write_text(
+            "model: claude-haiku-4-5\nprovider: anthropic\n"
+            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+            "pricing:\n"
+            "  input_cost_per_million_tokens: 0.80\n"
+            "  cached_cost_per_million_tokens: 0.08\n"
+            "  output_cost_per_million_tokens: 4.00\n"
+        )
+        self._write_rerun_config(tmp_path / "r1", new_backend=None)
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "incomplete"
+
+    def test_stage3_complete_when_new_backend_yaml_has_pricing(self, tmp_path: Path) -> None:
+        """rerun_config.json with new_backend set, that YAML has pricing → Stage 3 complete."""
+        _setup_through_stage2(tmp_path, "r1")
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "backends" / "openai.yaml").write_text(
+            "model: gpt-4o\nprovider: openai\n"
+            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+            "pricing:\n"
+            "  input_cost_per_million_tokens: 2.50\n"
+            "  cached_cost_per_million_tokens: 1.25\n"
+            "  output_cost_per_million_tokens: 10.00\n"
+        )
+        self._write_rerun_config(tmp_path / "r1", new_backend="openai")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "complete"
+
+    def test_stage3_incomplete_when_new_backend_yaml_missing_pricing(self, tmp_path: Path) -> None:
+        """rerun_config.json with new_backend set but that YAML lacks pricing → incomplete."""
+        _setup_through_stage2(tmp_path, "r1")
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "backends" / "openai.yaml").write_text(
+            "model: gpt-4o\nprovider: openai\n"
+            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+        )
+        self._write_rerun_config(tmp_path / "r1", new_backend="openai")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "incomplete"
+        assert result["stages"][2]["detail"] == "pricing_missing"
+
+    def test_stage3_incomplete_when_new_backend_yaml_does_not_exist(self, tmp_path: Path) -> None:
+        """rerun_config.json references a backend YAML that doesn't exist → incomplete."""
+        _setup_through_stage2(tmp_path, "r1")
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        self._write_rerun_config(tmp_path / "r1", new_backend="openai")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "incomplete"
+
+
 class TestStage5FinalReport:
     """Stage 5 (Final Report): holdout eval + report generation."""
 

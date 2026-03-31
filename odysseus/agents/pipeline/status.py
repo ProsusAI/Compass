@@ -357,7 +357,7 @@ def _check_stage(
     if stage_num == 2:
         return _check_stage_2(run_dir)
     if stage_num == 3:
-        return _check_stage_3(project_dir)
+        return _check_stage_3(project_dir, run_dir)
     if stage_num == 4:
         return _check_stage_4(run_dir)
     if stage_num == 5:
@@ -395,14 +395,37 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
     return "complete", artifacts, ""
 
 
-def _check_stage_3(project_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 3: Backend Configured — checks project_dir/backends/*.yaml.
+def _check_stage_3(project_dir: Path, run_dir: Path) -> tuple[str, list[str], str]:
+    """Stage 3: Backend Configured.
 
-    At least one backend must have valid pricing for the stage to be complete.
-    Malformed YAML files are silently skipped (treated as incomplete).
+    In normal mode: at least one backends/*.yaml must have valid pricing.
+    In rerun mode (rerun_config.json present): the specific new_backend named in
+    the config must have a YAML with valid pricing, and new_backend must be non-null.
     """
     from odysseus.eval.backends.profile import BackendProfile
 
+    rerun_config = _read_rerun_config(run_dir)
+
+    if rerun_config is not None:
+        # Rerun mode: new_backend must be explicitly set
+        new_backend = rerun_config.get("new_backend")
+        if not new_backend:
+            return "incomplete", [], ""
+
+        backends_dir = project_dir / "backends"
+        yaml_path = backends_dir / f"{new_backend}.yaml"
+        if not yaml_path.is_file():
+            return "incomplete", [str(yaml_path)], ""
+
+        try:
+            profile = BackendProfile.from_yaml(yaml_path)
+            if profile.pricing is not None:
+                return "complete", [str(yaml_path)], ""
+        except Exception:
+            pass
+        return "incomplete", [str(yaml_path)], "pricing_missing"
+
+    # Normal mode: any backend with pricing
     backends_dir = project_dir / "backends"
     if not backends_dir.is_dir():
         return "incomplete", [], ""
