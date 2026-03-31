@@ -350,10 +350,12 @@ class TestComputeOracleMetrics:
             oracle_cost_reduction=0.50,
             oracle_quality_reduction=0.10,
             candidate_cost_reduction=0.35,
+            candidate_cost_reduction_with_overhead=0.30,
             candidate_quality_reduction=0.085,
         )
         assert result.oracle_cost_reduction == 0.50
         assert result.candidate_cost_captured == pytest.approx(0.70)
+        assert result.candidate_cost_captured_with_overhead == pytest.approx(0.60)
         assert result.candidate_quality_captured == pytest.approx(0.85)
 
     def test_zero_oracle_returns_none(self) -> None:
@@ -361,9 +363,11 @@ class TestComputeOracleMetrics:
             oracle_cost_reduction=0.0,
             oracle_quality_reduction=0.0,
             candidate_cost_reduction=0.10,
+            candidate_cost_reduction_with_overhead=0.08,
             candidate_quality_reduction=0.05,
         )
         assert result.candidate_cost_captured is None
+        assert result.candidate_cost_captured_with_overhead is None
         assert result.candidate_quality_captured is None
 
     def test_partial_zero(self) -> None:
@@ -371,15 +375,16 @@ class TestComputeOracleMetrics:
             oracle_cost_reduction=0.50,
             oracle_quality_reduction=0.0,
             candidate_cost_reduction=0.25,
+            candidate_cost_reduction_with_overhead=0.20,
             candidate_quality_reduction=0.0,
         )
         assert result.candidate_cost_captured == pytest.approx(0.50)
+        assert result.candidate_cost_captured_with_overhead == pytest.approx(0.40)
         assert result.candidate_quality_captured is None
 
-    def test_missing_metrics_raises(self) -> None:
-        """compute_oracle_metrics_from_report should raise if keys are absent."""
-        with pytest.raises(ValueError, match="oracle"):
-            compute_oracle_metrics_from_report(metrics={})
+    def test_missing_metrics_returns_none(self) -> None:
+        """compute_oracle_metrics_from_report returns None if keys are absent."""
+        assert compute_oracle_metrics_from_report(metrics={}) is None
 
 
 def _make_search_state(**overrides: Any) -> SearchState:
@@ -427,6 +432,7 @@ class TestBuildReviewBriefing:
                     "oracle_cost_reduction": 0.50,
                     "oracle_quality_reduction": 0.10,
                     "cost_reduction": 0.35,
+                    "cost_reduction_with_overhead": 0.30,
                     "quality_reduction": 0.085,
                 },
             ),
@@ -439,6 +445,7 @@ class TestBuildReviewBriefing:
                     "oracle_cost_reduction": 0.50,
                     "oracle_quality_reduction": 0.10,
                     "cost_reduction": 0.20,
+                    "cost_reduction_with_overhead": 0.15,
                     "quality_reduction": 0.05,
                 },
             ),

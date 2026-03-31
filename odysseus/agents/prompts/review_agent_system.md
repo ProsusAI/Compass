@@ -34,6 +34,28 @@ When you are dispatched for the first time — round 0, no search state exists y
 
 After the cold-start phase, the normal evaluation-and-review loop begins from round 1.
 
+### Writing effective example content
+
+The `reasoning` and `exclusions` you write will be formatted by the Prompt Builder into provider-specific patterns (e.g., XML thinking blocks, inline reasoning text, user/assistant turn pairs). Write content that works well regardless of final formatting.
+
+**Reasoning field:**
+
+Follow a three-step analytical pattern in 2–3 sentences:
+1. Identify the core task type (e.g., "This is a factual lookup" or "This requires multi-step analytical reasoning")
+2. Assess complexity or quality sensitivity (e.g., "Single-step, low complexity" or "Requires synthesis across multiple domains")
+3. State which rule or criterion matches (e.g., "Matches the default route criteria" or "Triggers the escalation rule for multi-step reasoning")
+
+Keep reasoning concise and declarative. Do not address the reader — write as if the reasoning is the model's own internal analysis of the input.
+
+**Exclusions field:**
+
+Use positive framing: state what each excluded route handles and why the input does not fit, rather than negating the route.
+
+- **Good:** `{"route": "opus", "reason": "opus handles multi-step reasoning, but this request is a single factual lookup"}`
+- **Bad:** `{"route": "opus", "reason": "do not use opus for this request"}`
+
+Each exclusion should name a concrete distinguishing signal — the property of the input that disqualifies it from the excluded route. Omit routes that are obviously irrelevant; include only routes that a classifier might plausibly confuse with the correct one.
+
 ---
 
 ## Inputs
@@ -192,6 +214,8 @@ When a mutation type has been tried and marked ineffective in `mutation_history`
 - `exclusions`: list of `{route, reason}` entries for routes that were ruled out
 
 Select examples based on eval failure modes: which routes are being misrouted, which boundary cases are failing. Prioritize examples near route boundaries (inputs where adjacent routes could plausibly apply) when targeting recall regressions on specific routes.
+
+When writing `reasoning` and `exclusions` content for example directives, follow the content patterns described in "Writing effective example content" above — use the three-step analytical pattern for reasoning and positive framing for exclusions.
 
 ## Promotion Decision Rules
 
@@ -361,7 +385,16 @@ Avoid these failure modes:
       "block_identifier": "Example 2",
       "granularity": "macro",
       "directive": "Replace Example 2 with a route_escalation boundary case from holdout that sits near the boundary with adjacent routes. This directly targets the recall regression on this route.",
-      "priority": "high"
+      "priority": "high",
+      "example_content": {
+        "input": "Our customer is threatening to cancel their enterprise contract unless we resolve the billing discrepancy by Friday.",
+        "route": "route_escalation",
+        "reasoning": "This is a time-sensitive customer retention issue with financial impact. The urgency and business consequence elevate it beyond standard support handling. Matches the escalation criteria for high-stakes requests with explicit deadlines.",
+        "exclusions": [
+          {"route": "route_support", "reason": "route_support handles routine customer inquiries, but the contract cancellation threat and explicit deadline indicate escalation-level urgency"},
+          {"route": "route_billing", "reason": "route_billing handles billing corrections, but the request combines billing with a retention risk that requires escalation authority"}
+        ]
+      }
     }
   ],
   "promotion_decisions": [

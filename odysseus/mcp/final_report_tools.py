@@ -56,19 +56,19 @@ async def filter_holdout_dataset_tool(
 
 
 @mcp.tool()
-async def run_holdout_eval(ctx: Context, prompt_version: str, run_id: str) -> str:
+async def run_holdout_eval(ctx: Context, run_id: str) -> str:
     """[Stage 5: Final Report] Run evaluation on the holdout split.
 
-    The holdout dataset path is hardcoded to
-    ``outputs/<run_id>/analysis/holdout.jsonl`` -- agents cannot choose
-    the dataset.
+    Automatically selects the best prompt from the Pareto front (highest
+    quality score; ties broken by lowest cost) and runs evaluation against
+    the hardcoded holdout dataset at
+    ``outputs/<run_id>/analysis/holdout.jsonl``.
 
     Args:
-        prompt_version: Prompt version to evaluate.
         run_id: Pipeline run identifier.
 
     Returns:
-        Serialized score report.
+        Serialized score report including the auto-selected prompt_version.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     check_artifacts(
@@ -81,6 +81,12 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, run_id: str) -> st
     data_source = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
 
     state = get_search_state(run_id=run_id)
+
+    if not state.pareto_front:
+        raise ToolError("No candidates on the Pareto front — cannot determine best prompt.")
+
+    best = max(state.pareto_front, key=lambda c: (c.quality_score, -c.cost))
+    prompt_version = best.prompt_version
 
     if not state.backend:
         registry = BackendRegistry.from_directory(project_dir / "backends")
@@ -119,6 +125,7 @@ async def run_holdout_eval(ctx: Context, prompt_version: str, run_id: str) -> st
     score_report: ScoreReport = result[ScoreReport.CONTEXT_KEY]
     return json.dumps(
         {
+            "prompt_version": prompt_version,
             "report_path": score_report.report_path,
             "results_path": score_report.results_path,
             "metrics": score_report.metrics,

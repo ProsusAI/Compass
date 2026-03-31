@@ -44,6 +44,7 @@ def _score_report(
         "oracle_cost_reduction": oracle_cost_reduction,
         "oracle_quality_reduction": oracle_quality_reduction,
         "cost_reduction": cost_reduction,
+        "cost_reduction_with_overhead": cost_reduction * 0.85,
         "quality_reduction": quality_reduction,
     }
     for route, val in recall.items():

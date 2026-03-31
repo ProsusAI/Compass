@@ -24,7 +24,7 @@ You perform the final holdout evaluation and generate a comprehensive report sum
    - `holdout_jsonl_path`: the path to `outputs/<run_id>/analysis/holdout.jsonl`
    - `exclude_ids`: the IDs of examples used as few-shots in the best prompt. Read the prompt text or search state to identify these.
    - `run_id`: the pipeline run identifier.
-3. Call `run_holdout_eval` with the best prompt version and the `run_id`. The tool hardcodes the holdout dataset path.
+3. Call `run_holdout_eval` with the `run_id`. The tool automatically selects the best prompt from the Pareto front and runs the holdout evaluation. The response includes the `prompt_version` that was evaluated.
 
 ### Phase 2: Report generation
 

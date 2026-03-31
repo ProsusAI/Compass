@@ -55,7 +55,7 @@ class EvalRunnerAgent(BaseAgent):
             or {"error": {"category": ..., "detail": ...}} on failure.
         """
         prompt_version = context.get("prompt_version", "latest")
-        data_source = context.get("data_source", "")
+        data_source: str | None = context.get("data_source")
         backend_label = context.get("backend", "default")
         run_id: str | None = context.get("run_id")
 
@@ -110,7 +110,7 @@ class EvalRunnerAgent(BaseAgent):
         self,
         config_path: str,
         prompt_version: str,
-        data_source: str,
+        data_source: str | None,
         backend: str,
     ) -> RunConfig:
         """Load YAML config and overlay agent-controlled parameters."""
@@ -120,7 +120,8 @@ class EvalRunnerAgent(BaseAgent):
         # Tool params override YAML values
         config_data["backend"] = backend
         config_data["prompt_version"] = prompt_version
-        config_data["data_source"] = data_source
+        if data_source is not None:
+            config_data["data_source"] = data_source
         return RunConfig.model_validate(config_data)
 
     def _wire_dependencies(self, config: RunConfig, run_id: str | None = None) -> RunDependencies:

@@ -19,7 +19,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
-from odysseus.mcp.prompt_building_tools import _build_pipeline_config
+from odysseus.mcp.prompt_building_tools import build_pipeline_config
 
 AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
@@ -68,7 +68,6 @@ async def test_run_eval_success() -> None:
         result = await run_eval(
             ctx=None,
             prompt_version="v1",
-            data_source="data/test.jsonl",
             backend="test-backend",
         )
 
@@ -97,16 +96,15 @@ async def test_run_eval_forwards_all_params() -> None:
         await run_eval(
             ctx=None,
             prompt_version="v5",
-            data_source="data/new.jsonl",
             backend="tool-backend",
             config_path="custom/config.yaml",
         )
 
     context = mock_run.call_args.args[0]
     assert context["prompt_version"] == "v5"
-    assert context["data_source"] == "data/new.jsonl"
     assert context["backend"] == "tool-backend"
     assert context["config_path"] == "custom/config.yaml"
+    assert "data_source" not in context
 
 
 @pytest.mark.asyncio
@@ -122,7 +120,6 @@ async def test_run_eval_default_config_path() -> None:
         await run_eval(
             ctx=None,
             prompt_version="v1",
-            data_source="data/test.jsonl",
             backend="test-backend",
         )
 
@@ -147,7 +144,6 @@ async def test_run_eval_not_found_raises_tool_error() -> None:
             await run_eval(
                 ctx=None,
                 prompt_version="v1",
-                data_source="data/test.jsonl",
                 backend="test-backend",
             )
 
@@ -164,7 +160,6 @@ async def test_run_eval_validation_error_raises_tool_error() -> None:
             await run_eval(
                 ctx=None,
                 prompt_version="v1",
-                data_source="data/test.jsonl",
                 backend="test-backend",
             )
 
@@ -181,7 +176,6 @@ async def test_run_eval_run_error_raises_tool_error() -> None:
             await run_eval(
                 ctx=None,
                 prompt_version="v1",
-                data_source="data/test.jsonl",
                 backend="test-backend",
             )
 
@@ -198,7 +192,6 @@ async def test_run_eval_permission_error_raises_tool_error() -> None:
             await run_eval(
                 ctx=None,
                 prompt_version="v1",
-                data_source="data/test.jsonl",
                 backend="test-backend",
             )
 
@@ -244,7 +237,6 @@ async def test_run_eval_preflight_triggers_when_backend_missing(tmp_path: Path) 
         result = await run_eval(
             ctx=None,
             prompt_version="v1",
-            data_source="data/test.jsonl",
             run_id="test-123",
         )
 
@@ -276,7 +268,6 @@ async def test_run_eval_preflight_skipped_when_backend_set(tmp_path: Path) -> No
         result = await run_eval(
             ctx=None,
             prompt_version="v1",
-            data_source="data/test.jsonl",
             backend="anthropic",
             run_id="test-123",
         )
@@ -299,7 +290,6 @@ async def test_run_eval_no_search_state_id_skips_preflight() -> None:
         result = await run_eval(
             ctx=None,
             prompt_version="v1",
-            data_source="data/test.jsonl",
             backend="anthropic",
         )
 
@@ -346,7 +336,6 @@ async def test_run_eval_pipeline_builds_config_from_state(tmp_path: Path) -> Non
         result = await run_eval(
             ctx=None,
             prompt_version="v1",
-            data_source="data/dev.jsonl",
             run_id=run_id,
         )
 
@@ -387,7 +376,6 @@ async def test_run_eval_standalone_forwards_backend_and_config() -> None:
         await run_eval(
             ctx=None,
             prompt_version="v5",
-            data_source="data/new.jsonl",
             backend="tool-backend",
             config_path="custom/config.yaml",
         )
@@ -396,62 +384,64 @@ async def test_run_eval_standalone_forwards_backend_and_config() -> None:
     assert context["backend"] == "tool-backend"
     assert context["config_path"] == "custom/config.yaml"
     assert "run_config" not in context
+    assert "data_source" not in context
 
 
 # ---------------------------------------------------------------------------
-# _build_pipeline_config helper
+# build_pipeline_config helper
 # ---------------------------------------------------------------------------
 
 
 class TestBuildPipelineConfig:
-    """Tests for _build_pipeline_config helper."""
+    """Tests for build_pipeline_config helper."""
 
     def test_default_metric_when_no_primary(self, tmp_path: Path) -> None:
-        """No primary_metric_name → just accuracy."""
+        """No primary_metric_name → accuracy + cost_quality_reduction."""
         state = SearchState(
             search_state_id="r1", backend="anthropic", primary_metric_name=None
         )
-        config = _build_pipeline_config(
+        config = build_pipeline_config(
             state=state, prompt_version="v1", data_source="d.jsonl",
             run_id="r1", project_dir=tmp_path,
         )
-        assert len(config.metrics) == 1
-        assert config.metrics[0].name == "accuracy"
+        names = [m.name for m in config.metrics]
+        assert names == ["accuracy", "cost_quality_reduction"]
 
     def test_primary_metric_with_slash(self, tmp_path: Path) -> None:
-        """primary_metric_name='f1/macro' → accuracy + f1 with params."""
+        """primary_metric_name='f1/macro' → accuracy + cost_quality_reduction + f1 with params."""
         state = SearchState(
             search_state_id="r1", backend="anthropic", primary_metric_name="f1/macro"
         )
-        config = _build_pipeline_config(
+        config = build_pipeline_config(
             state=state, prompt_version="v1", data_source="d.jsonl",
             run_id="r1", project_dir=tmp_path,
         )
-        assert len(config.metrics) == 2
+        assert len(config.metrics) == 3
         names = [m.name for m in config.metrics]
         assert "accuracy" in names
+        assert "cost_quality_reduction" in names
         assert "f1" in names
         f1_metric = next(m for m in config.metrics if m.name == "f1")
         assert f1_metric.params == {"average": "macro"}
 
     def test_primary_metric_accuracy_no_duplicate(self, tmp_path: Path) -> None:
-        """primary_metric_name='accuracy' → just one accuracy metric."""
+        """primary_metric_name='accuracy' → accuracy + cost_quality_reduction (no duplicate accuracy)."""
         state = SearchState(
             search_state_id="r1", backend="anthropic", primary_metric_name="accuracy"
         )
-        config = _build_pipeline_config(
+        config = build_pipeline_config(
             state=state, prompt_version="v1", data_source="d.jsonl",
             run_id="r1", project_dir=tmp_path,
         )
-        assert len(config.metrics) == 1
-        assert config.metrics[0].name == "accuracy"
+        names = [m.name for m in config.metrics]
+        assert names == ["accuracy", "cost_quality_reduction"]
 
     def test_output_paths_scoped_to_run(self, tmp_path: Path) -> None:
         """Output paths are under outputs/<run_id>/eval/."""
         state = SearchState(
             search_state_id="r1", backend="anthropic"
         )
-        config = _build_pipeline_config(
+        config = build_pipeline_config(
             state=state, prompt_version="v1", data_source="d.jsonl",
             run_id="r1", project_dir=tmp_path,
         )
@@ -463,7 +453,7 @@ class TestBuildPipelineConfig:
         state = SearchState(
             search_state_id="r1", backend="openai"
         )
-        config = _build_pipeline_config(
+        config = build_pipeline_config(
             state=state, prompt_version="v1", data_source="d.jsonl",
             run_id="r1", project_dir=tmp_path,
         )
