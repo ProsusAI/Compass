@@ -54,8 +54,8 @@ def build_final_report_briefing(
     pareto_front = _extract_pareto_front(search_state)
     best_prompt, best_prompt_text = _identify_best_prompt(pareto_front, run_dir)
     eval_comparison = _build_eval_comparison(dev_report, holdout_report)
-    per_class = _extract_per_class_performance(holdout_report)
     error_analysis = _build_error_analysis(run_dir)
+    per_class = _extract_per_class_performance(holdout_report, error_analysis)
     baseline_comparison = _build_baseline_comparison(run_dir)
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
@@ -310,28 +310,34 @@ def _build_eval_comparison(
 
 def _extract_per_class_performance(
     holdout_report: dict | list | None,
+    error_analysis: ErrorAnalysis,
 ) -> list[PerClassPerformance]:
     """Extract per-route precision, recall, F1, support from holdout metrics."""
     if not isinstance(holdout_report, dict):
         return []
 
     metrics = holdout_report.get("metrics", {})
-    # Collect all route names from recall/<route>, precision/<route>, f1/<route> keys
     route_names: set[str] = set()
     for key in metrics:
         for prefix in ("recall/", "precision/", "f1/"):
             if key.startswith(prefix) and not key.endswith("/macro"):
                 route_names.add(key[len(prefix) :])
 
+    # Derive support from confusion matrix (sum of each expected-route row)
+    support_by_route: dict[str, int] = {}
+    for entry in error_analysis.confusion_matrix:
+        support_by_route[entry.expected] = support_by_route.get(entry.expected, 0) + entry.count
+
     results: list[PerClassPerformance] = []
     for route in sorted(route_names):
+        support = int(metrics[f"support/{route}"]) if f"support/{route}" in metrics else support_by_route.get(route)
         results.append(
             PerClassPerformance(
                 route=route,
                 precision=metrics.get(f"precision/{route}"),
                 recall=metrics.get(f"recall/{route}"),
                 f1=metrics.get(f"f1/{route}"),
-                support=int(metrics[f"support/{route}"]) if f"support/{route}" in metrics else None,
+                support=support,
             )
         )
     return results

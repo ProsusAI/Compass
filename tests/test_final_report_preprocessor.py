@@ -383,3 +383,24 @@ class TestBaselineComparison:
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         assert briefing.baseline_comparison is None
+
+
+class TestSupportFromConfusionMatrix:
+    def test_support_populated(self, tmp_path: Path) -> None:
+        """Support field is derived from confusion matrix when metrics lack support/."""
+        run_dir = _setup_minimal_run(tmp_path)
+        # Remove support/ keys from holdout report to simulate real compute_f1 output
+        import json as _json
+        report_path = run_dir / "holdout_eval" / "report.json"
+        report = _json.loads(report_path.read_text())
+        metrics = report["metrics"]
+        for key in list(metrics):
+            if key.startswith("support/"):
+                del metrics[key]
+        report_path.write_text(_json.dumps(report))
+
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        # All holdout examples are "sonnet", with 3 misrouted to "haiku"
+        # So sonnet support = 20 (all examples have expected route "sonnet")
+        sonnet = next(p for p in briefing.per_class_performance if p.route == "sonnet")
+        assert sonnet.support == 20
