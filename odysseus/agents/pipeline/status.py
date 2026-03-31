@@ -495,6 +495,32 @@ def _next_action_for_stage_4(
     2. directive_history.json exists but no v1.* -> build-v1 (Prompt Builder)
     3. v1.* exists and search_state.json exists -> normal loop (read loop_phase)
     """
+    # Rerun mode: skip three-phase logic
+    rerun_config = _read_rerun_config(run_dir)
+    if rerun_config is not None:
+        source_version = rerun_config.get("source_prompt_version", "unknown")
+        new_backend = rerun_config.get("new_backend", "unknown")
+        rerun_instr = _STAGE_4_RERUN_INSTRUCTION.format(
+            run_id=run_dir.name,
+            source_prompt_version=source_version,
+            new_backend=new_backend,
+        )
+        return (
+            "Stage 4 — rerun mode: spawn the Prompt Builder Rerun agent to restructure "
+            f"the source prompt (version {source_version}) for the new backend ({new_backend}). "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder_rerun' before calling any build tools.",
+            [
+                "get_search_state_tool",
+                "init_search_state_tool",
+                "register_candidate_tool",
+                "record_eval_result_tool",
+                "advance_round_tool",
+                "run_eval",
+            ],
+            ["odysseus_prompt_builder_rerun"],
+            rerun_instr,
+        )
+
     search_dir = run_dir / "search"
     directive_history = search_dir / "directive_history.json"
     search_state_path = search_dir / "search_state.json"
