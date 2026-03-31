@@ -1,132 +1,82 @@
 # Integration Test Scenarios
 
-Test scenarios for the User Input agent, Data Validation agent, Prompt Builder agent, Eval Runner, and Review agent. Each `.md` file in this directory is a self-contained test scenario executed by Claude Code.
+Full-pipeline integration test scenarios for Project Odysseus. Each `.md` file in this directory is a self-contained test scenario executed by Claude Code. All scenarios test the complete optimization pipeline (or as much of it as the flow allows — early-exit scenarios stop intentionally at the relevant stage).
 
 ## Scenario index
 
-### User Input Agent (01–12)
+### Happy Paths (01–04)
 
-| # | Scenario | Focus |
-|---|----------|-------|
-| 01 | Complete Submission | All fields provided, single turn, status `proceed` |
-| 02 | Missing Optional Defaults | Defaults applied for optional fields |
-| 03 | Missing Required Clarification | Clarification loop for missing dataset |
-| 04 | Multiple Blocking Gaps | Priority-ordered gap resolution |
-| 05 | Mixed Blocking/Non-blocking | Blocking gap asked, non-blocking defaulted |
-| 06 | Malformed Dataset | Data validation catches missing `expected` field, user fixes |
-| 07 | Vague Problem Description | Agent refines vague problem via clarification |
-| 08 | Ambiguous Tiers | Choose question type for ambiguous tier names |
-| 09 | Contradictory Metrics | Invalid optimization target caught and corrected |
-| 10 | Domain Mismatch | Non-routing problem detected |
-| 11 | Persistent Clarification | Agent persists through unhelpful answers |
-| 12 | Natural Language Answers | Extraction from unstructured conversational input |
+| # | Scenario | Dataset | Backend | Focus |
+|---|----------|---------|---------|-------|
+| 01 | Happy Path — Mock Eval | `full_pipeline_dataset.jsonl` | mock-echo | All 6 stages, deterministic eval, all fields provided upfront |
+| 02 | Happy Path — OpenAI | `full_pipeline_dataset.jsonl` | openai (gpt-5.2) | All 6 stages with live OpenAI API smoke test |
+| 03 | Happy Path — Binary Routing | `two_route_dataset.jsonl` | mock-echo | 2-tier routing (haiku/opus), no sonnet |
+| 04 | Happy Path — All Defaults | `rationale_test_dataset.jsonl` | default | Only dataset + description provided; all optional fields default |
 
-### Data Validation Agent (13–18)
+### Input Stage Issues (05–07)
 
-| # | Scenario | Focus |
-|---|----------|-------|
-| 13 | Clean Dataset | All checks pass on valid dataset |
-| 14 | Imbalanced Tiers | Volume inadequacy and imbalance detection |
-| 15 | Inconsistent Routes | Mixed model key sets across rows |
-| 16 | Duplicate IDs | Unique ID constraint violation |
-| 17 | Type Errors | Wrong types and null values detected |
-| 18 | Insufficient Volume | Dataset too small for reliable evaluation |
+| # | Scenario | Dataset | Focus |
+|---|----------|---------|-------|
+| 05 | Input Clarification Then Success | `valid_dataset.jsonl` | Missing required dataset path; user provides it; pipeline continues |
+| 06 | Vague Description Refined | `rationale_test_dataset.jsonl` | Vague problem description refined via clarification; pipeline continues |
+| 07 | Domain Mismatch Rejected | `valid_dataset.jsonl` | Sentiment classification rejected at Stage 1; no downstream stages fire |
 
-### Input → Data Validation Integration (19–22)
+### Data Validation Issues (08–10)
 
-| # | Scenario | Focus |
-|---|----------|-------|
-| 19 | Full Happy Path | Complete submission → validation, both succeed |
-| 20 | Defaults Then Validate | Defaults applied → validation unaffected |
-| 21 | Fix and Revalidate | Type errors detected → user fixes → revalidation passes |
-| 22 | Nonexistent File | Missing dataset file handled gracefully |
+| # | Scenario | Dataset | Focus |
+|---|----------|---------|-------|
+| 08 | Malformed Data — Fix and Revalidate | `type_errors_dataset.jsonl` → `valid_dataset.jsonl` | Type errors detected; user provides corrected dataset; pipeline continues |
+| 09 | Data Warnings — Proceed | `imbalanced_dataset.jsonl` | Imbalance warnings (non-blocking); user acknowledges; pipeline continues |
+| 10 | Missing `expected` Field | `no_expected_field.jsonl` → `valid_dataset.jsonl` | Blocking schema error; user provides corrected dataset; pipeline continues |
 
-### Full Pipeline — Input → Validation (37–42)
+### Backend Setup Variations (11–12)
 
-| # | Scenario | Focus |
-|---|----------|-------|
-| 37 | Full Happy Path | Both stages succeed sequentially, routing_context produced |
-| 38 | Fix and Revalidate | Broken dataset → user fixes → re-validation passes |
-| 39 | Defaults Cascade | Minimal input, defaults propagate through pipeline |
-| 40 | Vague Description | Weak problem description → data-derived routing context |
-| 41 | Re-Validation Changes Context | Dataset switch changes routing_context (2 routes → 3 routes) |
-| 42 | Volume Warning Proceed | Tiny dataset (2 rows), volume warning surfaced, user proceeds |
+| # | Scenario | Backend | Focus |
+|---|----------|---------|-------|
+| 11 | New Backend Creation | `openai-mini` (created during run) | User creates new OpenAI backend in Stage 3; spec gathered; YAML written |
+| 12 | Existing Backend Selection | `anthropic` | User selects existing backend; no new YAML; pipeline continues |
 
-### Prompt Builder Agent (43–44)
+### Refinement Loop Edge Cases (13–14)
 
-| # | Scenario | Focus |
-|---|----------|-------|
-| 43 | Initial Compilation | Read routing analysis artifacts, detect provider, compile prompt, init search state |
-| 44 | Optimization Loop | Receive directives, generate variants, evaluate, update Pareto front, detect stagnation |
+| # | Scenario | Fixtures | Focus |
+|---|----------|----------|-------|
+| 13 | Review — Regression Guard | `review/def456/` | Candidate improves accuracy but drops rare-class recall; `severity="block"`, `decision="refine"` |
+| 14 | Review — Convergence Exit | `review/ghi789/` | Oracle ratios >0.9, diversity collapsing; `action="exit"` with dominance threshold reason |
 
-### Prompt Builder ↔ Eval Runner Integration (45–47)
+### Full End-to-End (15)
 
-| # | Scenario | Focus |
-|---|----------|-------|
-| 45 | Initial Compilation with Live Eval | Compile v1 → run_eval → ScoreReport → record result → advance round |
-| 46 | Multi-Round Optimization with Live Eval | 2 optimization rounds with real eval (mock-echo), Pareto tracking |
-| 47 | Convergence and Holdout Evaluation | Stagnation → convergence → filter holdout → holdout eval |
-
-### Full Pipeline — Input → Validation → Prompt Builder → Eval (48–50)
-
-| # | Scenario | Focus |
-|---|----------|-------|
-| 48 | Full Pipeline Happy Path (Mock Eval) | All 4 stages with mock-echo, complete context flow |
-| 49 | Full Pipeline (OpenAI) | All 4 stages with live OpenAI API, smoke test |
-| 50 | Full Pipeline Two-Route | Binary routing (haiku + opus only) end-to-end |
-
-### Review Agent (51–53)
-
-| # | Scenario | Focus |
-|---|----------|-------|
-| 51 | Basic Review | `build_review_briefing_tool` → review agent prompt → ReviewResult with ranking, directives, loop signal |
-| 52 | Regression Guard | Candidate improves accuracy but drops rare-class recall → `severity="block"` flag, `decision="refine"` |
-| 53 | Loop Exit | Oracle captured ratios >0.9 and diversity collapsing → `action="exit"` with dominance threshold reason |
-
-### Backend Setup Agent (54-55)
-
-| # | Scenario | Description |
-|---|----------|-------------|
-| 54 | Select existing backend | User picks an existing backend, no new YAML created |
-| 55 | Create new backend | User creates new OpenAI backend, pricing auto-resolved, YAML written |
+| # | Scenario | Dataset | Focus |
+|---|----------|---------|-------|
+| 15 | Full End-to-End with Final Report | `full_pipeline_dataset.jsonl` | All 6 stages verified in detail: holdout filtering, holdout eval, briefing, report content |
 
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
 - Real LLM API calls are made — ensure `ANTHROPIC_API_KEY` is set.
-- For scenario 49 only: `OPENAI_API_KEY` must be set (live OpenAI API smoke test).
+- For scenario 02 only: `OPENAI_API_KEY` must be set (live OpenAI API smoke test).
 
 ## How to run a scenario
 
 Tell Claude Code:
 
-> Run the integration test in `tests/scenarios/01_complete_submission.md`
+> Run the integration test in `tests/scenarios/01_happy_path_mock_eval.md`
 
 Claude Code will:
 
 1. Read the scenario file and parse its sections.
 2. Spin up a **User Simulator** sub-agent with the `## User Simulator` section as its instructions.
-3. Spin up the appropriate **Agent** sub-agent:
-   - **Scenarios 01–12, 19–21:** User Input Agent using the `odysseus_routing_input` MCP prompt, connected to the Odysseus MCP tools.
-   - **Scenarios 13–18, 22:** Data Validation Agent using the `odysseus_data_validation` MCP prompt, connected to the Odysseus MCP tools.
-   - **Scenarios 06, 19–21:** Both agents run in sequence — User Input Agent first, then Data Validation Agent on the submitted dataset.
-   - **Scenarios 37–42:** Both agents run in sequence — User Input Agent first (via `odysseus_routing_input` prompt), then Data Validation Agent (via `odysseus_data_validation` prompt).
-   - **Scenarios 43–44:** Prompt Builder Agent using the `odysseus_prompt_builder` MCP prompt, connected to the Odysseus MCP tools.
-   - **Scenarios 45–47:** Prompt Builder Agent (via `odysseus_prompt_builder` prompt) + Eval Runner Agent (code-driven, invoked via `run_eval` tool). No separate agent spin-up for Eval Runner — it is called as a tool by the Prompt Builder.
-   - **Scenarios 48–50:** All four stages in sequence — User Input Agent (via `odysseus_routing_input` prompt), then Data Validation Agent (via `odysseus_data_validation` prompt), then Prompt Builder Agent (via `odysseus_prompt_builder` prompt) which calls Eval Runner via `run_eval` tool.
-   - **Scenarios 51–53:** Review Agent using the `odysseus_review_agent` MCP prompt. The orchestrator calls `build_review_briefing_tool` first, then passes the resulting `ReviewBriefing` to the agent. The agent emits a `ReviewResult` JSON which the Verification Agent inspects.
+3. Spin up the pipeline orchestrator sub-agents in sequence, beginning with the `odysseus_routing_input` MCP prompt and advancing through each stage. Early-exit scenarios (e.g., 07) stop at the stage where the rejection occurs.
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
-   - Pass user message → active Agent
+   - Pass user message → active agent
    - Receive agent response
-   - If the agent calls the `submit_input_report` tool → input phase done
-   - If the agent calls the `validate_dataset` tool → validation phase active
-   - If response contains `# Validated Input Report` (fallback) → input phase done
+   - If the agent calls `submit_input_report` → input phase done, advance to Stage 2
+   - If the agent calls `save_final_report` → pipeline complete
    - Otherwise pass agent response → User Simulator → get next message → loop
-6. Spin up a **Verification Agent** with the transcript, report(s), and criteria.
+6. Spin up a **Verification Agent** with the full transcript and the `## Verification Criteria` checklist.
 7. Report pass/fail results.
 
-The primary conversation completion signal is the `submit_input_report` tool call for input scenarios and the completion of the data quality report for validation scenarios. The `# Validated Input Report` heading check is a fallback for robustness.
+All scenarios test the complete pipeline unless the scenario description explicitly states the pipeline stops early (domain mismatch, unrecoverable error). In those cases, verification criteria include checks that downstream stages were NOT triggered.
 
 ## Safety valve
 
@@ -145,7 +95,7 @@ The Verification Agent receives:
    User: <next message>
    ...
    ```
-2. **Final output** — the validated input report Markdown and/or data quality report JSON, depending on the scenario.
+2. **Final output** — report files and tool results produced by the pipeline (input report, routing context, score reports, final report path).
 3. **Verification criteria** — the `## Verification Criteria` checklist from the scenario file.
 
 A scenario passes only if **all** verification criteria pass. The Verification Agent reports each criterion individually with pass/fail and reasoning, plus an overall verdict.
@@ -154,10 +104,10 @@ A scenario passes only if **all** verification criteria pass. The Verification A
 
 Each scenario follows this template:
 
-- `## Setup` — data files and preconditions
-- `## Scenario Description` — plain language context
-- `## User Simulator` — persona, knowledge, behavior, opening message
-- `## Verification Criteria` — pass/fail checklist
+- `## Setup` — datasets, system prompts, MCP tools, and backend profiles used
+- `## Scenario Description` — plain language context explaining what the scenario tests and why
+- `## User Simulator` — persona, knowledge, behavior rules, and exact opening message
+- `## Verification Criteria` — pass/fail checklist organized by pipeline stage
 
 ## Data files
 
@@ -166,22 +116,21 @@ Test datasets live in `tests/scenarios/data/`:
 | File | Description |
 |------|-------------|
 | `valid_dataset.jsonl` | 5 valid rows, 3 tiers (haiku/sonnet/opus) |
+| `full_pipeline_dataset.jsonl` | 100 rows, 3 tiers (50 haiku/30 sonnet/20 opus), full pipeline testing |
+| `two_route_dataset.jsonl` | 8 rows, 2 tiers (haiku/opus), binary routing |
+| `rationale_test_dataset.jsonl` | 10 rows, 3 tiers, mixed complexity |
 | `no_expected_field.jsonl` | 5 rows missing the `expected` field |
 | `imbalanced_dataset.jsonl` | 10 rows, 9 haiku + 1 opus |
-| `inconsistent_routes_dataset.jsonl` | Mixed model key sets (haiku/sonnet/opus vs gpt4/gpt35) |
-| `duplicate_ids_dataset.jsonl` | 5 rows with duplicate IDs |
-| `type_errors_dataset.jsonl` | Numeric id, numeric input, string costs, null values |
+| `type_errors_dataset.jsonl` | Numeric IDs, numeric inputs, string costs, null values |
 | `small_dataset.jsonl` | 2 rows, below minimum volume per tier |
-| `rationale_test_dataset.jsonl` | 10 rows, 3 tiers (haiku/sonnet/opus), mixed complexity for integration testing |
-| `full_pipeline_dataset.jsonl` | 100 rows, 3 tiers (50 haiku/30 sonnet/20 opus), full pipeline integration testing |
-| `two_route_dataset.jsonl` | 8 rows, 2 tiers (haiku/opus), binary routing |
-| `warnings_dataset.jsonl` | 10 rows, 3 tiers, null values in non-required fields (triggers null_fields warning) |
-| `borderline_dataset.jsonl` | 10 rows, 3 tiers, ambiguous tier-boundary queries for semantic overlap testing |
-| `backends/mock-echo.yaml` | Mock echo backend profile for deterministic eval testing |
-| `backends/openai.yaml` | OpenAI backend profile (gpt-5.2) for live API smoke test |
-| `backends/anthropic.yaml` | Anthropic backend profile (claude-haiku-4-5) for backend setup scenario testing |
-| `review/abc123/` | Scenario 51 fixtures: search state, score reports, mutation log for basic review |
-| `review/def456/` | Scenario 52 fixtures: search state, score reports, round reports, mutation log for regression guard |
-| `review/ghi789/` | Scenario 53 fixtures: search state, score reports, 4 round reports, mutation log for loop exit |
+| `duplicate_ids_dataset.jsonl` | 5 rows with duplicate IDs |
+| `inconsistent_routes_dataset.jsonl` | Mixed model key sets across rows |
+| `warnings_dataset.jsonl` | 10 rows, null values in non-required fields |
+| `borderline_dataset.jsonl` | 10 rows with ambiguous tier-boundary queries |
+| `backends/mock-echo.yaml` | Deterministic mock backend for eval testing |
+| `backends/openai.yaml` | OpenAI backend profile (gpt-5.2) |
+| `backends/anthropic.yaml` | Anthropic backend profile (claude-haiku) |
+| `review/abc123/` | Review Agent fixtures: basic review (search state, score reports, mutation log) |
+| `review/def456/` | Review Agent fixtures: regression guard (v3 drops opus recall) |
+| `review/ghi789/` | Review Agent fixtures: loop exit (round 4, convergence) |
 | `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data |
-

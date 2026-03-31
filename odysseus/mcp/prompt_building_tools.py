@@ -87,7 +87,7 @@ async def init_search_state_tool(
         project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
         stage=4,
         stage_name="Refinement Loop",
-        hint="Complete routing analysis and dataset split first.",
+        hint="Complete data validation and dataset split first.",
     )
 
     state = init_search_state(
@@ -164,7 +164,7 @@ async def run_eval(
             project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
             stage=4,
             stage_name="Refinement Loop",
-            hint="Complete routing analysis and dataset split first.",
+            hint="Complete data validation and dataset split first.",
         )
 
         # Hardcode dev split — agents cannot choose the dataset

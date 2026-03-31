@@ -60,7 +60,7 @@ Each non-blocking gap produces an entry with:
 
 **Downstream contract:**
 
-Downstream agents (Data Validation, Routing Analysis, etc.) should treat assumed defaults
+Downstream agents (Data Validation, Prompt Builder, etc.) should treat assumed defaults
 identically to user-specified values for processing purposes. The distinction exists for
 transparency — so the user can review and override — not for differential treatment by
 the pipeline.

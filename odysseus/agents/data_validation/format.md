@@ -13,7 +13,7 @@ JSONL — one JSON object per line. UTF-8 encoded. Blank lines and trailing newl
 | `id` | `string` | Stable identifier for deduplication and result tracking |
 | `input` | `string` | The user query to be routed |
 | `expected` | `object` | Contains `route` and `routes` (see below) |
-| `split` | `string` | `"dev"` or `"holdout"` — assigned by the Routing Analysis Agent downstream |
+| `split` | `string` | `"dev"` or `"holdout"` — assigned during the dataset split step |
 
 ### `expected` sub-fields
 
@@ -33,7 +33,7 @@ JSONL — one JSON object per line. UTF-8 encoded. Blank lines and trailing newl
 
 1. **No null values** in required fields.
 2. **Type correctness** — `input` must be a string, `expected` must be an object, `id` and `split` must be strings.
-3. **Split values** — must be `"dev"` or `"holdout"`. Assigned by the Routing Analysis Agent, not the user.
+3. **Split values** — must be `"dev"` or `"holdout"`. Assigned during the dataset split step, not by the user.
 4. **Route-in-routes (record-level)** — `expected.route` must be a key in `expected.routes`.
 5. **Consistent model set (dataset-level)** — all records must have the same keys in `expected.routes`.
 6. **Non-empty routes** — `expected.routes` must contain at least one entry.

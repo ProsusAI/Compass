@@ -10,7 +10,6 @@ MCP server package. Thin adapter layer — each tool delegates to an agent modul
 | [`orchestrator_tools.py`](orchestrator_tools.py) | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage` |
 | [`input_report_tools.py`](input_report_tools.py) | `submit_input_report` |
 | [`data_validation_tools.py`](data_validation_tools.py) | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context` |
-| [`routing_analysis_tools.py`](routing_analysis_tools.py) | `create_seed_registry_tool`, `resolve_registry_tool`, `validate_rationale_card_set_tool`, `prune_registry_tool`, `stratified_split_tool` |
 | [`backend_setup_tools.py`](backend_setup_tools.py) | `get_default_pricing` |
 | [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `save_prompt_tool` |
 | [`review_tools.py`](review_tools.py) | `build_review_briefing_tool`, `record_directive_outcomes_tool` |
@@ -34,7 +33,6 @@ The orchestrator controls scoping via two tools:
 | `orchestrator` | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage` |
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_pipeline_status` |
-| `routing_analysis` | `create_seed_registry_tool`, `resolve_registry_tool`, `prune_registry_tool`, `validate_rationale_card_set_tool`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
 | `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |

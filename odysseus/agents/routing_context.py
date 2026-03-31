@@ -1,9 +1,5 @@
 # odysseus/agents/routing_context.py
-"""Domain-agnostic routing context models.
-
-Relocated from odysseus.agents.routing_analysis.models as part of
-routing analysis agent removal.
-"""
+"""Domain-agnostic routing context models."""
 
 from __future__ import annotations
 

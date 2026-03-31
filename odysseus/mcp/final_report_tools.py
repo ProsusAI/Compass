@@ -42,7 +42,7 @@ async def filter_holdout_dataset_tool(
         project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
         stage=5,
         stage_name="Final Report",
-        hint="Complete routing analysis and dataset split first.",
+        hint="Complete data validation and dataset split first.",
     )
 
     try:

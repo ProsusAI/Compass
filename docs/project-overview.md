@@ -1,7 +1,7 @@
 # Agentic Routing Optimizer — Project Overview
 
-> **Status:** In active development — Eval Framework (THP-75) complete; several agent epics in progress.
-> **Last updated:** 2026-03-24
+> **Status:** All pipeline agents implemented and operational.
+> **Last updated:** 2026-03-31
 >
 > For technical architecture detail, see [docs/architecture.md](architecture.md).
 
@@ -19,59 +19,55 @@ The system is deployed as an **MCP (Model Context Protocol) server** so it can b
 
 Routing — deciding which model, service, or handler should process a given query — is a common and surprisingly hard prompt engineering problem. The quality of the routing prompt depends on:
 
-- Understanding the latent decision logic embedded in historical routing decisions
 - Selecting representative few-shot examples that cover the decision boundary
 - Iterating against real metrics rather than vibes
+- Validating against held-out data to confirm generalization
 
-Doing this manually is slow, inconsistent, and hard to validate. This pipeline automates the full cycle: **analyse → build → evaluate → refine → validate → report**.
+Doing this manually is slow, inconsistent, and hard to validate. This pipeline automates the full cycle: **validate → setup → build → evaluate → refine → validate → report**.
 
 ---
 
 ## 3. Pipeline Architecture
 
-The pipeline is structured as five sequential zones, with a parallel-build phase and an inner refinement loop. The diagram below maps to the Excalidraw design file (`Agentic-Workflow-Prompt-Routing.excalidraw`).
+The pipeline is structured as six sequential stages, with an inner refinement loop. The diagram below maps to the Excalidraw design file (`Agentic-Workflow-Prompt-Routing.excalidraw`).
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ 1. INPUT & TRIAGE                                        │
-│  User Input ◄──────────────────────────────────────────►│
-│      │       Data Validation Agent                       │
-│      │       (jointly build validated input package)     │
-│      ▼                                                   │
-│  Triage ──► [Blocking gaps?]                            │
-│               │  Yes ──► Request Clarification ──► User  │
-│               No                                         │
+│ Stage 1: User Input                                      │
+│  Collect routing dataset, problem description, metrics  │
+│  Check for blocking gaps; request clarification if any  │
 └────────────────────────────┬────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────┐
-│ 2. ANALYSIS                                              │
-│  Analysis Agent — Extract routing patterns & reasoning  │
-└──────────────┬──────────────────────────────────────────┘
-               │
-┌──────────────▼──────────────────────────────────────────┐
-│ 3. PARALLEL BUILD  (both complete before proceeding)     │
-│  Eval Framework Agent     Prompt Agent                  │
-│  Build code + test harness  Few-shot + heuristics v0    │
-│                └──────────── Sync Gate ────────────────► │
+│ Stage 2: Data Validation                                 │
+│  Schema conformance, label distribution, volume checks  │
+│  Produces routing context document + validated splits   │
 └────────────────────────────┬────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────┐
-│ 4. REFINEMENT LOOP                                       │
+│ Stage 3: Backend Setup                                   │
+│  Configure LLM backend for evaluation                   │
+└────────────────────────────┬────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────┐
+│ Stage 4: Refinement Loop                                 │
 │                                                          │
-│  ┌─► Run Eval Agent ──► Review Agent ──► [Regression?] ─┤
-│  │                              │  No ──► Restore best  │
-│  │                              │         checkpoint ──►┤
-│  │                              Yes                     │
-│  │                        [Met threshold / max runs?]   │
-│  │                              │  No ──► Prompt Agent  │
-│  │                              │         (version++) ──┘
+│  ┌─► Prompt Builder ──► Eval Runner ──► Review Agent ──►┤
+│  │                                          │            │
+│  │                              [Met threshold / max?]  │
+│  │                              │  No ──► Prompt Builder┘
 │  └──────────────────────────────┘
 │                              Yes
 └────────────────────────────┬────────────────────────────┘
                              │
 ┌────────────────────────────▼────────────────────────────┐
-│ 5. OUTPUT                                                │
-│  Holdout Validation ──► Final Prompt + Eval Report      │
+│ Stage 5: Holdout Validation                              │
+│  Run final eval on held-out data                        │
+└────────────────────────────┬────────────────────────────┘
+                             │
+┌────────────────────────────▼────────────────────────────┐
+│ Stage 6: Final Report                                    │
+│  Synthesise all artifacts → Final Prompt + Eval Report  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -88,7 +84,6 @@ The pipeline is structured as five sequential zones, with a parallel-build phase
 | **Output** | Validated input package + gap report |
 | **Blocking gaps** | → Clarification request back to user |
 | **Non-blocking gaps** | → Flagged with assumed defaults, pipeline proceeds |
-| **Key open work** | Define gap taxonomy (THP-108), clarification templates (THP-109) |
 
 ---
 
@@ -99,26 +94,12 @@ The pipeline is structured as five sequential zones, with a parallel-build phase
 | **Goal** | Assess structural data quality and advise on what additional data would most improve the output |
 | **Input** | Raw routing dataset + problem description |
 | **Output** | Data quality report (schema consistency, label distribution, volume adequacy, missing signal types) + prioritized data collection suggestions |
-| **Key open work** | Context for dataset quality (THP-84) |
 
 This agent works together with the User Input Agent during the triage phase — its data quality report is an input to the validated input package that the two agents jointly produce before the pipeline proceeds downstream.
 
 ---
 
-### 4.3 Routing Analysis Agent (THP-74)
-
-| | |
-|---|---|
-| **Goal** | Extract the latent logic behind existing routing decisions; ground the downstream prompt in real patterns |
-| **Input** | Validated dataset + problem description |
-| **Output** | Structured reasoning document: routing patterns, decision boundaries, edge cases, "why" behind the data |
-| **Consumers** | Prompt Builder Agent (few-shot grounding), Eval Framework (metric design), Final Report Agent |
-| **Analysis dimensions** | RationaleCard schema implemented (THP-82 done); models, checks, and registry all in place |
-| **Key open work** | Code generation context (THP-83), reasoning framework (THP-85), output format (THP-86); annotation skills in progress |
-
----
-
-### 4.4 Eval Framework (THP-75) ✅ DONE
+### 4.3 Eval Framework (THP-75)
 
 The evaluation engine is fully implemented in `odysseus/eval/`. It is a production-grade async Python engine:
 
@@ -136,35 +117,33 @@ Completed tasks: THP-87 through THP-93, THP-113, THP-114, THP-115, THP-116.
 
 ---
 
-### 4.5 Eval Runner Agent (THP-76)
+### 4.4 Eval Runner Agent (THP-76)
 
 | | |
 |---|---|
 | **Goal** | Execute the eval harness against the current prompt version and produce a structured score report |
 | **Input** | Current versioned prompt + dev set (holdout never accessed during the loop) |
 | **Output** | Score report: aggregate metrics, per-example breakdowns, diff vs previous version |
-| **MCP interface** | `run_eval` tool wrapping the Run Controller (THP-114 — implemented) |
-| **System prompt** | Implemented (THP-104 done) |
+| **MCP interface** | `run_eval` tool wrapping the Run Controller |
 
 The agent calls `run_eval` as an MCP tool and returns the score report to the Review Agent. It never has access to the holdout partition during refinement iterations.
 
 ---
 
-### 4.6 Prompt Builder Agent (THP-77)
+### 4.5 Prompt Builder Agent (THP-77)
 
 | | |
 |---|---|
 | **Goal** | Construct and iteratively refine a routing prompt using few-shot examples and decision heuristics |
-| **First run input** | Reasoning document + routing dataset (for few-shot selection) |
+| **First run input** | Routing context document + routing dataset (for few-shot selection) |
 | **Subsequent run input** | Current prompt version + Review Agent insights + iteration number |
 | **Output** | Versioned prompt (v0, v1, v2…) with few-shot examples, heuristics, and changelog entry |
-| **Key open work** | Few-shot selection methodology (THP-117), prompting guidelines (THP-102), model-specific cookbooks (THP-101) |
 
-Produces the initial v0 baseline in Zone 3 (parallel build) and then refines the prompt on each loop iteration in Zone 4.
+Produces the initial v0 baseline and then refines the prompt on each loop iteration in Stage 4.
 
 ---
 
-### 4.7 Review Agent (THP-78)
+### 4.6 Review Agent (THP-78)
 
 | | |
 |---|---|
@@ -173,20 +152,18 @@ Produces the initial v0 baseline in Zone 3 (parallel build) and then refines the
 | **Output** | (1) Accept or revert decision + justification; (2) Ranked actionable insights; (3) Loop continuation signal (refine / exit) |
 | **Loop signals** | `refine` → back to Prompt Builder; `exit` → forward to Holdout Validation |
 | **Exit conditions** | Metric threshold met OR max iterations reached OR diminishing returns detected |
-| **Key open work** | Review steps (THP-94), continuation criteria (THP-95), context management (THP-100) |
 
-This agent is the central intelligence of the refinement loop. It has access to the full score history and the original reasoning document to anchor its critique.
+This agent is the central intelligence of the refinement loop. It has access to the full score history to anchor its critique.
 
 ---
 
-### 4.8 Final Reporting Agent (THP-79)
+### 4.7 Final Reporting Agent (THP-79)
 
 | | |
 |---|---|
 | **Goal** | Synthesise all pipeline artifacts into a structured report for both technical and non-technical audiences |
-| **Input** | Reasoning document, all versioned prompts + changelogs, raw results + score reports, loop decision history, data quality report, original problem description |
+| **Input** | All versioned prompts + changelogs, raw results + score reports, loop decision history, data quality report, original problem description, holdout eval results |
 | **Output** | Eight-section report (see below) |
-| **Key open work** | Reporting structure (THP-96), writing style guide (THP-97) |
 
 **Report sections:**
 1. Executive summary (non-technical)
@@ -217,17 +194,10 @@ User
       └──────────────────┬───────────────┘
                          │
                          ▼
-              [Routing Analysis Agent]
-              reasoning document
+              [Prompt Builder Agent]
+              v0 prompt
                          │
-            ┌────────────┴────────────────┐
-            ▼                             ▼
- [Eval Framework Agent]        [Prompt Builder Agent]
- eval code + test harness       v0 prompt
-            │                             │
-            └──────────── Sync ───────────┘
-                          │
-            ┌─────────────▼──────────────┐
+            ┌────────────▼────────────────┐
             │      REFINEMENT LOOP       │
             │  Run Eval → Review → Refine│
             └─────────────────────────────┘
@@ -266,17 +236,13 @@ The system exposes a `run_eval` MCP tool that wraps the Run Controller, enabling
 
 | Epic | Title | Status |
 |---|---|---|
-| THP-68 | User Input Agent | In Progress |
-| THP-73 | Data Validation Agent | **Done** |
-| THP-74 | Routing Analysis Agent | In Progress |
-| THP-75 | Eval Framework Code | **Done** |
-| THP-76 | Eval Runner Agent | **Done** |
-| THP-77 | Prompt Builder Agent | To Do |
-| THP-78 | Review Agent | To Do |
-| THP-79 | Final Reporting Agent | To Do |
-
-**Done subtasks:** Prompt Manager (THP-87), Metrics Engine (THP-88), Concurrency Engine (THP-89), Results Collector (THP-90), Dataset Manager (THP-91), Run Controller (THP-92), Config Schema (THP-93), Backend Registry (THP-113), `run_eval` MCP tool design (THP-114), holdout access control (THP-115), score report format (THP-116), Eval Runner system prompt (THP-104).
-
+| THP-68 | User Input Agent | Done |
+| THP-73 | Data Validation Agent | Done |
+| THP-75 | Eval Framework Code | Done |
+| THP-76 | Eval Runner Agent | Done |
+| THP-77 | Prompt Builder Agent | Done |
+| THP-78 | Review Agent | Done |
+| THP-79 | Final Reporting Agent | Done |
 
 ---
 
@@ -305,7 +271,7 @@ odysseus/
     *_tools.py        # Stage-specific tool modules
     resources.py      # MCP resource definitions
     prompts.py        # MCP prompt definitions
-  agents/             # Agent implementations (in progress)
+  agents/             # Agent implementations
     prompts/          # Agent system prompts
   eval/               # Evaluation engine (complete)
     backends/         # Backend registry + LiteLLM client

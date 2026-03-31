@@ -2,7 +2,7 @@
 
 **Improved Agentic Routing Optimizer** — a multi-agent pipeline that iteratively refines few-shot routing prompts using an automated evaluation loop. Deployed as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server.
 
-Given a routing dataset, a problem description, and target metrics, Odysseus validates the data, extracts routing patterns, builds an eval harness, and iteratively refines a prompt through an automated eval-review-revise loop — producing a production-ready routing prompt with full performance transparency.
+Given a routing dataset, a problem description, and target metrics, Odysseus validates the data, sets up the evaluation backend, and iteratively builds and refines a prompt through an automated eval-review-revise loop — producing a production-ready routing prompt with full performance transparency.
 
 ---
 
@@ -159,18 +159,6 @@ Automatically detects your dataset format, maps fields to the canonical schema, 
 
 The stage produces a data quality report covering schema conformance, label distribution, volume adequacy, and query diversity. It also builds a routing context document that downstream stages use.
 
-### Stage 3: Routing Analysis
-
-Analyses the dataset to extract routing patterns and decision boundaries.
-
-**What happens (no input needed):**
-- Creates a vocabulary registry of ambiguity tags
-- Builds rationale cards explaining the reasoning behind each routing decision
-- Validates the rationale cards for consistency
-- Splits the dataset into dev (80%) and holdout (20%) partitions
-
-The dev split is used for iterative prompt refinement; the holdout split is reserved for final validation.
-
 ### Stage 3: Backend Setup
 
 Configures the LLM backend used for evaluation.
@@ -243,19 +231,14 @@ The assistant reads the scenario file, spins up a User Simulator sub-agent to pl
 
 **Scenario coverage:**
 
-| Range | Stage | Count |
+| Range | Focus | Count |
 |-------|-------|-------|
-| 01-12 | User Input Agent | 12 |
-| 13-18 | Data Validation Agent | 6 |
-| 19-22 | Input + Data Validation integration | 4 |
-| 23-30 | Routing Analysis Agent | 8 |
-| 31-36 | Validation + Routing Analysis integration | 6 |
-| 37-42 | Input + Validation + Routing Analysis integration | 6 |
-| 43-44 | Prompt Builder Agent | 2 |
-| 45-47 | Prompt Builder + Eval Runner integration | 3 |
-| 48-50 | Full pipeline (all 5 stages) | 3 |
-| 51-53 | Review Agent | 3 |
-| 54-55 | Backend Setup Agent | 2 |
+| 01-04 | Full pipeline happy paths | 4 |
+| 05-07 | Pipeline with input issues | 3 |
+| 08-10 | Pipeline with data validation issues | 3 |
+| 11-12 | Pipeline with backend setup variations | 2 |
+| 13-14 | Pipeline with refinement loop edge cases | 2 |
+| 15 | Full pipeline end-to-end with final report | 1 |
 
 See `tests/scenarios/README.md` for the full protocol, scenario file format, and how to add new scenarios.
 

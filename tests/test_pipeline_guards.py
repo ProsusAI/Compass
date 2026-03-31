@@ -56,7 +56,7 @@ class TestRequireArtifacts:
 
     def test_error_includes_stage_hint_and_status_ref(self, tmp_path: Path) -> None:
         @require_artifacts(
-            tmp_path / "missing.json", stage=3, stage_name="Routing Analysis", hint="Complete phases 1-3 first."
+            tmp_path / "missing.json", stage=3, stage_name="Data Validation", hint="Complete data validation first."
         )
         def my_tool() -> str:
             return "ok"
@@ -64,8 +64,8 @@ class TestRequireArtifacts:
         with pytest.raises(ToolError, match="stage 3") as exc_info:
             my_tool()
         msg = str(exc_info.value)
-        assert "Routing Analysis" in msg
-        assert "Complete phases 1-3 first." in msg
+        assert "Data Validation" in msg
+        assert "Complete data validation first." in msg
         assert "get_pipeline_status" in msg
 
     async def test_works_with_async(self, tmp_path: Path) -> None:
