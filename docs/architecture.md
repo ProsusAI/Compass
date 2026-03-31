@@ -16,6 +16,8 @@ graph TD
     A6 -->|final report| U
 ```
 
+**Rerun mode:** When Stage 4 has converged, the orchestrator can call `initiate_rerun` to re-enter the pipeline at Stage 3 for a different backend. The rerun flow is: Stage 3 (new backend) → Stage 4 (Prompt Builder Rerun: format restructure + single eval) → Stage 5 (final report). The original search state is preserved as `search_state_original.json`; `rerun_config.json` drives rerun-mode behavior throughout `status.py`.
+
 ## 2. Agent Registry
 
 | Agent | Type | Module / Prompt | Status | Reads from Context | Writes to Context |
@@ -25,6 +27,7 @@ graph TD
 | Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `run_config` or `config_path` | `eval_score_report` |
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
+| Prompt Builder Rerun | LLM-driven | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) | Done | `run_id`, `source_prompt_version`, `new_backend` (from subagent instruction) | `prompt_version` (restructured) |
 | Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) | Done | `eval_score_report`, `review_briefing` | `review_result` |
 | Final Report | Hybrid (code + LLM) | [`odysseus/agents/final_report/models.py`](../odysseus/agents/final_report/models.py), [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py), [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md), [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, `baseline_comparison.json`, optimization charts |
 
@@ -110,6 +113,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `save_prompt_tool` | Implemented | Save compiled routing prompt to disk with correct encoding | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `start_stage` | Implemented | Activate a pipeline stage, scoping `tools/list` to that stage's tools | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
 | `complete_stage` | Implemented | Reset to orchestrator scope after a sub-agent finishes | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
+| `initiate_rerun` | Implemented | Validate Stage 4 is complete, select best prompt version, rename search state, write `rerun_config.json` | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
 
 #### Stage-Scoped Tool Filtering
 
@@ -117,7 +121,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 
 | Stage | Tools |
 |---|---|
-| `orchestrator` | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage` |
+| `orchestrator` | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`, `initiate_rerun` |
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
@@ -147,6 +151,7 @@ Each stage system prompt (stages 1–5) includes mandatory `## Entry verificatio
 | `odysseus_review_agent` | Review Agent system prompt — receives ReviewBriefing, emits ReviewResult JSON | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
 | `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
 | `odysseus_final_report` | Final Report agent — holdout eval + report generation | [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) |
+| `odysseus_prompt_builder_rerun` | Prompt Builder Rerun agent — format-only restructure for a different backend (single eval round) | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) |
 
 ### Resources
 
@@ -187,6 +192,8 @@ Each stage system prompt (stages 1–5) includes mandatory `## Entry verificatio
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
+| `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |
+| `outputs/<run_id>/search/search_state_original.json` | Preserved original search state from before rerun initiation |
 | `outputs/<run_id>/eval/` | Pipeline run: dev evaluation results and reports |
 | `outputs/<run_id>/holdout_eval/` | Pipeline run: holdout evaluation results and reports |
 | `outputs/<run_id>/reports/` | Pipeline run: final report (`final_report.md`) and charts (`charts/`) |
