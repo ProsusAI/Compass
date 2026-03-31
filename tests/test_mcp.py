@@ -21,18 +21,11 @@ async def test_server_has_tools():
     assert "optimize_routing_prompt" in tool_names
 
 
-async def test_run_holdout_eval_is_stub(tmp_path: Path):
-    """run_holdout_eval is still a stub (out of THP-129 scope)."""
-    from odysseus.mcp import run_holdout_eval
-
-    # Set up guard artifact
-    search_dir = tmp_path / "outputs" / "test_run" / "search"
-    search_dir.mkdir(parents=True)
-    (search_dir / "search_state.json").write_text("{}")
-
-    with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
-        result = await run_holdout_eval(ctx=None, prompt_version="v1", data_source="data/test.jsonl", run_id="test_run")
-    assert "stub" in result
+async def test_run_holdout_eval_registered():
+    """run_holdout_eval must be registered as an MCP tool."""
+    tools = await mcp.list_tools()
+    tool_names = [t.name for t in tools]
+    assert "run_holdout_eval" in tool_names
 
 
 async def test_run_eval_tool_registered():
@@ -97,7 +90,6 @@ class TestRunEval:
             result = await run_eval(
                 ctx=None,
                 prompt_version="v1",
-                data_source="data/test.jsonl",
                 backend="test-backend",
             )
 
@@ -121,16 +113,15 @@ class TestRunEval:
             await run_eval(
                 ctx=None,
                 prompt_version="v3",
-                data_source="data/routing.jsonl",
                 backend="openai",
                 config_path="custom/config.yaml",
             )
 
         context = mock_run.call_args.args[0]
         assert context["prompt_version"] == "v3"
-        assert context["data_source"] == "data/routing.jsonl"
         assert context["backend"] == "openai"
         assert context["config_path"] == "custom/config.yaml"
+        assert "data_source" not in context
 
     async def test_agent_error_raises_tool_error(self):
         """Agent error dict is translated to ToolError."""
@@ -145,7 +136,6 @@ class TestRunEval:
                 await run_eval(
                     ctx=None,
                     prompt_version="v1",
-                    data_source="data/test.jsonl",
                     backend="test-backend",
                 )
 
@@ -162,7 +152,6 @@ class TestRunEval:
                 await run_eval(
                     ctx=None,
                     prompt_version="v1",
-                    data_source="data/test.jsonl",
                     backend="test-backend",
                 )
 
@@ -470,18 +459,18 @@ class TestGetPipelineStatus:
         ):
             await get_pipeline_status(ctx=None, run_id=None)
 
-    async def test_get_pipeline_status_stage7_not_enriched(self, tmp_path: Path):
-        """get_pipeline_status does not enrich subagent_instruction for stage 6 (None)."""
+    async def test_get_pipeline_status_unknown_stage_not_enriched(self, tmp_path: Path):
+        """get_pipeline_status does not enrich subagent_instruction for unknown stages."""
         import odysseus.mcp.orchestrator_tools as orch_mod
         from odysseus.mcp import get_pipeline_status
 
         stage7_result = {
             "run_id": "test-run",
             "stages": [],
-            "current_stage": 6,
-            "current_stage_name": "Final Report",
-            "next_action": "The eval loop has converged. Run holdout validation.",
-            "available_tools": ["run_holdout_eval", "filter_holdout_dataset_tool"],
+            "current_stage": 99,
+            "current_stage_name": "Unknown",
+            "next_action": "Pipeline complete.",
+            "available_tools": [],
             "activate_prompt": None,
             "subagent_instruction": None,
         }

@@ -21,8 +21,7 @@ _STAGES: list[dict[str, Any]] = [
     {"stage": 2, "name": "Data Validated", "subfolder": None, "files": []},
     {"stage": 3, "name": "Backend Configured", "subfolder": None, "files": []},
     {"stage": 4, "name": "Refinement Loop", "subfolder": "search", "files": []},
-    {"stage": 5, "name": "Holdout Validation", "subfolder": "reports", "files": []},
-    {"stage": 6, "name": "Final Report", "subfolder": None, "files": []},
+    {"stage": 5, "name": "Final Report", "subfolder": None, "files": []},
 ]
 
 # ---------------------------------------------------------------------------
@@ -52,7 +51,7 @@ _STAGE_4_BUILD_INSTRUCTION: str = (
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
     "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
-    "advance_round_tool, run_eval, filter_holdout_dataset_tool\n"
+    "advance_round_tool, run_eval\n"
     "Your tools: get_pipeline_status only\n\n"
     "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
     "Do not call it from within the sub-agent.\n\n"
@@ -161,32 +160,24 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
     ),
     # Stage 4 is handled dynamically by _next_action_for_stage_4
     5: (
-        "The refinement loop has converged. Run holdout validation.",
-        ["run_holdout_eval", "filter_holdout_dataset_tool"],
-        [],
+        "The refinement loop has converged. Run holdout evaluation and generate the final report. "
+        "REQUIRED: activate prompt 'odysseus_final_report' before calling any stage 5 tools.",
+        ["filter_holdout_dataset_tool", "run_holdout_eval", "build_final_report_briefing_tool", "save_final_report"],
+        ["odysseus_final_report"],
         (
             "<HARD_STOP>\n"
             "You MUST NOT call any Stage 5 tools from the current context.\n\n"
-            "REQUIRED: Spawn a sub-agent to run holdout validation.\n\n"
-            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='holdout') BEFORE spawning the sub-agent.\n\n"
-            "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, run_holdout_eval\n"
+            "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='final_report') BEFORE spawning the sub-agent.\n\n"
+            "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, run_holdout_eval, "
+            "build_final_report_briefing_tool, save_final_report\n"
             "Your tools: get_pipeline_status only\n\n"
-            "Sub-agent instructions:\n"
-            "1. Call get_pipeline_status to verify current_stage is 5\n"
-            "2. Call filter_holdout_dataset_tool to remove few-shot examples from the holdout set\n"
-            "3. Call run_holdout_eval to evaluate the best prompt against the filtered holdout set\n"
-            "4. Call get_pipeline_status to verify stage completion\n\n"
             "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
             "then call get_pipeline_status.\n"
             "If Stage 5 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
-            "</HARD_STOP>"
+            "</HARD_STOP>\n\n"
+            "<stage_system_prompt></stage_system_prompt>"
         ),
-    ),
-    6: (
-        "Generate the final report.",
-        [],
-        [],
-        None,
     ),
 }
 
@@ -282,8 +273,11 @@ def get_pipeline_status(
         else:
             found_incomplete = True
 
-    # Cap current_stage at 6 (max pipeline stage)
-    current_stage = min(current_stage, 6)
+    # Cap at max pipeline stage (5) unless all stages are complete.
+    # When all are complete, current_stage == 6 signals "pipeline done"
+    # and falls through to the default "Pipeline complete." action.
+    max_stage = _STAGES[-1]["stage"]
+    current_stage = min(current_stage, max_stage + 1)
 
     current_stage_name = next(
         (s["name"] for s in _STAGES if s["stage"] == current_stage),
@@ -336,9 +330,6 @@ def _check_stage(
         return _check_stage_4(run_dir)
     if stage_num == 5:
         return _check_stage_5(run_dir)
-    if stage_num in (6,):
-        # Future stubs — always incomplete
-        return "incomplete", [], ""
 
     # Generic file-existence check (stage 1)
     subfolder: str | None = stage_def["subfolder"]
@@ -419,8 +410,8 @@ def _check_stage_4(run_dir: Path) -> tuple[str, list[str], str]:
 
 
 def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 5: Holdout Validation — reports/holdout/holdout_report.json exists."""
-    report = run_dir / "reports" / "holdout" / "holdout_report.json"
+    """Stage 5: Final Report — reports/final_report.md exists."""
+    report = run_dir / "reports" / "final_report.md"
     if report.is_file():
         return "complete", [str(report)], ""
     return "incomplete", [], ""
@@ -470,7 +461,6 @@ def _next_action_for_stage_4(
                 "record_eval_result_tool",
                 "advance_round_tool",
                 "run_eval",
-                "filter_holdout_dataset_tool",
             ],
             ["odysseus_prompt_builder"],
             _STAGE_4_BUILD_INSTRUCTION,
@@ -510,7 +500,6 @@ def _next_action_for_stage_4(
                 "record_eval_result_tool",
                 "advance_round_tool",
                 "run_eval",
-                "filter_holdout_dataset_tool",
             ],
             ["odysseus_prompt_builder"],
             _STAGE_4_BUILD_INSTRUCTION,

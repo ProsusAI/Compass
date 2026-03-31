@@ -13,7 +13,12 @@ from odysseus.mcp.data_validation_tools import (
     transform_dataset,
     validate_dataset,
 )
-from odysseus.mcp.holdout_tools import run_holdout_eval
+from odysseus.mcp.final_report_tools import (
+    build_final_report_briefing_tool,
+    filter_holdout_dataset_tool,
+    run_holdout_eval,
+    save_final_report,
+)
 from odysseus.mcp.input_report_tools import submit_input_report
 from odysseus.mcp.orchestrator_tools import (
     complete_stage,
@@ -23,7 +28,6 @@ from odysseus.mcp.orchestrator_tools import (
 )
 from odysseus.mcp.prompt_building_tools import (
     advance_round_tool,
-    filter_holdout_dataset_tool,
     get_search_state_tool,
     init_search_state_tool,
     record_eval_result_tool,
@@ -33,6 +37,7 @@ from odysseus.mcp.prompt_building_tools import (
 from odysseus.mcp.prompts import (
     odysseus_backend_setup,
     odysseus_data_validation,
+    odysseus_final_report,
     odysseus_prompt_builder,
     odysseus_review_agent,
     odysseus_routing_input,
@@ -77,6 +82,7 @@ __all__ = [
     # Tools
     "STAGE_REGISTRY",
     "advance_round_tool",
+    "build_final_report_briefing_tool",
     "build_review_briefing_tool",
     "complete_stage",
     "detect_and_parse_dataset",
@@ -91,6 +97,7 @@ __all__ = [
     "register_candidate_tool",
     "run_eval",
     "run_holdout_eval",
+    "save_final_report",
     "save_routing_context",
     "start_stage",
     "stratified_split_tool",
@@ -100,6 +107,7 @@ __all__ = [
     # Prompts
     "odysseus_backend_setup",
     "odysseus_data_validation",
+    "odysseus_final_report",
     "odysseus_prompt_builder",
     "odysseus_review_agent",
     "odysseus_routing_input",

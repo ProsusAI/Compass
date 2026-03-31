@@ -10,7 +10,6 @@ from mcp.server.fastmcp.exceptions import ToolError
 import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.eval_runner import EvalRunnerAgent
 from odysseus.agents.pipeline.guards import check_artifacts
-from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
@@ -24,15 +23,19 @@ from odysseus.eval.models import MetricConfig, OutputConfig, RunConfig, ScoreRep
 from odysseus.mcp.server import mcp
 
 
-def _build_pipeline_config(
+def build_pipeline_config(
     state: SearchState,
     prompt_version: str,
     data_source: str,
     run_id: str,
     project_dir: Path,
+    eval_subdir: str = "eval",
 ) -> RunConfig:
     """Build a RunConfig from pipeline state — no YAML file needed."""
-    metrics: list[MetricConfig] = [MetricConfig(name="accuracy")]
+    metrics: list[MetricConfig] = [
+        MetricConfig(name="accuracy"),
+        MetricConfig(name="cost_quality_reduction"),
+    ]
     if state.primary_metric_name:
         metric_name = state.primary_metric_name.split("/")[0]
         if metric_name != "accuracy":
@@ -41,7 +44,7 @@ def _build_pipeline_config(
                 params["average"] = state.primary_metric_name.split("/", 1)[1]
             metrics.append(MetricConfig(name=metric_name, params=params))
 
-    eval_dir = project_dir / "outputs" / run_id / "eval"
+    eval_dir = project_dir / "outputs" / run_id / eval_subdir
     output = OutputConfig(
         results_path=str(eval_dir / "results.jsonl"),
         report_path=str(eval_dir / "report.json"),
@@ -131,16 +134,17 @@ async def register_candidate_tool(
 async def run_eval(
     ctx: Context,
     prompt_version: str,
-    data_source: str,
     backend: str = "",
     config_path: str = "outputs/run_config.yaml",
     run_id: str | None = None,
 ) -> str:
-    """[Stage 4: Refinement Loop] Run an evaluation of a prompt version against a dataset.
+    """[Stage 4: Refinement Loop] Run an evaluation of a prompt version against the dev dataset.
+
+    The dev dataset path is hardcoded to ``outputs/<run_id>/analysis/dev.jsonl``
+    for pipeline runs.  Standalone runs read ``data_source`` from the YAML config.
 
     Args:
         prompt_version: Prompt version identifier (e.g. "v3", "latest").
-        data_source: Path to the JSONL dataset file.
         backend: Backend label. Optional for pipeline runs (resolved from search state).
         config_path: Path to YAML config. Ignored for pipeline runs.
         run_id: Pipeline run identifier. When provided, config is built
@@ -154,6 +158,7 @@ async def run_eval(
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
 
     run_config: RunConfig | None = None
+    data_source: str | None = None
     if run_id is not None:
         check_artifacts(
             project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
@@ -161,6 +166,9 @@ async def run_eval(
             stage_name="Refinement Loop",
             hint="Complete routing analysis and dataset split first.",
         )
+
+        # Hardcode dev split — agents cannot choose the dataset
+        data_source = str(project_dir / "outputs" / run_id / "analysis" / "dev.jsonl")
 
         state = get_search_state(run_id=run_id)
 
@@ -176,7 +184,7 @@ async def run_eval(
             )
 
         # Build config from pipeline state
-        run_config = _build_pipeline_config(
+        run_config = build_pipeline_config(
             state=state,
             prompt_version=prompt_version,
             data_source=data_source,
@@ -187,10 +195,11 @@ async def run_eval(
     agent = EvalRunnerAgent()
     context: dict[str, Any] = {
         "prompt_version": prompt_version,
-        "data_source": data_source,
         "backend": run_config.backend if run_config else backend,
         "run_id": run_id,
     }
+    if data_source is not None:
+        context["data_source"] = data_source
     if run_config is not None:
         context["run_config"] = run_config
     else:
@@ -291,7 +300,7 @@ async def save_prompt_tool(
     prompt_version: str,
     content: str,
 ) -> str:
-    """[Stage 6: Eval Loop] Save a compiled routing prompt to disk.
+    """[Stage 4: Refinement Loop] Save a compiled routing prompt to disk.
 
     Writes the prompt content to outputs/<run_id>/prompts/<prompt_version>.txt.
     Use this instead of writing prompt files directly — it ensures correct
@@ -314,41 +323,3 @@ async def save_prompt_tool(
     prompt_path.write_text(content, encoding="utf-8")
 
     return json.dumps({"prompt_path": str(prompt_path)})
-
-
-@mcp.tool()
-async def filter_holdout_dataset_tool(
-    ctx: Context,
-    holdout_jsonl_path: str,
-    exclude_ids: list[str],
-    run_id: str,
-) -> str:
-    """[Stage 5: Holdout Validation] Filter a holdout JSONL dataset by removing rows with specified IDs.
-
-    Removes few-shot examples from the holdout set to prevent data
-    contamination before final evaluation.
-
-    Args:
-        holdout_jsonl_path: Path to the holdout JSONL dataset file.
-        exclude_ids: List of row IDs to exclude from the output.
-        run_id: Pipeline run identifier.
-
-    Returns:
-        JSON object with filtered_holdout_path pointing to the output file.
-    """
-    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
-    check_artifacts(
-        project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
-        stage=5,
-        stage_name="Holdout Validation",
-        hint="Complete routing analysis and dataset split first.",
-    )
-
-    try:
-        filtered_path = filter_holdout_dataset(
-            holdout_jsonl_path=holdout_jsonl_path,
-            exclude_ids=exclude_ids,
-        )
-    except FileNotFoundError as exc:
-        raise ToolError(str(exc)) from exc
-    return json.dumps({"filtered_holdout_path": filtered_path})
