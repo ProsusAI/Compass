@@ -18,6 +18,84 @@ from odysseus.mcp.prompt_building_tools import build_pipeline_config
 from odysseus.mcp.server import mcp
 
 
+def _compute_baselines(
+    holdout_examples: list[dict],
+    eval_results: list[dict],
+) -> dict | None:
+    """Compute baseline strategy performance on holdout set.
+
+    Invariant: every example has every route in its expected.routes dict.
+    This is guaranteed by the data validation stage (stratified_split).
+    """
+    route_cost_sums: dict[str, float] = {}
+    route_quality_sums: dict[str, float] = {}
+
+    for ex in holdout_examples:
+        routes = ex.get("expected", {}).get("routes", {})
+        for route_name, route_data in routes.items():
+            cost = route_data.get("cost", 0.0) or 0.0
+            quality = route_data.get("quality_score", 0.0) or 0.0
+            route_cost_sums[route_name] = route_cost_sums.get(route_name, 0.0) + cost
+            route_quality_sums[route_name] = route_quality_sums.get(route_name, 0.0) + quality
+
+    n = len(holdout_examples)
+    if n == 0:
+        return None
+
+    cheapest_route = min(route_cost_sums, key=lambda r: route_cost_sums[r] / n)
+    cheapest_quality = route_quality_sums[cheapest_route] / n
+    cheapest_cost = route_cost_sums[cheapest_route] / n
+
+    capable_route = min(route_quality_sums, key=lambda r: (-route_quality_sums[r] / n, r))
+    capable_quality = route_quality_sums[capable_route] / n
+    capable_cost = route_cost_sums[capable_route] / n
+
+    optimized_cost = 0.0
+    optimized_quality = 0.0
+    counted = 0
+    example_by_id = {ex.get("id"): ex for ex in holdout_examples}
+    for r in eval_results:
+        if r.get("error"):
+            continue
+        eid = r.get("example_id")
+        ex = example_by_id.get(eid)
+        if not ex:
+            continue
+        pred_route = r.get("output", {}).get("route")
+        routes = ex.get("expected", {}).get("routes", {})
+        if pred_route and pred_route in routes:
+            optimized_cost += routes[pred_route].get("cost", 0.0) or 0.0
+            optimized_quality += routes[pred_route].get("quality_score", 0.0) or 0.0
+            counted += 1
+
+    if counted > 0:
+        optimized_cost /= counted
+        optimized_quality /= counted
+
+    return {
+        "baselines": [
+            {
+                "strategy": "always_cheapest",
+                "route": cheapest_route,
+                "quality_score": round(cheapest_quality, 4),
+                "cost": round(cheapest_cost, 4),
+            },
+            {
+                "strategy": "always_capable",
+                "route": capable_route,
+                "quality_score": round(capable_quality, 4),
+                "cost": round(capable_cost, 4),
+            },
+        ],
+        "optimized": {
+            "strategy": "optimized_prompt",
+            "route": "mixed",
+            "quality_score": round(optimized_quality, 4),
+            "cost": round(optimized_cost, 4),
+        },
+    }
+
+
 @mcp.tool()
 async def filter_holdout_dataset_tool(
     ctx: Context,
