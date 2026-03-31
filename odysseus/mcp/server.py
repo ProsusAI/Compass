@@ -23,6 +23,7 @@ _STAGE_PROMPT_MAP: dict[int | str, str] = {
     # Stage 4 is dynamic — looked up by activate_prompt name:
     "odysseus_prompt_builder": "odysseus/agents/prompts/prompt_builder_system.md",
     "odysseus_review_agent": "odysseus/agents/prompts/review_agent_system.md",
+    "odysseus_prompt_builder_rerun": "odysseus/agents/prompts/prompt_builder_rerun_system.md",
     5: "odysseus/agents/prompts/final_report_system.md",
 }
 
@@ -38,6 +39,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "get_pipeline_status",
         "start_stage",
         "complete_stage",
+        "initiate_rerun",
     ],
     "input_report": [
         "submit_input_report",

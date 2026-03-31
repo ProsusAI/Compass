@@ -63,6 +63,26 @@ _STAGE_4_BUILD_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+_STAGE_4_RERUN_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "advance_round_tool, run_eval\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "NOTE: This is a rerun — the Prompt Builder Rerun agent will restructure the existing prompt "
+    "for the new backend. Source prompt version: '{source_prompt_version}'. "
+    "New backend: '{new_backend}'.\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
 _STAGE_4_REVIEW_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
@@ -217,6 +237,41 @@ def discover_runs(outputs_dir: Path) -> list[str]:
     return [run_id for _, run_id in runs]
 
 
+def _run_summary_for(run_id: str, outputs_dir: Path, project_dir: Path) -> dict:
+    """Return a minimal summary dict for a single run_id.
+
+    Used to populate the discovered_runs array in get_pipeline_status responses.
+    """
+    run_dir = outputs_dir / run_id
+
+    s1_status, _, _ = _check_stage(
+        {"stage": 1, "name": "Input Report", "subfolder": "input", "files": ["input_report.md"]},
+        run_dir,
+        project_dir,
+    )
+    if s1_status != "complete":
+        return {"run_id": run_id, "current_stage": 1, "has_converged_prompt": False}
+
+    s2_status, _, _ = _check_stage_2(run_dir)
+    if s2_status != "complete":
+        return {"run_id": run_id, "current_stage": 2, "has_converged_prompt": False}
+
+    s3_status, _, _ = _check_stage_3(project_dir, run_dir)
+    if s3_status != "complete":
+        return {"run_id": run_id, "current_stage": 3, "has_converged_prompt": False}
+
+    s4_status, _, _ = _check_stage_4(run_dir)
+    has_converged = s4_status == "complete"
+    if not has_converged:
+        return {"run_id": run_id, "current_stage": 4, "has_converged_prompt": False}
+
+    s5_status, _, _ = _check_stage_5(run_dir)
+    if s5_status != "complete":
+        return {"run_id": run_id, "current_stage": 5, "has_converged_prompt": True}
+
+    return {"run_id": run_id, "current_stage": 6, "has_converged_prompt": True}
+
+
 def get_pipeline_status(
     outputs_dir: Path,
     run_id: str | None,
@@ -244,6 +299,7 @@ def get_pipeline_status(
                 "available_tools": tools,
                 "activate_prompt": prompts[0] if prompts else None,
                 "subagent_instruction": subagent_instruction,
+                "discovered_runs": [],
             }
         run_id = runs[0]
 
@@ -306,6 +362,10 @@ def get_pipeline_status(
     if subagent_instruction:
         subagent_instruction = subagent_instruction.format(run_id=run_id or "new")
 
+    # Populate discovered_runs for all known runs
+    all_run_ids = discover_runs(outputs_dir)
+    discovered_runs = [_run_summary_for(rid, outputs_dir, project_dir) for rid in all_run_ids]
+
     return {
         "run_id": run_id,
         "stages": stage_results,
@@ -315,6 +375,7 @@ def get_pipeline_status(
         "available_tools": tools,
         "activate_prompt": prompts[0] if prompts else None,
         "subagent_instruction": subagent_instruction,
+        "discovered_runs": discovered_runs,
     }
 
 
@@ -337,7 +398,7 @@ def _check_stage(
     if stage_num == 2:
         return _check_stage_2(run_dir)
     if stage_num == 3:
-        return _check_stage_3(project_dir)
+        return _check_stage_3(project_dir, run_dir)
     if stage_num == 4:
         return _check_stage_4(run_dir)
     if stage_num == 5:
@@ -375,14 +436,37 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
     return "complete", artifacts, ""
 
 
-def _check_stage_3(project_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 3: Backend Configured — checks project_dir/backends/*.yaml.
+def _check_stage_3(project_dir: Path, run_dir: Path) -> tuple[str, list[str], str]:
+    """Stage 3: Backend Configured.
 
-    At least one backend must have valid pricing for the stage to be complete.
-    Malformed YAML files are silently skipped (treated as incomplete).
+    In normal mode: at least one backends/*.yaml must have valid pricing.
+    In rerun mode (rerun_config.json present): the specific new_backend named in
+    the config must have a YAML with valid pricing, and new_backend must be non-null.
     """
     from odysseus.eval.backends.profile import BackendProfile
 
+    rerun_config = _read_rerun_config(run_dir)
+
+    if rerun_config is not None:
+        # Rerun mode: new_backend must be explicitly set
+        new_backend = rerun_config.get("new_backend")
+        if not new_backend:
+            return "incomplete", [], ""
+
+        backends_dir = project_dir / "backends"
+        yaml_path = backends_dir / f"{new_backend}.yaml"
+        if not yaml_path.is_file():
+            return "incomplete", [str(yaml_path)], ""
+
+        try:
+            profile = BackendProfile.from_yaml(yaml_path)
+            if profile.pricing is not None:
+                return "complete", [str(yaml_path)], ""
+        except Exception:
+            pass
+        return "incomplete", [str(yaml_path)], "pricing_missing"
+
+    # Normal mode: any backend with pricing
     backends_dir = project_dir / "backends"
     if not backends_dir.is_dir():
         return "incomplete", [], ""
@@ -452,6 +536,32 @@ def _next_action_for_stage_4(
     2. directive_history.json exists but no v1.* -> build-v1 (Prompt Builder)
     3. v1.* exists and search_state.json exists -> normal loop (read loop_phase)
     """
+    # Rerun mode: skip three-phase logic
+    rerun_config = _read_rerun_config(run_dir)
+    if rerun_config is not None:
+        source_version = rerun_config.get("source_prompt_version", "unknown")
+        new_backend = rerun_config.get("new_backend", "unknown")
+        rerun_instr = _STAGE_4_RERUN_INSTRUCTION.format(
+            run_id=run_dir.name,
+            source_prompt_version=source_version,
+            new_backend=new_backend,
+        )
+        return (
+            "Stage 4 — rerun mode: spawn the Prompt Builder Rerun agent to restructure "
+            f"the source prompt (version {source_version}) for the new backend ({new_backend}). "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder_rerun' before calling any build tools.",
+            [
+                "get_search_state_tool",
+                "init_search_state_tool",
+                "register_candidate_tool",
+                "record_eval_result_tool",
+                "advance_round_tool",
+                "run_eval",
+            ],
+            ["odysseus_prompt_builder_rerun"],
+            rerun_instr,
+        )
+
     search_dir = run_dir / "search"
     directive_history = search_dir / "directive_history.json"
     search_state_path = search_dir / "search_state.json"
@@ -537,3 +647,14 @@ def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str |
         stage,
         ("Pipeline complete.", [], [], None),
     )
+
+
+def _read_rerun_config(run_dir: Path) -> dict | None:
+    """Read rerun_config.json from run_dir, returning None if absent or malformed."""
+    config_path = run_dir / "rerun_config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        return json.loads(config_path.read_text())
+    except (json.JSONDecodeError, ValueError, OSError):
+        return None

@@ -42,13 +42,14 @@ def test_every_stage_includes_get_pipeline_status():
         assert "get_pipeline_status" in tools, f"Stage '{stage}' missing get_pipeline_status"
 
 
-def test_orchestrator_stage_has_only_4_tools():
-    """Orchestrator stage has exactly: optimize_routing_prompt, get_pipeline_status, start_stage, complete_stage."""
+def test_orchestrator_stage_has_only_expected_tools():
+    """Orchestrator stage has exactly the expected lifecycle and rerun tools."""
     expected = {
         "optimize_routing_prompt",
         "get_pipeline_status",
         "start_stage",
         "complete_stage",
+        "initiate_rerun",
     }
     assert set(STAGE_REGISTRY["orchestrator"]) == expected
 
@@ -108,7 +109,7 @@ async def test_filtering_disabled_returns_all_tools():
 
 
 async def test_orchestrator_stage_filtering():
-    """Orchestrator stage returns exactly its 4 tools."""
+    """Orchestrator stage returns exactly its expected tools."""
     set_active_stage("orchestrator")
     tools = await mcp.list_tools()
     tool_names = {t.name for t in tools}
@@ -117,6 +118,7 @@ async def test_orchestrator_stage_filtering():
         "get_pipeline_status",
         "start_stage",
         "complete_stage",
+        "initiate_rerun",
     }
 
 

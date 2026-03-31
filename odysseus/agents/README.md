@@ -50,6 +50,7 @@ One system prompt per LLM-driven agent:
 | [`prompts/data_validation_system.md`](prompts/data_validation_system.md) | Data Validation Agent (Stage 2) |
 | [`prompts/backend_setup_system.md`](prompts/backend_setup_system.md) | Backend Setup Agent (Stage 3) |
 | [`prompts/prompt_builder_system.md`](prompts/prompt_builder_system.md) | Prompt Builder Agent (Stage 4 build) |
+| [`prompts/prompt_builder_rerun_system.md`](prompts/prompt_builder_rerun_system.md) | Prompt Builder Rerun Agent (Stage 4 rerun — format restructure for a different backend) |
 | [`prompts/review_agent_system.md`](prompts/review_agent_system.md) | Review Agent (Stage 4 review) |
 | [`prompts/eval_runner_system.md`](prompts/eval_runner_system.md) | Eval Runner Agent context |
 | [`prompts/final_report_system.md`](prompts/final_report_system.md) | Final Report Agent (Stage 6) |

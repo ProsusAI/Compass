@@ -2,7 +2,35 @@ import json
 import time
 from pathlib import Path
 
-from odysseus.agents.pipeline.status import discover_runs, get_pipeline_status
+from odysseus.agents.pipeline.status import _read_rerun_config, discover_runs, get_pipeline_status
+
+
+class TestReadRerunConfig:
+    def test_returns_none_when_no_file(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        assert _read_rerun_config(run_dir) is None
+
+    def test_returns_dict_when_file_exists(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        config = {
+            "mode": "rerun",
+            "source_prompt_version": "v3",
+            "original_backend": "anthropic",
+            "new_backend": None,
+        }
+        (run_dir / "rerun_config.json").write_text(json.dumps(config))
+        result = _read_rerun_config(run_dir)
+        assert result is not None
+        assert result["source_prompt_version"] == "v3"
+        assert result["new_backend"] is None
+
+    def test_returns_none_on_malformed_json(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        (run_dir / "rerun_config.json").write_text("not valid json {")
+        assert _read_rerun_config(run_dir) is None
 
 
 class TestDiscoverRuns:
@@ -344,6 +372,131 @@ class TestStage3PricingValidation:
         assert result["stages"][2]["status"] == "complete"
 
 
+class TestStage3RerunMode:
+    """Stage 3 in rerun mode: checks specific new_backend instead of any-with-pricing."""
+
+    def _write_rerun_config(self, run_dir: Path, new_backend: str | None) -> None:
+        config = {
+            "mode": "rerun",
+            "source_prompt_version": "v3",
+            "original_backend": "anthropic",
+            "new_backend": new_backend,
+        }
+        (run_dir / "rerun_config.json").write_text(json.dumps(config))
+
+    def test_stage3_incomplete_when_new_backend_is_null(self, tmp_path: Path) -> None:
+        """rerun_config.json present but new_backend is null → Stage 3 incomplete."""
+        _setup_through_stage2(tmp_path, "r1")
+        # Add an existing (priced) backend that would satisfy normal Stage 3
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "backends" / "anthropic.yaml").write_text(
+            "model: claude-haiku-4-5\nprovider: anthropic\n"
+            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+            "pricing:\n"
+            "  input_cost_per_million_tokens: 0.80\n"
+            "  cached_cost_per_million_tokens: 0.08\n"
+            "  output_cost_per_million_tokens: 4.00\n"
+        )
+        self._write_rerun_config(tmp_path / "r1", new_backend=None)
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "incomplete"
+
+    def test_stage3_complete_when_new_backend_yaml_has_pricing(self, tmp_path: Path) -> None:
+        """rerun_config.json with new_backend set, that YAML has pricing → Stage 3 complete."""
+        _setup_through_stage2(tmp_path, "r1")
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "backends" / "openai.yaml").write_text(
+            "model: gpt-4o\nprovider: openai\n"
+            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+            "pricing:\n"
+            "  input_cost_per_million_tokens: 2.50\n"
+            "  cached_cost_per_million_tokens: 1.25\n"
+            "  output_cost_per_million_tokens: 10.00\n"
+        )
+        self._write_rerun_config(tmp_path / "r1", new_backend="openai")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "complete"
+
+    def test_stage3_incomplete_when_new_backend_yaml_missing_pricing(self, tmp_path: Path) -> None:
+        """rerun_config.json with new_backend set but that YAML lacks pricing → incomplete."""
+        _setup_through_stage2(tmp_path, "r1")
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "backends" / "openai.yaml").write_text(
+            "model: gpt-4o\nprovider: openai\n"
+            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+        )
+        self._write_rerun_config(tmp_path / "r1", new_backend="openai")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "incomplete"
+        assert result["stages"][2]["detail"] == "pricing_missing"
+
+    def test_stage3_incomplete_when_new_backend_yaml_does_not_exist(self, tmp_path: Path) -> None:
+        """rerun_config.json references a backend YAML that doesn't exist → incomplete."""
+        _setup_through_stage2(tmp_path, "r1")
+        (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
+        self._write_rerun_config(tmp_path / "r1", new_backend="openai")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][2]["status"] == "incomplete"
+
+
+class TestStage4RerunMode:
+    """Stage 4 in rerun mode: skips three-phase logic, returns rerun instruction."""
+
+    def _setup_rerun_ready(self, base: Path, run_id: str, new_backend: str = "openai") -> None:
+        """Stages 1-3 complete in rerun mode: rerun_config set with new_backend."""
+        _setup_through_stage2(base, run_id)
+        (base / "backends").mkdir(parents=True, exist_ok=True)
+        (base / "backends" / f"{new_backend}.yaml").write_text(
+            f"model: gpt-4o\nprovider: openai\n"
+            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+            "pricing:\n"
+            "  input_cost_per_million_tokens: 2.50\n"
+            "  cached_cost_per_million_tokens: 1.25\n"
+            "  output_cost_per_million_tokens: 10.00\n"
+        )
+        rerun_config = {
+            "mode": "rerun",
+            "source_prompt_version": "v3",
+            "original_backend": "anthropic",
+            "new_backend": new_backend,
+        }
+        (base / run_id / "rerun_config.json").write_text(json.dumps(rerun_config))
+
+    def test_rerun_mode_returns_rerun_instruction(self, tmp_path: Path) -> None:
+        """Stage 4 with rerun_config.json returns odysseus_prompt_builder_rerun prompt."""
+        self._setup_rerun_ready(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["current_stage"] == 4
+        assert result["activate_prompt"] == "odysseus_prompt_builder_rerun"
+
+    def test_rerun_mode_subagent_instruction_mentions_rerun(self, tmp_path: Path) -> None:
+        """Rerun subagent instruction contains source_prompt_version and new_backend."""
+        self._setup_rerun_ready(tmp_path, "r1", new_backend="openai")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        instr = result["subagent_instruction"]
+        assert instr is not None
+        assert "v3" in instr
+        assert "openai" in instr
+        assert "<HARD_STOP>" in instr
+
+    def test_rerun_mode_available_tools_are_build_tools(self, tmp_path: Path) -> None:
+        """Rerun mode exposes the same tools as the normal build phase."""
+        self._setup_rerun_ready(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        tools = result["available_tools"]
+        assert "init_search_state_tool" in tools
+        assert "register_candidate_tool" in tools
+        assert "run_eval" in tools
+        assert "advance_round_tool" in tools
+        assert "build_review_briefing_tool" not in tools
+
+    def test_normal_stage4_unaffected_without_rerun_config(self, tmp_path: Path) -> None:
+        """Without rerun_config.json, Stage 4 still uses the three-phase detection."""
+        _setup_through_stage3(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["activate_prompt"] == "odysseus_review_agent"
+
+
 class TestStage5FinalReport:
     """Stage 5 (Final Report): holdout eval + report generation."""
 
@@ -402,3 +555,41 @@ class TestStage5FinalReport:
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert all(s["status"] == "complete" for s in result["stages"])
         assert "Pipeline complete" in result["next_action"]
+
+
+class TestDiscoveredRuns:
+    """get_pipeline_status includes discovered_runs with per-run summaries."""
+
+    def test_discovered_runs_empty_when_no_outputs(self, tmp_path: Path) -> None:
+        result = get_pipeline_status(tmp_path, run_id=None)
+        assert result.get("discovered_runs") == []
+
+    def test_discovered_runs_lists_all_runs(self, tmp_path: Path) -> None:
+        _setup_stage1(tmp_path, "run_a")
+        _setup_stage1(tmp_path, "run_b")
+        result = get_pipeline_status(tmp_path, run_id=None)
+        run_ids = [r["run_id"] for r in result["discovered_runs"]]
+        assert "run_a" in run_ids
+        assert "run_b" in run_ids
+
+    def test_discovered_runs_has_converged_prompt_false_for_incomplete_stage4(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_stage4_v1_done(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
+        assert entry["has_converged_prompt"] is False
+
+    def test_discovered_runs_has_converged_prompt_true_for_converged(
+        self, tmp_path: Path
+    ) -> None:
+        _setup_stage4_converged(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
+        assert entry["has_converged_prompt"] is True
+
+    def test_discovered_runs_includes_current_stage(self, tmp_path: Path) -> None:
+        _setup_stage1(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1")
+        entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
+        assert entry["current_stage"] == 2
