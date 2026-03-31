@@ -178,7 +178,15 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "Your tools: get_pipeline_status only\n\n"
             "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
             "then call get_pipeline_status.\n"
-            "If Stage 5 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "If Stage 5 is not complete:\n"
+            "  - Check the status detail field. If detail is 'version_selection_needed', read the\n"
+            "    file at outputs/{run_id}/pareto_candidates_listed.json. Present the candidates\n"
+            "    to the user as a table (version, quality score, cost, round) and ask which\n"
+            "    prompt_version they want to evaluate on the holdout set. Then re-dispatch the\n"
+            "    sub-agent with the chosen prompt_version in the conversation context.\n"
+            "  - Otherwise, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "  - If Stage 5 remains incomplete after 2 re-dispatches, report the error to the\n"
+            "    user and halt.\n"
             "</HARD_STOP>\n\n"
             "<stage_system_prompt></stage_system_prompt>"
         ),
@@ -416,9 +424,22 @@ def _check_stage_4(run_dir: Path) -> tuple[str, list[str], str]:
 def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
     """Stage 5: Final Report — reports/final_report.md exists."""
     report = run_dir / "reports" / "final_report.md"
+    pareto_candidates = run_dir / "pareto_candidates_listed.json"
+    holdout_report = run_dir / "holdout_eval" / "report.json"
+
     if report.is_file():
         return "complete", [str(report)], ""
-    return "incomplete", [], ""
+
+    artifacts: list[str] = []
+    if pareto_candidates.is_file():
+        artifacts.append(str(pareto_candidates))
+    if holdout_report.is_file():
+        artifacts.append(str(holdout_report))
+
+    if pareto_candidates.is_file() and not holdout_report.is_file():
+        return "incomplete", artifacts, "version_selection_needed"
+
+    return "incomplete", artifacts, ""
 
 
 def _next_action_for_stage_4(
