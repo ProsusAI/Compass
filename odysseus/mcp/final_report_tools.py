@@ -99,6 +99,13 @@ async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
         key=lambda c: (-c["quality_score"], c["cost"]),
     )
 
+    marker_path = project_dir / "outputs" / run_id / "pareto_candidates_listed.json"
+    marker_path.parent.mkdir(parents=True, exist_ok=True)
+    marker_path.write_text(json.dumps({
+        "candidates": [c["prompt_version"] for c in candidates],
+        "auto_selected": auto_version,
+    }))
+
     return json.dumps({
         "candidates": candidates,
         "auto_selected": auto_version,
@@ -107,21 +114,19 @@ async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
 
 
 @mcp.tool()
-async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str | None = None) -> str:
+async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> str:
     """[Stage 5: Final Report] Run evaluation on the holdout split.
 
-    Automatically selects the best prompt from the Pareto front (highest
-    quality score; ties broken by lowest cost) and runs evaluation against
-    the hardcoded holdout dataset at
+    Runs evaluation against the hardcoded holdout dataset at
     ``outputs/<run_id>/analysis/holdout.jsonl``.
 
     Args:
         run_id: Pipeline run identifier.
-        prompt_version: Prompt version to evaluate. When omitted the best
-            Pareto front candidate is selected automatically.
+        prompt_version: Prompt version to evaluate. Required — must be on the
+            Pareto front.
 
     Returns:
-        Serialized score report including the auto-selected prompt_version.
+        Serialized score report for the chosen prompt_version.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     check_artifacts(
@@ -129,6 +134,12 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str | None
         stage=5,
         stage_name="Final Report",
         hint="The eval loop must converge first.",
+    )
+    check_artifacts(
+        project_dir / "outputs" / run_id / "pareto_candidates_listed.json",
+        stage=5,
+        stage_name="Final Report",
+        hint="Call list_pareto_candidates first to present candidates to the user.",
     )
 
     data_source = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
@@ -138,16 +149,13 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str | None
     if not state.pareto_front:
         raise ToolError("No candidates on the Pareto front — cannot determine best prompt.")
 
-    # Resolve prompt version: auto-select or validate user choice
-    if prompt_version is None:
-        prompt_version = select_best(state.pareto_front)
-    else:
-        valid_versions = {c.prompt_version for c in state.pareto_front}
-        if prompt_version not in valid_versions:
-            raise ToolError(
-                f"Prompt version '{prompt_version}' is not on the Pareto front. "
-                f"Valid versions: {sorted(valid_versions)}"
-            )
+    # Validate user choice is on the Pareto front
+    valid_versions = {c.prompt_version for c in state.pareto_front}
+    if prompt_version not in valid_versions:
+        raise ToolError(
+            f"Prompt version '{prompt_version}' is not on the Pareto front. "
+            f"Valid versions: {sorted(valid_versions)}"
+        )
 
     if not state.backend:
         registry = BackendRegistry.from_directory(project_dir / "backends")
