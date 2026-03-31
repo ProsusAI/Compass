@@ -26,7 +26,7 @@ graph TD
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
 | Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) | Done | `eval_score_report`, `review_briefing` | `review_result` |
-| Final Report | Hybrid (code + LLM) | [`odysseus/agents/final_report/models.py`](../odysseus/agents/final_report/models.py), [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py), [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, optimization charts |
+| Final Report | Hybrid (code + LLM) | [`odysseus/agents/final_report/models.py`](../odysseus/agents/final_report/models.py), [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py), [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md), [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, `baseline_comparison.json`, optimization charts |
 
 ## 3. Context Dict Reference
 
@@ -89,7 +89,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 |---|---|---|---|
 | `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `run_eval` | Implemented | Run an evaluation of a prompt version against a dataset (dev split) | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py) |
-| `run_holdout_eval` | Implemented | Run evaluation on the holdout split with a user-chosen prompt version (required, must be on the Pareto front; Final Report agent only) | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
+| `run_holdout_eval` | Implemented | Run evaluation on the holdout split with a user-chosen prompt version (required, must be on the Pareto front; Final Report agent only). Also computes baseline comparisons. | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
 | `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) |
 | `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation/detect.py`](../odysseus/agents/data_validation/detect.py) |
