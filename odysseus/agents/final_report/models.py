@@ -31,13 +31,11 @@ class OptimizationJourney(BaseModel):
     total_rounds: int
     convergence_reason: str
     stagnation_count: int
-    mutation_mode: str
     best_quality_per_round: list[float]
     best_cost_per_round: list[float]
     pareto_front_size_per_round: list[int]
-    mutation_type_counts: dict[str, int]
-    effective_mutation_types: list[str]
-    ineffective_mutation_types: list[str]
+    oracle_cost_reduction: float | None = None
+    oracle_quality_reduction: float | None = None
 
 
 class EvalMetricComparison(BaseModel):
@@ -57,16 +55,6 @@ class PerClassPerformance(BaseModel):
     recall: float | None = None
     f1: float | None = None
     support: int | None = None
-
-
-class OracleAnalysis(BaseModel):
-    """How close the best prompt is to the theoretical optimum."""
-
-    oracle_cost_reduction: float
-    oracle_quality_reduction: float
-    candidate_cost_reduction: float | None = None
-    candidate_cost_reduction_with_overhead: float | None = None
-    candidate_quality_reduction: float | None = None
 
 
 class ConfusionEntry(BaseModel):
@@ -107,6 +95,5 @@ class FinalReportBriefing(BaseModel):
     pareto_front: list[PromptSummary]
     eval_comparison: list[EvalMetricComparison]
     per_class_performance: list[PerClassPerformance]
-    oracle_analysis: OracleAnalysis | None = None
     error_analysis: ErrorAnalysis
     charts: ChartPaths

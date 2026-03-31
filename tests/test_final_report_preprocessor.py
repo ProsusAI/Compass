@@ -281,12 +281,6 @@ class TestBuildFinalReportBriefing:
         assert haiku.recall == 0.90
         assert haiku.support == 10
 
-    def test_oracle_analysis(self, tmp_path: Path) -> None:
-        run_dir = _setup_minimal_run(tmp_path)
-        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
-        assert briefing.oracle_analysis is not None
-        assert briefing.oracle_analysis.oracle_cost_reduction == -0.40
-
     def test_charts_generated(self, tmp_path: Path) -> None:
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
@@ -297,27 +291,32 @@ class TestBuildFinalReportBriefing:
         assert (run_dir / briefing.charts.quality_progression).is_file()
         assert (run_dir / briefing.charts.pareto_front).is_file()
 
-    def test_mutation_analysis(self, tmp_path: Path) -> None:
+class TestOptimizationJourneyUpdated:
+    def test_no_mutation_fields(self, tmp_path: Path) -> None:
+        from odysseus.agents.final_report.models import OptimizationJourney
+
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         journey = briefing.optimization_journey
-        assert "example_swap" in journey.mutation_type_counts
-        assert "rule_edit" in journey.mutation_type_counts
-        # v2 and v3 are on pareto front, so their mutations are effective
-        assert "example_swap" in journey.effective_mutation_types
-        assert "rule_edit" in journey.effective_mutation_types
-        # v4 is not on the front
-        assert "rule_add" in journey.ineffective_mutation_types
+        assert journey.total_rounds == 3
+        assert "Stagnation" in journey.convergence_reason
+        assert "mutation_type_counts" not in OptimizationJourney.model_fields
+
+    def test_oracle_in_journey(self, tmp_path: Path) -> None:
+        run_dir = _setup_minimal_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert briefing.optimization_journey.oracle_cost_reduction == -0.4
+        assert briefing.optimization_journey.oracle_quality_reduction == 0.0
+
+    def test_no_standalone_oracle(self, tmp_path: Path) -> None:
+        from odysseus.agents.final_report.models import FinalReportBriefing
+
+        run_dir = _setup_minimal_run(tmp_path)
+        build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert "oracle_analysis" not in FinalReportBriefing.model_fields
 
 
 class TestGracefulDegradation:
-    def test_missing_mutation_log(self, tmp_path: Path) -> None:
-        """Preprocessor works without mutation_log.json."""
-        run_dir = _setup_minimal_run(tmp_path)
-        (run_dir / "search" / "mutation_log.json").unlink()
-        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
-        assert briefing.optimization_journey.mutation_type_counts == {}
-
     def test_missing_holdout_results(self, tmp_path: Path) -> None:
         """Error analysis works without holdout results.jsonl."""
         run_dir = _setup_minimal_run(tmp_path)

@@ -20,7 +20,6 @@ from odysseus.agents.final_report.models import (
     EvalMetricComparison,
     FinalReportBriefing,
     OptimizationJourney,
-    OracleAnalysis,
     PerClassPerformance,
     PromptSummary,
 )
@@ -47,16 +46,14 @@ def build_final_report_briefing(
     problem_summary = _load_problem_summary(run_dir)
     dataset_overview = _load_dataset_overview(run_dir)
     search_state = _load_json(run_dir / "search" / "search_state.json")
-    mutation_log = _load_json(run_dir / "search" / "mutation_log.json", default=[])
     dev_report = _load_json(run_dir / "eval" / "report.json")
     holdout_report = _load_json(run_dir / "holdout_eval" / "report.json")
 
-    optimization_journey = _build_optimization_journey(search_state, mutation_log)
+    optimization_journey = _build_optimization_journey(search_state, holdout_report)
     pareto_front = _extract_pareto_front(search_state)
     best_prompt, best_prompt_text = _identify_best_prompt(pareto_front, run_dir)
     eval_comparison = _build_eval_comparison(dev_report, holdout_report)
     per_class = _extract_per_class_performance(holdout_report)
-    oracle_analysis = _extract_oracle_analysis(holdout_report)
     error_analysis = _build_error_analysis(run_dir)
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
@@ -73,7 +70,6 @@ def build_final_report_briefing(
         pareto_front=pareto_front,
         eval_comparison=eval_comparison,
         per_class_performance=per_class,
-        oracle_analysis=oracle_analysis,
         error_analysis=error_analysis,
         charts=charts,
     )
@@ -149,27 +145,22 @@ def _count_jsonl_lines(path: Path) -> int:
 
 def _build_optimization_journey(
     search_state: dict | list | None,
-    mutation_log: dict | list | None,
+    holdout_report: dict | list | None,
 ) -> OptimizationJourney:
-    """Extract optimization journey from search state and mutation log."""
+    """Extract optimization journey from search state."""
     if not search_state or not isinstance(search_state, dict):
         return OptimizationJourney(
             total_rounds=0,
             convergence_reason="unknown",
             stagnation_count=0,
-            mutation_mode="unknown",
             best_quality_per_round=[],
             best_cost_per_round=[],
             pareto_front_size_per_round=[],
-            mutation_type_counts={},
-            effective_mutation_types=[],
-            ineffective_mutation_types=[],
         )
 
     round_history: list[dict] = search_state.get("round_history", [])
     total_rounds = search_state.get("round", 0)
 
-    # Determine convergence reason
     stagnation_count = search_state.get("stagnation_count", 0)
     convergence_limit = search_state.get("convergence_limit", 5)
     max_rounds = search_state.get("max_rounds", 50)
@@ -180,49 +171,31 @@ def _build_optimization_journey(
     else:
         convergence_reason = "Loop exited by Review Agent"
 
-    # Per-round trajectories — derive from round_history
     best_quality: list[float] = []
     best_cost: list[float] = []
     front_sizes: list[int] = []
-    # Round history has front_size but not best quality/cost directly.
-    # We reconstruct from the pareto_front at end of run for the final point,
-    # and from round summaries for front size.
     for rh in round_history:
         front_sizes.append(rh.get("front_size", 0))
 
-    # For quality/cost trajectory, use pareto_front candidates sorted by round_introduced
     pareto_front: list[dict] = search_state.get("pareto_front", [])
-    # Build cumulative best quality per round
     _build_quality_cost_trajectory(pareto_front, total_rounds, best_quality, best_cost)
 
-    # Mutation analysis
-    mutation_type_counts: dict[str, int] = {}
-    effective_types: set[str] = set()
-    ineffective_types: set[str] = set()
-    if isinstance(mutation_log, list):
-        for entry in mutation_log:
-            if not isinstance(entry, dict):
-                continue
-            mt = entry.get("mutation_type", "unknown")
-            mutation_type_counts[mt] = mutation_type_counts.get(mt, 0) + 1
-            # Classify based on whether child is on current front
-            front_versions = {c.get("prompt_version") for c in pareto_front}
-            if entry.get("child_version") in front_versions:
-                effective_types.add(mt)
-            else:
-                ineffective_types.add(mt)
+    oracle_cost: float | None = None
+    oracle_quality: float | None = None
+    if isinstance(holdout_report, dict):
+        metrics = holdout_report.get("metrics", {})
+        oracle_cost = metrics.get("oracle_cost_reduction")
+        oracle_quality = metrics.get("oracle_quality_reduction")
 
     return OptimizationJourney(
         total_rounds=total_rounds,
         convergence_reason=convergence_reason,
         stagnation_count=stagnation_count,
-        mutation_mode=search_state.get("mutation_mode", "unknown"),
         best_quality_per_round=best_quality,
         best_cost_per_round=best_cost,
         pareto_front_size_per_round=front_sizes,
-        mutation_type_counts=mutation_type_counts,
-        effective_mutation_types=sorted(effective_types),
-        ineffective_mutation_types=sorted(ineffective_types - effective_types),
+        oracle_cost_reduction=oracle_cost,
+        oracle_quality_reduction=oracle_quality,
     )
 
 
@@ -359,26 +332,6 @@ def _extract_per_class_performance(
             )
         )
     return results
-
-
-def _extract_oracle_analysis(holdout_report: dict | list | None) -> OracleAnalysis | None:
-    """Extract oracle metrics from holdout eval report."""
-    if not isinstance(holdout_report, dict):
-        return None
-
-    metrics = holdout_report.get("metrics", {})
-    oracle_cost = metrics.get("oracle_cost_reduction")
-    oracle_quality = metrics.get("oracle_quality_reduction")
-    if oracle_cost is None and oracle_quality is None:
-        return None
-
-    return OracleAnalysis(
-        oracle_cost_reduction=oracle_cost or 0.0,
-        oracle_quality_reduction=oracle_quality or 0.0,
-        candidate_cost_reduction=metrics.get("cost_reduction"),
-        candidate_cost_reduction_with_overhead=metrics.get("cost_reduction_with_overhead"),
-        candidate_quality_reduction=metrics.get("quality_reduction"),
-    )
 
 
 # ---------------------------------------------------------------------------
