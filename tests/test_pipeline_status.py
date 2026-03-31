@@ -2,7 +2,35 @@ import json
 import time
 from pathlib import Path
 
-from odysseus.agents.pipeline.status import discover_runs, get_pipeline_status
+from odysseus.agents.pipeline.status import _read_rerun_config, discover_runs, get_pipeline_status
+
+
+class TestReadRerunConfig:
+    def test_returns_none_when_no_file(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        assert _read_rerun_config(run_dir) is None
+
+    def test_returns_dict_when_file_exists(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        config = {
+            "mode": "rerun",
+            "source_prompt_version": "v3",
+            "original_backend": "anthropic",
+            "new_backend": None,
+        }
+        (run_dir / "rerun_config.json").write_text(json.dumps(config))
+        result = _read_rerun_config(run_dir)
+        assert result is not None
+        assert result["source_prompt_version"] == "v3"
+        assert result["new_backend"] is None
+
+    def test_returns_none_on_malformed_json(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "run1"
+        run_dir.mkdir()
+        (run_dir / "rerun_config.json").write_text("not valid json {")
+        assert _read_rerun_config(run_dir) is None
 
 
 class TestDiscoverRuns:

@@ -63,6 +63,26 @@ _STAGE_4_BUILD_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+_STAGE_4_RERUN_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "advance_round_tool, run_eval\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "NOTE: This is a rerun — the Prompt Builder Rerun agent will restructure the existing prompt "
+    "for the new backend. Source prompt version: '{source_prompt_version}'. "
+    "New backend: '{new_backend}'.\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
 _STAGE_4_REVIEW_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
@@ -537,3 +557,14 @@ def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str |
         stage,
         ("Pipeline complete.", [], [], None),
     )
+
+
+def _read_rerun_config(run_dir: Path) -> dict | None:
+    """Read rerun_config.json from run_dir, returning None if absent or malformed."""
+    config_path = run_dir / "rerun_config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        return json.loads(config_path.read_text())
+    except (json.JSONDecodeError, ValueError, OSError):
+        return None
