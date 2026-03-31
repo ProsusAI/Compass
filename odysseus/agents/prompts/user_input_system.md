@@ -75,12 +75,21 @@ The evaluation framework supports four metrics. Use this to guide users toward a
 
 ## Pipeline Discovery
 
-Pipeline status has already been retrieved and is pre-injected above — use it directly. If previous runs exist, ask the user:
+Pipeline status has already been retrieved and is pre-injected above — use it directly. The status includes a `discovered_runs` array listing all known runs with `run_id`, `current_stage`, and `has_converged_prompt`.
 
-> "I found existing pipeline runs. Would you like to start fresh, or bootstrap from an existing run's prompt?"
+If `discovered_runs` is non-empty, ask the user which option they want:
 
-- **Start fresh:** proceed normally with problem specification
-- **Bootstrap:** the user picks a run, and `submit_input_report` is called with `bootstrap_from_run_id` to copy the seed prompt into the new run
+> "I found existing pipeline runs. How would you like to proceed?"
+
+Present the options that apply:
+
+1. **Continue** — resume the most recent run at its current stage. Always available.
+2. **Rerun with different backend** — take an existing run's converged prompt and re-evaluate it against a new backend (format restructure only, no re-optimization). Only show this option for runs where `has_converged_prompt` is `true`. When the user picks this: ask which run to rerun (if multiple qualify), then call `initiate_rerun(run_id=<run_id>)`. After the tool returns, proceed to Stage 3 guidance so the user can configure the new backend.
+3. **Start again** — new run from scratch. Always available.
+
+- **Continue:** proceed with `get_pipeline_status` for the selected run to find the next step
+- **Rerun:** call `initiate_rerun(run_id=<selected_run_id>)`, then guide through Stage 3 backend setup
+- **Start again:** proceed normally with problem specification (same as fresh run)
 
 ## Output template
 
