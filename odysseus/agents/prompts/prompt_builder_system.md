@@ -88,7 +88,7 @@ Execute these steps exactly in order on round 1.
    - Read `review_directives` from context.
    - Filter to directives where `block_type == 'example'`.
    - Extract `example_content` from each matching directive. These are the examples to include in the prompt.
-   - Track the `example_id` from each directive for the `few_shot_example_ids` context key.
+   - Collect the `example_id` from each directive's `example_content`. These IDs are for backend tracking only — do **not** include them in the compiled prompt text.
 6. **Compile the prompt.** Follow this section convention:
 
    ```
@@ -115,7 +115,7 @@ Execute these steps exactly in order on round 1.
    When a model-specific addendum was read in step 3, its formatting guidance overrides or refines the provider base conventions on any conflicting points.
 
 8. **Write prompt.** Call `save_prompt_tool(run_id=run_id, prompt_version="v1", content=<compiled prompt text>)`.
-9. **Register candidate.** Call `register_candidate_tool(search_state_id, "v1")`.
+9. **Register candidate.** Call `register_candidate_tool(run_id=run_id, prompt_version="v1", example_ids=[<list of example_ids collected in step 5>])`.
 10. **Evaluate.** Call `run_eval(prompt_version="v1", data_source=dev_jsonl_path, backend=backend)`.
 11. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
 12. **Record result.** Call `record_eval_result_tool(search_state_id, "v1", quality_score, cost)`.
@@ -138,7 +138,7 @@ Execute on round 2 and every subsequent round.
 
 5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="vN", content=<child prompt text>)` for each child (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
 6. **Evaluate each child.** For each child prompt:
-   - Call `register_candidate_tool(search_state_id, "vN", parent_version="vP")` where `vP` is the parent version.
+   - Call `register_candidate_tool(run_id=run_id, prompt_version="vN", parent_version="vP", example_ids=[<complete list of holdout example IDs used in this child prompt>])`. The `example_ids` list must contain every holdout example ID in the child — the full set, not just changed examples.
    - Call `run_eval(prompt_version="vN", data_source=dev_jsonl_path, backend=backend)`.
    - Extract `quality_score` and `cost` from the ScoreReport.
    - Call `record_eval_result_tool(search_state_id, "vN", quality_score, cost)`.
@@ -168,7 +168,8 @@ Set these context keys when the optimization loop completes (or after round 1 fo
 | Context key | Type | Description |
 |-------------|------|-------------|
 | `prompt_version` | str | Version string of the best prompt (e.g. "v3") |
-| `few_shot_example_ids` | list[str] | Holdout example IDs used as few-shots in the final prompt |
+
+> Note: Few-shot example IDs are now tracked automatically on each `Candidate` via `register_candidate_tool(example_ids=...)`. No separate context key is needed.
 
 ## Constraints
 

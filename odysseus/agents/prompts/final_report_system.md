@@ -23,11 +23,7 @@ You perform the final holdout evaluation and generate a comprehensive report sum
 1. Call `get_pipeline_status` to retrieve the `run_id`.
 2. Call `list_pareto_candidates` with the `run_id`. This returns all Pareto front candidates with their dev-set quality scores and costs, and indicates which version would be auto-selected.
 3. Exit immediately with the message: "VERSION_SELECTION_NEEDED. Candidates: [include the candidates table from step 2 response]. The user must choose a prompt_version from the Pareto front." Do NOT attempt user interaction.
-4. Call `filter_holdout_dataset_tool` to remove few-shot examples from the holdout set, preventing data contamination. You need:
-   - `holdout_jsonl_path`: the path to `outputs/<run_id>/analysis/holdout.jsonl`
-   - `exclude_ids`: the IDs of examples used as few-shots in the chosen prompt. Read the prompt text or search state to identify these.
-   - `run_id`: the pipeline run identifier.
-5. Call `run_holdout_eval` with the `run_id` and the user's chosen `prompt_version` (required — the tool will reject the call if this is missing). The tool hardcodes the holdout dataset path.
+4. Call `run_holdout_eval` with the `run_id` and the user's chosen `prompt_version` (required — the tool will reject the call if this is missing). Holdout filtering is automatic — the tool reads the prompt version's example IDs from the search state and excludes them from the holdout set before evaluation.
 
 ### Phase 2: Report generation
 

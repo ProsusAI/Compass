@@ -27,6 +27,7 @@ class Candidate(BaseModel):
     cost: float
     round_introduced: int
     dominated: bool = False
+    example_ids: list[str] = Field(default_factory=list)
 
     @field_validator("prompt_version")
     @classmethod

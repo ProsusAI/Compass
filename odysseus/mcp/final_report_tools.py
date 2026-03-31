@@ -11,7 +11,7 @@ from odysseus.agents.final_report.preprocessor import build_final_report_briefin
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
 from odysseus.agents.prompt_builder.search import select_best
-from odysseus.agents.prompt_builder.search_ops import get_search_state
+from odysseus.agents.prompt_builder.search_ops import get_candidate_example_ids, get_search_state
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import ScoreReport
 from odysseus.mcp.prompt_building_tools import build_pipeline_config
@@ -25,7 +25,11 @@ async def filter_holdout_dataset_tool(
     exclude_ids: list[str],
     run_id: str,
 ) -> str:
-    """[Stage 5: Final Report] Filter a holdout JSONL dataset by removing rows with specified IDs.
+    """[Stage 5: Final Report] [Deprecated] Filter a holdout JSONL dataset by removing rows with specified IDs.
+
+    .. deprecated::
+        Holdout filtering now happens automatically inside ``run_holdout_eval``.
+        This tool is retained for manual or debugging use only.
 
     Removes few-shot examples from the holdout set to prevent data
     contamination before final evaluation.
@@ -142,7 +146,17 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
         hint="Call list_pareto_candidates first to present candidates to the user.",
     )
 
-    data_source = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
+    holdout_path = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
+
+    # Auto-filter holdout dataset to exclude few-shot examples
+    example_ids = get_candidate_example_ids(run_id, prompt_version)
+    if example_ids:
+        data_source = filter_holdout_dataset(
+            holdout_jsonl_path=holdout_path,
+            exclude_ids=example_ids,
+        )
+    else:
+        data_source = holdout_path
 
     state = get_search_state(run_id=run_id)
 
@@ -199,6 +213,8 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
             "results_path": score_report.results_path,
             "metrics": score_report.metrics,
             "summary": score_report.summary.model_dump(mode="json"),
+            "holdout_filtered": bool(example_ids),
+            "excluded_example_ids": example_ids,
         }
     )
 

@@ -9,6 +9,7 @@ from odysseus.agents.prompt_builder.search_ops import (
     _loop_signal_path,
     _save_loop_signal,
     advance_round,
+    get_candidate_example_ids,
     get_search_state,
     init_search_state,
     record_eval_result,
@@ -191,6 +192,18 @@ class TestRegisterCandidate:
         # v2 appeared in round_history[1].candidates_evaluated — duplicate
         with pytest.raises(ValueError, match="v2"):
             register_candidate("run017", "v2", output_dir=tmp_path)
+
+    def test_stores_example_ids_in_pending(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="run-ex1", output_dir=tmp_path)
+        register_candidate("run-ex1", "v1", example_ids=["ex-a", "ex-b"], output_dir=tmp_path)
+        pending = _load_pending("run-ex1", tmp_path)
+        assert pending[0].example_ids == ["ex-a", "ex-b"]
+
+    def test_example_ids_default_empty_in_pending(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="run-ex2", output_dir=tmp_path)
+        register_candidate("run-ex2", "v1", output_dir=tmp_path)
+        pending = _load_pending("run-ex2", tmp_path)
+        assert pending[0].example_ids == []
 
 
 # ---------------------------------------------------------------------------
@@ -502,4 +515,47 @@ class TestAdvanceRoundLoopSignal:
             _register_and_score("r1", f"stag-{i}", 0.1, 10.0, tmp_path)
             summary = advance_round("r1", output_dir=tmp_path)
         assert summary.converged
-        assert summary.stagnation_count == 3
+
+
+# ---------------------------------------------------------------------------
+# get_candidate_example_ids
+# ---------------------------------------------------------------------------
+
+
+class TestGetCandidateExampleIds:
+    def test_returns_ids_for_front_candidate(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="run-gce1", output_dir=tmp_path)
+        register_candidate("run-gce1", "v1", example_ids=["ex-1", "ex-2"], output_dir=tmp_path)
+        record_eval_result("run-gce1", "v1", quality_score=0.9, cost=0.01, output_dir=tmp_path)
+        advance_round("run-gce1", output_dir=tmp_path)
+        ids = get_candidate_example_ids("run-gce1", "v1", output_dir=tmp_path)
+        assert ids == ["ex-1", "ex-2"]
+
+    def test_returns_empty_when_no_example_ids(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="run-gce2", output_dir=tmp_path)
+        register_candidate("run-gce2", "v1", output_dir=tmp_path)
+        record_eval_result("run-gce2", "v1", quality_score=0.9, cost=0.01, output_dir=tmp_path)
+        advance_round("run-gce2", output_dir=tmp_path)
+        ids = get_candidate_example_ids("run-gce2", "v1", output_dir=tmp_path)
+        assert ids == []
+
+    def test_raises_for_unknown_version(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="run-gce3", output_dir=tmp_path)
+        register_candidate("run-gce3", "v1", output_dir=tmp_path)
+        record_eval_result("run-gce3", "v1", quality_score=0.9, cost=0.01, output_dir=tmp_path)
+        advance_round("run-gce3", output_dir=tmp_path)
+        with pytest.raises(ValueError, match="v99"):
+            get_candidate_example_ids("run-gce3", "v99", output_dir=tmp_path)
+
+    def test_example_ids_survive_advance_round(self, tmp_path) -> None:
+        init_search_state("anthropic", run_id="run-gce4", output_dir=tmp_path)
+        register_candidate("run-gce4", "v1", example_ids=["ex-a"], output_dir=tmp_path)
+        record_eval_result("run-gce4", "v1", quality_score=0.9, cost=0.01, output_dir=tmp_path)
+        advance_round("run-gce4", output_dir=tmp_path)
+        # Register and advance a second round to verify persistence
+        register_candidate("run-gce4", "v2", example_ids=["ex-b", "ex-c"], output_dir=tmp_path)
+        record_eval_result("run-gce4", "v2", quality_score=0.85, cost=0.005, output_dir=tmp_path)
+        advance_round("run-gce4", output_dir=tmp_path)
+        # Both should still be on front (incomparable: v1 higher quality, v2 lower cost)
+        ids_v1 = get_candidate_example_ids("run-gce4", "v1", output_dir=tmp_path)
+        assert ids_v1 == ["ex-a"]

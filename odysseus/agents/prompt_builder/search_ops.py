@@ -175,6 +175,7 @@ def register_candidate(
     run_id: str,
     prompt_version: str,
     parent_version: str | None = None,
+    example_ids: list[str] | None = None,
     output_dir: Path | None = None,
 ) -> SearchState:
     """Register a new candidate for the current round.
@@ -186,6 +187,7 @@ def register_candidate(
         run_id: Run identifier used to locate the state on disk.
         prompt_version: Unique version identifier for the prompt.
         parent_version: Parent prompt version, if any.
+        example_ids: Holdout example IDs used as few-shots in this prompt version.
         output_dir: Root directory for persisted state files.
 
     Returns:
@@ -223,10 +225,39 @@ def register_candidate(
         quality_score=0.0,
         cost=0.0,
         round_introduced=state.round + 1,
+        example_ids=example_ids or [],
     )
     pending.append(candidate)
     _save_pending(run_id, pending, output_dir)
     return state
+
+
+def get_candidate_example_ids(
+    run_id: str,
+    prompt_version: str,
+    output_dir: Path | None = None,
+) -> list[str]:
+    """Return the example_ids for a candidate on the Pareto front.
+
+    Args:
+        run_id: Run identifier used to locate the state on disk.
+        prompt_version: Version identifier of the candidate.
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        List of holdout example IDs used in the candidate's prompt.
+
+    Raises:
+        FileNotFoundError: If the search state does not exist.
+        ValueError: If *prompt_version* is not on the Pareto front.
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    state = _load_state(run_id, output_dir)
+    for candidate in state.pareto_front:
+        if candidate.prompt_version == prompt_version:
+            return candidate.example_ids
+    raise ValueError(f"prompt_version '{prompt_version}' not found on Pareto front")
 
 
 # ---------------------------------------------------------------------------

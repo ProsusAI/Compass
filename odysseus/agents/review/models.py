@@ -100,6 +100,10 @@ class MutationHistory(BaseModel):
 class ExampleContent(BaseModel):
     """Concrete content for a few-shot example."""
 
+    example_id: str | None = Field(
+        default=None,
+        description="Holdout dataset row ID for tracking — never included in prompt text",
+    )
     input: str = Field(description="The example input/query text")
     route: str = Field(description="The assigned route for this example")
     reasoning: str = Field(description="Why this route fits")

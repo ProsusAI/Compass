@@ -26,6 +26,7 @@ def _candidate(
     cost: float = 0.01,
     round_introduced: int = 1,
     dominated: bool = False,
+    **kwargs,
 ) -> Candidate:
     return Candidate(
         prompt_version=prompt_version,
@@ -34,6 +35,7 @@ def _candidate(
         cost=cost,
         round_introduced=round_introduced,
         dominated=dominated,
+        **kwargs,
     )
 
 
@@ -91,6 +93,14 @@ class TestCandidate:
                 cost=0.01,
                 round_introduced=1,
             )
+
+    def test_example_ids_stored(self) -> None:
+        c = _candidate(prompt_version="v1", example_ids=["ex-1", "ex-2"])
+        assert c.example_ids == ["ex-1", "ex-2"]
+
+    def test_example_ids_defaults_empty(self) -> None:
+        c = _candidate(prompt_version="v1")
+        assert c.example_ids == []
 
 
 # ---------------------------------------------------------------------------

@@ -718,10 +718,9 @@ class TestReviewResult:
 # ---------------------------------------------------------------------------
 
 
-from odysseus.agents.review.models import ExampleContent
-
-
 def test_example_content_model():
+    from odysseus.agents.review.models import ExampleContent
+
     content = ExampleContent(
         input="Build a multi-step data pipeline",
         route="complex",
@@ -768,3 +767,31 @@ def test_edit_directive_without_example_content():
         priority="medium",
     )
     assert directive.example_content is None
+
+
+# ---------------------------------------------------------------------------
+# ExampleContent
+# ---------------------------------------------------------------------------
+
+
+class TestExampleContent:
+    def test_with_example_id(self) -> None:
+        from odysseus.agents.review.models import ExampleContent
+        content = ExampleContent(
+            example_id="ex-042",
+            input="Build a multi-step data pipeline",
+            route="complex",
+            reasoning="Requires chained operations",
+            exclusions=[],
+        )
+        assert content.example_id == "ex-042"
+
+    def test_example_id_defaults_to_none(self) -> None:
+        from odysseus.agents.review.models import ExampleContent
+        content = ExampleContent(
+            input="Hello",
+            route="simple",
+            reasoning="Trivial greeting",
+            exclusions=[],
+        )
+        assert content.example_id is None

@@ -106,6 +106,7 @@ async def register_candidate_tool(
     run_id: str,
     prompt_version: str,
     parent_version: str | None = None,
+    example_ids: list[str] | None = None,
 ) -> str:
     """[Stage 4: Refinement Loop] Register a new candidate prompt version for the current search round.
 
@@ -113,6 +114,7 @@ async def register_candidate_tool(
         run_id: Pipeline run identifier.
         prompt_version: Unique version identifier for the new prompt candidate.
         parent_version: Parent prompt version, if any.
+        example_ids: Holdout example IDs used as few-shots in this prompt version (backend tracking only).
 
     Returns:
         JSON object confirming the registered prompt version.
@@ -122,6 +124,7 @@ async def register_candidate_tool(
             run_id=run_id,
             prompt_version=prompt_version,
             parent_version=parent_version,
+            example_ids=example_ids,
         )
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc

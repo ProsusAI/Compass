@@ -25,6 +25,7 @@ When you are dispatched for the first time — round 0, no search state exists y
 1. Read `outputs/<run_id>/holdout.jsonl` and `outputs/<run_id>/routing_context.json`.
 2. Select 3–5 diverse examples that collectively cover different routes. Prioritize examples near route boundaries (inputs where the correct route is non-obvious or where adjacent routes could plausibly apply).
 3. For each selected example, craft:
+   - `example_id`: the `id` field from the holdout JSONL row — required for holdout filtering (backend tracking only, never included in prompt text)
    - `input`: the input text as it appears in the dataset
    - `route`: the correct assigned route
    - `reasoning`: a concise explanation of why this route applies to this input
@@ -208,6 +209,7 @@ When a mutation type has been tried and marked ineffective in `mutation_history`
 
 **Example directives (`block_type: "example"`) MUST include a fully populated `example_content` field.** Do not emit an example directive with only a `directive` string. The `example_content` must contain:
 
+- `example_id`: the `id` field from the holdout JSONL row — required for holdout filtering (backend tracking only, never included in prompt text)
 - `input`: the full input text for the example
 - `route`: the correct assigned route
 - `reasoning`: explanation of why this route applies
