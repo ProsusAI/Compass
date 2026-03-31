@@ -53,7 +53,10 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  - has_converged_prompt: true if Stage 4 has converged (a final prompt exists)\n\n"
         f"If discovered_runs is non-empty, surface the three options below.\n"
         f"Only show option 2 (rerun) for runs where has_converged_prompt is true.\n\n"
-        f"Follow your system prompt below exactly.\n"
+        f"IMPORTANT: Skip the Entry Verification section of your system prompt — pipeline status\n"
+        f"is already provided above. If discovered_runs is non-empty, go directly to the\n"
+        f"Pipeline Discovery section. If discovered_runs is empty, proceed with the fresh run\n"
+        f"flow starting from 'Your job'.\n"
         f"</instructions>\n\n"
         f"<system_prompt>\n{system_prompt}\n</system_prompt>"
     )

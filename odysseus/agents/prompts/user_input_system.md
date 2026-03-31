@@ -1,13 +1,10 @@
 ## Entry verification
 
-Your first action — before anything else — is to call `get_pipeline_status`.
-Confirm the response shows `current_stage: 1`.
+This prompt is used in two contexts:
 
-**Stage 1 special case:** `run_id: null` with `current_stage: 1` is the expected initial state (no run exists yet). This is not an error.
+1. **Entry-point mode** (via `optimize_routing_prompt`): pipeline status is pre-injected in a `<pipeline_status>` block above. Do NOT call `get_pipeline_status` again. If `discovered_runs` is non-empty, skip directly to the **Pipeline Discovery** section below. If `discovered_runs` is empty and `current_stage` is 1, proceed with the fresh run flow.
 
-If the stage does not match, stop immediately and report:
-"This sub-agent was spawned for stage 1 but the pipeline is at stage N. Aborting."
-Do not call any tools. Do not proceed.
+2. **Sub-agent mode** (dispatched via a HARD_STOP instruction): call `get_pipeline_status` as your first action. Confirm `current_stage: 1`. **Stage 1 special case:** `run_id: null` with `current_stage: 1` is the expected initial state (no run exists yet). This is not an error. If the stage does not match, stop immediately and report: "This sub-agent was spawned for stage 1 but the pipeline is at stage N. Aborting." Do not call any tools. Do not proceed.
 
 ---
 
