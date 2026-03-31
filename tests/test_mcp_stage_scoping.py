@@ -31,7 +31,7 @@ def test_stage_registry_has_all_stages():
         "backend_setup",
         "prompt_building",
         "review",
-        "holdout",
+        "final_report",
     }
     assert set(STAGE_REGISTRY) == expected
 

@@ -23,6 +23,7 @@ _STAGE_PROMPT_MAP: dict[int | str, str] = {
     # Stage 4 is dynamic — looked up by activate_prompt name:
     "odysseus_prompt_builder": "odysseus/agents/prompts/prompt_builder_system.md",
     "odysseus_review_agent": "odysseus/agents/prompts/review_agent_system.md",
+    5: "odysseus/agents/prompts/final_report_system.md",
 }
 
 # ---------------------------------------------------------------------------
@@ -62,7 +63,6 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "advance_round_tool",
         "get_search_state_tool",
         "save_prompt_tool",
-        "filter_holdout_dataset_tool",
         "get_pipeline_status",
     ],
     "review": [
@@ -72,9 +72,11 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "run_eval",
         "get_pipeline_status",
     ],
-    "holdout": [
+    "final_report": [
         "filter_holdout_dataset_tool",
         "run_holdout_eval",
+        "build_final_report_briefing_tool",
+        "save_final_report",
         "get_pipeline_status",
     ],
 }
@@ -195,7 +197,7 @@ def create_app() -> FastMCP:
 # Import all tool/resource/prompt modules to trigger @mcp decorator registration.
 import odysseus.mcp.backend_setup_tools as _backend_setup_tools  # noqa: E402, F401
 import odysseus.mcp.data_validation_tools as _data_validation_tools  # noqa: E402, F401
-import odysseus.mcp.holdout_tools as _holdout_tools  # noqa: E402, F401
+import odysseus.mcp.final_report_tools as _final_report_tools  # noqa: E402, F401
 import odysseus.mcp.input_report_tools as _input_report_tools  # noqa: E402, F401
 import odysseus.mcp.orchestrator_tools as _orchestrator_tools  # noqa: E402, F401
 import odysseus.mcp.prompt_building_tools as _prompt_building_tools  # noqa: E402, F401

@@ -47,3 +47,12 @@ async def odysseus_backend_setup() -> list[Message]:
 async def odysseus_review_agent() -> list[Message]:
     """System prompt for the Review Agent -- supervises the prompt optimization search loop."""
     return [UserMessage(content=_load_text("odysseus/agents/prompts/review_agent_system.md"))]
+
+
+@mcp.prompt()
+async def odysseus_final_report() -> list[Message]:
+    """Activate the Odysseus final report agent.
+
+    Runs holdout evaluation and generates the final optimization report.
+    """
+    return [UserMessage(content=_load_text("odysseus/agents/prompts/final_report_system.md"))]

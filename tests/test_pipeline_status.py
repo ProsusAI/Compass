@@ -213,16 +213,16 @@ class TestSubagentInstruction:
         assert "stratified_split_tool" in tools
 
     def test_stage5_has_subagent_instruction(self, tmp_path: Path) -> None:
-        """Stage 5 (Holdout Validation) has a subagent instruction."""
+        """Stage 5 (Final Report) has a subagent instruction."""
         _setup_stage4_converged(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 5
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "HARD_STOP" in instr
-        assert "holdout" in instr
-        assert "filter_holdout_dataset_tool" in instr
-        assert "run_holdout_eval" in instr
+        assert "final_report" in instr
+        assert "build_final_report_briefing_tool" in instr
+        assert "save_final_report" in instr
 
 
 class TestStage4ThreePhaseDetection:
@@ -344,47 +344,61 @@ class TestStage3PricingValidation:
         assert result["stages"][2]["status"] == "complete"
 
 
-class TestStage5Holdout:
-    def test_holdout_has_subagent_instruction(self, tmp_path: Path) -> None:
+class TestStage5FinalReport:
+    """Stage 5 (Final Report): holdout eval + report generation."""
+
+    def test_stage5_reached_after_convergence(self, tmp_path: Path) -> None:
+        """After stage 4 converges, current_stage is 5."""
         _setup_stage4_converged(tmp_path, "r1")
-
-
-class TestStage5NewBehavior:
-    """Stage 5 is complete only when converged == true."""
-
-    def test_stage5_incomplete_when_round_gte_1_but_not_converged(self, tmp_path: Path) -> None:
-        """round >= 1 no longer completes Stage 5."""
-        _setup_through_stage4(tmp_path, "r1")
-        search = tmp_path / "r1" / "search"
-        search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(json.dumps({"round": 3, "converged": False, "loop_phase": "review"}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["stages"][4]["status"] == "incomplete"  # Stage 5 index
         assert result["current_stage"] == 5
+        assert result["stages"][3]["status"] == "complete"  # stage 4
 
-    def test_stage5_complete_when_converged(self, tmp_path: Path) -> None:
-        _setup_through_stage4(tmp_path, "r1")
-        search = tmp_path / "r1" / "search"
-        search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
+    def test_stage5_incomplete_without_report(self, tmp_path: Path) -> None:
+        """Stage 5 incomplete when final_report.md does not exist."""
+        _setup_stage4_converged(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert result["stages"][4]["status"] == "incomplete"
+
+    def test_stage5_complete_with_report(self, tmp_path: Path) -> None:
+        """Stage 5 is complete when reports/final_report.md exists."""
+        _setup_stage4_converged(tmp_path, "r1")
+        reports = tmp_path / "r1" / "reports"
+        reports.mkdir(parents=True, exist_ok=True)
+        (reports / "final_report.md").write_text("# Final Report")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["stages"][4]["status"] == "complete"
-        assert result["current_stage"] == 6  # Holdout Validation
 
-
-class TestStage5DynamicHardStop:
-    """Stage 5 HARD_STOP depends on loop_phase."""
-
-    def test_build_phase_spawns_prompt_builder(self, tmp_path: Path) -> None:
-        _setup_through_stage4(tmp_path, "r1")
-        search = tmp_path / "r1" / "search"
-        search.mkdir(parents=True, exist_ok=True)
-        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
+    def test_stage5_has_subagent_instruction(self, tmp_path: Path) -> None:
+        """Stage 5 has HARD_STOP subagent instruction with final report tools."""
+        _setup_stage4_converged(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 5
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "HARD_STOP" in instr
-        assert "holdout" in instr
-        assert "filter_holdout_dataset_tool" in instr
+        assert "final_report" in instr
+        assert "build_final_report_briefing_tool" in instr
+        assert "save_final_report" in instr
         assert "run_holdout_eval" in instr
+        assert "filter_holdout_dataset_tool" in instr
+
+    def test_stage5_available_tools(self, tmp_path: Path) -> None:
+        """Stage 5 available_tools includes all final report tools."""
+        _setup_stage4_converged(tmp_path, "r1")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        tools = result["available_tools"]
+        assert "filter_holdout_dataset_tool" in tools
+        assert "run_holdout_eval" in tools
+        assert "build_final_report_briefing_tool" in tools
+        assert "save_final_report" in tools
+
+    def test_pipeline_complete_after_stage5(self, tmp_path: Path) -> None:
+        """Pipeline is complete after stage 5 report is written."""
+        _setup_stage4_converged(tmp_path, "r1")
+        reports = tmp_path / "r1" / "reports"
+        reports.mkdir(parents=True, exist_ok=True)
+        (reports / "final_report.md").write_text("# Final Report")
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        assert all(s["status"] == "complete" for s in result["stages"])
+        assert "Pipeline complete" in result["next_action"]

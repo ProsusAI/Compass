@@ -46,9 +46,8 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `get_search_state_tool` | Read current search state |
 | `save_prompt_tool` | Save compiled prompt text to disk |
 | `run_eval` | Evaluate a prompt version against the dev set |
-| `filter_holdout_dataset_tool` | Remove few-shot examples from holdout before final eval |
 
-> Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 4 or 5 sub-agent tool. Do not call it from this context.
+> Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 4 sub-agent tool. Do not call it from this context.
 
 ## Resources
 

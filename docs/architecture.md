@@ -8,11 +8,11 @@ Quick re-orientation guide for the Odysseus multi-agent routing optimizer.
 graph TD
     U["User"] -->|problem + dataset| A1["User Input Agent<br/><em>LLM-driven</em><br/>Status: done"]
     A1 -->|validated_input_report_path| A2["Data Validation Agent<br/><em>LLM-driven</em><br/>Phase 1: ingest &amp; map → Phase 2: validate + split<br/>Status: done"]
-    A2 -->|RoutingContext + dev/holdout splits| A3["Prompt Builder Agent<br/><em>LLM-driven</em><br/>Status: planned"]
+    A2 -->|RoutingContext + dev/holdout splits| A3["Prompt Builder Agent<br/><em>LLM-driven</em><br/>Status: done"]
     A3 -->|prompt version| A4["Eval Runner Agent<br/><em>code-driven</em><br/>Status: done"]
-    A4 -->|eval_score_report| A5["Review Agent<br/><em>LLM-driven</em><br/>Status: planned"]
+    A4 -->|eval_score_report| A5["Review Agent<br/><em>LLM-driven</em><br/>Status: done"]
     A5 -->|iterate| A3
-    A5 -->|accept| A6["Final Reporting Agent<br/><em>LLM-driven</em><br/>Status: planned"]
+    A5 -->|accept| A6["Final Report Agent<br/><em>Hybrid (code + LLM)</em><br/>Holdout eval + report<br/>Status: done"]
     A6 -->|final report| U
 ```
 
@@ -26,7 +26,7 @@ graph TD
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
 | Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) | Done | `eval_score_report`, `review_briefing` | `review_result` |
-| Final Reporting | LLM-driven | (planned) | Planned | `eval_score_report`, full pipeline context | final report |
+| Final Report | Hybrid (code + LLM) | [`odysseus/agents/final_report/models.py`](../odysseus/agents/final_report/models.py), [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py), [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, optimization charts |
 
 ## 3. Context Dict Reference
 
@@ -89,7 +89,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 |---|---|---|---|
 | `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `run_eval` | Implemented | Run an evaluation of a prompt version against a dataset (dev split) | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py) |
-| `run_holdout_eval` | Stub | Run evaluation on the holdout split (Final Evaluation agent only) | [`odysseus/mcp/`](../odysseus/mcp/) |
+| `run_holdout_eval` | Implemented | Run evaluation on the holdout split (Final Report agent only) | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
 | `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) |
 | `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation/detect.py`](../odysseus/agents/data_validation/detect.py) |
@@ -97,7 +97,9 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
 | `build_review_briefing_tool` | Planned | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py) |
 | `record_directive_outcomes_tool` | Implemented | Persist directive outcomes and apply the Review Agent's `loop_signal` (early exit or budget/mode overrides) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–6, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
+| `build_final_report_briefing_tool` | Implemented | Pre-process all pipeline artifacts into a structured briefing with charts for the Final Report Agent | [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py) |
+| `save_final_report` | Implemented | Save the final report markdown to disk | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
+| `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–5, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
 | `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
@@ -119,9 +121,9 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `save_prompt_tool`, `filter_holdout_dataset_tool`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
-| `holdout` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `get_pipeline_status` |
+| `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
 #### Sub-Agent Guard Pattern
 
@@ -134,7 +136,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | Exit | Sub-agent | `get_pipeline_status` call; incomplete → fix before exiting | Hard (behavioural) |
 | Exit | Orchestrator | `<HARD_STOP>` post-exit instruction | Soft (advisory) |
 
-Each stage system prompt (stages 1–6) includes mandatory `## Entry verification` and `## Exit verification` blocks. Sequencing knowledge lives exclusively in `pipeline/status.py`; stage prompts know only their own stage number.
+Each stage system prompt (stages 1–5) includes mandatory `## Entry verification` and `## Exit verification` blocks. Sequencing knowledge lives exclusively in `pipeline/status.py`; stage prompts know only their own stage number.
 
 ### Prompts
 
@@ -144,6 +146,7 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 | `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
 | `odysseus_review_agent` | Review Agent system prompt — receives ReviewBriefing, emits ReviewResult JSON | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
 | `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
+| `odysseus_final_report` | Final Report agent — holdout eval + report generation | [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) |
 
 ### Resources
 
@@ -175,6 +178,7 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 | `odysseus/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform, stratified split |
 | `odysseus/agents/prompt_builder/` | Prompt builder: search state, Pareto ops, holdout filter, best-practices docs |
 | `odysseus/agents/review/` | Review agent: models, preprocessor, ops |
+| `odysseus/agents/final_report/` | Final report: models, preprocessor (briefing builder + chart generation) |
 | `odysseus/agents/prompts/` | Agent system prompts (Markdown) surfaced via MCP |
 | `odysseus/eval/` | Evaluation engine: controller, backends, metrics, dataset loading, result collection |
 | `outputs/<run_id>/input/` | Pipeline run: validated input report |
@@ -182,7 +186,9 @@ Each stage system prompt (stages 1–6) includes mandatory `## Entry verificatio
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
-| `outputs/<run_id>/eval/` | Pipeline run: evaluation results and reports |
+| `outputs/<run_id>/eval/` | Pipeline run: dev evaluation results and reports |
+| `outputs/<run_id>/holdout_eval/` | Pipeline run: holdout evaluation results and reports |
+| `outputs/<run_id>/reports/` | Pipeline run: final report (`final_report.md`) and charts (`charts/`) |
 | `backends/` | Backend profiles (YAML, shared across runs) |
 | `tests/` | Test suite (`pytest`) |
 | `tests/scenarios/` | MCP integration test scenarios |
