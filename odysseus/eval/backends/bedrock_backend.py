@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import anthropic
@@ -55,5 +56,9 @@ class BedrockBackend:
             cached_tokens=getattr(usage, "cache_read_input_tokens", 0),
             output_tokens=usage.output_tokens,
         )
-        output = {"content": response.content[0].text}
+        content = response.content[0].text
+        try:
+            output: dict[str, Any] = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            output = {"content": content}
         return output, token_usage

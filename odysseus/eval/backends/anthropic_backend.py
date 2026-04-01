@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -71,5 +72,9 @@ class AnthropicBackend:
             cache_write_1h_tokens=getattr(cache_creation, "ephemeral_1h_input_tokens", 0) if cache_creation else 0,
             output_tokens=usage.output_tokens,
         )
-        output = {"content": response.content[0].text}
+        content = response.content[0].text
+        try:
+            output: dict[str, Any] = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            output = {"content": content}
         return output, token_usage
