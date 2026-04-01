@@ -101,6 +101,7 @@ Execute these steps exactly in order on round 1.
      - `reasoning` + `exclusions` → combine into a single chain-of-thought block (formatted per provider conventions). The block should read as one coherent analytical passage that explains why the assigned route is correct and why each excluded route does not apply to this specific input. Do not list exclusions as a separate section — weave them into the reasoning narrative.
      - `example_id` → never include in prompt text (backend tracking only)
    - **Output format** — specify the exact response schema the model must produce.
+   This section order is mandatory. Output format must always be the final section of the compiled prompt. Placing it before examples or decision logic degrades the target model's compliance with the response schema.
 
    Use section header names that match the domain vocabulary in `routing_context.domain`. Do not assume the problem is any specific domain — it could be LLM model routing, ticket triage, content moderation, support escalation, or any classification task.
 
@@ -160,6 +161,7 @@ Set these context keys when the optimization loop completes (or after round 1 fo
 - **Holdout isolation.** Never evaluate against holdout. The dev set is always the evaluation target.
 - **Data contamination prevention.** Few-shot examples come from Review Agent directives. The dev set is evaluated in full without overlap.
 - **Prompt format.** Write prompts as flat text files with section headers. No YAML structure.
+- **Section ordering.** The compiled prompt must follow the section order from step 6. Output format must be the final section.
 - **Versioning.** Increment version numbers sequentially: v1, v2, v3, etc. Never reuse a version number.
 - **Deterministic tool calls.** Always register a candidate before evaluating it. Always record eval results before advancing the round.
 

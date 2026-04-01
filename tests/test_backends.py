@@ -52,7 +52,7 @@ EXAMPLE = Example(
 
 
 def _make_anthropic_mock_response(
-    text: str = "response text",
+    text: str = '{"route": "greeting"}',
     input_tokens: int = 10,
     output_tokens: int = 20,
     cache_read_input_tokens: int | None = 5,
@@ -83,7 +83,7 @@ def _make_anthropic_mock_response(
 
 
 def _make_openai_mock_response(
-    content: str = "response text",
+    content: str = '{"route": "greeting"}',
     prompt_tokens: int = 10,
     completion_tokens: int = 20,
     cached_tokens: int | None = 5,
@@ -538,7 +538,7 @@ class TestAnthropicBackend:
         backend = AnthropicBackend(profile)
         output, usage = await backend.call("prompt", EXAMPLE)
 
-        assert output == {"content": "response text"}
+        assert output == {"route": "greeting"}
         assert usage.input_tokens == 100
         assert usage.cached_tokens == 30
         assert usage.output_tokens == 50
@@ -636,6 +636,42 @@ class TestAnthropicBackend:
         call_kwargs = mock_client_cls.call_args.kwargs
         assert call_kwargs["default_headers"] == {"X-Custom": "value"}
 
+    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    async def test_backend_call_non_json_raises(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(text="I think the route is haiku")
+        )
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+        )
+        backend = AnthropicBackend(profile)
+        with pytest.raises(ValueError, match="non-JSON"):
+            await backend.call("prompt", EXAMPLE)
+
+    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    async def test_backend_call_missing_route_raises(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(text='{"reasoning": "this is complex"}')
+        )
+        profile = BackendProfile(
+            model="claude-sonnet-4-20250514",
+            provider="anthropic",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+        )
+        backend = AnthropicBackend(profile)
+        with pytest.raises(ValueError, match="missing 'route'"):
+            await backend.call("prompt", EXAMPLE)
+
 
 # ---------------------------------------------------------------------------
 # OpenAIBackend
@@ -681,7 +717,7 @@ class TestOpenAIBackend:
         backend = OpenAIBackend(profile)
         output, usage = await backend.call("prompt", EXAMPLE)
 
-        assert output == {"content": "response text"}
+        assert output == {"route": "greeting"}
         assert usage.input_tokens == 100
         assert usage.cached_tokens == 30
         assert usage.output_tokens == 50
@@ -744,6 +780,30 @@ class TestOpenAIBackend:
         call_kwargs = mock_client_cls.call_args.kwargs
         assert call_kwargs["organization"] == "org-123"
 
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_backend_call_non_json_raises(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_openai_mock_response(content="I think the route is haiku")
+        )
+        profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
+        backend = OpenAIBackend(profile)
+        with pytest.raises(ValueError, match="non-JSON"):
+            await backend.call("prompt", EXAMPLE)
+
+    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    async def test_backend_call_missing_route_raises(self, mock_client_cls: MagicMock) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_openai_mock_response(content='{"reasoning": "this is complex"}')
+        )
+        profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
+        backend = OpenAIBackend(profile)
+        with pytest.raises(ValueError, match="missing 'route'"):
+            await backend.call("prompt", EXAMPLE)
+
 
 # ---------------------------------------------------------------------------
 # OpenAIBackend — reasoning_level
@@ -757,7 +817,8 @@ class TestOpenAIBackendReasoningLevel:
     async def test_reasoning_level_sets_reasoning_effort(self, mock_client_cls: MagicMock, level: str) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
-        mock_client.chat.completions.create = AsyncMock(return_value=_make_openai_mock_response(content="test"))
+        resp = _make_openai_mock_response(content='{"route": "test"}')
+        mock_client.chat.completions.create = AsyncMock(return_value=resp)
         profile = BackendProfile(
             **{**MINIMAL_PROFILE, "provider": "openai", "reasoning_level": level, "api_key_env": None}
         )
@@ -771,7 +832,8 @@ class TestOpenAIBackendReasoningLevel:
     async def test_no_reasoning_level_omits_reasoning_effort(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
-        mock_client.chat.completions.create = AsyncMock(return_value=_make_openai_mock_response(content="test"))
+        resp = _make_openai_mock_response(content='{"route": "test"}')
+        mock_client.chat.completions.create = AsyncMock(return_value=resp)
         profile = BackendProfile(**{**MINIMAL_PROFILE, "provider": "openai", "api_key_env": None})
         backend = OpenAIBackend(profile)
         await backend.call("prompt", EXAMPLE)
@@ -837,7 +899,7 @@ class TestBedrockBackend:
         backend = BedrockBackend(profile)
         output, usage = await backend.call("prompt", EXAMPLE)
 
-        assert output == {"content": "response text"}
+        assert output == {"route": "greeting"}
         assert usage.input_tokens == 100
         assert usage.cached_tokens == 30
         assert usage.output_tokens == 50
@@ -884,6 +946,48 @@ class TestBedrockBackend:
 
         mock_session_cls.assert_called_once_with(profile_name="my-sso-profile")
 
+    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    async def test_backend_call_non_json_raises(
+        self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(text="I think the route is haiku")
+        )
+        profile = BackendProfile(
+            model="anthropic.claude-3-sonnet",
+            provider="bedrock",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+        )
+        backend = BedrockBackend(profile)
+        with pytest.raises(ValueError, match="non-JSON"):
+            await backend.call("prompt", EXAMPLE)
+
+    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    async def test_backend_call_missing_route_raises(
+        self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
+    ) -> None:
+        mock_client = AsyncMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.messages.create = AsyncMock(
+            return_value=_make_anthropic_mock_response(text='{"reasoning": "this is complex"}')
+        )
+        profile = BackendProfile(
+            model="anthropic.claude-3-sonnet",
+            provider="bedrock",
+            requests_per_minute=100,
+            tokens_per_minute=50000,
+            max_tokens=1024,
+        )
+        backend = BedrockBackend(profile)
+        with pytest.raises(ValueError, match="missing 'route'"):
+            await backend.call("prompt", EXAMPLE)
+
 
 # ---------------------------------------------------------------------------
 # AnthropicBackend — reasoning_level
@@ -904,7 +1008,7 @@ class TestAnthropicBackendReasoningLevel:
         profile = BackendProfile(**{**MINIMAL_PROFILE, "reasoning_level": level, "api_key_env": None})
         backend = AnthropicBackend(profile)
         with patch.object(backend._client.messages, "create", new_callable=AsyncMock) as mock_create:
-            mock_create.return_value = _make_anthropic_mock_response(text="test")
+            mock_create.return_value = _make_anthropic_mock_response(text='{"route": "test"}')
             await backend.call("prompt", EXAMPLE)
             call_kwargs = mock_create.call_args.kwargs
             assert call_kwargs["thinking"] == {"type": "enabled", "budget_tokens": expected_budget}
@@ -914,7 +1018,7 @@ class TestAnthropicBackendReasoningLevel:
         profile = BackendProfile(**{**MINIMAL_PROFILE, "api_key_env": None})
         backend = AnthropicBackend(profile)
         with patch.object(backend._client.messages, "create", new_callable=AsyncMock) as mock_create:
-            mock_create.return_value = _make_anthropic_mock_response(text="test")
+            mock_create.return_value = _make_anthropic_mock_response(text='{"route": "test"}')
             await backend.call("prompt", EXAMPLE)
             call_kwargs = mock_create.call_args.kwargs
             assert "thinking" not in call_kwargs

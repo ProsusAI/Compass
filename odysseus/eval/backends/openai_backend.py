@@ -75,5 +75,7 @@ class OpenAIBackend:
         try:
             output: dict[str, Any] = json.loads(content)
         except (json.JSONDecodeError, ValueError):
-            output = {"content": content}
+            raise ValueError(f"Model returned non-JSON output: {content[:200]}")
+        if "route" not in output:
+            raise ValueError(f"Model output missing 'route' key: {json.dumps(output)[:200]}")
         return output, token_usage

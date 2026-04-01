@@ -41,7 +41,7 @@ Claude performs best with structured system prompts that separate instructions f
 2. Route definitions (`<routes>`)
 3. Routing rules (`<rules>`)
 4. Few-shot examples (`<examples>`)
-5. Output format specification
+5. Output format specification (must be last section)
 
 Keep each section self-contained. Claude handles long system prompts well — do not sacrifice clarity for brevity.
 

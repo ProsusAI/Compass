@@ -47,6 +47,8 @@ class JsonResultsCollector:
                 record = json.loads(line)
                 if record.get("__meta__"):
                     continue
+                if record.get("error") is not None:
+                    continue
                 eid = record.get("example_id")
                 if eid is not None:
                     ids.add(eid)

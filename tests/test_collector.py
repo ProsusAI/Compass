@@ -260,6 +260,19 @@ def test_read_completed_ids_skips_malformed_lines(tmp_path):
     assert ids == {"ex-1"}
 
 
+def test_read_completed_ids_skips_errored_results(tmp_path):
+    """read_completed_ids does not count errored results as completed."""
+    collector = JsonResultsCollector()
+    path = tmp_path / "results.jsonl"
+
+    r_ok = _make_result("ex-1")
+    r_err = _make_result("ex-2", error="Model returned non-JSON output")
+    path.write_text(r_ok.model_dump_json() + "\n" + r_err.model_dump_json() + "\n")
+
+    ids = collector.read_completed_ids(str(path))
+    assert ids == {"ex-1"}
+
+
 # --- Tests: RunFingerprint ---
 
 
