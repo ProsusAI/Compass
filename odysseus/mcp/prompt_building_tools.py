@@ -326,3 +326,30 @@ async def save_prompt_tool(
     prompt_path.write_text(content, encoding="utf-8")
 
     return json.dumps({"prompt_path": str(prompt_path)})
+
+
+@mcp.tool()
+async def get_edit_directives_tool(
+    ctx: Context,
+    run_id: str,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Refinement Loop] Retrieve the Review Agent's edit directives for the current round.
+
+    Returns the list of EditDirective objects persisted by the Review Agent
+    via record_directive_outcomes_tool. These contain block-level edit
+    instructions and example content for prompt compilation.
+
+    Args:
+        run_id: Pipeline run identifier.
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON-serialized list of EditDirective objects.
+    """
+    from odysseus.agents.review.ops import load_edit_directives
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+    directives = load_edit_directives(run_id, output_dir=out)
+    return json.dumps([d.model_dump(mode="json") for d in directives], indent=2)

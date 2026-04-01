@@ -32,7 +32,7 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `routing_context` | RoutingContext | Data Validation Agent | Domain, routes, dimensions |
 | `holdout_jsonl_path` | str | Data Validation Agent | Holdout examples (used by filter tool before final eval) |
 | `backend` | str | MCP tool param | Backend label for evaluation |
-| `review_directives` | list[EditDirective] | Review Agent | Example directives with `example_content` for assembly (round 1+) |
+| `review_directives` | list[EditDirective] | `get_edit_directives_tool` | Block-level edit directives with `example_content`; retrieved via tool call (round 1+) |
 | `eval_score_report` | ScoreReport | Eval Runner Agent | Eval results (round 2+ only) |
 
 ## Tools
@@ -45,6 +45,7 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `advance_round_tool` | Close round, update front, check convergence |
 | `get_search_state_tool` | Read current search state |
 | `save_prompt_tool` | Save compiled prompt text to disk |
+| `get_edit_directives_tool` | Retrieve Review Agent's edit directives (block-level edits, example content) |
 | `run_eval` | Evaluate a prompt version against the dev set |
 
 > Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 4 sub-agent tool. Do not call it from this context.
@@ -80,12 +81,12 @@ Also extract the `model` field from the backend profile YAML. Pass this value as
 
 Execute these steps exactly in order on round 1.
 
-1. **Read all inputs.** Load every key from the inputs table. Fail immediately if any required key is missing. On round 1, `review_directives` is required and must contain at least one directive with `block_type == 'example'`.
+1. **Read all inputs.** Load every key from the inputs table. For `review_directives`, call `get_edit_directives_tool(run_id=run_id)` to retrieve them. Fail immediately if any required key is missing. On round 1, `review_directives` is required and must contain at least one directive with `block_type == 'example'`.
 2. **Detect provider.** Read the `odysseus://backends/{backend}` resource (substituting the backend label) and extract the `provider` field from the returned YAML.
 3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
 4. **Initialize search state.** Call `init_search_state_tool(run_id=run_id, backend=backend)`. The tool applies default search parameters. If the routing context or input report specifies custom search budget parameters, pass them as overrides. Store the returned `search_state_id`.
 5. **Extract examples from Review Agent directives.**
-   - Read `review_directives` from context.
+   - Call `get_edit_directives_tool(run_id=run_id)` to retrieve `review_directives`.
    - Filter to directives where `block_type == 'example'`.
    - Extract `example_content` from each matching directive. These are the examples to include in the prompt.
    - Collect the `example_id` from each directive's `example_content`. These IDs are for backend tracking only — do **not** include them in the compiled prompt text.
@@ -115,7 +116,7 @@ Execute these steps exactly in order on round 1.
 
 Execute on round 2 and every subsequent round.
 
-1. **Receive feedback.** Read the Review Agent's block-level edit directives and the latest ScoreReport from `eval_score_report`.
+1. **Receive feedback.** Call `get_edit_directives_tool(run_id=run_id)` to retrieve the Review Agent's block-level edit directives. Read the latest ScoreReport from `eval_score_report`.
 2. **Read search state.** Call `get_search_state_tool(search_state_id)`. Note the `mutation_mode` (set by the Review Agent's loop signal) and `pareto_front`.
 3. **Select parents.** Pick 1-2 parents from the Pareto front. If the front has only one member, use it as the sole parent with two different mutation strategies.
 4. **Generate child variants.** Create 1-2 child prompts per parent.

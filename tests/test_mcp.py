@@ -305,6 +305,14 @@ def test_record_directive_outcomes_tool_registered() -> None:
     assert "record_directive_outcomes_tool" in tool_names
 
 
+def test_get_edit_directives_tool_registered() -> None:
+    """Verify get_edit_directives_tool is a registered MCP tool."""
+    from odysseus.mcp import mcp
+
+    tool_names = [t.name for t in mcp._tool_manager.list_tools()]
+    assert "get_edit_directives_tool" in tool_names
+
+
 def test_review_agent_prompt_registered() -> None:
     """Verify odysseus_review_agent is a registered MCP prompt."""
     from odysseus.mcp import mcp

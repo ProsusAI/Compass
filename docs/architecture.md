@@ -62,7 +62,7 @@ Top-level report from the Data Validation agent containing `SchemaFinding` list,
 Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Prompt Builder Agent.
 
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
-`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `MutationHistory`, `OracleMetrics`, per-class recall, and holdout example summaries. `ReviewResult` is the LLM output: `candidate_ranking`, `edit_directives`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, mutation log, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py).
+`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `MutationHistory`, `OracleMetrics`, per-class recall, and holdout example summaries. `ReviewResult` is the LLM output: `candidate_ranking`, `edit_directives`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, mutation log, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Edit directives are persisted to `edit_directives.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_edit_directives_tool`.
 
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
@@ -110,6 +110,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `advance_round_tool` | Implemented | Close round, update Pareto front, check convergence | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `get_search_state_tool` | Implemented | Load current search state | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `filter_holdout_dataset_tool` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder/holdout_filter.py`](../odysseus/agents/prompt_builder/holdout_filter.py) |
+| `get_edit_directives_tool` | Implemented | Retrieve the current round's block-level edit directives for the Prompt Builder | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `save_prompt_tool` | Implemented | Save compiled routing prompt to disk with correct encoding | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `start_stage` | Implemented | Activate a pipeline stage, scoping `tools/list` to that stage's tools | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
 | `complete_stage` | Implemented | Reset to orchestrator scope after a sub-agent finishes | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
@@ -125,7 +126,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
@@ -192,6 +193,7 @@ Each stage system prompt (stages 1–5) includes mandatory `## Entry verificatio
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
+| `outputs/<run_id>/search/edit_directives.json` | `EditDirective[]` — current round's block-level edit directives for the Prompt Builder |
 | `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |
 | `outputs/<run_id>/search/search_state_original.json` | Preserved original search state from before rerun initiation |
 | `outputs/<run_id>/eval/` | Pipeline run: dev evaluation results and reports |

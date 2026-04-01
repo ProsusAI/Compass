@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from odysseus.agents.review.models import DirectiveOutcome, MutationRecord
+from odysseus.agents.review.models import DirectiveOutcome, EditDirective, ExampleContent, MutationRecord
 from odysseus.agents.review.ops import (
     load_directive_history,
+    load_edit_directives,
     load_mutation_log,
     load_round_reports,
     save_directive_history,
+    save_edit_directives,
     save_mutation_log,
     save_round_report,
 )
@@ -215,3 +217,60 @@ class TestRunIdPaths:
     def test_round_report_uses_run_id_path(self, tmp_path: Path) -> None:
         save_round_report("abc12345", 1, {"v1": {"score": 0.8}}, output_dir=tmp_path)
         assert (tmp_path / "abc12345" / "search" / "round_reports" / "round_1.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Edit directives
+# ---------------------------------------------------------------------------
+
+
+class TestSaveLoadEditDirectives:
+    def test_roundtrip(self, tmp_path: Path) -> None:
+        directives = [
+            EditDirective(
+                directive_id="d1",
+                target_version="v1",
+                block_type="rule",
+                block_identifier="Rule 1",
+                granularity="micro",
+                directive="Tighten wording",
+                priority="medium",
+            ),
+        ]
+        save_edit_directives("run-abc", directives, output_dir=tmp_path)
+        loaded = load_edit_directives("run-abc", output_dir=tmp_path)
+        assert len(loaded) == 1
+        assert loaded[0].directive_id == "d1"
+        assert loaded[0].block_type == "rule"
+
+    def test_load_returns_empty_when_no_file(self, tmp_path: Path) -> None:
+        assert load_edit_directives("nonexistent", output_dir=tmp_path) == []
+
+    def test_with_example_content(self, tmp_path: Path) -> None:
+        directives = [
+            EditDirective(
+                directive_id="d2",
+                target_version="v1",
+                block_type="example",
+                block_identifier="Example 1",
+                granularity="macro",
+                directive="Add boundary example",
+                priority="high",
+                example_content=ExampleContent(
+                    example_id="ex42",
+                    input="test input",
+                    route="route_a",
+                    reasoning="test reasoning",
+                    exclusions=[{"route": "route_b", "reason": "not applicable"}],
+                ),
+            ),
+        ]
+        save_edit_directives("run-abc", directives, output_dir=tmp_path)
+        loaded = load_edit_directives("run-abc", output_dir=tmp_path)
+        assert loaded[0].example_content is not None
+        assert loaded[0].example_content.example_id == "ex42"
+        assert loaded[0].example_content.route == "route_a"
+
+    def test_creates_directory_structure(self, tmp_path: Path) -> None:
+        save_edit_directives("run-new", [], output_dir=tmp_path)
+        assert (tmp_path / "run-new" / "search" / "edit_directives.json").exists()

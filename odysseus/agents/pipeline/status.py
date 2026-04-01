@@ -49,7 +49,7 @@ _STAGE_4_BUILD_INSTRUCTION: str = (
     "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
     "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
     "advance_round_tool, run_eval\n"
     "Your tools: get_pipeline_status only\n\n"
@@ -68,7 +68,7 @@ _STAGE_4_RERUN_INSTRUCTION: str = (
     "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
     "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
     "advance_round_tool, run_eval\n"
     "Your tools: get_pipeline_status only\n\n"
@@ -639,6 +639,7 @@ def _next_action_for_stage_4(
             "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
             [
                 "get_search_state_tool",
+                "get_edit_directives_tool",
                 "init_search_state_tool",
                 "register_candidate_tool",
                 "record_eval_result_tool",
@@ -678,6 +679,7 @@ def _next_action_for_stage_4(
             "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
             [
                 "get_search_state_tool",
+                "get_edit_directives_tool",
                 "init_search_state_tool",
                 "register_candidate_tool",
                 "record_eval_result_tool",

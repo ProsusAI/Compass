@@ -145,6 +145,7 @@ async def record_directive_outcomes_tool(
     run_id: str,
     outcomes: list[dict[str, Any]],
     loop_signal: dict[str, Any] | None = None,
+    edit_directives: list[dict[str, Any]] | None = None,
     output_dir: str = "outputs",
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Record the outcomes of prior Review Agent directives.
@@ -158,6 +159,7 @@ async def record_directive_outcomes_tool(
         run_id: Pipeline run identifier.
         outcomes: List of DirectiveOutcome dicts to record.
         loop_signal: Optional LoopSignal dict from the Review Agent.
+        edit_directives: Optional list of EditDirective dicts to persist for the Prompt Builder.
         output_dir: Output directory (default "outputs").
 
     Returns:
@@ -178,6 +180,15 @@ async def record_directive_outcomes_tool(
         "recorded": len(parsed),
         "total": len(existing) + len(parsed),
     }
+
+    # Persist edit directives for Prompt Builder consumption
+    if edit_directives is not None:
+        from odysseus.agents.review.models import EditDirective
+        from odysseus.agents.review.ops import save_edit_directives
+
+        parsed_directives = [EditDirective.model_validate(d) for d in edit_directives]
+        save_edit_directives(run_id, parsed_directives, output_dir=out)
+        result["edit_directives_saved"] = len(parsed_directives)
 
     # Handle loop signal from Review Agent
     if loop_signal is not None:

@@ -31,7 +31,10 @@ When you are dispatched for the first time — round 0, no search state exists y
    - `reasoning`: a concise explanation of why this route applies to this input
    - `exclusions`: a list of `{route, reason}` entries naming routes that were ruled out and why
 4. Emit these as `edit_directives` with `block_type: "example"` and a fully populated `example_content` field. Use `block_identifier` values like `"Example 1"`, `"Example 2"`, etc.
-5. Set `loop_signal.action` to `"refine"` so the Prompt Builder is dispatched next to incorporate the examples and build the initial prompt.
+5. Call `record_directive_outcomes_tool` with:
+   - `outcomes`: empty list `[]` (no prior directives to track on cold start)
+   - `loop_signal`: `{"action": "refine", "reason": "<your reason>"}`
+   - `edit_directives`: the full list of EditDirective objects from your ReviewResult
 
 After the cold-start phase, the normal evaluation-and-review loop begins from round 1.
 
@@ -433,7 +436,9 @@ Avoid these failure modes:
 
 You are a **sub-agent** within Stage 4's refinement loop. Do not wait for Stage 4 to show `status: complete` — that only happens when the loop converges.
 
-When calling `record_directive_outcomes_tool`, include the `loop_signal` parameter with your complete loop signal object. This is how the system receives your convergence decision.
+When calling `record_directive_outcomes_tool`, include:
+- `loop_signal`: your complete loop signal object (this is how the system receives your convergence decision)
+- `edit_directives`: your complete list of edit directive objects from the ReviewResult (this persists them for the Prompt Builder to retrieve via `get_edit_directives_tool`)
 
 - If `loop_signal.action` is `"exit"`: the tool sets `converged = true` on search state. Stage 4 completes immediately. Do not expect `loop_phase` to change to `"build"`.
 - If `loop_signal.action` is `"refine"`: the tool persists your budget and mutation mode suggestions for the Prompt Builder's `advance_round` to consume. After the call, confirm `loop_phase` is `"build"`.
