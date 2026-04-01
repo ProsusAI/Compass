@@ -26,42 +26,42 @@ Recommended structure:
 
 ## Anchoring on the Default Route
 
-Start with the most common route. This anchors the model's prior — it will default to this route when uncertain, which is usually the desired behavior for cost-quality routing (prefer the cheaper tier unless evidence demands otherwise).
+Start with the most common route. This anchors the model's prior — it will default to this route when uncertain, which is usually the desired behavior (prefer the default route unless evidence demands otherwise).
 
 ```
-Default route: haiku
-Route to haiku unless the request meets one of the escalation criteria below.
+Default route: <route_default>
+Route to <route_default> unless the request meets one of the escalation criteria below.
 ```
 
 ## Positive Framing over Negative Framing
 
 Define each route by what it handles, not what it excludes.
 
-**Good:** "Route to opus when the request requires multi-step reasoning, synthesis across domains, or creative writing longer than 500 words."
+**Good:** "Route to <route_advanced> when the request exhibits [high-signal characteristics for that route]."
 
-**Bad:** "Do not route to haiku if the request is not simple."
+**Bad:** "Do not route to <route_default> if the request is not simple."
 
 Use exclusions sparingly and only for genuinely ambiguous boundaries:
 
 ```
-Route to sonnet for analytical tasks — unless the task involves only
-a single factual lookup, which stays on haiku.
+Route to <route_intermediate> for [intermediate-complexity tasks] — unless
+the task involves only [simple characteristic], which stays on <route_default>.
 ```
 
 ## Precision over Length
 
 Shorter, precise rules outperform verbose explanations. A 20-word rule that names concrete signals beats a 100-word paragraph that hedges.
 
-**Good:** "Route to opus: multi-step math proofs, code generation over 50 lines, legal document analysis."
+**Good:** "Route to <route_advanced>: [concrete signal 1], [concrete signal 2], [concrete signal 3]."
 
-**Bad:** "When a user submits a request that appears to involve significant complexity, including but not limited to situations where multiple reasoning steps are required, or the output would benefit from a more capable model, you should consider routing to the opus tier."
+**Bad:** "When a user submits a request that appears to involve significant complexity, including but not limited to situations where multiple reasoning steps are required, or the output would benefit from a more capable route, you should consider routing to <route_advanced>."
 
 ## Few-Shot Example Design
 
 Examples teach the model what the rules look like in practice. Design them deliberately:
 
 - **Cover every route** — at least one example per route class. Balance roughly proportionally to expected traffic.
-- **Include boundary examples** — the most valuable examples are the ones where the correct route is not obvious. If "summarize this email" goes to haiku but "summarize and critique this research paper" goes to sonnet, include both.
+- **Include boundary examples** — the most valuable examples are the ones where the correct route is not obvious. If a simple variant of a task goes to <route_default> but a more complex variant goes to <route_intermediate>, include both.
 - **Show the reasoning** — if using chain-of-thought, examples should demonstrate the reasoning pattern you expect.
 - **Keep inputs realistic** — use examples that resemble actual production queries, not synthetic toy cases.
 
