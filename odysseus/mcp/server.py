@@ -47,6 +47,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
     ],
     "data_validation": [
         "detect_and_parse_dataset",
+        "save_proposed_mapping",
         "transform_dataset",
         "validate_dataset",
         "save_routing_context",
@@ -55,6 +56,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
     ],
     "backend_setup": [
         "get_default_pricing",
+        "save_backend_options",
         "get_pipeline_status",
     ],
     "prompt_building": [

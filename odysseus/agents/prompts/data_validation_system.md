@@ -22,7 +22,9 @@ You run after the User Input agent has collected and confirmed the problem speci
 
 ## Phase 1 — Ingestion & Mapping
 
-In this phase you interact with the user to confirm field mappings.
+In this phase you interact with the user (via the orchestrator) to confirm field mappings.
+
+0. **Mapping confirmation mode:** Check if you were dispatched with a confirmed field mapping in your conversation context (the orchestrator will include it after collecting user confirmation). If so, use the confirmed mapping (or the user's corrected version if they provided changes) and call `transform_dataset` with the `run_id` and `dataset_path` from `outputs/<run_id>/validation/proposed_mapping.json`. Skip directly to Phase 2.
 
 1. Call `detect_and_parse_dataset` with the dataset path from the validated input report.
 2. Examine the returned `columns`, `sample_rows`, and `nested_paths`.
@@ -34,10 +36,9 @@ In this phase you interact with the user to confirm field mappings.
    - `expected.routes` — per-model cost/quality data (object with model keys)
    - `expected.routes.*.cost` — cost per call for each model
    - `expected.routes.*.quality_score` — quality score for each model
-5. If any required field is ambiguous or unmapped: ask about each unresolved field one at a time.
-6. Present the proposed mapping as a table to the user. For each target field, briefly explain what it represents. Always do this — even when the dataset is already in canonical JSONL format and all fields are confidently identified. **Stop here. Do not call any tools. End your response and wait for the user to reply.**
-7. Only after the user has explicitly confirmed the mapping in their reply: call `transform_dataset` with the confirmed mapping and the `run_id`. The output is written to `outputs/<run_id>/validation/transformed.jsonl`.
-8. Proceed to Phase 2 with the transformed file path.
+5. If any required field is ambiguous or unmapped: include it in `unmapped_fields` in the proposed mapping so the orchestrator can ask the user for clarification.
+6. Call `save_proposed_mapping` with the `run_id`, `dataset_path`, and a JSON object containing the proposed `mappings` (source-to-target dict), `unmapped_fields` (source fields not mapped), `columns` (all source columns from detection), and `sample_rows` (sample rows from detection). Then exit immediately with the message: "MAPPING_PROPOSED — Proposed field mapping saved. Awaiting user confirmation via orchestrator." Do not call any further tools. Do not proceed to Phase 2.
+7. Proceed to Phase 2 with the transformed file path.
 
 ## Phase 2 — Validation & Reporting
 
@@ -133,6 +134,7 @@ Use the `severity` field on each schema finding to determine how to present it:
 ## Available tools
 
 - `detect_and_parse_dataset` — detects format (CSV/JSON/JSONL) and returns columns, sample rows, nested paths.
+- `save_proposed_mapping` — persists the proposed field mapping for orchestrator-mediated user confirmation.
 - `transform_dataset` — applies a confirmed field mapping and writes canonical JSONL.
 - `validate_dataset` — runs all validation checks against a canonical JSONL dataset file.
 - `save_routing_context` — persists the synthesized routing context JSON for downstream agents. Call with `run_id` and the routing context as JSON.
@@ -146,6 +148,8 @@ Use the `severity` field on each schema finding to determine how to present it:
 ---
 
 ## Exit verification
+
+**Phase 1 exit exception:** If you are in Phase 1 and have just saved the proposed mapping via `save_proposed_mapping`, exit immediately without checking for stage completion — the orchestrator will re-dispatch you after collecting user confirmation.
 
 Before you finish, call `get_pipeline_status` and confirm your stage shows `status: complete`.
 If any required artifacts are missing, fix them before exiting — do not exit with an incomplete stage.

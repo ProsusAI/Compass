@@ -48,6 +48,50 @@ async def detect_and_parse_dataset(ctx: Context, dataset_path: str, run_id: str)
 
 
 @mcp.tool()
+async def save_proposed_mapping(
+    ctx: Context,
+    run_id: str,
+    dataset_path: str,
+    proposed_mapping_json: str,
+) -> str:
+    """[Stage 2: Data Validation] Save a proposed field mapping for orchestrator-mediated user confirmation.
+
+    Args:
+        run_id: Pipeline run identifier.
+        dataset_path: Absolute path to the dataset file (persisted in the output for re-dispatch).
+        proposed_mapping_json: JSON object with keys: mappings, unmapped_fields, columns, sample_rows.
+
+    Returns:
+        Confirmation message with the persisted file path.
+    """
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    check_artifacts(
+        project_dir / "outputs" / run_id / "input" / "input_report.md",
+        stage=2,
+        stage_name="Data Validation",
+        hint="Submit an input report first.",
+    )
+
+    required_keys = {"mappings", "unmapped_fields", "columns", "sample_rows"}
+    try:
+        proposed_mapping = json.loads(proposed_mapping_json)
+    except json.JSONDecodeError as exc:
+        raise ToolError(f"Invalid JSON for proposed_mapping_json: {exc}") from exc
+
+    missing = required_keys - set(proposed_mapping.keys())
+    if missing:
+        raise ToolError(f"proposed_mapping_json is missing required keys: {sorted(missing)}")
+
+    proposed_mapping["dataset_path"] = dataset_path
+
+    validation_dir = project_dir / "outputs" / run_id / "validation"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    out_path = validation_dir / "proposed_mapping.json"
+    out_path.write_text(json.dumps(proposed_mapping, indent=2), encoding="utf-8")
+    return f"Proposed mapping saved to {out_path}"
+
+
+@mcp.tool()
 async def transform_dataset(
     ctx: Context,
     dataset_path: str,

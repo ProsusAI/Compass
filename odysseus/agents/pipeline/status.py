@@ -140,14 +140,26 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "<HARD_STOP>\n"
             "You MUST NOT call any Stage 2 tools from the current context.\n\n"
             "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='data_validation') BEFORE spawning the sub-agent.\n\n"
+            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='data_validation') "
+            "BEFORE spawning the sub-agent.\n\n"
             "Sub-agent tools: get_pipeline_status, validate_dataset, "
             "detect_and_parse_dataset, transform_dataset, save_routing_context, "
-            "stratified_split_tool\n"
+            "stratified_split_tool, save_proposed_mapping\n"
             "Your tools: get_pipeline_status only\n\n"
             "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
             "then call get_pipeline_status.\n"
-            "If Stage 2 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "If Stage 2 is not complete:\n"
+            "  - Check the status detail field. If detail is 'mapping_confirmation_needed', read the\n"
+            "    file at outputs/{run_id}/validation/proposed_mapping.json. Present the proposed\n"
+            "    field mapping as a table to the user (source field → target field), include a few\n"
+            "    sample rows for context, and list any unmapped fields. Ask the user to confirm the\n"
+            "    mapping or provide corrections.\n"
+            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or auto-confirm.\n"
+            "    Then re-dispatch the sub-agent with the confirmed (or corrected) mapping in the\n"
+            "    conversation context.\n"
+            "  - Otherwise, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
+            "  - If Stage 2 remains incomplete after 2 re-dispatches, report the error to the\n"
+            "    user and halt.\n"
             "</HARD_STOP>\n\n"
             "<stage_system_prompt></stage_system_prompt>"
         ),
@@ -161,18 +173,31 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "<HARD_STOP>\n"
             "You MUST NOT perform backend setup from the current context.\n\n"
             "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='backend_setup') BEFORE spawning the sub-agent.\n\n"
-            "Sub-agent tools: get_pipeline_status, get_default_pricing\n"
+            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='backend_setup') "
+            "BEFORE spawning the sub-agent.\n\n"
+            "Sub-agent tools: get_pipeline_status, get_default_pricing, save_backend_options\n"
             "Your tools: get_pipeline_status only\n\n"
             "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
             "then call get_pipeline_status.\n"
             "If Stage 3 is not complete:\n"
-            "  - Check the status detail field. If detail is 'pricing_missing', ask the user\n"
-            "    for input_cost_per_million_tokens, cached_cost_per_million_tokens, and\n"
-            "    output_cost_per_million_tokens. Then re-dispatch the sub-agent with these\n"
-            "    pricing values in the conversation context.\n"
+            "  - Check the status detail field.\n"
+            "  - If detail is 'backend_selection_needed', read the file at\n"
+            "    outputs/{run_id}/backend_options.json. Present the available backends to the user.\n"
+            "    If backends exist: ask 'Choose one of these existing backends, or create a new one.'\n"
+            "    If no backends: ask 'No backends configured. Please provide: label, provider,\n"
+            "    model, requests_per_minute, and tokens_per_minute.'\n"
+            "    If the user chooses to create a new backend, collect: label, provider, model,\n"
+            "    requests_per_minute, and tokens_per_minute.\n"
+            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or fabricate\n"
+            "    the user's backend choice or configuration values.\n"
+            "    Then re-dispatch the sub-agent with the user's selection or config in the\n"
+            "    conversation context.\n"
+            "  - If detail is 'pricing_missing', ask the user for input_cost_per_million_tokens,\n"
+            "    cached_cost_per_million_tokens, and output_cost_per_million_tokens.\n"
+            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or fabricate values.\n"
+            "    Then re-dispatch the sub-agent with these pricing values in the conversation context.\n"
             "  - Otherwise, re-dispatch the sub-agent. Do not perform backend setup yourself.\n"
-            "  - If Stage 3 remains incomplete after 2 re-dispatches, report the error to the\n"
+            "  - If Stage 3 remains incomplete after 3 re-dispatches, report the error to the\n"
             "    user and halt.\n"
             "</HARD_STOP>\n\n"
             "<stage_system_prompt></stage_system_prompt>"
@@ -204,6 +229,7 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "    to the user as a table (version, quality score, cost, round) and ask which\n"
             "    prompt_version they want to evaluate on the holdout set. Then re-dispatch the\n"
             "    sub-agent with the chosen prompt_version in the conversation context.\n"
+            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or fabricate values.\n"
             "  - Otherwise, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
             "  - If Stage 5 remains incomplete after 2 re-dispatches, report the error to the\n"
             "    user and halt.\n"
@@ -443,9 +469,16 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
     all_files = validation_files + split_files
     artifacts = [str(f) for f in all_files]
     missing = [p for p in artifacts if not Path(p).is_file()]
-    if missing:
-        return "incomplete", artifacts, ""
-    return "complete", artifacts, ""
+    if not missing:
+        return "complete", artifacts, ""
+
+    # Check for intermediate "proposed mapping" state
+    proposed_mapping = run_dir / "validation" / "proposed_mapping.json"
+    transformed = run_dir / "validation" / "transformed.jsonl"
+    if proposed_mapping.is_file() and not transformed.is_file():
+        return "incomplete", artifacts + [str(proposed_mapping)], "mapping_confirmation_needed"
+
+    return "incomplete", artifacts, ""
 
 
 def _check_stage_3(project_dir: Path, run_dir: Path) -> tuple[str, list[str], str]:
@@ -484,6 +517,9 @@ def _check_stage_3(project_dir: Path, run_dir: Path) -> tuple[str, list[str], st
         return "incomplete", [], ""
     yaml_files = list(backends_dir.glob("*.yaml"))
     if not yaml_files:
+        backend_options = run_dir / "backend_options.json"
+        if backend_options.is_file():
+            return "incomplete", [str(backend_options)], "backend_selection_needed"
         return "incomplete", [], ""
 
     artifacts = [str(f) for f in sorted(yaml_files)]
