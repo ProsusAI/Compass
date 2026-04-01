@@ -45,7 +45,18 @@ async def optimize_routing_prompt(ctx: Context) -> str:
     return (
         f"<pipeline_status>\n{status_json}\n</pipeline_status>\n\n"
         f"<instructions>\n"
-        f"You are now operating as the User Input Agent for the Odysseus pipeline.\n"
+        f"You are the Odysseus pipeline orchestrator. You have two modes:\n\n"
+        f"1. STAGE 1 — User Input: You personally act as the User Input Agent (system prompt below).\n"
+        f"2. ALL OTHER STAGES — Dispatcher: When get_pipeline_status returns DISPATCH_REQUIRED: true,\n"
+        f"   you MUST spawn a sub-agent using the subagent_instruction. Never call stage tools yourself.\n\n"
+        f"DISPATCH PROTOCOL (for all stages after Stage 1):\n"
+        f"  a. Call get_pipeline_status(run_id=...) to get the next action\n"
+        f"  b. If DISPATCH_REQUIRED is true → read subagent_instruction\n"
+        f"  c. Call start_stage() as specified in the instruction\n"
+        f"  d. Spawn a sub-agent with the system prompt from <stage_system_prompt>\n"
+        f"  e. After the sub-agent returns → call complete_stage()\n"
+        f"  f. Call get_pipeline_status again → repeat until pipeline complete\n\n"
+        f"STAGE 1 INSTRUCTIONS:\n"
         f"The pipeline status above has already been checked — use it to decide how to greet the user.\n\n"
         f"The `discovered_runs` array in pipeline_status lists all known runs with:\n"
         f"  - run_id: the run identifier\n"
@@ -64,24 +75,25 @@ async def optimize_routing_prompt(ctx: Context) -> str:
 
 @mcp.tool()
 async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
-    """Check pipeline progress and get guidance on the next step.
+    """Check pipeline progress and get the next dispatch instruction.
 
     Call this at any time. Accepts optional run_id; if omitted, uses the
     most recent pipeline run.
 
-    The response includes a ``subagent_instruction`` field. If it is non-null,
-    you MUST spawn a sub-agent with that instruction before calling any tools
-    for the current stage. The instruction names the MCP prompt to activate and
-    lists the tools the sub-agent may call. Do not call stage tools yourself.
+    The response includes a ``DISPATCH_REQUIRED`` boolean and a
+    ``subagent_instruction`` field. When ``DISPATCH_REQUIRED`` is true, you
+    MUST spawn a sub-agent using ``subagent_instruction`` — do NOT call stage
+    tools yourself. The instruction specifies the stage to activate via
+    ``start_stage`` and the system prompt for the sub-agent.
 
-    After the sub-agent exits, call this tool again to verify stage completion
-    and receive the next instruction.
+    After the sub-agent exits, call ``complete_stage``, then call this tool
+    again to verify stage completion and receive the next instruction.
 
     Args:
         run_id: Optional pipeline run identifier.
 
     Returns:
-        JSON object with stage checklist, current stage, next action, and
+        JSON object with current stage, DISPATCH_REQUIRED flag, and
         subagent_instruction (non-null when a sub-agent must be spawned).
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
@@ -108,6 +120,23 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
                 raise ToolError(
                     f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
                 ) from e
+
+    if result.get("subagent_instruction"):
+        result["subagent_instruction"] = (
+            "⚠️ DISPATCH REQUIRED — You must spawn a sub-agent. "
+            "Do NOT call stage tools yourself.\n\n"
+            + result["subagent_instruction"]
+        )
+        output = {
+            "run_id": result["run_id"],
+            "current_stage": result["current_stage"],
+            "current_stage_name": result["current_stage_name"],
+            "DISPATCH_REQUIRED": True,
+            "subagent_instruction": result["subagent_instruction"],
+            "stages": result["stages"],
+            "discovered_runs": result.get("discovered_runs", []),
+        }
+        return json.dumps(output, indent=2)
     return json.dumps(result, indent=2)
 
 

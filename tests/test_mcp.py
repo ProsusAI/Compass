@@ -402,14 +402,14 @@ class TestGetPipelineStatus:
         assert "get_pipeline_status" in tool_names
 
     async def test_returns_checklist(self, tmp_path: Path):
-        """get_pipeline_status returns a JSON checklist."""
+        """get_pipeline_status returns a JSON checklist with dispatch signal."""
         from odysseus.mcp import get_pipeline_status
 
         with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             result = await get_pipeline_status(ctx=None)
         data = json.loads(result)
         assert "current_stage" in data
-        assert "next_action" in data
+        assert "DISPATCH_REQUIRED" in data
 
     async def test_returns_checklist_with_run_id(self, tmp_path: Path):
         """get_pipeline_status with a run_id returns its status."""
