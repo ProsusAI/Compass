@@ -445,8 +445,8 @@ class TestBuildPipelineConfig:
             state=state, prompt_version="v1", data_source="d.jsonl",
             run_id="r1", project_dir=tmp_path,
         )
-        assert "r1/eval/results.jsonl" in config.output.results_path
-        assert "r1/eval/report.json" in config.output.report_path
+        assert "r1/eval/v1/results.jsonl" in config.output.results_path
+        assert "r1/eval/v1/report.json" in config.output.report_path
 
     def test_backend_from_state(self, tmp_path: Path) -> None:
         """Backend comes from search state."""
