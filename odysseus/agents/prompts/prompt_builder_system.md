@@ -95,10 +95,10 @@ Execute these steps exactly in order on round 1.
    - **Objective** — state the classification/routing task derived from `routing_context.domain`.
    - **Categories** — enumerate every route from `routing_context.routes` with its description and distinguishing criteria. Use the vocabulary from `routing_context` — these may be called "routes," "categories," "tiers," or other domain-appropriate terms.
    - **Decision logic** — encode the decision logic, edge cases, and disambiguation rules. If `routing_context.route_ordering` is present, reflect the ordering relationship. If `routing_context.routing_dimensions` specify directional preferences (e.g., `lower_is_better`), encode those as prioritization rules.
-   - **Examples** — use the examples extracted from Review Agent directives in step 5. Each `example_content` contains `input`, `route`, `reasoning`, and `exclusions`. Render all four fields into each compiled example:
+   - **Examples** — use the examples extracted from Review Agent directives in step 5. Each `example_content` contains `input`, `route`, `reasoning`, and `exclusions`. Render only `input` and `route` into each compiled example:
      - `input` → the example's input block
      - `route` → the route value in the example's output/answer
-     - `reasoning` + `exclusions` → combine into a single chain-of-thought block (formatted per provider conventions). The block should read as one coherent analytical passage that explains why the assigned route is correct and why each excluded route does not apply to this specific input. Do not list exclusions as a separate section — weave them into the reasoning narrative.
+     - Do not include `reasoning` or `exclusions` in the compiled prompt. These fields are used internally for evaluation and review — they must not appear in the prompt seen by the target model.
      - `example_id` → never include in prompt text (backend tracking only)
    - **Output format** — specify the exact response schema the model must produce.
    This section order is mandatory. Output format must always be the final section of the compiled prompt. Placing it before examples or decision logic degrades the target model's compliance with the response schema.

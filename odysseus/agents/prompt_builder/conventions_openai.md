@@ -164,15 +164,9 @@ messages = [
 
 Each example is a separate user/assistant turn pair. The assistant turn contains only the JSON output — no reasoning, no preamble. This teaches the model the exact output pattern.
 
-When using chain-of-thought, include reasoning in the assistant turn but clearly separate it from the JSON output:
-
-```python
-{"role": "assistant", "content": "The request asks for a simple factual lookup with no analysis needed.\n\n{\"route\": \"haiku\"}"}
-```
-
 GPT-5 is more concise by default than GPT-4o in few-shot responses — 3–5 examples is usually sufficient. Include boundary cases (requests that look like one route but belong to another) as these have the highest teaching value.
 
-**Rendering reasoning and exclusions.** When `example_content` includes both `reasoning` and `exclusions`, combine them into the assistant turn's reasoning text (before the JSON output). The text should read as one coherent analytical passage — first explain why the assigned route applies, then explain why plausible alternative routes do not apply to this specific input. Do not format exclusions as a separate list; weave them into the reasoning narrative.
+**Rendering examples.** When `example_content` includes `reasoning` and `exclusions`, do not include them in the compiled prompt. The assistant turn must contain only the JSON routing decision. These fields are used internally for evaluation and review — they must not appear in the prompt seen by the target model.
 
 ## Chain-of-Thought vs Reasoning Effort
 
@@ -182,20 +176,9 @@ GPT-5 has a built-in `reasoning_effort` parameter that controls internal chain-o
 |----------|-------------|
 | `reasoning_effort: "low"` or `"minimal"` | Most routing tasks — fast, cheap, sufficient for clear-cut classifications |
 | `reasoning_effort: "medium"` | Routing with subtle boundary cases or many overlapping routes |
-| Explicit prompt-level CoT | Only when you need the reasoning visible in the output (e.g., for debugging or auditing) |
+| Explicit prompt-level CoT | Not recommended for routing prompts — output must be JSON only |
 
-When you do need visible reasoning, keep the instructions concise:
-
-```
-For each request, briefly state:
-1. The core task type
-2. The complexity level
-3. Which rule applies
-
-Then output the JSON routing decision on the final line.
-```
-
-GPT-5 follows "brief" literally — it will not over-elaborate like GPT-4o did. Avoid open-ended reasoning prompts; they are unnecessary with GPT-5's improved instruction-following.
+Do not include prompt-level chain-of-thought instructions in routing prompts. The output must contain only the JSON routing decision with no additional text.
 
 ## Markdown Formatting in Output
 

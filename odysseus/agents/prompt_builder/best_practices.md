@@ -90,13 +90,6 @@ Respond with exactly one JSON object:
 Do not include any other text before or after the JSON.
 ```
 
-If using chain-of-thought, specify where reasoning goes and where the final answer goes:
-
-```
-First, write your reasoning. Then, on the final line, output exactly:
-{"route": "<route_name>"}
-```
-
 ## Iterative Refinement Signals
 
 When revising a prompt based on evaluation results:
