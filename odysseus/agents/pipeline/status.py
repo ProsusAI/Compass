@@ -211,6 +211,18 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "<stage_system_prompt></stage_system_prompt>"
         ),
     ),
+    6: (
+        "Pipeline complete. Present exactly these three options to the user:\n"
+        "1. **Continue** — resume the most recent run at its current stage.\n"
+        "2. **Rerun with different backend** — take the converged prompt and "
+        "re-evaluate against a new backend (format restructure only, no re-optimization). "
+        "To execute: call initiate_rerun(run_id=<run_id>), then guide through Stage 3 backend setup.\n"
+        "3. **Start again** — new run from scratch.\n\n"
+        "Do NOT invent additional options. Present only these three.",
+        [],
+        [],
+        None,
+    ),
 }
 
 

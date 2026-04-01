@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-{3-5 sentences: what problem was solved, what was achieved, what to do next}
+{3-5 sentences: what problem was solved, what was achieved, and deployment guidance. Do NOT include pipeline next steps — those are presented separately by the orchestrator.}
 
 ## Recommended Prompt
 

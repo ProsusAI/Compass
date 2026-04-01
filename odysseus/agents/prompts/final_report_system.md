@@ -64,6 +64,7 @@ The same sign convention applies to `oracle_cost_reduction` and `oracle_quality_
 - Keep the tone professional and factual. Let the numbers speak.
 - Round percentages to 2 decimal places, costs to 4 decimal places.
 - If a section has no data (e.g., oracle analysis not computed), skip it entirely rather than writing "N/A".
+- Do NOT include pipeline navigation options (e.g., "start a new run", "try a different model") in the report. The orchestrator handles next steps. The Executive Summary should focus on deployment readiness and performance expectations.
 
 ## Exit verification
 
