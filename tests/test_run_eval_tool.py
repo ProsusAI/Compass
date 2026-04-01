@@ -396,7 +396,7 @@ class TestBuildPipelineConfig:
     """Tests for build_pipeline_config helper."""
 
     def test_default_metric_when_no_primary(self, tmp_path: Path) -> None:
-        """No primary_metric_name → accuracy + cost_quality_reduction."""
+        """No primary_metric_name → accuracy + cost_quality_change."""
         state = SearchState(
             search_state_id="r1", backend="anthropic", primary_metric_name=None
         )
@@ -405,10 +405,10 @@ class TestBuildPipelineConfig:
             run_id="r1", project_dir=tmp_path,
         )
         names = [m.name for m in config.metrics]
-        assert names == ["accuracy", "cost_quality_reduction"]
+        assert names == ["accuracy", "cost_quality_change"]
 
     def test_primary_metric_with_slash(self, tmp_path: Path) -> None:
-        """primary_metric_name='f1/macro' → accuracy + cost_quality_reduction + f1 with params."""
+        """primary_metric_name='f1/macro' → accuracy + cost_quality_change + f1 with params."""
         state = SearchState(
             search_state_id="r1", backend="anthropic", primary_metric_name="f1/macro"
         )
@@ -419,13 +419,13 @@ class TestBuildPipelineConfig:
         assert len(config.metrics) == 3
         names = [m.name for m in config.metrics]
         assert "accuracy" in names
-        assert "cost_quality_reduction" in names
+        assert "cost_quality_change" in names
         assert "f1" in names
         f1_metric = next(m for m in config.metrics if m.name == "f1")
         assert f1_metric.params == {"average": "macro"}
 
     def test_primary_metric_accuracy_no_duplicate(self, tmp_path: Path) -> None:
-        """primary_metric_name='accuracy' → accuracy + cost_quality_reduction (no duplicate accuracy)."""
+        """primary_metric_name='accuracy' → accuracy + cost_quality_change (no duplicate accuracy)."""
         state = SearchState(
             search_state_id="r1", backend="anthropic", primary_metric_name="accuracy"
         )
@@ -434,7 +434,7 @@ class TestBuildPipelineConfig:
             run_id="r1", project_dir=tmp_path,
         )
         names = [m.name for m in config.metrics]
-        assert names == ["accuracy", "cost_quality_reduction"]
+        assert names == ["accuracy", "cost_quality_change"]
 
     def test_output_paths_scoped_to_run(self, tmp_path: Path) -> None:
         """Output paths are under outputs/<run_id>/eval/."""

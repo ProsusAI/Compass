@@ -188,8 +188,8 @@ def _build_optimization_journey(
     oracle_quality: float | None = None
     if isinstance(holdout_report, dict):
         metrics = holdout_report.get("metrics", {})
-        oracle_cost = metrics.get("oracle_cost_reduction")
-        oracle_quality = metrics.get("oracle_quality_reduction")
+        oracle_cost = metrics.get("oracle_cost_change")
+        oracle_quality = metrics.get("oracle_quality_change")
 
     return OptimizationJourney(
         total_rounds=total_rounds,
@@ -198,8 +198,8 @@ def _build_optimization_journey(
         best_quality_per_round=best_quality,
         best_cost_per_round=best_cost,
         pareto_front_size_per_round=front_sizes,
-        oracle_cost_reduction=oracle_cost,
-        oracle_quality_reduction=oracle_quality,
+        oracle_cost_change=oracle_cost,
+        oracle_quality_change=oracle_quality,
     )
 
 

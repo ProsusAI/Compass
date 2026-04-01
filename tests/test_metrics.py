@@ -8,7 +8,7 @@ from odysseus.eval.metrics import (
     DefaultMetricsEngine,
     compute_accuracy,
     compute_confusion,
-    compute_cost_quality_reduction,
+    compute_cost_quality_change,
     compute_f1,
     create_default_engine,
 )
@@ -252,7 +252,7 @@ def test_f1_empty_results():
     assert out == {"f1/macro": 0.0}
 
 
-# --- compute_cost_quality_reduction tests ---
+# --- compute_cost_quality_change tests ---
 
 
 def _cost_quality_example(id: str, route: str, routes: dict[str, dict[str, float]]) -> Example:
@@ -281,18 +281,18 @@ def test_cost_quality_default_baseline():
     # Predict claude-sonnet for both
     results = [_result("ex-0", route="claude-sonnet"), _result("ex-1", route="claude-sonnet")]
 
-    out = compute_cost_quality_reduction(results, examples)
+    out = compute_cost_quality_change(results, examples)
 
     # Baseline (gpt-4o): cost = 0.03*2 = 0.06, quality = 0.95*2 = 1.90
     # Predicted (claude-sonnet): cost = 0.01*2 = 0.02, quality = 0.88*2 = 1.76
     # Oracle: ex-0=claude-sonnet(0.01, 0.88), ex-1=haiku(0.002, 0.72)
     #   cost = 0.012, quality = 1.60
     # Routing overhead = 0 (cost=None on both results)
-    assert out["cost_reduction"] == pytest.approx((0.02 - 0.06) / 0.06)
-    assert out["cost_reduction_with_overhead"] == pytest.approx((0.02 - 0.06) / 0.06)
-    assert out["quality_reduction"] == pytest.approx((1.76 - 1.90) / 1.90)
-    assert out["oracle_cost_reduction"] == pytest.approx((0.012 - 0.06) / 0.06)
-    assert out["oracle_quality_reduction"] == pytest.approx((1.60 - 1.90) / 1.90)
+    assert out["cost_change"] == pytest.approx((0.02 - 0.06) / 0.06)
+    assert out["cost_change_with_overhead"] == pytest.approx((0.02 - 0.06) / 0.06)
+    assert out["quality_change"] == pytest.approx((1.76 - 1.90) / 1.90)
+    assert out["oracle_cost_change"] == pytest.approx((0.012 - 0.06) / 0.06)
+    assert out["oracle_quality_change"] == pytest.approx((1.60 - 1.90) / 1.90)
 
 
 def test_cost_quality_explicit_baseline():
@@ -300,27 +300,27 @@ def test_cost_quality_explicit_baseline():
     examples = [_cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES)]
     results = [_result("ex-0", route="claude-sonnet")]
 
-    out = compute_cost_quality_reduction(results, examples, baseline_class="haiku")
+    out = compute_cost_quality_change(results, examples, baseline_class="haiku")
 
     # Baseline (haiku): cost = 0.002, quality = 0.72
     # Predicted (claude-sonnet): cost = 0.01, quality = 0.88
     # Oracle (gpt-4o): cost = 0.03, quality = 0.95
-    assert out["cost_reduction"] == pytest.approx((0.01 - 0.002) / 0.002)
-    assert out["quality_reduction"] == pytest.approx((0.88 - 0.72) / 0.72)
-    assert out["oracle_cost_reduction"] == pytest.approx((0.03 - 0.002) / 0.002)
-    assert out["oracle_quality_reduction"] == pytest.approx((0.95 - 0.72) / 0.72)
+    assert out["cost_change"] == pytest.approx((0.01 - 0.002) / 0.002)
+    assert out["quality_change"] == pytest.approx((0.88 - 0.72) / 0.72)
+    assert out["oracle_cost_change"] == pytest.approx((0.03 - 0.002) / 0.002)
+    assert out["oracle_quality_change"] == pytest.approx((0.95 - 0.72) / 0.72)
 
 
 def test_cost_quality_all_match_baseline():
-    """All predictions match baseline — reductions are 0."""
+    """All predictions match baseline — changes are 0."""
     examples = [_cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES)]
     results = [_result("ex-0", route="gpt-4o")]
 
-    out = compute_cost_quality_reduction(results, examples, baseline_class="gpt-4o")
+    out = compute_cost_quality_change(results, examples, baseline_class="gpt-4o")
 
-    assert out["cost_reduction"] == 0.0
-    assert out["cost_reduction_with_overhead"] == 0.0
-    assert out["quality_reduction"] == 0.0
+    assert out["cost_change"] == 0.0
+    assert out["cost_change_with_overhead"] == 0.0
+    assert out["quality_change"] == 0.0
 
 
 def test_cost_quality_hallucinated_route_skipped(caplog):
@@ -334,10 +334,10 @@ def test_cost_quality_hallucinated_route_skipped(caplog):
         _result("ex-1", route="claude-sonnet"),  # valid
     ]
 
-    out = compute_cost_quality_reduction(results, examples, baseline_class="gpt-4o")
+    out = compute_cost_quality_change(results, examples, baseline_class="gpt-4o")
 
     # Only ex-1 counted: baseline cost=0.03, pred cost=0.01
-    assert out["cost_reduction"] == pytest.approx((0.01 - 0.03) / 0.03)
+    assert out["cost_change"] == pytest.approx((0.01 - 0.03) / 0.03)
     assert "nonexistent-model" in caplog.text
 
 
@@ -352,26 +352,26 @@ def test_cost_quality_baseline_tiebreak_alphabetical():
     ]
     results = [_result("ex-0", route="beta-model")]
 
-    out = compute_cost_quality_reduction(results, examples)
+    out = compute_cost_quality_change(results, examples)
 
     # Should use alpha-model as baseline (alphabetically first among tied)
     # Baseline: cost=0.05, quality=0.90
     # Predicted: cost=0.01, quality=0.90
-    assert out["cost_reduction"] == pytest.approx((0.01 - 0.05) / 0.05)
-    assert out["quality_reduction"] == 0.0
+    assert out["cost_change"] == pytest.approx((0.01 - 0.05) / 0.05)
+    assert out["quality_change"] == 0.0
 
 
 def test_cost_quality_empty_results():
-    out = compute_cost_quality_reduction([], [])
-    assert out["cost_reduction"] == 0.0
-    assert out["cost_reduction_with_overhead"] == 0.0
-    assert out["quality_reduction"] == 0.0
-    assert out["oracle_cost_reduction"] == 0.0
-    assert out["oracle_quality_reduction"] == 0.0
+    out = compute_cost_quality_change([], [])
+    assert out["cost_change"] == 0.0
+    assert out["cost_change_with_overhead"] == 0.0
+    assert out["quality_change"] == 0.0
+    assert out["oracle_cost_change"] == 0.0
+    assert out["oracle_quality_change"] == 0.0
 
 
 def test_cost_quality_with_routing_overhead():
-    """Routing overhead is included in cost_reduction_with_overhead but not cost_reduction."""
+    """Routing overhead is included in cost_change_with_overhead but not cost_change."""
     examples = [
         _cost_quality_example("ex-0", route="claude-sonnet", routes=_ROUTES),
         _cost_quality_example("ex-1", route="haiku", routes=_ROUTES),
@@ -400,13 +400,13 @@ def test_cost_quality_with_routing_overhead():
         ),
     ]
 
-    out = compute_cost_quality_reduction(results, examples)
+    out = compute_cost_quality_change(results, examples)
 
     # Baseline (gpt-4o): cost = 0.03*2 = 0.06
     # Predicted (claude-sonnet): cost = 0.01*2 = 0.02
     # Routing overhead: 0.005*2 = 0.01
-    assert out["cost_reduction"] == pytest.approx((0.02 - 0.06) / 0.06)
-    assert out["cost_reduction_with_overhead"] == pytest.approx((0.02 + 0.01 - 0.06) / 0.06)
+    assert out["cost_change"] == pytest.approx((0.02 - 0.06) / 0.06)
+    assert out["cost_change_with_overhead"] == pytest.approx((0.02 + 0.01 - 0.06) / 0.06)
 
 
 # --- create_default_engine tests ---
@@ -417,7 +417,7 @@ def test_create_default_engine_has_all_builtins():
     assert "accuracy" in engine._registry
     assert "confusion" in engine._registry
     assert "f1" in engine._registry
-    assert "cost_quality_reduction" in engine._registry
+    assert "cost_quality_change" in engine._registry
 
 
 def test_create_default_engine_satisfies_protocol():

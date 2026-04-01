@@ -72,7 +72,7 @@ You receive a `ReviewBriefing` assembled by the code pre-processor. All fields a
 | `diversity_metrics` | `DiversityMetrics` | Code pre-processor | Example overlap ratio, prompt similarity (0.0 = identical, 1.0 = completely different), mutation type distribution |
 | `diminishing_returns` | `DiminishingReturns` | Code pre-processor | Score trajectory across rounds, improvement trend, stagnation flag |
 | `mutation_history` | `MutationHistory` | Code pre-processor | Effective mutations, ineffective mutations, and untried mutation types |
-| `oracle_metrics` | `OracleMetrics` | Code pre-processor | Oracle cost/quality reduction ceilings and candidate captured ratios |
+| `oracle_metrics` | `OracleMetrics` | Code pre-processor | Oracle cost/quality change ceilings and candidate captured ratios |
 | `prompt_versions` | `dict[str, str]` | Prompt files | Full prompt text keyed by version string (e.g., `"v3"`) |
 | `holdout_examples` | `list[ExampleSummary]` | Holdout dataset | Holdout example summaries — IDs with routes available for few-shot use |
 
@@ -80,7 +80,7 @@ You receive a `ReviewBriefing` assembled by the code pre-processor. All fields a
 
 **`CandidateAnalysis`**: `candidate_version`, `parent_version`, `mutation_description`, `score_report`, `delta_vs_parent` (quality, cost, per-class recall deltas), `delta_vs_front` (list of comparisons against each Pareto front member).
 
-**`OracleMetrics`**: `oracle_cost_reduction`, `oracle_quality_reduction` are the theoretical ceilings. `candidate_cost_captured` and `candidate_quality_captured` are ratios (0.0–1.0+) of how much of the ceiling the best candidate has captured. `None` means oracle reduction is 0.0 (no headroom by that dimension).
+**`OracleMetrics`**: `oracle_cost_change`, `oracle_quality_change` are the theoretical ceilings. `candidate_cost_captured` and `candidate_quality_captured` are ratios (0.0–1.0+) of how much of the ceiling the best candidate has captured. `None` means oracle change is 0.0 (no headroom by that dimension).
 
 **`DiversityMetrics`**: `prompt_similarity` near 0.0 means the front is converging. `mutation_type_distribution` shows how many times each mutation type has been tried. Compare against `mutation_history.untried_mutation_types` to identify unexplored strategies.
 

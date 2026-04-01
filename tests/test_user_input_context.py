@@ -89,11 +89,11 @@ class TestContextStructure:
         content = self._load()
         assert "confusion" in content.lower()
 
-    def test_contains_cost_quality_reduction_metric(self) -> None:
+    def test_contains_cost_quality_change_metric(self) -> None:
         content = self._load()
-        assert "cost_quality_reduction" in content or "cost quality reduction" in content.lower()
+        assert "cost_quality_change" in content or "cost quality change" in content.lower()
 
-    def test_contains_cost_reduction_output_keys(self) -> None:
+    def test_contains_cost_change_output_keys(self) -> None:
         content = self._load()
-        assert "cost_reduction" in content
-        assert "quality_reduction" in content
+        assert "cost_change" in content
+        assert "quality_change" in content

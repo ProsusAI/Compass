@@ -31,21 +31,21 @@ def _score_report(
     cost: float,
     recall: dict[str, float],
     support: dict[str, int],
-    oracle_cost_reduction: float = 0.003,
-    oracle_quality_reduction: float = 0.15,
-    cost_reduction: float = 0.0,
-    quality_reduction: float = 0.0,
+    oracle_cost_change: float = 0.003,
+    oracle_quality_change: float = 0.15,
+    cost_change: float = 0.0,
+    quality_change: float = 0.0,
     report_path: str = "",
     results_path: str = "",
 ) -> dict:
     metrics = {
         "accuracy": accuracy,
         "cost": cost,
-        "oracle_cost_reduction": oracle_cost_reduction,
-        "oracle_quality_reduction": oracle_quality_reduction,
-        "cost_reduction": cost_reduction,
-        "cost_reduction_with_overhead": cost_reduction * 0.85,
-        "quality_reduction": quality_reduction,
+        "oracle_cost_change": oracle_cost_change,
+        "oracle_quality_change": oracle_quality_change,
+        "cost_change": cost_change,
+        "cost_change_with_overhead": cost_change * 0.85,
+        "quality_change": quality_change,
     }
     for route, val in recall.items():
         metrics[f"recall/{route}"] = val
@@ -121,10 +121,10 @@ def gen_scenario_51():
         cost=0.002,
         recall={"haiku": 0.80, "sonnet": 0.65, "opus": 0.70},
         support={"haiku": 10, "sonnet": 7, "opus": 3},
-        oracle_cost_reduction=0.003,
-        oracle_quality_reduction=0.15,
-        cost_reduction=0.0012,
-        quality_reduction=0.072,
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.0012,
+        quality_change=0.072,
         report_path="tests/scenarios/data/review/abc123/v1_score_report.json",
         results_path="tests/scenarios/data/review/abc123/v1_results.jsonl",
     )
@@ -135,10 +135,10 @@ def gen_scenario_51():
         cost=0.0025,
         recall={"haiku": 0.85, "sonnet": 0.70, "opus": 0.75},
         support={"haiku": 10, "sonnet": 7, "opus": 3},
-        oracle_cost_reduction=0.003,
-        oracle_quality_reduction=0.15,
-        cost_reduction=0.0018,
-        quality_reduction=0.09,
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.0018,
+        quality_change=0.09,
         report_path="tests/scenarios/data/review/abc123/v2_score_report.json",
         results_path="tests/scenarios/data/review/abc123/v2_results.jsonl",
     )
@@ -224,10 +224,10 @@ def gen_scenario_52():
         cost=0.0025,
         recall={"haiku": 0.85, "sonnet": 0.70, "opus": 0.75},
         support={"haiku": 10, "sonnet": 7, "opus": 3},
-        oracle_cost_reduction=0.003,
-        oracle_quality_reduction=0.15,
-        cost_reduction=0.0018,
-        quality_reduction=0.09,
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.0018,
+        quality_change=0.09,
         report_path="tests/scenarios/data/review/def456/v2_score_report.json",
         results_path="tests/scenarios/data/review/def456/v2_results.jsonl",
     )
@@ -239,10 +239,10 @@ def gen_scenario_52():
         cost=0.0023,
         recall={"haiku": 0.92, "sonnet": 0.78, "opus": 0.45},
         support={"haiku": 10, "sonnet": 7, "opus": 3},
-        oracle_cost_reduction=0.003,
-        oracle_quality_reduction=0.15,
-        cost_reduction=0.002,
-        quality_reduction=0.105,
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.002,
+        quality_change=0.105,
         report_path="tests/scenarios/data/review/def456/v3_score_report.json",
         results_path="tests/scenarios/data/review/def456/v3_results.jsonl",
     )
@@ -349,10 +349,10 @@ def gen_scenario_53():
             cost=cost,
             recall=recall,
             support=supports,
-            oracle_cost_reduction=0.003,
-            oracle_quality_reduction=0.15,
-            cost_reduction=cost * 0.85,
-            quality_reduction=accuracy * 0.13,
+            oracle_cost_change=0.003,
+            oracle_quality_change=0.15,
+            cost_change=cost * 0.85,
+            quality_change=accuracy * 0.13,
             report_path=f"tests/scenarios/data/review/ghi789/{version}_score_report.json",
             results_path=f"tests/scenarios/data/review/ghi789/{version}_results.jsonl",
         )
@@ -364,17 +364,17 @@ def gen_scenario_53():
         )
 
     # v6 score report: near oracle ceiling
-    # candidate_quality_captured = quality_reduction / oracle_quality_reduction = 0.93
-    # candidate_cost_captured = cost_reduction / oracle_cost_reduction = 0.91
+    # candidate_quality_captured = quality_change / oracle_quality_change = 0.93
+    # candidate_cost_captured = cost_change / oracle_cost_change = 0.91
     v6_report = _score_report(
         accuracy=0.89,
         cost=0.0021,
         recall={"haiku": 0.92, "sonnet": 0.80, "opus": 0.82},
         support=supports,
-        oracle_cost_reduction=0.003,
-        oracle_quality_reduction=0.15,
-        cost_reduction=0.00273,  # 0.91 * 0.003
-        quality_reduction=0.1395,  # 0.93 * 0.15
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.00273,  # 0.91 * oracle_cost_change
+        quality_change=0.1395,  # 0.93 * oracle_quality_change
         report_path="tests/scenarios/data/review/ghi789/v6_score_report.json",
         results_path="tests/scenarios/data/review/ghi789/v6_results.jsonl",
     )
@@ -388,10 +388,10 @@ def gen_scenario_53():
             cost=0.00215,
             recall={"haiku": 0.91, "sonnet": 0.79, "opus": 0.81},
             support=supports,
-            oracle_cost_reduction=0.003,
-            oracle_quality_reduction=0.15,
-            cost_reduction=0.00268,
-            quality_reduction=0.138,
+            oracle_cost_change=0.003,
+            oracle_quality_change=0.15,
+            cost_change=0.00268,
+            quality_change=0.138,
             report_path="tests/scenarios/data/review/ghi789/v5_score_report.json",
             results_path="tests/scenarios/data/review/ghi789/v5_results.jsonl",
         ),

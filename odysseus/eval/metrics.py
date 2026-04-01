@@ -105,13 +105,13 @@ def compute_confusion(results: list[EvalResult], examples: list[Example]) -> dic
     return out
 
 
-def compute_cost_quality_reduction(
+def compute_cost_quality_change(
     results: list[EvalResult],
     examples: list[Example],
     *,
     baseline_class: str | None = None,
 ) -> dict[str, float]:
-    """Cost and quality percentage change vs baseline, plus oracle reductions.
+    """Cost and quality percentage change vs baseline, plus oracle changes.
 
     Args:
         results: Filtered successful results.
@@ -120,11 +120,11 @@ def compute_cost_quality_reduction(
             the class with highest mean quality_score (tie-break alphabetical).
     """
     zero_result = {
-        "cost_reduction": 0.0,
-        "cost_reduction_with_overhead": 0.0,
-        "quality_reduction": 0.0,
-        "oracle_cost_reduction": 0.0,
-        "oracle_quality_reduction": 0.0,
+        "cost_change": 0.0,
+        "cost_change_with_overhead": 0.0,
+        "quality_change": 0.0,
+        "oracle_cost_change": 0.0,
+        "oracle_quality_change": 0.0,
     }
 
     if not results:
@@ -171,19 +171,19 @@ def compute_cost_quality_reduction(
     if counted == 0:
         return zero_result
 
-    cost_reduction = (predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
-    cost_reduction_with_overhead = (
+    cost_change = (predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
+    cost_change_with_overhead = (
         (predicted_cost + routing_overhead - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
     )
 
     return {
-        "cost_reduction": cost_reduction,
-        "cost_reduction_with_overhead": cost_reduction_with_overhead,
-        "quality_reduction": (
+        "cost_change": cost_change,
+        "cost_change_with_overhead": cost_change_with_overhead,
+        "quality_change": (
             (predicted_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
         ),
-        "oracle_cost_reduction": ((oracle_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0),
-        "oracle_quality_reduction": (
+        "oracle_cost_change": ((oracle_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0),
+        "oracle_quality_change": (
             (oracle_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
         ),
     }
@@ -212,7 +212,7 @@ def create_default_engine() -> DefaultMetricsEngine:
     engine.register("accuracy", compute_accuracy)
     engine.register("confusion", compute_confusion)
     engine.register("f1", compute_f1)
-    engine.register("cost_quality_reduction", compute_cost_quality_reduction)
+    engine.register("cost_quality_change", compute_cost_quality_change)
     return engine
 
 

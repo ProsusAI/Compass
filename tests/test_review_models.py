@@ -289,10 +289,10 @@ class TestOracleMetrics:
         from odysseus.agents.review.models import OracleMetrics
 
         om = OracleMetrics(
-            oracle_cost_reduction=0.15,
-            oracle_quality_reduction=0.05,
+            oracle_cost_change=0.15,
+            oracle_quality_change=0.05,
         )
-        assert om.oracle_cost_reduction == 0.15
+        assert om.oracle_cost_change == 0.15
         assert om.candidate_cost_captured is None
         assert om.candidate_quality_captured is None
 
@@ -300,8 +300,8 @@ class TestOracleMetrics:
         from odysseus.agents.review.models import OracleMetrics
 
         om = OracleMetrics(
-            oracle_cost_reduction=0.15,
-            oracle_quality_reduction=0.05,
+            oracle_cost_change=0.15,
+            oracle_quality_change=0.05,
             candidate_cost_captured=0.10,
             candidate_quality_captured=0.03,
         )
@@ -366,7 +366,7 @@ class TestReviewBriefing:
                 ineffective_mutations=[],
                 untried_mutation_types=["schema_change"],
             ),
-            oracle_metrics=OracleMetrics(oracle_cost_reduction=0.10, oracle_quality_reduction=0.02),
+            oracle_metrics=OracleMetrics(oracle_cost_change=0.10, oracle_quality_change=0.02),
             prompt_versions={"v1": "prompt text v1", "v2": "prompt text v2"},
             holdout_examples=[ExampleSummary(example_id="ex-1", route="route_a", ambiguity_tags=[])],
         )
@@ -407,7 +407,7 @@ class TestReviewBriefing:
                 ineffective_mutations=[],
                 untried_mutation_types=[],
             ),
-            oracle_metrics=OracleMetrics(oracle_cost_reduction=0.0, oracle_quality_reduction=0.0),
+            oracle_metrics=OracleMetrics(oracle_cost_change=0.0, oracle_quality_change=0.0),
             prompt_versions={},
             holdout_examples=[],
         )

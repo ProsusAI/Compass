@@ -347,24 +347,24 @@ class TestCorrelateMutations:
 class TestComputeOracleMetrics:
     def test_normal_case(self) -> None:
         result = compute_oracle_metrics(
-            oracle_cost_reduction=0.50,
-            oracle_quality_reduction=0.10,
-            candidate_cost_reduction=0.35,
-            candidate_cost_reduction_with_overhead=0.30,
-            candidate_quality_reduction=0.085,
+            oracle_cost_change=0.50,
+            oracle_quality_change=0.10,
+            candidate_cost_change=0.35,
+            candidate_cost_change_with_overhead=0.30,
+            candidate_quality_change=0.085,
         )
-        assert result.oracle_cost_reduction == 0.50
+        assert result.oracle_cost_change == 0.50
         assert result.candidate_cost_captured == pytest.approx(0.70)
         assert result.candidate_cost_captured_with_overhead == pytest.approx(0.60)
         assert result.candidate_quality_captured == pytest.approx(0.85)
 
     def test_zero_oracle_returns_none(self) -> None:
         result = compute_oracle_metrics(
-            oracle_cost_reduction=0.0,
-            oracle_quality_reduction=0.0,
-            candidate_cost_reduction=0.10,
-            candidate_cost_reduction_with_overhead=0.08,
-            candidate_quality_reduction=0.05,
+            oracle_cost_change=0.0,
+            oracle_quality_change=0.0,
+            candidate_cost_change=0.10,
+            candidate_cost_change_with_overhead=0.08,
+            candidate_quality_change=0.05,
         )
         assert result.candidate_cost_captured is None
         assert result.candidate_cost_captured_with_overhead is None
@@ -372,11 +372,11 @@ class TestComputeOracleMetrics:
 
     def test_partial_zero(self) -> None:
         result = compute_oracle_metrics(
-            oracle_cost_reduction=0.50,
-            oracle_quality_reduction=0.0,
-            candidate_cost_reduction=0.25,
-            candidate_cost_reduction_with_overhead=0.20,
-            candidate_quality_reduction=0.0,
+            oracle_cost_change=0.50,
+            oracle_quality_change=0.0,
+            candidate_cost_change=0.25,
+            candidate_cost_change_with_overhead=0.20,
+            candidate_quality_change=0.0,
         )
         assert result.candidate_cost_captured == pytest.approx(0.50)
         assert result.candidate_cost_captured_with_overhead == pytest.approx(0.40)
@@ -429,11 +429,11 @@ class TestBuildReviewBriefing:
                 **{
                     "recall/model-a": 0.9,
                     "support/model-a": 10,
-                    "oracle_cost_reduction": 0.50,
-                    "oracle_quality_reduction": 0.10,
-                    "cost_reduction": 0.35,
-                    "cost_reduction_with_overhead": 0.30,
-                    "quality_reduction": 0.085,
+                    "oracle_cost_change": 0.50,
+                    "oracle_quality_change": 0.10,
+                    "cost_change": 0.35,
+                    "cost_change_with_overhead": 0.30,
+                    "quality_change": 0.085,
                 },
             ),
             "v1": _make_report_dict(
@@ -442,11 +442,11 @@ class TestBuildReviewBriefing:
                 **{
                     "recall/model-a": 0.85,
                     "support/model-a": 10,
-                    "oracle_cost_reduction": 0.50,
-                    "oracle_quality_reduction": 0.10,
-                    "cost_reduction": 0.20,
-                    "cost_reduction_with_overhead": 0.15,
-                    "quality_reduction": 0.05,
+                    "oracle_cost_change": 0.50,
+                    "oracle_quality_change": 0.10,
+                    "cost_change": 0.20,
+                    "cost_change_with_overhead": 0.15,
+                    "quality_change": 0.05,
                 },
             ),
         }
@@ -485,7 +485,7 @@ class TestBuildReviewBriefing:
         assert briefing.round == 2
         assert len(briefing.candidates) == 1
         assert briefing.candidates[0].candidate_version == "v2"
-        assert briefing.oracle_metrics.oracle_cost_reduction == 0.50
+        assert briefing.oracle_metrics.oracle_cost_change == 0.50
         assert briefing.oracle_metrics.candidate_cost_captured is not None
         assert len(briefing.per_class_recall) > 0
         assert "model-a" in briefing.per_class_recall

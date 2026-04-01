@@ -273,7 +273,7 @@ Output keys:
 | `f1/{class}` | Harmonic mean of precision and recall |
 | `f1/macro` | Unweighted mean F1 across all classes |
 
-#### `cost_quality_reduction`
+#### `cost_quality_change`
 
 Percentage change in routing cost and quality vs a baseline route class, plus oracle bounds. Useful for measuring how well the router trades cost against quality relative to always-picking-the-best-model.
 
@@ -287,11 +287,11 @@ Output keys:
 
 | Key | Description |
 |-----|-------------|
-| `cost_reduction` | `(predicted_cost − baseline_cost) / baseline_cost` (model cost only, excludes routing overhead) |
-| `cost_reduction_with_overhead` | `(predicted_cost + routing_overhead − baseline_cost) / baseline_cost` (includes routing call cost) |
-| `quality_reduction` | `(predicted_quality − baseline_quality) / baseline_quality` |
-| `oracle_cost_reduction` | Same ratio for the ground-truth optimal route |
-| `oracle_quality_reduction` | Same ratio for the ground-truth optimal route |
+| `cost_change` | `(predicted_cost − baseline_cost) / baseline_cost` (model cost only, excludes routing overhead) |
+| `cost_change_with_overhead` | `(predicted_cost + routing_overhead − baseline_cost) / baseline_cost` (includes routing call cost) |
+| `quality_change` | `(predicted_quality − baseline_quality) / baseline_quality` |
+| `oracle_cost_change` | Same ratio for the ground-truth optimal route |
+| `oracle_quality_change` | Same ratio for the ground-truth optimal route |
 
 Negative values indicate the router is cheaper/lower-quality than baseline. Hallucinated route predictions (route label not in `expected["routes"]`) are skipped with a warning.
 

@@ -311,24 +311,24 @@ def correlate_mutations(
 
 def compute_oracle_metrics(
     *,
-    oracle_cost_reduction: float,
-    oracle_quality_reduction: float,
-    candidate_cost_reduction: float,
-    candidate_cost_reduction_with_overhead: float,
-    candidate_quality_reduction: float,
+    oracle_cost_change: float,
+    oracle_quality_change: float,
+    candidate_cost_change: float,
+    candidate_cost_change_with_overhead: float,
+    candidate_quality_change: float,
 ) -> OracleMetrics:
     """Compute how much of the theoretical routing improvement has been captured."""
     return OracleMetrics(
-        oracle_cost_reduction=oracle_cost_reduction,
-        oracle_quality_reduction=oracle_quality_reduction,
+        oracle_cost_change=oracle_cost_change,
+        oracle_quality_change=oracle_quality_change,
         candidate_cost_captured=(
-            candidate_cost_reduction / oracle_cost_reduction if oracle_cost_reduction != 0.0 else None
+            candidate_cost_change / oracle_cost_change if oracle_cost_change != 0.0 else None
         ),
         candidate_cost_captured_with_overhead=(
-            candidate_cost_reduction_with_overhead / oracle_cost_reduction if oracle_cost_reduction != 0.0 else None
+            candidate_cost_change_with_overhead / oracle_cost_change if oracle_cost_change != 0.0 else None
         ),
         candidate_quality_captured=(
-            candidate_quality_reduction / oracle_quality_reduction if oracle_quality_reduction != 0.0 else None
+            candidate_quality_change / oracle_quality_change if oracle_quality_change != 0.0 else None
         ),
     )
 
@@ -342,22 +342,22 @@ def compute_oracle_metrics_from_report(
     Returns None if required oracle metric keys are absent.
     """
     required = [
-        "oracle_cost_reduction",
-        "oracle_quality_reduction",
-        "cost_reduction",
-        "cost_reduction_with_overhead",
-        "quality_reduction",
+        "oracle_cost_change",
+        "oracle_quality_change",
+        "cost_change",
+        "cost_change_with_overhead",
+        "quality_change",
     ]
     missing = [k for k in required if k not in metrics]
     if missing:
         return None
 
     return compute_oracle_metrics(
-        oracle_cost_reduction=metrics["oracle_cost_reduction"],
-        oracle_quality_reduction=metrics["oracle_quality_reduction"],
-        candidate_cost_reduction=metrics["cost_reduction"],
-        candidate_cost_reduction_with_overhead=metrics["cost_reduction_with_overhead"],
-        candidate_quality_reduction=metrics["quality_reduction"],
+        oracle_cost_change=metrics["oracle_cost_change"],
+        oracle_quality_change=metrics["oracle_quality_change"],
+        candidate_cost_change=metrics["cost_change"],
+        candidate_cost_change_with_overhead=metrics["cost_change_with_overhead"],
+        candidate_quality_change=metrics["quality_change"],
     )
 
 

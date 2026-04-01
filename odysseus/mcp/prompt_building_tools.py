@@ -34,7 +34,7 @@ def build_pipeline_config(
     """Build a RunConfig from pipeline state — no YAML file needed."""
     metrics: list[MetricConfig] = [
         MetricConfig(name="accuracy"),
-        MetricConfig(name="cost_quality_reduction"),
+        MetricConfig(name="cost_quality_change"),
     ]
     if state.primary_metric_name:
         metric_name = state.primary_metric_name.split("/")[0]

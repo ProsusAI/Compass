@@ -124,7 +124,7 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
                 "metrics": {
                     "accuracy": 0.90,
                     "f1/macro": 0.88,
-                    "cost_reduction": -0.30,
+                    "cost_change": -0.30,
                     "recall/haiku": 0.95,
                     "recall/sonnet": 0.85,
                     "recall/opus": 0.80,
@@ -147,9 +147,9 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
                 "metrics": {
                     "accuracy": 0.85,
                     "f1/macro": 0.83,
-                    "cost_reduction": -0.25,
-                    "oracle_cost_reduction": -0.40,
-                    "oracle_quality_reduction": 0.0,
+                    "cost_change": -0.25,
+                    "oracle_cost_change": -0.40,
+                    "oracle_quality_change": 0.0,
                     "recall/haiku": 0.90,
                     "recall/sonnet": 0.80,
                     "recall/opus": 0.75,
@@ -281,8 +281,8 @@ class TestOptimizationJourneyUpdated:
     def test_oracle_in_journey(self, tmp_path: Path) -> None:
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
-        assert briefing.optimization_journey.oracle_cost_reduction == -0.4
-        assert briefing.optimization_journey.oracle_quality_reduction == 0.0
+        assert briefing.optimization_journey.oracle_cost_change == -0.4
+        assert briefing.optimization_journey.oracle_quality_change == 0.0
 
     def test_no_standalone_oracle(self, tmp_path: Path) -> None:
         from odysseus.agents.final_report.models import FinalReportBriefing

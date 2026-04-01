@@ -78,7 +78,7 @@
 **Rounds:** {total_rounds} | **Converged:** {convergence_reason} | **Stagnation:** {stagnation_count}
 
 <!-- Include only if oracle values are not null -->
-**Oracle note:** Theoretical optimum would achieve {oracle_cost_reduction}% cost reduction with {oracle_quality_reduction}% quality change. Negative cost = cheaper (good). Positive quality = better (good).
+**Oracle note:** Theoretical optimum would achieve {oracle_cost_change}% cost change with {oracle_quality_change}% quality change. Negative cost = cheaper (good). Positive quality = better (good).
 
 <!-- Include only if chart paths are not null -->
 ![Quality Progression](charts/quality_progression.png)

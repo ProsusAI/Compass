@@ -54,7 +54,7 @@ A complete routing problem has two required fields and four optional fields.
 
 | Field | Default | Rationale | User-facing note |
 |---|---|---|---|
-| `target_metrics` | `["f1/macro"]` | F1 macro handles class imbalance well and reveals per-class performance. | "No target metrics specified — defaulting to F1 macro average (`f1/macro`). You can specify metrics such as `accuracy >= 0.85` or `cost_reduction_with_overhead <= -0.30` in a follow-up." |
+| `target_metrics` | `["f1/macro"]` | F1 macro handles class imbalance well and reveals per-class performance. | "No target metrics specified — defaulting to F1 macro average (`f1/macro`). You can specify metrics such as `accuracy >= 0.85` or `cost_change_with_overhead <= -0.30` in a follow-up." |
 | `evaluation_threshold` | `0.80` | Conservative, achievable on most problems. | "No evaluation threshold specified — using 0.80 as the pass/fail threshold. You can adjust this in a follow-up." |
 | `data_split_ratio` | `0.80` | Standard 20/80 dev/holdout split. | "No data split ratio provided — reserving 80% of data for holdout evaluation." |
 | `max_iterations` | `10` | Bounds cost while allowing convergence. | "No iteration limit provided — defaulting to 10 refinement rounds." |
@@ -68,7 +68,7 @@ The evaluation framework supports four metrics. Use this to guide users toward a
 - **accuracy** — Fraction of requests routed correctly. Simple, interpretable. Limitation: treats all errors equally. Example: `accuracy >= 0.85`.
 - **f1** — Per-class precision/recall/F1, plus macro-averaged F1. Use when route classes are imbalanced. Example: `f1/macro >= 0.80`.
 - **confusion** — Full confusion matrix. Diagnostic only — not suitable as an optimization target.
-- **cost_quality_reduction** — Percentage change in cost/quality vs. a baseline tier. Outputs `cost_reduction` (model cost only), `cost_reduction_with_overhead` (includes routing call cost), `quality_reduction`, `oracle_cost_reduction`, `oracle_quality_reduction`. Use `cost_reduction_with_overhead` for threshold targets. Example: `cost_reduction_with_overhead <= -0.30`.
+- **cost_quality_change** — Percentage change in cost/quality vs. a baseline tier. Outputs `cost_change` (model cost only), `cost_change_with_overhead` (includes routing call cost), `quality_change`, `oracle_cost_change`, `oracle_quality_change`. Use `cost_change_with_overhead` for threshold targets. Example: `cost_change_with_overhead <= -0.30`.
 
 ## Pipeline Discovery
 

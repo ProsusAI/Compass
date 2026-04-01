@@ -34,8 +34,8 @@ class OptimizationJourney(BaseModel):
     best_quality_per_round: list[float]
     best_cost_per_round: list[float]
     pareto_front_size_per_round: list[int]
-    oracle_cost_reduction: float | None = None
-    oracle_quality_reduction: float | None = None
+    oracle_cost_change: float | None = None
+    oracle_quality_change: float | None = None
 
 
 class EvalMetricComparison(BaseModel):

@@ -48,14 +48,14 @@ Additional rendering instructions:
 
 ## Metric interpretation
 
-The briefing contains `quality_reduction` and `cost_reduction` fields. These are percentage changes computed as `(predicted − baseline) / baseline`:
+The briefing contains `quality_change` and `cost_change` fields. These are percentage changes computed as `(predicted − baseline) / baseline`:
 
 - **Negative values** mean a **decrease** (quality or cost went down compared to baseline).
 - **Positive values** mean an **increase** (quality or cost went up compared to baseline).
 
-For cost reduction, negative is good (cheaper). For quality reduction, positive is good (better quality). Present these clearly in the report — do not confuse the sign direction. When reporting, prefer natural language like "quality improved by X%" or "quality decreased by X%" rather than raw signed numbers.
+For cost change, negative is good (cheaper). For quality change, positive is good (better quality). Present these clearly in the report — do not confuse the sign direction. When reporting, prefer natural language like "quality improved by X%" or "quality decreased by X%" rather than raw signed numbers.
 
-The same sign convention applies to `oracle_cost_reduction` and `oracle_quality_reduction` which appear as a brief note in the Optimization Process section.
+The same sign convention applies to `oracle_cost_change` and `oracle_quality_change` which appear as a brief note in the Optimization Process section.
 
 ## Guidelines
 

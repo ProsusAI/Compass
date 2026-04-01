@@ -123,8 +123,8 @@ class ExampleSummary(BaseModel):
 class OracleMetrics(BaseModel):
     """How much of the theoretical routing improvement has been captured."""
 
-    oracle_cost_reduction: float
-    oracle_quality_reduction: float
+    oracle_cost_change: float
+    oracle_quality_change: float
     candidate_cost_captured: float | None = None
     candidate_cost_captured_with_overhead: float | None = None
     candidate_quality_captured: float | None = None
