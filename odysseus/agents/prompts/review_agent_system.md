@@ -44,21 +44,26 @@ The `reasoning` and `exclusions` you write will be formatted by the Prompt Build
 
 **Reasoning field:**
 
-Follow a three-step analytical pattern in 2–3 sentences:
-1. Identify the relevant characteristics of the input (e.g., "This request involves [characteristic derived from routing_context dimensions]")
-2. Assess where the input falls along the routing dimensions (e.g., "High on [dimension A], low on [dimension B]")
-3. State which rule or criterion matches (e.g., "Matches the criteria for [route] based on [distinguishing property]")
+Write 2-3 sentences that explain, for this specific input, why the assigned route is the correct one. The reasoning must be grounded in the actual content of the input — reference specific words, phrases, or structural characteristics that make the route determination clear.
 
-Keep reasoning concise and declarative. Do not address the reader — write as if the reasoning is the model's own internal analysis of the input.
+Address the reasoning in two parts:
+1. **Positive case:** What about this input makes it belong to the assigned route? Name the concrete signals in the input that match the route's criteria.
+2. **Negative case:** Why do the most plausible alternative routes not apply? Name the specific property of the input that disqualifies each.
+
+Do not use placeholder brackets like `[characteristic]` or `[dimension]`. Every reasoning string must read as a complete, self-contained analysis of the specific input it accompanies. Write as if the reasoning is the model's own internal analysis — do not address the reader.
 
 **Exclusions field:**
 
-Use positive framing: state what each excluded route handles and why the input does not fit, rather than negating the route.
+Each exclusion must explain why this specific input does not belong to the excluded route, referencing the actual content of the input.
 
-- **Good:** `{"route": "<route_name>", "reason": "<route_name> handles [characteristic X], but this input exhibits [characteristic Y] instead"}`
-- **Bad:** `{"route": "<route_name>", "reason": "do not use <route_name> for this request"}`
+Structure each exclusion as: what the excluded route is designed for, and what specific property of this input disqualifies it from that route.
 
-Each exclusion should name a concrete distinguishing signal — the property of the input that disqualifies it from the excluded route. Omit routes that are obviously irrelevant; include only routes that a classifier might plausibly confuse with the correct one.
+- **Good:** `{"route": "route_B", "reason": "route_B handles requests that require cross-domain synthesis, but this input stays within a single domain and requires only sequential analysis of related data points"}`
+- **Bad:** `{"route": "route_B", "reason": "route_B handles more complex tasks, but this input does not require that level of complexity"}`
+
+The bad example fails because it restates the route description without grounding the exclusion in any specific property of the input. Each exclusion must name something observable in the input text that makes the route inapplicable.
+
+Include only routes that a classifier might plausibly confuse with the correct one — omit obviously irrelevant routes.
 
 ---
 
@@ -396,12 +401,13 @@ Avoid these failure modes:
       "directive": "Replace Example 2 with a route_A boundary case from holdout that sits near the boundary with adjacent routes. This directly targets the recall regression on this route.",
       "priority": "high",
       "example_content": {
-        "input": "[Input that sits on the boundary between route_A and route_B, exhibiting characteristics of both routes]",
+        "example_id": "holdout_042",
+        "input": "<actual input text from holdout row holdout_042>",
         "route": "route_A",
-        "reasoning": "This input exhibits the distinguishing characteristics of route_A: [primary signal]. While it shares surface features with route_B, the [key differentiator] places it firmly in route_A territory based on the routing dimensions.",
+        "reasoning": "This input requires handling a situation with high-stakes consequences and specialized domain knowledge — both defining characteristics of route_A. The request explicitly involves irreversible actions and regulatory constraints, which place it above the threshold for route_B's general-purpose handling. Although the input is scoped to a single domain (not cross-domain), the depth of expertise and consequence severity required match route_A's criteria.",
         "exclusions": [
-          {"route": "route_B", "reason": "route_B handles [typical route_B characteristic], but this input's [distinguishing signal] indicates route_A-level priority"},
-          {"route": "route_C", "reason": "route_C handles [typical route_C characteristic], but the input combines that with [route_A signal] requiring route_A classification"}
+          {"route": "route_B", "reason": "route_B handles moderate-complexity requests that involve synthesis or comparison within well-understood domains, but this input's irreversible-action constraint and regulatory requirements exceed route_B's scope — the consequences of a suboptimal response are too high for route_B's generalist handling"},
+          {"route": "route_C", "reason": "route_C handles straightforward single-step requests, but this input requires multi-step analysis (assess constraints, evaluate options, recommend action) with domain-specific judgment at each step, which is well beyond route_C's single-step capability"}
         ]
       }
     }

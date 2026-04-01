@@ -114,6 +114,8 @@ For routing prompts, include the reasoning in examples when chain-of-thought is 
 
 **Boundary examples are high-value for Claude.** Claude is strong at following demonstrated patterns, so an example that shows "this looks like route A but is actually route B because of X" is more effective than a rule stating the same thing.
 
+**Rendering reasoning and exclusions.** When `example_content` includes both `reasoning` and `exclusions`, combine them into a single `<thinking>` block. The block should read as one coherent analytical passage — first explain why the assigned route applies, then explain why plausible alternative routes do not apply to this specific input. Do not format exclusions as a bulleted list or separate section inside the `<thinking>` tags; weave them naturally into the analysis.
+
 ## Long Context Handling
 
 Claude handles long prompts well. Practical implications for routing prompts:

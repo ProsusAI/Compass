@@ -172,6 +172,8 @@ When using chain-of-thought, include reasoning in the assistant turn but clearly
 
 GPT-5 is more concise by default than GPT-4o in few-shot responses — 3–5 examples is usually sufficient. Include boundary cases (requests that look like one route but belong to another) as these have the highest teaching value.
 
+**Rendering reasoning and exclusions.** When `example_content` includes both `reasoning` and `exclusions`, combine them into the assistant turn's reasoning text (before the JSON output). The text should read as one coherent analytical passage — first explain why the assigned route applies, then explain why plausible alternative routes do not apply to this specific input. Do not format exclusions as a separate list; weave them into the reasoning narrative.
+
 ## Chain-of-Thought vs Reasoning Effort
 
 GPT-5 has a built-in `reasoning_effort` parameter that controls internal chain-of-thought depth. For routing prompts, prefer using `reasoning_effort` over prompt-level CoT instructions:

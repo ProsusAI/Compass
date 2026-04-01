@@ -106,7 +106,13 @@ class ExampleContent(BaseModel):
     )
     input: str = Field(description="The example input/query text")
     route: str = Field(description="The assigned route for this example")
-    reasoning: str = Field(description="Why this route fits")
+    reasoning: str = Field(
+        description=(
+            "Concrete explanation of why this route is the correct classification"
+            " for this specific input, including what distinguishing signals are"
+            " present and why the most plausible alternative routes do not apply"
+        ),
+    )
     exclusions: list[dict[str, str]] = Field(
         description="List of {route, reason} for excluded routes"
     )

@@ -95,7 +95,11 @@ Execute these steps exactly in order on round 1.
    - **Objective** — state the classification/routing task derived from `routing_context.domain`.
    - **Categories** — enumerate every route from `routing_context.routes` with its description and distinguishing criteria. Use the vocabulary from `routing_context` — these may be called "routes," "categories," "tiers," or other domain-appropriate terms.
    - **Decision logic** — encode the decision logic, edge cases, and disambiguation rules. If `routing_context.route_ordering` is present, reflect the ordering relationship. If `routing_context.routing_dimensions` specify directional preferences (e.g., `lower_is_better`), encode those as prioritization rules.
-   - **Examples** — use the examples extracted from Review Agent directives in step 5. Each example includes input, route, reasoning, and exclusions — format all of these using provider-specific conventions.
+   - **Examples** — use the examples extracted from Review Agent directives in step 5. Each `example_content` contains `input`, `route`, `reasoning`, and `exclusions`. Render all four fields into each compiled example:
+     - `input` → the example's input block
+     - `route` → the route value in the example's output/answer
+     - `reasoning` + `exclusions` → combine into a single chain-of-thought block (formatted per provider conventions). The block should read as one coherent analytical passage that explains why the assigned route is correct and why each excluded route does not apply to this specific input. Do not list exclusions as a separate section — weave them into the reasoning narrative.
+     - `example_id` → never include in prompt text (backend tracking only)
    - **Output format** — specify the exact response schema the model must produce.
 
    Use section header names that match the domain vocabulary in `routing_context.domain`. Do not assume the problem is any specific domain — it could be LLM model routing, ticket triage, content moderation, support escalation, or any classification task.
