@@ -341,12 +341,16 @@ async def build_final_report_briefing_tool(ctx: Context, run_id: str) -> str:
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     run_dir = project_dir / "outputs" / run_id
 
-    check_artifacts(
-        run_dir / "holdout_eval" / "report.json",
-        stage=5,
-        stage_name="Final Report",
-        hint="Run holdout evaluation first (run_holdout_eval).",
-    )
+    holdout_eval_dir = run_dir / "holdout_eval"
+    holdout_report_found = any(holdout_eval_dir.glob("v*/report.json")) or (holdout_eval_dir / "report.json").is_file()
+
+    if not holdout_report_found:
+        check_artifacts(
+            run_dir / "holdout_eval" / "report.json",
+            stage=5,
+            stage_name="Final Report",
+            hint="Run holdout evaluation first (run_holdout_eval).",
+        )
 
     briefing = build_final_report_briefing(
         run_id=run_id,

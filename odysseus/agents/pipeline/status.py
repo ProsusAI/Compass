@@ -456,7 +456,15 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
     """Stage 5: Final Report — reports/final_report.md exists."""
     report = run_dir / "reports" / "final_report.md"
     pareto_candidates = run_dir / "pareto_candidates_listed.json"
-    holdout_report = run_dir / "holdout_eval" / "report.json"
+    holdout_eval_dir = run_dir / "holdout_eval"
+
+    # Check both flat path and versioned subdirectories (e.g. holdout_eval/v7/report.json)
+    versioned_reports = list(holdout_eval_dir.glob("v*/report.json"))
+    flat_report = holdout_eval_dir / "report.json"
+    holdout_report_path: Path | None = (
+        versioned_reports[0] if versioned_reports else (flat_report if flat_report.is_file() else None)
+    )
+    holdout_report_exists = holdout_report_path is not None
 
     if report.is_file():
         return "complete", [str(report)], ""
@@ -464,10 +472,10 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
     artifacts: list[str] = []
     if pareto_candidates.is_file():
         artifacts.append(str(pareto_candidates))
-    if holdout_report.is_file():
-        artifacts.append(str(holdout_report))
+    if holdout_report_path is not None:
+        artifacts.append(str(holdout_report_path))
 
-    if pareto_candidates.is_file() and not holdout_report.is_file():
+    if pareto_candidates.is_file() and not holdout_report_exists:
         return "incomplete", artifacts, "version_selection_needed"
 
     return "incomplete", artifacts, ""
