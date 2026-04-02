@@ -309,7 +309,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
             baseline_path = Path(run_config.output.results_path).parent / "baseline_comparison.json"
             baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
     except Exception:
-        logging.getLogger(__name__).debug("Failed to compute baselines", exc_info=True)
+        logging.getLogger(__name__).warning("Failed to compute baselines", exc_info=True)
 
     return json.dumps(
         {

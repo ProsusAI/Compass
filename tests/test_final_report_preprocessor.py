@@ -365,10 +365,42 @@ class TestBaselineComparison:
         assert len(briefing.baseline_comparison.baselines) == 2
         assert briefing.baseline_comparison.optimized.cost == 0.35
 
-    def test_missing_baseline_returns_none(self, tmp_path: Path) -> None:
+    def test_missing_baseline_no_routes_returns_none(self, tmp_path: Path) -> None:
+        """Returns None when holdout examples have empty routes dicts."""
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         assert briefing.baseline_comparison is None
+
+    def test_missing_baseline_computes_from_raw(self, tmp_path: Path) -> None:
+        """Falls back to computing baselines from raw holdout data when JSON missing."""
+        run_dir = _setup_minimal_run(tmp_path)
+        # Rewrite holdout.jsonl with populated routes dicts
+        holdout_examples = []
+        for i in range(20):
+            holdout_examples.append(
+                json.dumps(
+                    {
+                        "id": f"hold-{i}",
+                        "input": f"holdout request {i}",
+                        "expected": {
+                            "route": "sonnet",
+                            "routes": {
+                                "haiku": {"cost": 0.1, "quality_score": 0.6},
+                                "sonnet": {"cost": 0.5, "quality_score": 0.9},
+                                "opus": {"cost": 1.0, "quality_score": 0.95},
+                            },
+                        },
+                    }
+                )
+            )
+        (run_dir / "analysis" / "holdout.jsonl").write_text("\n".join(holdout_examples))
+
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert briefing.baseline_comparison is not None
+        assert len(briefing.baseline_comparison.baselines) == 2
+        cheapest = next(b for b in briefing.baseline_comparison.baselines if b.strategy == "always_cheapest")
+        assert cheapest.route == "haiku"
+        assert cheapest.cost == 0.1
 
 
 class TestSupportFromConfusionMatrix:
