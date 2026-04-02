@@ -2,6 +2,7 @@
 
 import json
 import logging
+from pathlib import Path
 
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
@@ -297,7 +298,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
         holdout_text = holdout_jsonl_path.read_text(encoding="utf-8")
         holdout_examples = [json.loads(line) for line in holdout_text.splitlines() if line.strip()]
 
-        results_path = project_dir / "outputs" / run_id / "holdout_eval" / "results.jsonl"
+        results_path = Path(run_config.output.results_path)
         results_text = results_path.read_text(encoding="utf-8")
         eval_result_rows = [
             json.loads(line) for line in results_text.splitlines() if line.strip() and '"__meta__"' not in line
@@ -305,7 +306,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
 
         baseline_data = _compute_baselines(holdout_examples, eval_result_rows)
         if baseline_data:
-            baseline_path = project_dir / "outputs" / run_id / "holdout_eval" / "baseline_comparison.json"
+            baseline_path = Path(run_config.output.results_path).parent / "baseline_comparison.json"
             baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
     except Exception:
         logging.getLogger(__name__).debug("Failed to compute baselines", exc_info=True)
@@ -355,18 +356,41 @@ async def build_final_report_briefing_tool(ctx: Context, run_id: str) -> str:
     return briefing.model_dump_json(indent=2)
 
 
+_REQUIRED_REPORT_SECTIONS = [
+    "## Executive Summary",
+    "## Recommended Prompt",
+    "## Results",
+    "## Per-Class Performance",
+    "## Error Analysis",
+    "## Optimization Process",
+    "## Pareto Front",
+    "## Usage Guide",
+]
+
+
+def _validate_report_sections(markdown: str) -> list[str]:
+    """Check for missing required sections. Returns list of warnings."""
+    warnings: list[str] = []
+    for section in _REQUIRED_REPORT_SECTIONS:
+        if section not in markdown:
+            warnings.append(f"Missing required section: {section}")
+    return warnings
+
+
 @mcp.tool()
 async def save_final_report(ctx: Context, run_id: str, report_markdown: str) -> str:
     """[Stage 5: Final Report] Save the final report markdown to disk.
 
     Writes the report to ``outputs/<run_id>/reports/final_report.md``.
+    Validates that required template sections are present and returns
+    warnings for any missing sections.
 
     Args:
         run_id: Pipeline run identifier.
         report_markdown: The complete report in markdown format.
 
     Returns:
-        Confirmation with the file path.
+        Confirmation with the file path and any section warnings.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     reports_dir = project_dir / "outputs" / run_id / "reports"
@@ -375,4 +399,6 @@ async def save_final_report(ctx: Context, run_id: str, report_markdown: str) -> 
     report_path = reports_dir / "final_report.md"
     report_path.write_text(report_markdown, encoding="utf-8")
 
-    return json.dumps({"report_path": str(report_path), "status": "saved"})
+    warnings = _validate_report_sections(report_markdown)
+
+    return json.dumps({"report_path": str(report_path), "status": "saved", "warnings": warnings})

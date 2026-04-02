@@ -171,7 +171,12 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
     # Holdout eval results with some misrouted
     holdout_results = [
         json.dumps(
-            {"__meta__": "run_fingerprint", "prompt_version": "v3", "backend": "anthropic", "data_source": "holdout.jsonl"}  # noqa: E501
+            {
+                "__meta__": "run_fingerprint",
+                "prompt_version": "v3",
+                "backend": "anthropic",
+                "data_source": "holdout.jsonl",
+            }  # noqa: E501
         ),
     ]
     for i in range(20):
@@ -386,3 +391,74 @@ class TestSupportFromConfusionMatrix:
         # So sonnet support = 20 (all examples have expected route "sonnet")
         sonnet = next(p for p in briefing.per_class_performance if p.route == "sonnet")
         assert sonnet.support == 20
+
+
+def _setup_versioned_run(tmp_path: Path, run_id: str = "test-run", version: str = "v3") -> Path:
+    """Create a run directory with version-specific eval paths (production layout)."""
+    run_dir = _setup_minimal_run(tmp_path, run_id)
+
+    # Move eval report to version-specific path
+    (run_dir / "eval" / version).mkdir(parents=True, exist_ok=True)
+    (run_dir / "eval" / "report.json").rename(run_dir / "eval" / version / "report.json")
+
+    # Move holdout eval files to version-specific path
+    (run_dir / "holdout_eval" / version).mkdir(parents=True, exist_ok=True)
+    (run_dir / "holdout_eval" / "report.json").rename(run_dir / "holdout_eval" / version / "report.json")
+    (run_dir / "holdout_eval" / "results.jsonl").rename(
+        run_dir / "holdout_eval" / version / "results.jsonl"
+    )
+
+    return run_dir
+
+
+class TestVersionSpecificPaths:
+    """Tests using version-specific directory layout (production behavior)."""
+
+    def test_discovers_holdout_version(self, tmp_path: Path) -> None:
+        run_dir = _setup_versioned_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert briefing.run_id == "test-run"
+
+    def test_eval_comparison_from_versioned_paths(self, tmp_path: Path) -> None:
+        run_dir = _setup_versioned_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        metrics = {c.metric for c in briefing.eval_comparison}
+        assert "accuracy" in metrics
+        acc = next(c for c in briefing.eval_comparison if c.metric == "accuracy")
+        assert acc.dev_value == 0.90
+        assert acc.holdout_value == 0.85
+
+    def test_error_analysis_from_versioned_paths(self, tmp_path: Path) -> None:
+        run_dir = _setup_versioned_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        ea = briefing.error_analysis
+        assert ea.total_evaluated == 20
+        assert ea.total_errors == 3
+
+    def test_per_class_from_versioned_paths(self, tmp_path: Path) -> None:
+        run_dir = _setup_versioned_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        routes = {p.route for p in briefing.per_class_performance}
+        assert routes == {"haiku", "sonnet", "opus"}
+
+    def test_baseline_from_versioned_paths(self, tmp_path: Path) -> None:
+        run_dir = _setup_versioned_run(tmp_path)
+        (run_dir / "holdout_eval" / "v3" / "baseline_comparison.json").write_text(
+            json.dumps(
+                {
+                    "baselines": [
+                        {"strategy": "always_cheapest", "route": "haiku", "quality_score": 0.65, "cost": 0.1},
+                        {"strategy": "always_capable", "route": "opus", "quality_score": 0.95, "cost": 0.9},
+                    ],
+                    "optimized": {
+                        "strategy": "optimized_prompt",
+                        "route": "mixed",
+                        "quality_score": 0.88,
+                        "cost": 0.35,
+                    },
+                }
+            )
+        )
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        assert briefing.baseline_comparison is not None
+        assert len(briefing.baseline_comparison.baselines) == 2

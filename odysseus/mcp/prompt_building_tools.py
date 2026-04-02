@@ -44,6 +44,10 @@ def build_pipeline_config(
                 params["average"] = state.primary_metric_name.split("/", 1)[1]
             metrics.append(MetricConfig(name=metric_name, params=params))
 
+    # Include f1 for holdout eval — needed for per-class performance in final report
+    if eval_subdir == "holdout_eval" and not any(m.name == "f1" for m in metrics):
+        metrics.append(MetricConfig(name="f1"))
+
     eval_dir = project_dir / "outputs" / run_id / eval_subdir / prompt_version
     output = OutputConfig(
         results_path=str(eval_dir / "results.jsonl"),
