@@ -219,7 +219,7 @@ class TestMutationRecord:
             "schema_change",
             "rule_add",
             "rule_remove",
-            "assembly_policy",
+            "vocabulary_edit",
         ]
         for mt in valid_types:
             mr = MutationRecord(
@@ -249,10 +249,10 @@ class TestMutationHistory:
         mh = MutationHistory(
             effective_mutations=[record],
             ineffective_mutations=[],
-            untried_mutation_types=["schema_change", "assembly_policy"],
+            untried_mutation_types=["schema_change", "vocabulary_edit"],
         )
         assert len(mh.effective_mutations) == 1
-        assert mh.untried_mutation_types == ["schema_change", "assembly_policy"]
+        assert mh.untried_mutation_types == ["schema_change", "vocabulary_edit"]
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +469,7 @@ class TestEditDirective:
     def test_all_block_types_valid(self) -> None:
         from odysseus.agents.review.models import EditDirective
 
-        for bt in ("rule", "example", "output_schema", "assembly_policy"):
+        for bt in ("rule", "example", "output_schema", "vocabulary"):
             ed = EditDirective(
                 directive_id="d",
                 target_version="v1",

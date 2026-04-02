@@ -334,7 +334,7 @@ _ALL_MUTATION_TYPES = [
     "schema_change",
     "rule_add",
     "rule_remove",
-    "assembly_policy",
+    "vocabulary_edit",
 ]
 
 

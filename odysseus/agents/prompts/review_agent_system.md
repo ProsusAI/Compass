@@ -123,7 +123,7 @@ Emit a single JSON object matching the `ReviewResult` schema below. Do not wrap 
     {
       "directive_id": "<string, e.g. d1, d2>",
       "target_version": "<version string>",
-      "block_type": "<rule | example | output_schema | assembly_policy>",
+      "block_type": "<rule | example | output_schema | vocabulary>",
       "block_identifier": "<e.g. Rule 2 | Example 5 | Output Schema>",
       "granularity": "<macro | micro>",
       "directive": "<string>",
@@ -214,13 +214,15 @@ Reference prompt sections by Markdown header name and sub-item number:
 - `block_type = "rule"`, `block_identifier = "Rule 2"` → targets item 2 under `## Rules`
 - `block_type = "example"`, `block_identifier = "Example 3"` → targets `### Example 3` under `## Examples`
 - `block_type = "output_schema"`, `block_identifier = "Output Schema"` → targets the `## Output Schema` section
-- `block_type = "assembly_policy"` → targets structural assembly decisions (e.g., section ordering, example selection policy)
+- `block_type = "vocabulary"`, `block_identifier = "route:<name>"` or `"dimension:<name>"` → targets route or dimension descriptions in the routing context to sharpen classification boundaries
+
+**Vocabulary directive constraints:** vocabulary directives cannot rename routes, cannot add or remove routes or dimensions, and must cite a specific confusion pattern from eval metrics (e.g., a misrouting rate or per-class recall regression). Granularity for vocabulary directives is always `"micro"`.
 
 **Granularity:**
 
 | Granularity | Use when | Examples |
 |------------|----------|---------|
-| `macro` | Significant structural problem or oracle gap remains | Rewrite block, add/remove rule, change example set, swap assembly policy |
+| `macro` | Significant structural problem or oracle gap remains | Rewrite block, add/remove rule, change example set, add new classification rule |
 | `micro` | Prompt is structurally sound; fine-tuning needed | Lexical pruning, tighter constraint wording, shorter output contract phrasing |
 
 Prefer macro edits when diversity is collapsing or the oracle gap is large. Micro-only edits in these conditions are an anti-pattern.
@@ -338,7 +340,7 @@ Avoid these failure modes:
 
 **Briefing summary:**
 - Round 7. `diversity_metrics.prompt_similarity = 0.12` (front nearly identical).
-- `mutation_history.untried_mutation_types = ["assembly_policy", "schema_change"]`.
+- `mutation_history.untried_mutation_types = ["vocabulary_edit", "schema_change"]`.
 - `candidate_quality_captured = 0.71`, indicating 29% quality headroom remains.
 - Stagnation flag true for 3 rounds. All recent mutations were `rule_edit` (micro-level).
 
@@ -353,10 +355,10 @@ Avoid these failure modes:
     {
       "directive_id": "d1",
       "target_version": "v7",
-      "block_type": "assembly_policy",
-      "block_identifier": "assembly_policy",
-      "granularity": "macro",
-      "directive": "Restructure example selection to prioritize examples near route boundaries across all routes rather than uniform distribution. This targets the oracle quality gap.",
+      "block_type": "vocabulary",
+      "block_identifier": "route:billing",
+      "granularity": "micro",
+      "directive": "Sharpen the billing route description to exclude account-level access issues. Current description conflates payment disputes with account lockouts, causing 28% confusion with the account_management route. Emphasize that billing covers only payment methods, charges, refunds, and invoices.",
       "priority": "high"
     }
   ],
@@ -365,7 +367,7 @@ Avoid these failure modes:
   ],
   "loop_signal": {
     "action": "refine",
-    "reason": "Diversity has collapsed and significant oracle quality headroom remains. Untried mutation types (assembly_policy, schema_change) should be explored before exit.",
+    "reason": "Diversity has collapsed and significant oracle quality headroom remains. Untried mutation types (vocabulary_edit, schema_change) should be explored before exit.",
     "suggested_budget": 4,
     "suggested_mutation_mode": "exploratory"
   },
@@ -376,7 +378,7 @@ Avoid these failure modes:
 }
 ```
 
-**Reasoning:** Anti-pattern 2 applies — suggesting only micro-edits here would be wrong. The front has converged structurally. A macro assembly_policy edit is the correct lever. Exploratory mode with a 4-round budget extension gives the Prompt Builder room to try it.
+**Reasoning:** Anti-pattern 2 applies — suggesting only micro-edits here would be wrong. The front has converged structurally. A vocabulary refinement targeting the billing/account_management confusion boundary is the correct lever, directly addressing the eval-observed misrouting pattern. Exploratory mode with a 4-round budget extension gives the Prompt Builder room to try vocabulary_edit and schema_change mutations.
 
 ---
 

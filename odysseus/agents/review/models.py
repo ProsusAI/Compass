@@ -90,7 +90,7 @@ MutationType = Literal[
     "schema_change",
     "rule_add",
     "rule_remove",
-    "assembly_policy",
+    "vocabulary_edit",
 ]
 
 
@@ -214,7 +214,7 @@ class EditDirective(BaseModel):
 
     directive_id: str
     target_version: str
-    block_type: Literal["rule", "example", "output_schema", "assembly_policy"]
+    block_type: Literal["rule", "example", "output_schema", "vocabulary"]
     block_identifier: str
     granularity: Literal["macro", "micro"]
     directive: str

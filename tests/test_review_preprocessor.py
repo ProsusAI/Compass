@@ -451,7 +451,7 @@ class TestCorrelateMutations:
             "schema_change",
             "rule_add",
             "rule_remove",
-            "assembly_policy",
+            "vocabulary_edit",
         ]
 
         result = correlate_mutations(
@@ -812,7 +812,7 @@ class TestGenerateExecutiveSummary:
             mutation_history=MutationHistory(
                 effective_mutations=[],
                 ineffective_mutations=[],
-                untried_mutation_types=["assembly_policy"],
+                untried_mutation_types=["vocabulary_edit"],
             ),
             oracle_metrics=None,
             prompt_versions={},
@@ -878,7 +878,7 @@ class TestGenerateExecutiveSummary:
     def test_lists_untried_mutations(self) -> None:
         briefing = self._make_briefing()
         summary = generate_executive_summary(briefing)
-        assert "assembly_policy" in summary
+        assert "vocabulary_edit" in summary
 
     def test_no_crash_on_minimal_briefing(self) -> None:
         """Minimal briefing with no candidates produces a non-crashing summary."""

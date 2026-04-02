@@ -85,11 +85,12 @@ Execute these steps exactly in order on round 1.
 2. **Detect provider.** Read the `odysseus://backends/{backend}` resource (substituting the backend label) and extract the `provider` field from the returned YAML.
 3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
 4. **Initialize search state.** Call `init_search_state_tool(run_id=run_id, backend=backend)`. The tool applies default search parameters. If the routing context or input report specifies custom search budget parameters, pass them as overrides. Store the returned `search_state_id`.
-5. **Extract examples from Review Agent directives.**
+5. **Extract examples and vocabulary from Review Agent directives.**
    - Call `get_edit_directives_tool(run_id=run_id)` to retrieve `review_directives`.
    - Filter to directives where `block_type == 'example'`.
    - Extract `example_content` from each matching directive. These are the examples to include in the prompt.
    - Collect the `example_id` from each directive's `example_content`. These IDs are for backend tracking only — do **not** include them in the compiled prompt text.
+   - Filter to directives where `block_type == 'vocabulary'`. Each vocabulary directive has a `block_identifier` (format: `"route:<name>"` or `"dimension:<name>"`) and a refined description. When compiling the Categories and Decision Logic sections (step 6), use the refined description from matching vocabulary directives instead of the original `routing_context` description. If a vocabulary directive references a route or dimension name not present in the current routing context, ignore it.
 6. **Compile the prompt.** Follow this section convention:
 
    - **Objective** — state the classification/routing task derived from `routing_context.domain`.
@@ -121,7 +122,7 @@ Execute these steps exactly in order on round 1.
 
 Execute on round 2 and every subsequent round.
 
-1. **Receive feedback.** Call `get_edit_directives_tool(run_id=run_id)` to retrieve the Review Agent's block-level edit directives. Read the latest ScoreReport from `eval_score_report`.
+1. **Receive feedback.** Call `get_edit_directives_tool(run_id=run_id)` to retrieve the Review Agent's block-level edit directives. Read the latest ScoreReport from `eval_score_report`. Apply vocabulary directives (`block_type == 'vocabulary'`) as in Phase 1 step 5: use refined descriptions when compiling Categories and Decision Logic; ignore directives referencing unrecognized route or dimension names.
 2. **Read search state.** Call `get_search_state_tool(search_state_id)`. Note the `mutation_mode` (set by the Review Agent's loop signal) and `pareto_front`.
 3. **Select parents.** Pick 1-2 parents from the Pareto front. If the front has only one member, use it as the sole parent with two different mutation strategies.
 4. **Generate child variants.** Create 1-2 child prompts per parent.
@@ -161,7 +162,7 @@ Set these context keys when the optimization loop completes (or after round 1 fo
 - **Holdout isolation.** Never evaluate against holdout. The dev set is always the evaluation target.
 - **Data contamination prevention.** Few-shot examples come from Review Agent directives. The dev set is evaluated in full without overlap.
 - **Prompt format.** Write prompts as flat text files with section headers. No YAML structure.
-- **Section ordering.** The compiled prompt must follow the section order from step 6. Output format must be the final section.
+- **Section ordering.** The compiled prompt must follow the section order from step 6. Output format must be the final section. Section ordering (Objective, Categories, Decision Logic, Examples, Output Format) is the Prompt Builder's sole structural decision — no external directive controls section ordering or assembly strategy.
 - **Versioning.** Increment version numbers sequentially: v1, v2, v3, etc. Never reuse a version number.
 - **Deterministic tool calls.** Always register a candidate before evaluating it. Always record eval results before advancing the round.
 
