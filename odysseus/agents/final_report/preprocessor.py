@@ -15,6 +15,7 @@ from pathlib import Path
 
 from odysseus.agents.final_report.models import (
     BaselineComparison,
+    BaselineResult,
     ChartPaths,
     ConfusionEntry,
     DatasetOverview,
@@ -434,6 +435,105 @@ def _build_error_analysis(run_dir: Path, prompt_version: str | None = None) -> E
 # ---------------------------------------------------------------------------
 
 
+def _compute_baselines_from_raw(
+    run_dir: Path,
+    prompt_version: str | None,
+) -> BaselineComparison | None:
+    """Compute baselines from raw holdout data when baseline_comparison.json is missing."""
+    holdout_path = run_dir / "analysis" / "holdout.jsonl"
+    if prompt_version:
+        results_path = run_dir / "holdout_eval" / prompt_version / "results.jsonl"
+    else:
+        results_path = run_dir / "holdout_eval" / "results.jsonl"
+
+    try:
+        holdout_examples = [
+            json.loads(line) for line in holdout_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
+    except Exception:
+        return None
+
+    try:
+        eval_results = [
+            json.loads(line)
+            for line in results_path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and '"__meta__"' not in line
+        ]
+    except Exception:
+        return None
+
+    if not holdout_examples:
+        return None
+
+    # Aggregate per-route cost and quality from holdout ground truth
+    route_cost_sums: dict[str, float] = {}
+    route_quality_sums: dict[str, float] = {}
+    for ex in holdout_examples:
+        routes = ex.get("expected", {}).get("routes", {})
+        for route_name, route_data in routes.items():
+            cost = route_data.get("cost", 0.0) or 0.0
+            quality = route_data.get("quality_score", 0.0) or 0.0
+            route_cost_sums[route_name] = route_cost_sums.get(route_name, 0.0) + cost
+            route_quality_sums[route_name] = route_quality_sums.get(route_name, 0.0) + quality
+
+    if not route_cost_sums:
+        return None
+
+    n = len(holdout_examples)
+    cheapest_route = min(route_cost_sums, key=lambda r: route_cost_sums[r] / n)
+    capable_route = min(route_quality_sums, key=lambda r: (-route_quality_sums[r] / n, r))
+
+    # Compute optimized strategy from eval results
+    optimized_cost = 0.0
+    optimized_quality = 0.0
+    counted = 0
+    example_by_id = {ex.get("id"): ex for ex in holdout_examples}
+    for r in eval_results:
+        if r.get("error"):
+            continue
+        eid = r.get("example_id")
+        ex = example_by_id.get(eid)
+        if not ex:
+            continue
+        pred_route = r.get("output", {}).get("route")
+        routes = ex.get("expected", {}).get("routes", {})
+        if pred_route and pred_route in routes:
+            optimized_cost += routes[pred_route].get("cost", 0.0) or 0.0
+            optimized_quality += routes[pred_route].get("quality_score", 0.0) or 0.0
+            counted += 1
+
+    if counted > 0:
+        optimized_cost /= counted
+        optimized_quality /= counted
+
+    try:
+        return BaselineComparison(
+            baselines=[
+                BaselineResult(
+                    strategy="always_cheapest",
+                    route=cheapest_route,
+                    quality_score=round(route_quality_sums[cheapest_route] / n, 4),
+                    cost=round(route_cost_sums[cheapest_route] / n, 4),
+                ),
+                BaselineResult(
+                    strategy="always_capable",
+                    route=capable_route,
+                    quality_score=round(route_quality_sums[capable_route] / n, 4),
+                    cost=round(route_cost_sums[capable_route] / n, 4),
+                ),
+            ],
+            optimized=BaselineResult(
+                strategy="optimized_prompt",
+                route="mixed",
+                quality_score=round(optimized_quality, 4),
+                cost=round(optimized_cost, 4),
+            ),
+        )
+    except Exception:
+        logger.debug("Failed to construct baseline comparison from raw data", exc_info=True)
+        return None
+
+
 def _build_baseline_comparison(run_dir: Path, prompt_version: str | None = None) -> BaselineComparison | None:
     """Load baseline comparison results computed during holdout eval."""
     data = None
@@ -441,13 +541,14 @@ def _build_baseline_comparison(run_dir: Path, prompt_version: str | None = None)
         data = _load_json(run_dir / "holdout_eval" / prompt_version / "baseline_comparison.json")
     if not data:
         data = _load_json(run_dir / "holdout_eval" / "baseline_comparison.json")
-    if not data or not isinstance(data, dict):
-        return None
-    try:
-        return BaselineComparison(**data)
-    except Exception:
-        logger.debug("Could not parse baseline_comparison.json")
-        return None
+    if data and isinstance(data, dict):
+        try:
+            return BaselineComparison(**data)
+        except Exception:
+            logger.debug("Could not parse baseline_comparison.json")
+
+    # Fallback: compute from raw holdout data
+    return _compute_baselines_from_raw(run_dir, prompt_version)
 
 
 # ---------------------------------------------------------------------------
