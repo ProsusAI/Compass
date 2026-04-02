@@ -20,6 +20,7 @@ from odysseus.agents.review.preprocessor import (
     compute_oracle_metrics_from_report,
     correlate_mutations,
     extract_per_class_recall,
+    generate_executive_summary,
 )
 
 
@@ -492,6 +493,11 @@ class TestBuildReviewBriefing:
         assert len(briefing.per_class_recall) > 0
         assert "model-a" in briefing.per_class_recall
 
+        # New fields
+        assert briefing.executive_summary != ""
+        assert briefing.directive_history == []
+        assert briefing.routing_context is None
+
 
 def _make_empty_metrics_report() -> dict[str, Any]:
     """Build a ScoreReport-compatible dict with no metrics."""
@@ -636,3 +642,136 @@ class TestMissingMetricBehavior:
         assert briefing.round == 2
         assert len(briefing.candidates) == 1
         assert briefing.candidates[0].delta_vs_parent.quality_delta is None
+
+
+class TestGenerateExecutiveSummary:
+    def _make_briefing(self, **overrides: Any) -> Any:
+        """Build a minimal ReviewBriefing for summary tests."""
+        from odysseus.agents.review.models import (
+            CandidateAnalysis,
+            DiminishingReturns,
+            DiversityMetrics,
+            MetricDeltas,
+            MutationHistory,
+            ReviewBriefing,
+        )
+        from odysseus.eval.models import ScoreReport
+
+        default_score_report = ScoreReport.model_validate(_make_report_dict(accuracy=0.85, cost=1.20))
+
+        defaults: dict[str, Any] = dict(
+            round=3,
+            candidates=[
+                CandidateAnalysis(
+                    candidate_version="v3",
+                    parent_version="v2",
+                    mutation_description="Swapped example 3",
+                    score_report=default_score_report,
+                    delta_vs_parent=MetricDeltas(
+                        quality_delta=0.03,
+                        cost_delta=-0.10,
+                        per_class_recall_deltas={"model-a": 0.05},
+                    ),
+                    delta_vs_front=[],
+                ),
+            ],
+            pareto_front=[],
+            per_class_recall={},
+            diversity_metrics=DiversityMetrics(
+                example_overlap_ratio=0.3,
+                prompt_similarity=0.5,
+                mutation_type_distribution={"example_swap": 2},
+            ),
+            diminishing_returns=DiminishingReturns(
+                score_trajectory=[0.78, 0.82, 0.85],
+                improvement_trend=0.035,
+                stagnation_flag=False,
+            ),
+            mutation_history=MutationHistory(
+                effective_mutations=[],
+                ineffective_mutations=[],
+                untried_mutation_types=["assembly_policy"],
+            ),
+            oracle_metrics=None,
+            prompt_versions={},
+            holdout_examples=[],
+        )
+        defaults.update(overrides)
+        return ReviewBriefing(**defaults)
+
+    def test_includes_round_info(self) -> None:
+        briefing = self._make_briefing(round=5)
+        summary = generate_executive_summary(briefing)
+        assert "Round 5" in summary
+
+    def test_includes_best_candidate(self) -> None:
+        briefing = self._make_briefing()
+        summary = generate_executive_summary(briefing)
+        assert "v3" in summary
+        assert "+0.030" in summary or "+0.03" in summary
+
+    def test_flags_regressions(self) -> None:
+        from odysseus.agents.review.models import ClassRecallEntry
+
+        briefing = self._make_briefing(
+            per_class_recall={
+                "route-a": ClassRecallEntry(
+                    recall=0.42, support=8, trend=[0.71, 0.42], regression_flag=True,
+                ),
+            },
+        )
+        summary = generate_executive_summary(briefing)
+        assert "REGRESSION" in summary
+        assert "route-a" in summary
+        assert "0.42" in summary
+
+    def test_reports_oracle_gap(self) -> None:
+        from odysseus.agents.review.models import OracleMetrics
+
+        briefing = self._make_briefing(
+            oracle_metrics=OracleMetrics(
+                oracle_cost_change=0.50,
+                oracle_quality_change=0.10,
+                candidate_cost_captured=0.70,
+                candidate_quality_captured=0.85,
+            ),
+        )
+        summary = generate_executive_summary(briefing)
+        assert "85%" in summary
+        assert "70%" in summary
+
+    def test_warns_stagnation(self) -> None:
+        from odysseus.agents.review.models import DiminishingReturns
+
+        briefing = self._make_briefing(
+            diminishing_returns=DiminishingReturns(
+                score_trajectory=[0.85, 0.851, 0.852],
+                improvement_trend=0.001,
+                stagnation_flag=True,
+            ),
+        )
+        summary = generate_executive_summary(briefing)
+        assert "Stagnation flag is set" in summary
+
+    def test_lists_untried_mutations(self) -> None:
+        briefing = self._make_briefing()
+        summary = generate_executive_summary(briefing)
+        assert "assembly_policy" in summary
+
+    def test_no_crash_on_minimal_briefing(self) -> None:
+        """Minimal briefing with no candidates produces a non-crashing summary."""
+        briefing = self._make_briefing(candidates=[])
+        summary = generate_executive_summary(briefing)
+        assert "Round 3" in summary
+
+
+class TestExampleSummaryInputText:
+    def test_input_text_round_trips(self) -> None:
+        es = ExampleSummary(example_id="h1", route="model-a", input_text="Hello world")
+        data = es.model_dump()
+        restored = ExampleSummary.model_validate(data)
+        assert restored.input_text == "Hello world"
+
+    def test_input_text_defaults_to_none(self) -> None:
+        es = ExampleSummary(example_id="h1", route="model-a")
+        assert es.input_text is None

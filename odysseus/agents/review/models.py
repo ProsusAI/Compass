@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from odysseus.agents.prompt_builder.search import Candidate
+from odysseus.agents.routing_context import RoutingContext
 from odysseus.eval.models import ScoreReport
 
 # ---------------------------------------------------------------------------
@@ -143,6 +144,7 @@ class ExampleSummary(BaseModel):
     example_id: str
     route: str
     ambiguity_tags: list[str] = Field(default_factory=list)
+    input_text: str | None = None
 
 
 class OracleMetrics(BaseModel):
@@ -172,6 +174,9 @@ class ReviewBriefing(BaseModel):
     oracle_metrics: OracleMetrics | None = None
     prompt_versions: dict[str, str]
     holdout_examples: list[ExampleSummary]
+    routing_context: RoutingContext | None = None
+    directive_history: list[DirectiveOutcome] = Field(default_factory=list)
+    executive_summary: str = ""
 
 
 # ---------------------------------------------------------------------------

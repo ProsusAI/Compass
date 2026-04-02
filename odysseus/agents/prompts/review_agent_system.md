@@ -22,7 +22,7 @@ When you are dispatched for the first time — round 0, no search state exists y
 
 **Procedure:**
 
-1. Read `outputs/<run_id>/holdout.jsonl` and `outputs/<run_id>/routing_context.json`.
+1. Review the `holdout_examples` (with `input_text`) and `routing_context` from the briefing.
 2. Select 3–5 diverse examples that collectively cover different routes. Prioritize examples near route boundaries (inputs where the correct route is non-obvious or where adjacent routes could plausibly apply).
 3. For each selected example, craft:
    - `example_id`: the `id` field from the holdout JSONL row — required for holdout filtering (backend tracking only, never included in prompt text)
@@ -69,10 +69,17 @@ Include only routes that a classifier might plausibly confuse with the correct o
 
 ## Inputs
 
-You receive a `ReviewBriefing` assembled by the code pre-processor. All fields are present; do not attempt to fetch or infer missing data.
+You receive a `ReviewBriefing` assembled by the code pre-processor. All fields are present; do not attempt to fetch or infer missing data. Do not explore the codebase or read files from disk.
+
+### Reading the Briefing
+
+The tool output begins with a factual executive summary in natural language. Read this first to orient yourself — it surfaces regressions, oracle gaps, stagnation signals, and diversity status. The full structured JSON follows for specific values.
+
+### Briefing fields
 
 | Field | Type | Source | Description |
 |-------|------|--------|-------------|
+| `executive_summary` | `str` | Code pre-processor | Factual summary of the briefing data — read this first |
 | `round` | `int` | SearchState | Current optimization round number |
 | `candidates` | `list[CandidateAnalysis]` | Code pre-processor | Per-candidate score reports, mutation descriptions, and deltas vs parent and Pareto front |
 | `pareto_front` | `list[Candidate]` | SearchState | Current Pareto-optimal candidates across quality and cost |
@@ -82,7 +89,9 @@ You receive a `ReviewBriefing` assembled by the code pre-processor. All fields a
 | `mutation_history` | `MutationHistory` | Code pre-processor | Effective mutations, ineffective mutations, and untried mutation types |
 | `oracle_metrics` | `OracleMetrics` | Code pre-processor | Oracle cost/quality change ceilings and candidate captured ratios |
 | `prompt_versions` | `dict[str, str]` | Prompt files | Full prompt text keyed by version string (e.g., `"v3"`) |
-| `holdout_examples` | `list[ExampleSummary]` | Holdout dataset | Holdout example summaries — IDs with routes available for few-shot use |
+| `holdout_examples` | `list[ExampleSummary]` | Holdout dataset | Holdout example summaries with `example_id`, `route`, and `input_text` for crafting example directives |
+| `routing_context` | `RoutingContext \| None` | Routing context file | Route definitions, routing dimensions, and domain description — may be `None` for legacy runs |
+| `directive_history` | `list[DirectiveOutcome]` | Directive history file | Prior directive outcomes (`was_attempted`, `outcome`) for tracking directive effectiveness |
 
 ### Key sub-fields
 

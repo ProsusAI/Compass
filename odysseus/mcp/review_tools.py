@@ -105,6 +105,12 @@ async def build_review_briefing_tool(
     mutation_log = load_mutation_log(run_id, output_dir=out)
     directive_history = load_directive_history(run_id, output_dir=out)
 
+    # Auto-discover holdout path if not explicitly provided
+    if not holdout_jsonl_path:
+        default_holdout = out / run_id / "analysis" / "holdout.jsonl"
+        if default_holdout.exists():
+            holdout_jsonl_path = str(default_holdout)
+
     # Load holdout examples from JSONL file if path provided
     holdout_examples: list[ExampleSummary] = []
     if holdout_jsonl_path:
@@ -116,8 +122,18 @@ async def build_review_briefing_tool(
                     ExampleSummary(
                         example_id=example.get("id", ""),
                         route=example.get("expected", {}).get("route", ""),
+                        input_text=example.get("input"),
                     )
                 )
+
+    # Load routing context
+    routing_context = None
+    routing_context_path = out / run_id / "validation" / "routing_context.json"
+    if routing_context_path.exists():
+        from odysseus.agents.routing_context import RoutingContext
+        routing_context = RoutingContext.model_validate_json(
+            routing_context_path.read_text(encoding="utf-8")
+        )
 
     # Build briefing
     briefing = build_review_briefing(
@@ -130,13 +146,20 @@ async def build_review_briefing_tool(
         holdout_examples=holdout_examples,
         candidate_versions=candidate_versions,
         parent_versions=parent_versions,
+        routing_context=routing_context,
     )
 
     # Save current round's reports for future historical access
     current_round_reports = {v: score_reports[v] for v in candidate_versions if v in score_reports}
     save_round_report(run_id, state.round, current_round_reports, output_dir=out)
 
-    return briefing.model_dump_json(indent=2)
+    output_parts: list[str] = []
+    if briefing.executive_summary:
+        output_parts.append("# Executive Summary\n\n")
+        output_parts.append(briefing.executive_summary)
+        output_parts.append("\n\n# Full Briefing Data\n\n")
+    output_parts.append(briefing.model_dump_json(indent=2))
+    return "".join(output_parts)
 
 
 @mcp.tool()

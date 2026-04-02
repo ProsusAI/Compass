@@ -27,6 +27,7 @@ from odysseus.agents.review.models import (
     OracleMetrics,
     ReviewBriefing,
 )
+from odysseus.agents.routing_context import RoutingContext
 from odysseus.eval.models import ScoreReport
 
 _log = logging.getLogger(__name__)
@@ -434,6 +435,81 @@ def _build_score_history(
     return scores
 
 
+def generate_executive_summary(briefing: ReviewBriefing, primary_metric: str = "accuracy") -> str:
+    """Generate a purely factual executive summary of the briefing data."""
+    lines: list[str] = []
+
+    # Round and scale
+    n_candidates = len(briefing.candidates)
+    n_front = len(briefing.pareto_front)
+    lines.append(f"Round {briefing.round}. {n_candidates} candidate(s) evaluated against {n_front} front member(s).")
+
+    # Best candidate by quality delta vs parent
+    candidates_with_quality = [
+        c for c in briefing.candidates if c.delta_vs_parent.quality_delta is not None
+    ]
+    if candidates_with_quality:
+        best = max(candidates_with_quality, key=lambda c: c.delta_vs_parent.quality_delta)  # type: ignore[arg-type]
+        metrics = best.score_report.metrics or {}
+        quality = metrics.get(primary_metric)
+        cost = metrics.get("cost")
+        parts = [f"Best candidate: {best.candidate_version}"]
+        if quality is not None:
+            parts.append(f"quality={quality:.3f}")
+        if cost is not None:
+            parts.append(f"cost={cost:.4f}")
+        if best.delta_vs_parent.quality_delta is not None:
+            sign = "+" if best.delta_vs_parent.quality_delta >= 0 else ""
+            parts.append(f"delta vs parent: {sign}{best.delta_vs_parent.quality_delta:.3f}")
+        lines.append(", ".join(parts) + ".")
+
+    # Regressions — sorted by support (lowest first = most critical)
+    regressions = [
+        (route, entry)
+        for route, entry in briefing.per_class_recall.items()
+        if entry.regression_flag
+    ]
+    if regressions:
+        regressions.sort(key=lambda r: r[1].support)
+        for route, entry in regressions:
+            prev = entry.trend[-2] if len(entry.trend) >= 2 else None
+            prev_str = f"{prev:.2f}" if prev is not None else "?"
+            lines.append(
+                f"REGRESSION: {route} recall {prev_str} -> {entry.recall:.2f} (support={entry.support})."
+            )
+
+    # Oracle gap
+    om = briefing.oracle_metrics
+    if om is not None:
+        parts = []
+        if om.candidate_quality_captured is not None:
+            parts.append(f"quality {om.candidate_quality_captured:.0%} captured")
+        else:
+            parts.append("quality: no headroom (oracle change is 0)")
+        if om.candidate_cost_captured is not None:
+            parts.append(f"cost {om.candidate_cost_captured:.0%} captured")
+        else:
+            parts.append("cost: no headroom (oracle change is 0)")
+        lines.append("Oracle gap: " + ", ".join(parts) + ".")
+
+    # Stagnation
+    dr = briefing.diminishing_returns
+    sign = "+" if dr.improvement_trend >= 0 else ""
+    stag = " Stagnation flag is set." if dr.stagnation_flag else ""
+    lines.append(f"Improvement trend: {sign}{dr.improvement_trend:.4f}/round.{stag}")
+
+    # Diversity
+    dm = briefing.diversity_metrics
+    lines.append(f"Diversity: prompt_similarity={dm.prompt_similarity:.2f} (0=identical, 1=different).")
+    untried = briefing.mutation_history.untried_mutation_types
+    if untried:
+        lines.append(f"Untried mutation types: {', '.join(untried)}.")
+    else:
+        lines.append("All mutation types have been tried.")
+
+    return "\n".join(lines)
+
+
 def build_review_briefing(
     *,
     search_state: Any,
@@ -445,6 +521,7 @@ def build_review_briefing(
     holdout_examples: list[ExampleSummary],
     candidate_versions: list[str],
     parent_versions: dict[str, str | None],
+    routing_context: RoutingContext | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 
@@ -515,7 +592,7 @@ def build_review_briefing(
         metrics=score_reports[best_candidate].get("metrics", {}),
     )
 
-    return ReviewBriefing(
+    briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
         pareto_front=pareto_front,
@@ -526,4 +603,9 @@ def build_review_briefing(
         oracle_metrics=oracle_metrics,
         prompt_versions=prompt_texts,
         holdout_examples=holdout_examples,
+        routing_context=routing_context,
+        directive_history=directive_history,
+    )
+    return briefing.model_copy(
+        update={"executive_summary": generate_executive_summary(briefing, primary_metric)},
     )
