@@ -9,6 +9,7 @@ from odysseus.agents.prompt_builder.search import (
     Candidate,
     RoundSummary,
     SearchState,
+    compute_front_improvement,
     dominates,
     select_best,
     update_pareto_front,
@@ -506,3 +507,51 @@ class TestRoundSummaryConverged:
             converged=True,
         )
         assert rs.converged is True
+
+
+# ---------------------------------------------------------------------------
+# compute_front_improvement
+# ---------------------------------------------------------------------------
+
+
+class TestComputeFrontImprovement:
+    def test_empty_old_front_returns_zero(self) -> None:
+        new_front = [_candidate(prompt_version="v1", quality_score=0.9, cost=0.01)]
+        result = compute_front_improvement([], new_front)
+        assert result == pytest.approx(0.9)
+
+    def test_empty_new_front_returns_zero(self) -> None:
+        old_front = [_candidate(prompt_version="v1", quality_score=0.9, cost=0.01)]
+        result = compute_front_improvement(old_front, [])
+        assert result == 0.0
+
+    def test_no_improvement_same_quality_returns_zero(self) -> None:
+        old_front = [_candidate(prompt_version="v1", quality_score=0.9, cost=0.01)]
+        new_front = [_candidate(prompt_version="v1", quality_score=0.9, cost=0.01)]
+        result = compute_front_improvement(old_front, new_front)
+        assert result == 0.0
+
+    def test_no_improvement_worse_quality_returns_zero(self) -> None:
+        old_front = [_candidate(prompt_version="v1", quality_score=0.9, cost=0.01)]
+        new_front = [_candidate(prompt_version="v2", quality_score=0.8, cost=0.01)]
+        result = compute_front_improvement(old_front, new_front)
+        assert result == 0.0
+
+    def test_small_improvement_returns_delta(self) -> None:
+        old_front = [_candidate(prompt_version="v1", quality_score=0.80, cost=0.01)]
+        new_front = [_candidate(prompt_version="v2", quality_score=0.81, cost=0.01)]
+        result = compute_front_improvement(old_front, new_front)
+        assert result == pytest.approx(0.01)
+
+    def test_large_improvement_returns_delta(self) -> None:
+        old_front = [_candidate(prompt_version="v1", quality_score=0.50, cost=0.01)]
+        new_front = [_candidate(prompt_version="v2", quality_score=0.90, cost=0.01)]
+        result = compute_front_improvement(old_front, new_front)
+        assert result == pytest.approx(0.40)
+
+    def test_cost_only_improvement_returns_zero(self) -> None:
+        """Quality is unchanged; only cost improved — quality-only metric returns 0.0."""
+        old_front = [_candidate(prompt_version="v1", quality_score=0.9, cost=0.10)]
+        new_front = [_candidate(prompt_version="v2", quality_score=0.9, cost=0.01)]
+        result = compute_front_improvement(old_front, new_front)
+        assert result == 0.0

@@ -16,6 +16,7 @@ from odysseus.agents.review.preprocessor import (
     build_review_briefing,
     compute_diminishing_returns,
     compute_diversity_metrics,
+    compute_near_misses,
     compute_oracle_metrics,
     compute_oracle_metrics_from_report,
     correlate_mutations,
@@ -279,6 +280,127 @@ class TestComputeDiminishingReturns:
         )
         assert result.improvement_trend == 0.0
         assert result.stagnation_flag is False
+
+    def test_window_uses_last_7_values_of_8_round_trajectory(self) -> None:
+        """8-element trajectory → window is last 7 → 6 deltas used for trend."""
+        # Trajectory where only the last 7 values matter
+        # First value ignored, rest are perfectly linear: +0.01 each step
+        trajectory = [0.50, 0.70, 0.71, 0.72, 0.73, 0.74, 0.75, 0.76]
+        result = compute_diminishing_returns(
+            score_trajectory=trajectory,
+            stagnation_threshold=0.005,
+        )
+        # Window: last 7 = [0.70, 0.71, 0.72, 0.73, 0.74, 0.75, 0.76]
+        # 6 deltas each = 0.01 → trend = 0.01
+        assert result.improvement_trend == pytest.approx(0.01)
+
+    def test_improvement_stddev_computed_for_known_trajectory(self) -> None:
+        """For a trajectory with known deltas, verify stddev is non-zero and correct."""
+        import statistics
+
+        # Deltas: [0.10, 0.20] → pstdev
+        trajectory = [0.50, 0.60, 0.80]
+        result = compute_diminishing_returns(
+            score_trajectory=trajectory,
+            stagnation_threshold=0.005,
+        )
+        expected_stddev = statistics.pstdev([0.10, 0.20])
+        assert result.improvement_stddev == pytest.approx(expected_stddev)
+
+    def test_effective_threshold_passed_through(self) -> None:
+        """effective_threshold on the result matches the stagnation_threshold argument."""
+        result = compute_diminishing_returns(
+            score_trajectory=[0.80, 0.81],
+            stagnation_threshold=0.012,
+        )
+        assert result.effective_threshold == pytest.approx(0.012)
+
+    def test_relative_threshold_high_best_score(self) -> None:
+        """best_score=0.95 → effective_threshold = max(0.005, 0.01 * 0.95) = 0.0095."""
+        best_score = 0.95
+        effective_threshold = max(0.005, 0.01 * best_score)
+        assert effective_threshold == pytest.approx(0.0095)
+        result = compute_diminishing_returns(
+            score_trajectory=[0.94, 0.95],
+            stagnation_threshold=effective_threshold,
+        )
+        assert result.effective_threshold == pytest.approx(0.0095)
+
+    def test_relative_threshold_low_best_score_uses_floor(self) -> None:
+        """best_score=0.40 → effective_threshold = max(0.005, 0.01 * 0.40) = 0.005 (floor)."""
+        best_score = 0.40
+        effective_threshold = max(0.005, 0.01 * best_score)
+        assert effective_threshold == pytest.approx(0.005)
+        result = compute_diminishing_returns(
+            score_trajectory=[0.39, 0.40],
+            stagnation_threshold=effective_threshold,
+        )
+        assert result.effective_threshold == pytest.approx(0.005)
+
+
+# ---------------------------------------------------------------------------
+# compute_near_misses
+# ---------------------------------------------------------------------------
+
+
+def _cand(
+    version: str,
+    quality_score: float,
+    cost: float,
+    round_introduced: int = 1,
+) -> Candidate:
+    return Candidate(
+        prompt_version=version,
+        parent_version=None,
+        quality_score=quality_score,
+        cost=cost,
+        round_introduced=round_introduced,
+    )
+
+
+class TestComputeNearMisses:
+    def test_empty_candidates_returns_empty(self) -> None:
+        front = [_cand("f1", quality_score=0.9, cost=0.01)]
+        result = compute_near_misses([], front)
+        assert result == []
+
+    def test_candidate_on_front_is_excluded(self) -> None:
+        """A candidate whose version is in the front should not appear in near-misses."""
+        f1 = _cand("f1", quality_score=0.9, cost=0.01)
+        result = compute_near_misses([f1], [f1])
+        assert result == []
+
+    def test_dominated_candidate_included_with_gap(self) -> None:
+        """A dominated candidate is a near-miss; gap values reflect domination distance."""
+        f1 = _cand("f1", quality_score=0.9, cost=0.01)
+        dominated = _cand("d1", quality_score=0.8, cost=0.05)
+        result = compute_near_misses([dominated], [f1])
+        assert len(result) == 1
+        nm = result[0]
+        assert nm.version == "d1"
+        assert nm.domination_gap_quality == pytest.approx(0.9 - 0.8)
+        assert nm.domination_gap_cost == pytest.approx(0.05 - 0.01)
+
+    def test_incomparable_candidate_excluded(self) -> None:
+        """Incomparable: higher quality but higher cost — not dominated, not on front."""
+        f1 = _cand("f1", quality_score=0.8, cost=0.01)
+        incomparable = _cand("ic1", quality_score=0.9, cost=0.05)
+        result = compute_near_misses([incomparable], [f1])
+        assert result == []
+
+    def test_multiple_dominators_picks_smallest_combined_gap(self) -> None:
+        """When multiple front members dominate, picks the one with smallest total gap."""
+        # f1: quality=0.85, cost=0.02 → gaps: quality=0.05, cost=0.01, total=0.06
+        # f2: quality=0.90, cost=0.05 → gaps: quality=0.10, cost=0.04, total=0.14
+        f1 = _cand("f1", quality_score=0.85, cost=0.02)
+        f2 = _cand("f2", quality_score=0.90, cost=0.05)
+        dominated = _cand("d1", quality_score=0.80, cost=0.06)
+        result = compute_near_misses([dominated], [f1, f2])
+        assert len(result) == 1
+        nm = result[0]
+        # f1 has smaller combined gap
+        assert nm.domination_gap_quality == pytest.approx(0.05)
+        assert nm.domination_gap_cost == pytest.approx(0.04)
 
 
 class TestCorrelateMutations:

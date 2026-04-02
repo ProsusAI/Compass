@@ -458,7 +458,7 @@ class TestAdvanceRoundLoopSignal:
         assert not summary.converged
         assert summary.stagnation_count == 0
         state = get_search_state("r1", output_dir=tmp_path)
-        assert state.convergence_limit == 4  # max(suggested_budget=3, stagnation_limit+1=4)
+        assert state.convergence_limit == 8  # max(convergence_limit(5)+suggested_budget(3), stagnation_limit+1=4)
 
     def test_refine_signal_overrides_mutation_mode(self, tmp_path) -> None:
         init_search_state("anthropic", run_id="r1", output_dir=tmp_path)
@@ -559,3 +559,66 @@ class TestGetCandidateExampleIds:
         # Both should still be on front (incomparable: v1 higher quality, v2 lower cost)
         ids_v1 = get_candidate_example_ids("run-gce4", "v1", output_dir=tmp_path)
         assert ids_v1 == ["ex-a"]
+
+
+# ---------------------------------------------------------------------------
+# convergence_reason on RoundSummary via advance_round
+# ---------------------------------------------------------------------------
+
+
+class TestConvergenceReason:
+    def test_max_rounds_sets_convergence_reason(self, tmp_path) -> None:
+        """Convergence triggered by hitting max_rounds → convergence_reason='max_rounds'."""
+        init_search_state(
+            "anthropic",
+            run_id="cr-run1",
+            output_dir=tmp_path,
+            max_rounds=2,
+            stagnation_limit=3,
+            convergence_limit=5,
+        )
+        # Round 1
+        _register_and_score("cr-run1", "v1", 0.9, 0.01, tmp_path)
+        advance_round("cr-run1", output_dir=tmp_path)
+        # Round 2 — hits max_rounds=2
+        _register_and_score("cr-run1", "v2", 0.95, 0.005, tmp_path)
+        summary = advance_round("cr-run1", output_dir=tmp_path)
+        assert summary.converged is True
+        assert summary.convergence_reason == "max_rounds"
+
+    def test_stagnation_sets_convergence_reason(self, tmp_path) -> None:
+        """Convergence triggered by stagnation_count >= convergence_limit → 'stagnation'."""
+        init_search_state(
+            "anthropic",
+            run_id="cr-run2",
+            output_dir=tmp_path,
+            max_rounds=50,
+            stagnation_limit=2,
+            convergence_limit=3,
+        )
+        # Round 1: seed front
+        _register_and_score("cr-run2", "v1", 0.9, 0.01, tmp_path)
+        advance_round("cr-run2", output_dir=tmp_path)
+        # 3 stagnating rounds → convergence_limit=3 reached
+        last_summary = None
+        for i in range(2, 5):
+            _register_and_score("cr-run2", f"stag-{i}", 0.1, 10.0, tmp_path)
+            last_summary = advance_round("cr-run2", output_dir=tmp_path)
+        assert last_summary is not None
+        assert last_summary.converged is True
+        assert last_summary.convergence_reason == "stagnation"
+
+    def test_no_convergence_reason_is_none(self, tmp_path) -> None:
+        """Non-converged round → convergence_reason is None."""
+        init_search_state(
+            "anthropic",
+            run_id="cr-run3",
+            output_dir=tmp_path,
+            max_rounds=50,
+            stagnation_limit=3,
+            convergence_limit=5,
+        )
+        _register_and_score("cr-run3", "v1", 0.9, 0.01, tmp_path)
+        summary = advance_round("cr-run3", output_dir=tmp_path)
+        assert summary.converged is False
+        assert summary.convergence_reason is None

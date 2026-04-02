@@ -23,6 +23,7 @@ from odysseus.agents.prompt_builder.search import (
     Candidate,
     RoundSummary,
     SearchState,
+    compute_front_improvement,
     update_pareto_front,
 )
 from odysseus.agents.review.models import LoopSignal
@@ -351,7 +352,8 @@ def advance_round(
     new_front, new_pareto_points = update_pareto_front(state.pareto_front, pending)
 
     # Update stagnation
-    new_stagnation_count = 0 if new_pareto_points > 0 else state.stagnation_count + 1
+    improvement = compute_front_improvement(state.pareto_front, new_front)
+    new_stagnation_count = 0 if improvement > state.epsilon else state.stagnation_count + 1
 
     # Determine mutation mode
     if new_stagnation_count == 0 and state.stagnation_count > 0:
@@ -371,13 +373,26 @@ def advance_round(
     if signal is not None and signal.action == "refine":
         if signal.suggested_budget is not None and signal.suggested_budget > 0:
             new_stagnation_count = 0
-            new_convergence_limit = max(signal.suggested_budget, state.stagnation_limit + 1)
+            new_convergence_limit = max(
+                state.convergence_limit + signal.suggested_budget,
+                state.stagnation_limit + 1,
+            )
             # Re-check: only max_rounds is a hard cap
             converged = new_round >= state.max_rounds
         if signal.suggested_mutation_mode is not None:
             new_mutation_mode = signal.suggested_mutation_mode
 
     candidates_evaluated = [c.prompt_version for c in pending]
+
+    qualities = [c.quality_score for c in new_front]
+    front_quality_spread = max(qualities) - min(qualities) if len(new_front) > 1 else 0.0
+    round_routing_cost = sum(c.cost for c in pending)
+    convergence_reason: str | None = None
+    if converged:
+        if new_round >= state.max_rounds:
+            convergence_reason = "max_rounds"
+        elif new_stagnation_count >= new_convergence_limit:
+            convergence_reason = "stagnation"
 
     summary = RoundSummary(
         round=new_round,
@@ -387,6 +402,10 @@ def advance_round(
         mutation_mode=new_mutation_mode,
         stagnation_count=new_stagnation_count,
         converged=converged,
+        front_improvement=improvement,
+        front_quality_spread=front_quality_spread,
+        round_routing_cost=round_routing_cost,
+        convergence_reason=convergence_reason,
     )
 
     # Persist updated state
@@ -400,6 +419,7 @@ def advance_round(
             "mutation_mode": new_mutation_mode,
             "converged": converged,
             "loop_phase": "build" if converged else "review",
+            "total_routing_cost": state.total_routing_cost + round_routing_cost,
         }
     )
     _save_state(run_id, updated_state, output_dir)

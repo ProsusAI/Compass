@@ -47,6 +47,10 @@ class RoundSummary(BaseModel):
     mutation_mode: Literal["targeted", "exploratory"]
     stagnation_count: int
     converged: bool = False
+    front_improvement: float = 0.0
+    front_quality_spread: float = 0.0
+    round_routing_cost: float = 0.0
+    convergence_reason: str | None = None
 
 
 class SearchState(BaseModel):
@@ -65,6 +69,8 @@ class SearchState(BaseModel):
     mutation_mode: Literal["targeted", "exploratory"] = "targeted"
     converged: bool = False
     loop_phase: Literal["build", "review"] = "review"
+    epsilon: float = 0.001
+    total_routing_cost: float = 0.0
 
     @field_validator("search_state_id")
     @classmethod
@@ -81,6 +87,24 @@ class SearchState(BaseModel):
                 f"stagnation_limit ({self.stagnation_limit})"
             )
         return self
+
+
+def compute_front_improvement(
+    old_front: list[Candidate],
+    new_front: list[Candidate],
+) -> float:
+    """Measure improvement as best quality gain across the front.
+
+    Uses quality dimension only to avoid scale mixing with cost.
+    Returns 0.0 if no improvement or fronts are empty.
+    """
+    if not new_front:
+        return 0.0
+    new_best_quality = max(c.quality_score for c in new_front)
+    if not old_front:
+        return new_best_quality
+    old_best_quality = max(c.quality_score for c in old_front)
+    return max(0.0, new_best_quality - old_best_quality)
 
 
 # ---------------------------------------------------------------------------

@@ -80,6 +80,8 @@ class DiminishingReturns(BaseModel):
     score_trajectory: list[float]
     improvement_trend: float
     stagnation_flag: bool
+    improvement_stddev: float = 0.0
+    effective_threshold: float = 0.005
 
 
 MutationType = Literal[
@@ -159,6 +161,16 @@ class OracleMetrics(BaseModel):
     candidate_quality_captured: float | None = None
 
 
+class NearMissCandidate(BaseModel):
+    """A dominated candidate that was close to the Pareto front."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    domination_gap_quality: float
+    domination_gap_cost: float
+
+
 class ReviewBriefing(BaseModel):
     """Complete pre-processed input for the Review Agent LLM."""
 
@@ -175,6 +187,7 @@ class ReviewBriefing(BaseModel):
     prompt_versions: dict[str, str]
     holdout_examples: list[ExampleSummary]
     routing_context: RoutingContext | None = None
+    near_miss_candidates: list[NearMissCandidate] = []
     directive_history: list[DirectiveOutcome] = Field(default_factory=list)
     executive_summary: str = ""
 
@@ -226,7 +239,10 @@ class LoopSignal(BaseModel):
 
     action: Literal["refine", "exit"]
     reason: str
-    suggested_budget: int | None = None
+    suggested_budget: int | None = Field(
+        default=None,
+        description="Additional rounds to grant beyond current convergence limit (delta, not absolute)",
+    )
     suggested_mutation_mode: Literal["targeted", "exploratory"] | None = None
 
 

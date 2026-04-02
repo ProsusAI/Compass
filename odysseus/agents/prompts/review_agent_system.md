@@ -91,6 +91,7 @@ The tool output begins with a factual executive summary in natural language. Rea
 | `prompt_versions` | `dict[str, str]` | Prompt files | Full prompt text keyed by version string (e.g., `"v3"`) |
 | `holdout_examples` | `list[ExampleSummary]` | Holdout dataset | Holdout example summaries with `example_id`, `route`, and `input_text` for crafting example directives |
 | `routing_context` | `RoutingContext \| None` | Routing context file | Route definitions, routing dimensions, and domain description — may be `None` for legacy runs |
+| `near_miss_candidates` | `list[NearMissCandidate]` | Code pre-processor | Dominated candidates that were close to the Pareto front — each has `version`, `domination_gap_quality`, and `domination_gap_cost` |
 | `directive_history` | `list[DirectiveOutcome]` | Directive history file | Prior directive outcomes (`was_attempted`, `outcome`) for tracking directive effectiveness |
 
 ### Key sub-fields
@@ -101,7 +102,9 @@ The tool output begins with a factual executive summary in natural language. Rea
 
 **`DiversityMetrics`**: `prompt_similarity` near 0.0 means the front is converging. `mutation_type_distribution` shows how many times each mutation type has been tried. Compare against `mutation_history.untried_mutation_types` to identify unexplored strategies.
 
-**`DiminishingReturns`**: `improvement_trend` is positive if scores are still improving, negative if declining. `stagnation_flag` mirrors `advance_round`'s stagnation signal.
+**`DiminishingReturns`**: `improvement_trend` is positive if scores are still improving, negative if declining. `stagnation_flag` mirrors `advance_round`'s stagnation signal. `improvement_stddev` is the standard deviation of improvement deltas over the analysis window — high stddev + low trend indicates a noisy plateau (may still have potential), while low stddev + low trend indicates genuine convergence (safe to exit). `effective_threshold` is the actual stagnation threshold used for the flag, scaled to the best score; the flag is `true` when `improvement_trend < effective_threshold`.
+
+**`NearMissCandidate`**: `version` identifies the candidate. `domination_gap_quality` is its quality deficit to the nearest Pareto dominator; `domination_gap_cost` is its cost excess over the nearest dominator. Use near-miss candidates to identify prompts where a small targeted edit could push them onto the Pareto front.
 
 ## Output Contract
 

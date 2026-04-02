@@ -10,9 +10,11 @@ from __future__ import annotations
 import difflib
 import logging
 import re
+import statistics
 from collections import Counter
 from typing import Any
 
+from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.review.models import (
     CandidateAnalysis,
     ClassRecallEntry,
@@ -24,6 +26,7 @@ from odysseus.agents.review.models import (
     MetricDeltas,
     MutationHistory,
     MutationRecord,
+    NearMissCandidate,
     OracleMetrics,
     ReviewBriefing,
 )
@@ -251,6 +254,45 @@ def compute_diversity_metrics(
     )
 
 
+def compute_near_misses(
+    candidates: list[Candidate],
+    front: list[Candidate],
+) -> list[NearMissCandidate]:
+    """For each dominated candidate, find its minimum domination gap to the front.
+
+    A candidate is a near-miss if it is dominated by at least one front member.
+    The gap is the minimum (quality_deficit, cost_excess) pair across all dominators.
+    Candidates that are incomparable with the entire front are excluded.
+    """
+    front_versions = {c.prompt_version for c in front}
+    near_misses: list[NearMissCandidate] = []
+    for candidate in candidates:
+        if candidate.prompt_version in front_versions:
+            continue
+        min_gap_quality = float("inf")
+        min_gap_cost = float("inf")
+        dominated_by_any = False
+        for f in front:
+            if (
+                f.quality_score >= candidate.quality_score
+                and f.cost <= candidate.cost
+                and (f.quality_score > candidate.quality_score or f.cost < candidate.cost)
+            ):
+                dominated_by_any = True
+                gap_q = f.quality_score - candidate.quality_score
+                gap_c = candidate.cost - f.cost
+                if gap_q + gap_c < min_gap_quality + min_gap_cost:
+                    min_gap_quality = gap_q
+                    min_gap_cost = gap_c
+        if dominated_by_any:
+            near_misses.append(NearMissCandidate(
+                version=candidate.prompt_version,
+                domination_gap_quality=min_gap_quality,
+                domination_gap_cost=min_gap_cost,
+            ))
+    return near_misses
+
+
 def compute_diminishing_returns(
     *,
     score_trajectory: list[float],
@@ -267,17 +309,22 @@ def compute_diminishing_returns(
             score_trajectory=score_trajectory,
             improvement_trend=0.0,
             stagnation_flag=False,
+            improvement_stddev=0.0,
+            effective_threshold=stagnation_threshold,
         )
 
-    # Use last 3 rounds for trend (or all if fewer)
-    window = score_trajectory[-min(4, len(score_trajectory)) :]
+    # Use last 7 rounds for trend (or all if fewer)
+    window = score_trajectory[-min(7, len(score_trajectory)) :]
     deltas = [window[i] - window[i - 1] for i in range(1, len(window))]
     trend = sum(deltas) / len(deltas) if deltas else 0.0
+    stddev = statistics.pstdev(deltas) if len(deltas) >= 2 else 0.0
 
     return DiminishingReturns(
         score_trajectory=score_trajectory,
         improvement_trend=trend,
         stagnation_flag=trend < stagnation_threshold,
+        improvement_stddev=stddev,
+        effective_threshold=stagnation_threshold,
     )
 
 
@@ -568,8 +615,11 @@ def build_review_briefing(
         current_round,
         primary_metric,
     )
+    best_score = max(score_trajectory) if score_trajectory else 0.0
+    effective_threshold = max(0.005, 0.01 * best_score)
     diminishing_returns = compute_diminishing_returns(
         score_trajectory=score_trajectory,
+        stagnation_threshold=effective_threshold,
     )
 
     # 5. Mutation correlation
@@ -592,6 +642,20 @@ def build_review_briefing(
         metrics=score_reports[best_candidate].get("metrics", {}),
     )
 
+    # 7. Near-miss candidates
+    current_candidates = [
+        Candidate(
+            prompt_version=v,
+            parent_version=parent_versions.get(v),
+            quality_score=_extract_metric(score_reports[v], primary_metric) or 0.0,
+            cost=_extract_metric(score_reports[v], "cost") or 0.0,
+            round_introduced=current_round,
+        )
+        for v in candidate_versions
+        if v in score_reports
+    ]
+    near_misses = compute_near_misses(current_candidates, pareto_front)
+
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
@@ -605,6 +669,7 @@ def build_review_briefing(
         holdout_examples=holdout_examples,
         routing_context=routing_context,
         directive_history=directive_history,
+        near_miss_candidates=near_misses,
     )
     return briefing.model_copy(
         update={"executive_summary": generate_executive_summary(briefing, primary_metric)},

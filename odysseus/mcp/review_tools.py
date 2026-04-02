@@ -6,8 +6,9 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
-from odysseus.agents.prompt_builder.search import SearchState
+from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
 from odysseus.agents.prompt_builder.search_ops import (
+    _load_pending,
     _load_state,
     _save_loop_signal,
     _save_state,
@@ -218,10 +219,24 @@ async def record_directive_outcomes_tool(
         parsed_signal = LoopSignal.model_validate(loop_signal)
 
         if parsed_signal.action == "exit":
-            # Terminate the loop — set converged=true, skip build phase
+            # Terminate the loop — record final round summary, set converged=true
             with contextlib.suppress(FileNotFoundError):
                 state = _load_state(run_id, out)
-                updated = state.model_copy(update={"converged": True})
+                pending = _load_pending(run_id, out)
+                summary = RoundSummary(
+                    round=state.round,
+                    candidates_evaluated=[c.prompt_version for c in pending],
+                    new_pareto_points=0,
+                    front_size=len(state.pareto_front),
+                    mutation_mode=state.mutation_mode,
+                    stagnation_count=state.stagnation_count,
+                    converged=True,
+                    convergence_reason="review_exit",
+                )
+                updated = state.model_copy(update={
+                    "converged": True,
+                    "round_history": [*state.round_history, summary],
+                })
                 _save_state(run_id, updated, out)
             result["loop_signal_applied"] = "exit"
             return json.dumps(result)
