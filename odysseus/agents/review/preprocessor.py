@@ -8,6 +8,7 @@ beyond stdlib (difflib).
 from __future__ import annotations
 
 import difflib
+import logging
 import re
 from collections import Counter
 from typing import Any
@@ -28,10 +29,22 @@ from odysseus.agents.review.models import (
 )
 from odysseus.eval.models import ScoreReport
 
+_log = logging.getLogger(__name__)
 
-def _extract_metric(report: dict[str, Any], metric: str) -> float:
-    """Extract a metric value from a ScoreReport dict, defaulting to 0.0."""
-    return float(report.get("metrics", {}).get(metric, 0.0))
+
+def _extract_metric(report: dict[str, Any], metric: str) -> float | None:
+    """Extract a metric value from a ScoreReport dict, or None if absent."""
+    metrics = report.get("metrics")
+    if not isinstance(metrics, dict) or metric not in metrics:
+        return None
+    return float(metrics[metric])
+
+
+def _delta(a: float | None, b: float | None) -> float | None:
+    """Subtract two nullable floats. Returns None if either operand is None."""
+    if a is None or b is None:
+        return None
+    return a - b
 
 
 def _compute_recall_deltas(
@@ -46,7 +59,9 @@ def _compute_recall_deltas(
     for key, value in candidate_metrics.items():
         if key.startswith("recall/"):
             route = key.removeprefix("recall/")
-            ref_value = reference_metrics.get(key, 0.0)
+            ref_value = reference_metrics.get(key)
+            if ref_value is None:
+                continue
             deltas[route] = value - ref_value
     return deltas
 
@@ -74,29 +89,35 @@ def build_candidate_comparisons(
     for version in candidate_versions:
         report = score_reports[version]
         parent = parent_versions.get(version)
+        candidate_quality = _extract_metric(report, primary_metric)
+        candidate_cost = _extract_metric(report, "cost")
 
         # Delta vs parent
         if parent and parent in score_reports:
             parent_report = score_reports[parent]
+            if candidate_quality is None:
+                _log.warning("Metric %r missing from candidate %s", primary_metric, version)
+            parent_quality = _extract_metric(parent_report, primary_metric)
             delta_parent = MetricDeltas(
-                quality_delta=_extract_metric(report, primary_metric) - _extract_metric(parent_report, primary_metric),
-                cost_delta=_extract_metric(report, "cost") - _extract_metric(parent_report, "cost"),
+                quality_delta=_delta(candidate_quality, parent_quality),
+                cost_delta=_delta(candidate_cost, _extract_metric(parent_report, "cost")),
                 per_class_recall_deltas=_compute_recall_deltas(report, parent_report),
             )
         else:
-            delta_parent = MetricDeltas(quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={})
+            delta_parent = MetricDeltas(quality_delta=None, cost_delta=None, per_class_recall_deltas={})
 
         # Delta vs each front member
         delta_front: list[FrontComparison] = []
         for fv in front_versions:
             if fv in score_reports:
                 front_report = score_reports[fv]
+                front_quality = _extract_metric(front_report, primary_metric)
+                front_cost = _extract_metric(front_report, "cost")
                 delta_front.append(
                     FrontComparison(
                         front_candidate_version=fv,
-                        quality_delta=_extract_metric(report, primary_metric)
-                        - _extract_metric(front_report, primary_metric),
-                        cost_delta=_extract_metric(report, "cost") - _extract_metric(front_report, "cost"),
+                        quality_delta=_delta(candidate_quality, front_quality),
+                        cost_delta=_delta(candidate_cost, front_cost),
                     )
                 )
 
@@ -289,12 +310,21 @@ def correlate_mutations(
 
     effective: list[MutationRecord] = []
     ineffective: list[MutationRecord] = []
+    unscored: list[MutationRecord] = []
     tried_types: set[str] = set()
 
     for mutation in mutation_log:
         tried_types.add(mutation.mutation_type)
-        child_score = score_history.get(mutation.child_version, 0.0)
-        parent_score = score_history.get(mutation.parent_version, 0.0)
+        child_score = score_history.get(mutation.child_version)
+        parent_score = score_history.get(mutation.parent_version)
+        if child_score is None or parent_score is None:
+            _log.warning(
+                "Missing score for mutation %s -> %s, skipping classification",
+                mutation.parent_version,
+                mutation.child_version,
+            )
+            unscored.append(mutation)
+            continue
         if child_score > parent_score:
             effective.append(mutation)
         else:
@@ -306,6 +336,7 @@ def correlate_mutations(
         effective_mutations=effective,
         ineffective_mutations=ineffective,
         untried_mutation_types=untried,
+        unscored_mutations=unscored,
     )
 
 
@@ -371,17 +402,16 @@ def _build_score_trajectory(
     trajectory: list[float] = []
     for round_num in sorted(historical_reports.keys()):
         reports = historical_reports[round_num]
-        best = max(
-            (_extract_metric(r, primary_metric) for r in reports.values()),
-            default=0.0,
-        )
-        trajectory.append(best)
+        scores = [s for s in (_extract_metric(r, primary_metric) for r in reports.values()) if s is not None]
+        if scores:
+            trajectory.append(max(scores))
     # Current round
-    best_current = max(
-        (_extract_metric(r, primary_metric) for r in current_reports.values()),
-        default=0.0,
-    )
-    trajectory.append(best_current)
+    current_scores = [
+        s for s in (_extract_metric(r, primary_metric) for r in current_reports.values())
+        if s is not None
+    ]
+    if current_scores:
+        trajectory.append(max(current_scores))
     return trajectory
 
 
@@ -394,9 +424,13 @@ def _build_score_history(
     scores: dict[str, float] = {}
     for reports in historical_reports.values():
         for version, report in reports.items():
-            scores[version] = _extract_metric(report, primary_metric)
+            score = _extract_metric(report, primary_metric)
+            if score is not None:
+                scores[version] = score
     for version, report in current_reports.items():
-        scores[version] = _extract_metric(report, primary_metric)
+        score = _extract_metric(report, primary_metric)
+        if score is not None:
+            scores[version] = score
     return scores
 
 
@@ -475,7 +509,7 @@ def build_review_briefing(
     # 6. Oracle metrics — use the best current candidate's report
     best_candidate = max(
         candidate_versions,
-        key=lambda v: _extract_metric(score_reports.get(v, {}), primary_metric),
+        key=lambda v: _extract_metric(score_reports.get(v, {}), primary_metric) or 0.0,
     )
     oracle_metrics = compute_oracle_metrics_from_report(
         metrics=score_reports[best_candidate].get("metrics", {}),

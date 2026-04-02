@@ -10,6 +10,8 @@ import pytest
 from odysseus.agents.prompt_builder.search import Candidate, SearchState
 from odysseus.agents.review.models import ExampleSummary, MutationRecord
 from odysseus.agents.review.preprocessor import (
+    _delta,
+    _extract_metric,
     build_candidate_comparisons,
     build_review_briefing,
     compute_diminishing_returns,
@@ -67,7 +69,7 @@ class TestBuildCandidateComparisons:
         assert len(result) == 1
         assert result[0].candidate_version == "v1"
         assert result[0].parent_version is None
-        assert result[0].delta_vs_parent.quality_delta == 0.0
+        assert result[0].delta_vs_parent.quality_delta is None
         assert result[0].delta_vs_front == []
 
     def test_candidate_with_parent_and_front(self) -> None:
@@ -489,3 +491,148 @@ class TestBuildReviewBriefing:
         assert briefing.oracle_metrics.candidate_cost_captured is not None
         assert len(briefing.per_class_recall) > 0
         assert "model-a" in briefing.per_class_recall
+
+
+def _make_empty_metrics_report() -> dict[str, Any]:
+    """Build a ScoreReport-compatible dict with no metrics."""
+    now = datetime.now(tz=UTC).isoformat()
+    return {
+        "metrics": {},
+        "summary": {
+            "total": 10,
+            "succeeded": 0,
+            "failed": 10,
+            "total_cost": 0.0,
+            "start_time": now,
+            "end_time": now,
+            "duration_seconds": 5.0,
+        },
+        "errors": [],
+        "diff": None,
+        "report_path": "report.json",
+        "results_path": "results.jsonl",
+    }
+
+
+class TestExtractMetric:
+    def test_missing_metric_returns_none(self) -> None:
+        report: dict[str, Any] = {"metrics": {}}
+        assert _extract_metric(report, "accuracy") is None
+
+    def test_missing_metrics_key_returns_none(self) -> None:
+        report: dict[str, Any] = {}
+        assert _extract_metric(report, "accuracy") is None
+
+    def test_zero_returns_zero(self) -> None:
+        report: dict[str, Any] = {"metrics": {"accuracy": 0.0}}
+        assert _extract_metric(report, "accuracy") == 0.0
+
+    def test_present_metric_returns_value(self) -> None:
+        report: dict[str, Any] = {"metrics": {"accuracy": 0.85}}
+        assert _extract_metric(report, "accuracy") == 0.85
+
+
+class TestDelta:
+    def test_both_present(self) -> None:
+        assert _delta(0.85, 0.80) == pytest.approx(0.05)
+
+    def test_first_none(self) -> None:
+        assert _delta(None, 0.80) is None
+
+    def test_second_none(self) -> None:
+        assert _delta(0.85, None) is None
+
+    def test_both_none(self) -> None:
+        assert _delta(None, None) is None
+
+
+class TestMissingMetricBehavior:
+    def test_candidate_comparison_missing_metric(self) -> None:
+        """Candidate missing primary metric yields quality_delta=None."""
+        score_reports = {
+            "v2": _make_empty_metrics_report(),
+            "v1": _make_report_dict(accuracy=0.80, cost=1.50),
+        }
+        result = build_candidate_comparisons(
+            score_reports=score_reports,
+            mutation_descriptions={"v2": "test mutation"},
+            parent_versions={"v2": "v1"},
+            front_versions=[],
+            primary_metric="accuracy",
+        )
+        assert len(result) == 1
+        assert result[0].delta_vs_parent.quality_delta is None
+        assert result[0].delta_vs_parent.cost_delta is None
+
+    def test_recall_deltas_skips_absent_reference(self) -> None:
+        """Reference lacks a recall key — that class should be skipped."""
+        from odysseus.agents.review.preprocessor import _compute_recall_deltas
+
+        candidate = {"metrics": {"recall/route-a": 0.9, "recall/route-b": 0.7}}
+        reference = {"metrics": {"recall/route-a": 0.85}}  # no route-b
+
+        deltas = _compute_recall_deltas(candidate, reference)
+        assert "route-a" in deltas
+        assert deltas["route-a"] == pytest.approx(0.05)
+        assert "route-b" not in deltas  # skipped, not defaulted to 0.0
+
+    def test_correlate_mutations_missing_score(self) -> None:
+        """Missing score in history -> unscored_mutations, not effective/ineffective."""
+        log = [
+            MutationRecord(
+                child_version="v2",
+                parent_version="v1",
+                mutation_type="example_swap",
+                description="swap",
+            ),
+        ]
+        # v1 missing from history
+        result = correlate_mutations(mutation_log=log, score_history={"v2": 0.85})
+        assert len(result.effective_mutations) == 0
+        assert len(result.ineffective_mutations) == 0
+        assert len(result.unscored_mutations) == 1
+        assert result.unscored_mutations[0].child_version == "v2"
+
+    def test_build_review_briefing_with_missing_metric(self) -> None:
+        """End-to-end: briefing assembles without crashing when a candidate has no primary metric."""
+        search_state = _make_search_state(
+            round=2,
+            pareto_front=[
+                Candidate(
+                    prompt_version="v1",
+                    parent_version=None,
+                    quality_score=0.80,
+                    cost=1.50,
+                    round_introduced=1,
+                    dominated=False,
+                ),
+            ],
+        )
+        score_reports = {
+            "v2": _make_empty_metrics_report(),
+            "v1": _make_report_dict(accuracy=0.80, cost=1.50),
+        }
+        mutation_log = [
+            MutationRecord(
+                child_version="v2",
+                parent_version="v1",
+                mutation_type="rule_edit",
+                description="test",
+            ),
+        ]
+
+        briefing = build_review_briefing(
+            search_state=search_state,
+            score_reports=score_reports,
+            historical_reports={1: {"v1": score_reports["v1"]}},
+            prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
+            mutation_log=mutation_log,
+            directive_history=[],
+            holdout_examples=[],
+            candidate_versions=["v2"],
+            parent_versions={"v2": "v1"},
+        )
+
+        assert briefing.round == 2
+        assert len(briefing.candidates) == 1
+        assert briefing.candidates[0].delta_vs_parent.quality_delta is None
