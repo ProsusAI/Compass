@@ -7,7 +7,7 @@
 
 This spec redesigns the Stage 4 refinement loop from single-candidate hill-climbing to multi-parent beam search with concurrent evaluation and adaptive beam width. The core change is that each round produces K candidates in parallel (one per directive batch, each potentially branching from a different Pareto front member), evaluates them concurrently, and feeds the full batch outcome back to the Review Agent.
 
-Stages 1–3 and 5, Pareto dominance logic, the eval engine internals, the rate limiter, the orchestrator dispatch pattern, and file-backed persistence are all unchanged.
+Stages 1–3 and 5, Pareto dominance logic, the eval engine internals (except `RunDependencies`), the orchestrator dispatch pattern, and file-backed persistence are all unchanged.
 
 ## Changed / New Components
 
@@ -27,6 +27,12 @@ Stages 1–3 and 5, Pareto dominance logic, the eval engine internals, the rate 
 | `STAGE_4_BUILD_RECOVERING_INSTRUCTION` | `odysseus/agents/pipeline/instructions.py` | New template |
 | `STAGE_REGISTRY` | `odysseus/mcp/server.py` | Add `run_batch_eval` to `"prompt_building"` entry |
 | Review Agent system prompt | `odysseus/agents/prompts/review_agent_system.md` | New schema, branching section, diversity rule |
+| `save_edit_directives` / `load_edit_directives` | `odysseus/agents/review/ops.py` | Renamed to `save_directive_batches` / `load_directive_batches`, format changes from `list[EditDirective]` to `list[DirectiveBatch]` |
+| `advance_round` | `odysseus/agents/prompt_builder/search_ops.py` | Add `active_evals` guard, `eval_status` filtering, beam width calculation, stagnation-on-all-fail handling |
+| `register_candidate` | `odysseus/agents/prompt_builder/search_ops.py` | Accept new `eval_status`, `mutation_strategy`, `source_directive_batch_id` parameters |
+| `RunDependencies` | `odysseus/eval/controller.py` | Accept optional shared `TokenBucketRateLimiter` for concurrent eval runs |
+| `STAGE_4_BUILD_INSTRUCTION` | `odysseus/agents/pipeline/instructions.py` | Replace `run_eval` with `run_batch_eval` in sub-agent tools list |
+| Prompt Builder system prompt | `odysseus/agents/prompts/prompt_builder_system.md` | New `run_batch_eval` tool usage, directive batch consumption, pipelined generation flow |
 
 ---
 
@@ -115,6 +121,13 @@ class DirectiveBatch(BaseModel):
 
 Each batch produces exactly one candidate. The Prompt Builder applies `directives` to the prompt at `parent_version` to generate a new candidate.
 
+`mutation_strategy` categorizes the type of change:
+- `targeted` — focused edits to specific blocks (rule tweaks, example refinements). Used when the search is making progress.
+- `exploratory` — broader changes that explore new directions (new rules, example swaps, assembly policy changes). Used to escape local optima.
+- `structural` — fundamental reorganization of the prompt (section reordering, schema overhaul, major example replacement). Reserved for when both targeted and exploratory approaches stagnate.
+
+Note: `SearchState.mutation_mode` (two-valued: `targeted | exploratory`) controls the overall search posture and drives beam width adaptation. `DirectiveBatch.mutation_strategy` (three-valued) is a per-batch instruction. The Review Agent can assign `structural` strategy to individual batches regardless of the current `mutation_mode`.
+
 ### `ReviewResult` Change
 
 Replace the flat `edit_directives` field with `directive_batches`:
@@ -153,13 +166,13 @@ class Candidate(BaseModel):
 
 When `beam_width >= 3`, at least one `DirectiveBatch` in `ReviewResult.directive_batches` must have `mutation_strategy == "exploratory"`. This is validated in `record_directive_outcomes`.
 
-**Violation handling:** If the rule is violated, the system injects one exploratory batch targeting the least-explored Pareto front member (the member that has been the `parent_version` of the fewest batches in the current round's directive history). The injected batch replaces the lowest-priority existing batch to keep the total at `beam_width`.
+**Violation handling:** If the rule is violated, `record_directive_outcomes_tool` rejects the `ReviewResult` with a validation error describing the constraint. The Review Agent must re-emit with at least one exploratory batch. This avoids the need for synthetic directive generation.
 
 When the Pareto front has a single member, all batches necessarily share the same `parent_version`. Diversity enforcement still applies (requiring one exploratory mutation strategy) but multi-parent branching provides no additional benefit until the front has >= 2 members.
 
 ### Directive Batch Persistence
 
-`record_directive_outcomes_tool` (in `odysseus/mcp/review_tools.py`) currently accepts a flat `edit_directives: list[dict]` parameter and persists via `save_edit_directives`. This changes to accept `directive_batches: list[dict]` instead. Persistence path remains `outputs/<run_id>/search/edit_directives.json` but the format changes from a flat list of directives to a list of `DirectiveBatch` objects.
+`record_directive_outcomes_tool` (in `odysseus/mcp/review_tools.py`) currently accepts a flat `edit_directives: list[dict]` parameter and persists via `save_edit_directives`. This changes to accept `directive_batches: list[dict]` instead (parameter renamed from `edit_directives` to `directive_batches`). The underlying persistence functions `save_edit_directives` and `load_edit_directives` in `odysseus/agents/review/ops.py` are renamed to `save_directive_batches` and `load_directive_batches` respectively. Persistence path remains `outputs/<run_id>/search/edit_directives.json` but the serialization format changes from `list[EditDirective]` to `list[DirectiveBatch]`.
 
 `get_edit_directives_tool` is updated to return `list[DirectiveBatch]` instead of `list[EditDirective]`. The Prompt Builder consumes these batches directly.
 
@@ -209,7 +222,9 @@ Replaces `run_eval` as the eval entry-point for normal build rounds. See Section
 
 ### Rate Limiting
 
-The existing dual-bucket rate limiter (RPM + TPM) is shared across all concurrent eval calls. No changes are required — the limiter already operates at the eval-engine level and handles concurrent access safely.
+The current `TokenBucketRateLimiter` is instantiated per `controller.run()` call. With concurrent eval runs, each would get an independent limiter, multiplying the actual API rate. `run_batch_eval` must create a single shared `TokenBucketRateLimiter` and inject it into all concurrent eval runs via `RunDependencies`. This requires a minor change to `RunDependencies` to accept an optional pre-built rate limiter instead of always constructing one internally.
+
+This is the one change to eval engine internals required by this design.
 
 ---
 
@@ -242,6 +257,8 @@ Extended to detect `build_recovering` when `active_evals` is non-empty:
 Note: Convergence (`converged == true`) is detected upstream by `_check_stage_4`, which returns `"complete"` status before `_detect_stage_4_phase` is ever called. The phases above only apply when the search is still active.
 
 Detection reads `active_evals` from `search_state.json`. Empty list (`[]`) and absent field both resolve to the non-recovering `build` phase.
+
+Implementation: `_detect_stage_4_phase` in `status.py` currently reads `loop_phase` from the raw JSON dict. The change: after determining `loop_phase == "build"`, also read `data.get("active_evals", [])`. If non-empty, return `"build_recovering"` instead of `"build"`. Add `"build_recovering"` to the `phase_config` dict in `_next_action_for_stage_4` mapping to `STAGE_4_BUILD_RECOVERING_INSTRUCTION`.
 
 ### Crash Recovery Flow
 
@@ -299,9 +316,11 @@ STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
 ```python
 class ReviewBriefing(BaseModel):
     # ... existing fields ...
-    beam_width: int
+    beam_width: int = 2
     batch_outcomes: list[BatchOutcome] = Field(default_factory=list)
 ```
+
+`beam_width` defaults to 2 (matching `SearchState.beam_width` default) to ensure `ReviewBriefing` can be constructed during cold-start when no beam width has been explicitly calculated yet.
 
 `beam_width` tells the Review Agent exactly how many `directive_batches` to emit. `batch_outcomes` provides per-batch performance feedback so the agent can reason about which mutation strategies and parent selections were effective.
 
@@ -394,9 +413,11 @@ class BatchEvalResult(BaseModel):
    - Set `eval_status = "evaluating"` and add `prompt_version` to `SearchState.active_evals`.
    - Persist `search_state.json` and `pending_candidates.json`.
 2. `asyncio.gather(*[_run_single_eval(c) for c in candidates], return_exceptions=True)`
-3. For each completed coroutine (in completion order):
+3. Collect all results from `asyncio.gather`. Process sequentially in a loop:
    - On success: record result, set `eval_status = "scored"`, remove from `active_evals`, persist.
    - On exception: set `eval_status = "failed"`, remove from `active_evals`, log error, persist.
+   
+   Results are processed sequentially after all evals complete to avoid concurrent writes to `search_state.json` and `pending_candidates.json`. The eval coroutines themselves run concurrently (the expensive part), but the state bookkeeping is serialized.
 4. Return `BatchEvalResult` with succeeded and failed lists populated.
 
 **Error handling:**
@@ -454,6 +475,15 @@ Two tool calls for the eval+advance cycle regardless of beam width. Generation i
 
 The Prompt Builder reads `beam_width` from `get_search_state_tool` at the start of each build phase to know how many candidates to generate.
 
+### Prompt Builder System Prompt Updates
+
+The Prompt Builder system prompt (`odysseus/agents/prompts/prompt_builder_system.md`) requires updates:
+
+1. **Tool usage** — replace the sequential `register_candidate_tool` → `run_eval` → `record_eval_result_tool` pattern with the new `run_batch_eval` tool, including its input format (`BatchEvalCandidate`).
+2. **Directive consumption** — `get_edit_directives_tool` now returns `list[DirectiveBatch]` instead of `list[EditDirective]`. The system prompt must instruct the agent to iterate over batches, applying each batch's `directives` to its `parent_version`.
+3. **Recovery mode** — instruct the agent that if `active_evals` is non-empty in the search state, it should call `run_batch_eval` with an empty candidates list to resume.
+4. **Generation loop** — the prompt should emphasize generating all candidates before calling `run_batch_eval` (two tool calls for the eval+advance cycle).
+
 ---
 
 ## Section 8: End-to-End Round Flow
@@ -481,7 +511,8 @@ The Prompt Builder reads `beam_width` from `get_search_state_tool` at the start 
 3. Orchestrator dispatches Prompt Builder
 
 4. Prompt Builder:
-   a. call get_search_state_tool  → beam_width=3, directive_batches=[b1, b2, b3]
+   a. call get_search_state_tool  → beam_width=3
+      call get_edit_directives_tool  → directive_batches=[b1, b2, b3]
    b. generate v8 from v5 + b1.directives
    c. generate v9 from v3 + b2.directives
    d. generate v10 from v5 + b3.directives
@@ -545,7 +576,7 @@ The following are explicitly out of scope for this design:
 
 - **Pareto dominance logic** (`dominates`, `update_pareto_front` in `search.py`) — unchanged
 - **Eval engine internals** (`odysseus/eval/`) — unchanged; `run_batch_eval` is a wrapper, not a replacement
-- **Rate limiter** — unchanged; concurrent evals share the existing dual-bucket limiter transparently
+- **Rate limiter** — the `TokenBucketRateLimiter` implementation is unchanged, but `RunDependencies` gains an optional parameter to accept a pre-built shared limiter (see Section 3)
 - **Stages 1–3 and 5** — unaffected
 - **Orchestrator dispatch pattern** — `start_stage`/`complete_stage` bookkeeping unchanged; only the instruction template for `build_recovering` is new
 - **File-backed persistence approach** — `search_state.json` and `pending_candidates.json` remain the source of truth; `run_batch_eval` writes incrementally as results arrive (same pattern as existing `record_eval_result`)
