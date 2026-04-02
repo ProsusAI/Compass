@@ -276,7 +276,7 @@ Implementation: `_detect_stage_4_phase` in `status.py` currently reads `loop_pha
 
 **Build → Review** (`advance_round`): All candidates in `pending_candidates` must have `eval_status` in `{"scored", "failed"}`, and `active_evals` must be empty. `advance_round` filters pending candidates: only `eval_status == "scored"` candidates are passed to `update_pareto_front`. Failed candidates (which retain sentinel values `quality_score=0.0, cost=0.0`) are excluded from the Pareto update but their versions are still logged in `round_history.candidates_evaluated`. If no candidates are scored, the round is treated as a stagnation event. If either the eval_status or active_evals condition fails, `advance_round` raises.
 
-**Review → Build** (`record_directive_outcomes`): `directive_batches` count must equal `beam_width`. Diversity rule must be satisfied (or auto-corrected). Only then does `loop_phase` flip to `"build"`.
+**Review → Build** (`record_directive_outcomes`): `directive_batches` count must equal `beam_width`. Diversity rule must be satisfied. Only then does `loop_phase` flip to `"build"`.
 
 **Stage 4 → Stage 5 exit**: `converged == true` AND `active_evals` empty AND `pending_candidates` empty (or all scored/failed).
 
