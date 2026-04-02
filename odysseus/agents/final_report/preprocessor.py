@@ -48,16 +48,22 @@ def build_final_report_briefing(
     problem_summary = _load_problem_summary(run_dir)
     dataset_overview = _load_dataset_overview(run_dir)
     search_state = _load_json(run_dir / "search" / "search_state.json")
-    dev_report = _load_json(run_dir / "eval" / "report.json")
-    holdout_report = _load_json(run_dir / "holdout_eval" / "report.json")
+    prompt_version = _discover_holdout_version(run_dir)
+
+    if prompt_version:
+        dev_report = _load_json(run_dir / "eval" / prompt_version / "report.json")
+        holdout_report = _load_json(run_dir / "holdout_eval" / prompt_version / "report.json")
+    else:
+        dev_report = _load_json(run_dir / "eval" / "report.json")
+        holdout_report = _load_json(run_dir / "holdout_eval" / "report.json")
 
     optimization_journey = _build_optimization_journey(search_state, holdout_report)
     pareto_front = _extract_pareto_front(search_state)
     best_prompt, best_prompt_text = _identify_best_prompt(pareto_front, run_dir)
     eval_comparison = _build_eval_comparison(dev_report, holdout_report)
-    error_analysis = _build_error_analysis(run_dir)
+    error_analysis = _build_error_analysis(run_dir, prompt_version)
     per_class = _extract_per_class_performance(holdout_report, error_analysis)
-    baseline_comparison = _build_baseline_comparison(run_dir)
+    baseline_comparison = _build_baseline_comparison(run_dir, prompt_version)
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
     backend_name = search_state.get("backend", "unknown") if search_state else "unknown"
@@ -82,6 +88,13 @@ def build_final_report_briefing(
 # ---------------------------------------------------------------------------
 # Artifact loaders
 # ---------------------------------------------------------------------------
+
+
+def _discover_holdout_version(run_dir: Path) -> str | None:
+    """Discover the prompt version evaluated on holdout from artifact paths."""
+    for report in sorted(run_dir.glob("holdout_eval/v*/report.json"), reverse=True):
+        return report.parent.name
+    return None
 
 
 def _load_json(path: Path, default: dict | list | None = None) -> dict | list | None:
@@ -349,7 +362,7 @@ def _extract_per_class_performance(
 # ---------------------------------------------------------------------------
 
 
-def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
+def _build_error_analysis(run_dir: Path, prompt_version: str | None = None) -> ErrorAnalysis:
     """Build confusion matrix from holdout eval results."""
     examples_by_id: dict[str, dict] = {}
     holdout_path = run_dir / "analysis" / "holdout.jsonl"
@@ -364,7 +377,12 @@ def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
         pass
 
     eval_results: list[dict] = []
-    results_path = run_dir / "holdout_eval" / "results.jsonl"
+    if prompt_version:
+        results_path = run_dir / "holdout_eval" / prompt_version / "results.jsonl"
+    else:
+        results_path = run_dir / "holdout_eval" / "results.jsonl"
+    if not results_path.exists() and prompt_version:
+        results_path = run_dir / "holdout_eval" / "results.jsonl"
     try:
         for line in results_path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
@@ -416,9 +434,13 @@ def _build_error_analysis(run_dir: Path) -> ErrorAnalysis:
 # ---------------------------------------------------------------------------
 
 
-def _build_baseline_comparison(run_dir: Path) -> BaselineComparison | None:
+def _build_baseline_comparison(run_dir: Path, prompt_version: str | None = None) -> BaselineComparison | None:
     """Load baseline comparison results computed during holdout eval."""
-    data = _load_json(run_dir / "holdout_eval" / "baseline_comparison.json")
+    data = None
+    if prompt_version:
+        data = _load_json(run_dir / "holdout_eval" / prompt_version / "baseline_comparison.json")
+    if not data:
+        data = _load_json(run_dir / "holdout_eval" / "baseline_comparison.json")
     if not data or not isinstance(data, dict):
         return None
     try:
