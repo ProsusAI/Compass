@@ -25,7 +25,8 @@ Stages 1–3 and 5, Pareto dominance logic, the eval engine internals, the rate 
 | `BatchEvalResult` / `CandidateEvalOutcome` | `odysseus/mcp/prompt_building_tools.py` | New output models |
 | `_detect_stage_4_phase` | `odysseus/agents/pipeline/status.py` | Add `build_recovering` phase |
 | `STAGE_4_BUILD_RECOVERING_INSTRUCTION` | `odysseus/agents/pipeline/instructions.py` | New template |
-| Review Agent system prompt | `odysseus/agents/prompts/review_agent.md` | New schema, branching section, diversity rule |
+| `STAGE_REGISTRY` | `odysseus/mcp/server.py` | Add `run_batch_eval` to `"prompt_building"` entry |
+| Review Agent system prompt | `odysseus/agents/prompts/review_agent_system.md` | New schema, branching section, diversity rule |
 
 ---
 
@@ -63,6 +64,33 @@ Computed in `advance_round` after each round completes. Evaluated top-to-bottom;
 | `mutation_mode == "targeted"` | 3 |
 
 If `LoopSignal.suggested_beam_width` is present, it overrides the table result (clamped to `[min_beam_width, max_beam_width]`). See Section 5.
+
+Note: The table uses post-round values: the newly computed `mutation_mode` and `stagnation_count` (i.e., the values that will be persisted), not the pre-round state.
+
+### `advance_round` Beam Width Logic
+
+After computing `new_mutation_mode` and `new_stagnation_count`:
+
+```python
+# 1. Compute from adaptive table
+if new_mutation_mode == 'exploratory' and new_stagnation_count >= 2:
+    new_beam_width = state.max_beam_width
+elif new_mutation_mode == 'exploratory':
+    new_beam_width = 4
+elif new_mutation_mode == 'targeted' and new_stagnation_count == 0:
+    new_beam_width = state.min_beam_width
+else:
+    new_beam_width = 3
+
+# 2. Apply Review Agent override if present
+if signal and signal.suggested_beam_width is not None:
+    new_beam_width = signal.suggested_beam_width
+
+# 3. Clamp
+new_beam_width = max(state.min_beam_width, min(state.max_beam_width, new_beam_width))
+```
+
+The computed `beam_width` is included in the `model_copy(update={...})` dict alongside the other state updates.
 
 ### `active_evals` Lifecycle
 
@@ -127,9 +155,19 @@ When `beam_width >= 3`, at least one `DirectiveBatch` in `ReviewResult.directive
 
 **Violation handling:** If the rule is violated, the system injects one exploratory batch targeting the least-explored Pareto front member (the member that has been the `parent_version` of the fewest batches in the current round's directive history). The injected batch replaces the lowest-priority existing batch to keep the total at `beam_width`.
 
+When the Pareto front has a single member, all batches necessarily share the same `parent_version`. Diversity enforcement still applies (requiring one exploratory mutation strategy) but multi-parent branching provides no additional benefit until the front has >= 2 members.
+
+### Directive Batch Persistence
+
+`record_directive_outcomes_tool` (in `odysseus/mcp/review_tools.py`) currently accepts a flat `edit_directives: list[dict]` parameter and persists via `save_edit_directives`. This changes to accept `directive_batches: list[dict]` instead. Persistence path remains `outputs/<run_id>/search/edit_directives.json` but the format changes from a flat list of directives to a list of `DirectiveBatch` objects.
+
+`get_edit_directives_tool` is updated to return `list[DirectiveBatch]` instead of `list[EditDirective]`. The Prompt Builder consumes these batches directly.
+
+Cold-start v1 does not use `get_edit_directives_tool` (it generates from seed examples), so no backward compatibility shim is needed.
+
 ### Review Agent System Prompt Updates
 
-The Review Agent system prompt (`odysseus/agents/prompts/review_agent.md`) requires three additions:
+The Review Agent system prompt (`odysseus/agents/prompts/review_agent_system.md`) requires three additions:
 
 1. **Updated output schema** — replace the `edit_directives` array with `directive_batches`, including a JSON example showing `directive_batch_id`, `parent_version`, `directives`, `mutation_strategy`, `priority`.
 2. **"Multi-parent branching" section** — explains that each batch targets a specific Pareto front member as `parent_version`, enabling independent exploration of different front members in parallel.
@@ -200,7 +238,8 @@ Extended to detect `build_recovering` when `active_evals` is non-empty:
 | `loop_phase == "build"` AND `active_evals == []` | `build` | Spawn Prompt Builder |
 | `loop_phase == "build"` AND `active_evals != []` | `build_recovering` | Spawn Prompt Builder with recovery flag |
 | `loop_phase == "review"` | `review` | Spawn Review Agent |
-| `converged == true` | `complete` | Advance to Stage 5 |
+
+Note: Convergence (`converged == true`) is detected upstream by `_check_stage_4`, which returns `"complete"` status before `_detect_stage_4_phase` is ever called. The phases above only apply when the search is still active.
 
 Detection reads `active_evals` from `search_state.json`. Empty list (`[]`) and absent field both resolve to the non-recovering `build` phase.
 
@@ -218,7 +257,7 @@ Detection reads `active_evals` from `search_state.json`. Empty list (`[]`) and a
 
 ### Transition Guards
 
-**Build → Review** (`advance_round`): All candidates in `pending_candidates` must have `eval_status` in `{"scored", "failed"}`, and `active_evals` must be empty. If either condition fails, `advance_round` raises.
+**Build → Review** (`advance_round`): All candidates in `pending_candidates` must have `eval_status` in `{"scored", "failed"}`, and `active_evals` must be empty. `advance_round` filters pending candidates: only `eval_status == "scored"` candidates are passed to `update_pareto_front`. Failed candidates (which retain sentinel values `quality_score=0.0, cost=0.0`) are excluded from the Pareto update but their versions are still logged in `round_history.candidates_evaluated`. If no candidates are scored, the round is treated as a stagnation event. If either the eval_status or active_evals condition fails, `advance_round` raises.
 
 **Review → Build** (`record_directive_outcomes`): `directive_batches` count must equal `beam_width`. Diversity rule must be satisfied (or auto-corrected). Only then does `loop_phase` flip to `"build"`.
 
@@ -266,6 +305,8 @@ class ReviewBriefing(BaseModel):
 
 `beam_width` tells the Review Agent exactly how many `directive_batches` to emit. `batch_outcomes` provides per-batch performance feedback so the agent can reason about which mutation strategies and parent selections were effective.
 
+Note: On cold-start (first review round, seed example selection), `batch_outcomes` is an empty list and `beam_width` defaults to 2. The `directive_batches` contract (emit exactly `beam_width` batches) applies only from the first normal review round onward — the cold-start Review Agent emits seed examples using the existing flow, not directive batches.
+
 ### New Model: `BatchOutcome`
 
 ```python
@@ -301,7 +342,7 @@ When `suggested_beam_width` is present in the `LoopSignal` consumed by `advance_
 
 ### Preprocessor Changes
 
-`build_review_briefing` (in `odysseus/mcp/review_tools.py`) gains two responsibilities:
+`build_review_briefing` (in `odysseus/agents/review/preprocessor.py`) gains two responsibilities:
 
 1. Read `beam_width` from `SearchState` and include it in `ReviewBriefing`.
 2. Build `batch_outcomes` by iterating the most recent round's directive batches and joining each to its corresponding scored/failed candidate via `source_directive_batch_id`. Compute `quality_delta_vs_parent` inline.
@@ -378,6 +419,8 @@ When called with `candidates=[]` and `active_evals` is non-empty:
 ### Tool Registration
 
 `run_batch_eval` replaces `run_eval` in `_BUILD_TOOLS` (in `status.py`). The individual `register_candidate_tool` and `record_eval_result_tool` tools remain registered for backward compatibility with cold-start v1 generation, which uses a simpler single-candidate flow.
+
+`run_batch_eval` must also be added to `STAGE_REGISTRY["prompt_building"]` in `odysseus/mcp/server.py`, which gates tool availability per stage. Without this, the tool will be invisible to sub-agents during the build phase. `_RERUN_TOOLS` is unchanged and retains `run_eval` (rerun mode is single-candidate).
 
 ---
 
