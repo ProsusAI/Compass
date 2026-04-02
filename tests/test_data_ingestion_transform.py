@@ -191,6 +191,42 @@ class TestFlatToFlat:
         with pytest.raises(ValueError, match="required target fields"):
             transform_dataset(str(src), json.dumps(mapping), str(out))
 
+    def test_auto_generate_mapping_key_still_generates_id(self, tmp_path: Path) -> None:
+        """When mapping has _auto_generate -> id but source lacks that field, id is still generated."""
+        src = tmp_path / "source.jsonl"
+        src.write_text(
+            json.dumps({"prompt": "hi", "tier": "opus", "routes": _routes_obj()}) + "\n"
+        )
+        out = tmp_path / "transformed.jsonl"
+        mapping = {
+            "_auto_generate": "id",
+            "prompt": "input",
+            "tier": "expected.route",
+            "routes": "expected.routes",
+        }
+        transform_dataset(str(src), json.dumps(mapping), str(out))
+        row = json.loads(out.read_text().strip().splitlines()[0])
+        assert row["id"] == "row-0"
+
+    def test_missing_source_field_logs_warning(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+        """Mapping key not in source data logs a warning on first row."""
+        import logging
+
+        src = tmp_path / "source.jsonl"
+        src.write_text(
+            json.dumps({"prompt": "hi", "tier": "opus", "routes": _routes_obj()}) + "\n"
+        )
+        out = tmp_path / "transformed.jsonl"
+        mapping = {
+            "_auto_generate": "id",
+            "prompt": "input",
+            "tier": "expected.route",
+            "routes": "expected.routes",
+        }
+        with caplog.at_level(logging.WARNING):
+            transform_dataset(str(src), json.dumps(mapping), str(out))
+        assert "_auto_generate" in caplog.text
+
 
 class TestNestedMapping:
     def test_nested_source_to_nested_target(self, tmp_path: Path) -> None:
