@@ -53,6 +53,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "save_proposed_mapping",
         "transform_dataset",
         "validate_dataset",
+        "add_ids_to_dataset",
         "save_routing_context",
         "stratified_split_tool",
         "get_pipeline_status",

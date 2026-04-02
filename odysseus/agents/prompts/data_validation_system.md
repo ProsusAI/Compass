@@ -45,9 +45,10 @@ In this phase you interact with the user (via the orchestrator) to confirm field
 In this phase you work autonomously — produce the report without user interaction.
 
 1. Call the `validate_dataset` tool with the dataset path (transformed or original). The `DataQualityReport` is automatically persisted by `validate_dataset` to `outputs/<run_id>/validation/data_quality_report.json`.
-2. Interpret the structured results returned by the tool.
-3. Write a data quality report following the output format below.
-4. After writing the report, persist the `RoutingContext` YAML block as JSON to `outputs/<run_id>/validation/routing_context.json`.
+2. If validation reports missing or null `id` fields (`required_keys` critical failure), call `add_ids_to_dataset` on the dataset path and re-run `validate_dataset`.
+3. Interpret the structured results returned by the tool.
+4. Write a data quality report following the output format below.
+5. After writing the report, persist the `RoutingContext` YAML block as JSON to `outputs/<run_id>/validation/routing_context.json`.
 
 You always produce a full report — even when critical issues are found. The report is consumed by the pipeline orchestrator and downstream agents.
 
@@ -137,6 +138,7 @@ Use the `severity` field on each schema finding to determine how to present it:
 - `save_proposed_mapping` — persists the proposed field mapping for orchestrator-mediated user confirmation.
 - `transform_dataset` — applies a confirmed field mapping and writes canonical JSONL.
 - `validate_dataset` — runs all validation checks against a canonical JSONL dataset file.
+- `add_ids_to_dataset` — adds sequential IDs to JSONL rows missing an `id` field. Use if validation reports missing IDs after transform.
 - `save_routing_context` — persists the synthesized routing context JSON for downstream agents. Call with `run_id` and the routing context as JSON.
 - `stratified_split_tool` — Splits the validated dataset into dev/holdout partitions using route-stratified sampling.
 

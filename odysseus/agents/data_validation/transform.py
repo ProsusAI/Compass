@@ -7,12 +7,15 @@ canonical JSONL output.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from odysseus.agents.data_validation.detect import _parse_csv, detect_and_parse
+
+logger = logging.getLogger(__name__)
 
 
 class TransformResult(BaseModel):
@@ -134,7 +137,6 @@ def transform_dataset(
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    has_id_mapping = "id" in mapping.values()
     rows_written = 0
 
     with out_path.open("w", encoding="utf-8") as f:
@@ -145,8 +147,14 @@ def transform_dataset(
                 value = _get_nested(source_row, src_field)
                 if value is not None:
                     _set_nested(target_row, tgt_field, value)
+                elif idx == 0:
+                    logger.warning(
+                        "Mapping key %r not found in source row (target: %r)",
+                        src_field,
+                        tgt_field,
+                    )
 
-            if not has_id_mapping and "id" not in target_row:
+            if "id" not in target_row:
                 target_row["id"] = f"row-{idx}"
 
             f.write(json.dumps(target_row) + "\n")
@@ -158,4 +166,76 @@ def transform_dataset(
         rows_written=rows_written,
         fields_mapped=mapping,
         fields_dropped=dropped,
+    )
+
+
+class AddIdsResult(BaseModel):
+    """Result of adding IDs to a dataset."""
+
+    dataset_path: str
+    total_rows: int
+    ids_added: int
+    ids_already_present: int
+
+
+def add_ids_to_dataset(
+    dataset_path: str,
+    prefix: str = "row",
+    start_index: int = 0,
+) -> AddIdsResult:
+    """Add sequential IDs to JSONL rows that are missing them.
+
+    Reads the file, adds IDs where missing (skipping values that
+    would collide with existing IDs), and writes back in-place.
+
+    Args:
+        dataset_path: Path to the JSONL file.
+        prefix: Prefix for generated IDs. Default ``"row"``.
+        start_index: Starting index for generated IDs. Default ``0``.
+
+    Returns:
+        AddIdsResult with counts.
+
+    Raises:
+        FileNotFoundError: If *dataset_path* does not exist.
+    """
+    path = Path(dataset_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
+
+    rows: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        rows.append(json.loads(stripped))
+
+    existing_ids: set[str] = set()
+    missing_indices: list[int] = []
+    for i, row in enumerate(rows):
+        row_id = row.get("id")
+        if isinstance(row_id, str) and row_id:
+            existing_ids.add(row_id)
+        else:
+            missing_indices.append(i)
+
+    gen_idx = start_index
+    for i in missing_indices:
+        candidate = f"{prefix}-{gen_idx}"
+        while candidate in existing_ids:
+            gen_idx += 1
+            candidate = f"{prefix}-{gen_idx}"
+        rows[i]["id"] = candidate
+        existing_ids.add(candidate)
+        gen_idx += 1
+
+    with path.open("w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row) + "\n")
+
+    return AddIdsResult(
+        dataset_path=dataset_path,
+        total_rows=len(rows),
+        ids_added=len(missing_indices),
+        ids_already_present=len(rows) - len(missing_indices),
     )

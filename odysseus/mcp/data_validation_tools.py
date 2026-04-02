@@ -10,6 +10,7 @@ import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.data_validation.checks import run_all_checks
 from odysseus.agents.data_validation.detect import detect_and_parse
 from odysseus.agents.data_validation.split import stratified_split
+from odysseus.agents.data_validation.transform import add_ids_to_dataset as _do_add_ids
 from odysseus.agents.data_validation.transform import transform_dataset as _do_transform
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.routing_context import RoutingContext
@@ -174,6 +175,44 @@ async def validate_dataset(ctx: Context, dataset_path: str, run_id: str) -> str:
     report_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
 
     return report.model_dump_json(indent=2)
+
+
+@mcp.tool()
+async def add_ids_to_dataset(
+    ctx: Context,
+    dataset_path: str,
+    run_id: str,
+    prefix: str = "row",
+    start_index: int = 0,
+) -> str:
+    """[Stage 2: Data Validation] Add sequential IDs to JSONL rows missing an id field.
+
+    Reads the dataset, adds IDs only to rows without an existing ``id``
+    field, and writes back in-place.  Generated IDs skip values that
+    would collide with existing ones.
+
+    Args:
+        dataset_path: Absolute path to the JSONL dataset file.
+        run_id: Pipeline run identifier.
+        prefix: Prefix for generated IDs (default "row").
+        start_index: Starting index for generated IDs (default 0).
+
+    Returns:
+        JSON with total_rows, ids_added, ids_already_present.
+    """
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    check_artifacts(
+        project_dir / "outputs" / run_id / "input" / "input_report.md",
+        stage=2,
+        stage_name="Data Validation",
+        hint="Submit an input report first.",
+    )
+
+    try:
+        result = _do_add_ids(dataset_path, prefix=prefix, start_index=start_index)
+    except (FileNotFoundError, ValueError) as exc:
+        raise ToolError(str(exc)) from exc
+    return result.model_dump_json(indent=2)
 
 
 @mcp.tool()
