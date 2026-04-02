@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.eval.models import ScoreReport
@@ -20,21 +20,27 @@ from odysseus.eval.models import ScoreReport
 class MetricDeltas(BaseModel):
     """Metric differences between two candidates or a candidate and a reference."""
 
-    quality_delta: float
-    cost_delta: float
+    model_config = ConfigDict(extra="forbid")
+
+    quality_delta: float | None
+    cost_delta: float | None
     per_class_recall_deltas: dict[str, float]
 
 
 class FrontComparison(BaseModel):
     """How a candidate compares to a specific Pareto front member."""
 
+    model_config = ConfigDict(extra="forbid")
+
     front_candidate_version: str
-    quality_delta: float
-    cost_delta: float
+    quality_delta: float | None
+    cost_delta: float | None
 
 
 class CandidateAnalysis(BaseModel):
     """Pre-processed analysis of a single candidate in the current round."""
+
+    model_config = ConfigDict(extra="forbid")
 
     candidate_version: str
     parent_version: str | None
@@ -47,7 +53,9 @@ class CandidateAnalysis(BaseModel):
 class ClassRecallEntry(BaseModel):
     """Per-route recall with historical trend and regression detection."""
 
-    recall: float
+    model_config = ConfigDict(extra="forbid")
+
+    recall: float = Field(ge=0.0, le=1.0)
     support: int
     trend: list[float]
     regression_flag: bool
@@ -56,13 +64,17 @@ class ClassRecallEntry(BaseModel):
 class DiversityMetrics(BaseModel):
     """Measures of search diversity across the Pareto front."""
 
-    example_overlap_ratio: float
-    prompt_similarity: float
+    model_config = ConfigDict(extra="forbid")
+
+    example_overlap_ratio: float = Field(ge=0.0, le=1.0)
+    prompt_similarity: float = Field(ge=0.0, le=1.0)
     mutation_type_distribution: dict[str, int]
 
 
 class DiminishingReturns(BaseModel):
     """Score trajectory analysis for detecting stagnation."""
+
+    model_config = ConfigDict(extra="forbid")
 
     score_trajectory: list[float]
     improvement_trend: float
@@ -82,6 +94,8 @@ MutationType = Literal[
 class MutationRecord(BaseModel):
     """What the Prompt Builder changed and why."""
 
+    model_config = ConfigDict(extra="forbid")
+
     child_version: str
     parent_version: str
     mutation_type: MutationType
@@ -92,13 +106,18 @@ class MutationRecord(BaseModel):
 class MutationHistory(BaseModel):
     """Aggregated mutation effectiveness data."""
 
+    model_config = ConfigDict(extra="forbid")
+
     effective_mutations: list[MutationRecord]
     ineffective_mutations: list[MutationRecord]
     untried_mutation_types: list[str]
+    unscored_mutations: list[MutationRecord] = Field(default_factory=list)
 
 
 class ExampleContent(BaseModel):
     """Concrete content for a few-shot example."""
+
+    model_config = ConfigDict(extra="forbid")
 
     example_id: str | None = Field(
         default=None,
@@ -113,13 +132,13 @@ class ExampleContent(BaseModel):
             " present and why the most plausible alternative routes do not apply"
         ),
     )
-    exclusions: list[dict[str, str]] = Field(
-        description="List of {route, reason} for excluded routes"
-    )
+    exclusions: list[dict[str, str]] = Field(description="List of {route, reason} for excluded routes")
 
 
 class ExampleSummary(BaseModel):
     """Lightweight reference to a holdout example for the exemplar bank."""
+
+    model_config = ConfigDict(extra="forbid")
 
     example_id: str
     route: str
@@ -128,6 +147,8 @@ class ExampleSummary(BaseModel):
 
 class OracleMetrics(BaseModel):
     """How much of the theoretical routing improvement has been captured."""
+
+    model_config = ConfigDict(extra="forbid")
 
     oracle_cost_change: float
     oracle_quality_change: float
@@ -138,6 +159,8 @@ class OracleMetrics(BaseModel):
 
 class ReviewBriefing(BaseModel):
     """Complete pre-processed input for the Review Agent LLM."""
+
+    model_config = ConfigDict(extra="forbid")
 
     round: int
     candidates: list[CandidateAnalysis]
@@ -159,6 +182,8 @@ class ReviewBriefing(BaseModel):
 class RankedCandidate(BaseModel):
     """A candidate with its rank and ranking rationale."""
 
+    model_config = ConfigDict(extra="forbid")
+
     version: str
     rank: int
     rationale: str
@@ -166,6 +191,8 @@ class RankedCandidate(BaseModel):
 
 class EditDirective(BaseModel):
     """A localized, block-level edit instruction for the Prompt Builder."""
+
+    model_config = ConfigDict(extra="forbid")
 
     directive_id: str
     target_version: str
@@ -180,6 +207,8 @@ class EditDirective(BaseModel):
 class PromotionDecision(BaseModel):
     """Whether a candidate should be promoted, refined, or pruned."""
 
+    model_config = ConfigDict(extra="forbid")
+
     version: str
     decision: Literal["promote", "prune", "refine"]
     reason: str
@@ -187,6 +216,8 @@ class PromotionDecision(BaseModel):
 
 class LoopSignal(BaseModel):
     """Whether to continue refining or exit the search loop."""
+
+    model_config = ConfigDict(extra="forbid")
 
     action: Literal["refine", "exit"]
     reason: str
@@ -196,6 +227,8 @@ class LoopSignal(BaseModel):
 
 class RegressionFlag(BaseModel):
     """A metric regression that may block promotion."""
+
+    model_config = ConfigDict(extra="forbid")
 
     version: str
     metric: str
@@ -207,6 +240,8 @@ class RegressionFlag(BaseModel):
 class DirectiveOutcome(BaseModel):
     """Tracks whether a prior directive was attempted and its effect."""
 
+    model_config = ConfigDict(extra="forbid")
+
     prior_directive_id: str
     was_attempted: bool
     outcome: Literal["improved", "no_effect", "regressed"]
@@ -214,6 +249,8 @@ class DirectiveOutcome(BaseModel):
 
 class ReviewResult(BaseModel):
     """Complete structured output from the Review Agent LLM."""
+
+    model_config = ConfigDict(extra="forbid")
 
     candidate_ranking: list[RankedCandidate]
     edit_directives: list[EditDirective]

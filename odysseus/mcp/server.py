@@ -7,12 +7,15 @@ parameters/return values and agent context dicts.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.lowlevel import NotificationOptions
 from mcp.types import Tool as MCPTool
+
+logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -132,7 +135,7 @@ def _write_jsonl(path: Path, examples: list) -> None:
             f.write(ex.model_dump_json() + "\n")
 
 
-def _normalize_model_family(model: str) -> str:
+def normalize_model_family(model: str) -> str:
     """Strip date suffixes and replace dots with dashes for filename lookup."""
     normalized = re.sub(r"-\d{4}-?\d{2}-?\d{2}$", "", model)
     return normalized.replace(".", "-")
@@ -183,6 +186,11 @@ async def _filtered_list_tools() -> list[MCPTool]:
     all_tools = await _original_list_tools()
     allowed = STAGE_REGISTRY.get(_active_stage)
     if allowed is None:
+        if _active_stage is not None:
+            logger.warning(
+                "Active stage '%s' not found in STAGE_REGISTRY, returning all tools",
+                _active_stage,
+            )
         return all_tools
     allowed_set = set(allowed) | _LIFECYCLE_TOOLS
     return [t for t in all_tools if t.name in allowed_set]

@@ -1,7 +1,7 @@
 """Orchestrator tools — pipeline entry point and status."""
 
-import contextlib
 import json
+import logging
 
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
@@ -17,6 +17,8 @@ from odysseus.mcp.server import (
     mcp,
     set_active_stage,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -144,8 +146,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     if result.get("subagent_instruction"):
         result["subagent_instruction"] = (
             "⚠️ DISPATCH REQUIRED — You must spawn a sub-agent. "
-            "Do NOT call stage tools yourself.\n\n"
-            + result["subagent_instruction"]
+            "Do NOT call stage tools yourself.\n\n" + result["subagent_instruction"]
         )
         output = {
             "run_id": result["run_id"],
@@ -192,19 +193,17 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
 
     if run_id is None and stage != "input_report":
         raise ToolError(
-            f"run_id is required for stage '{stage}'. "
-            f"Only the 'input_report' stage can be started without a run_id."
+            f"run_id is required for stage '{stage}'. Only the 'input_report' stage can be started without a run_id."
         )
 
     set_active_stage(stage)
-    with contextlib.suppress(Exception):
+    try:
         await ctx.session.send_tool_list_changed()
+    except Exception:
+        logger.warning("Failed to send tool list notification for stage '%s'", stage)
     tools = STAGE_REGISTRY[stage]
     run_label = f" for run {run_id}" if run_id else ""
-    return (
-        f"Stage '{stage}' activated{run_label}. "
-        f"Available tools: {', '.join(tools)}"
-    )
+    return f"Stage '{stage}' activated{run_label}. Available tools: {', '.join(tools)}"
 
 
 @mcp.tool()
@@ -232,12 +231,11 @@ async def complete_stage(ctx: Context, run_id: str) -> str:  # noqa: ARG001
         )
 
     set_active_stage("orchestrator")
-    with contextlib.suppress(Exception):
+    try:
         await ctx.session.send_tool_list_changed()
-    return (
-        f"Stage '{previous}' completed for run {run_id}. "
-        f"Returned to orchestrator scope."
-    )
+    except Exception:
+        logger.warning("Failed to send tool list notification after completing stage '%s'", previous)
+    return f"Stage '{previous}' completed for run {run_id}. Returned to orchestrator scope."
 
 
 @mcp.tool()

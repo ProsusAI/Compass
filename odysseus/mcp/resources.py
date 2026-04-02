@@ -3,7 +3,7 @@
 from mcp.server.fastmcp.exceptions import ToolError
 
 import odysseus.mcp.server as _server
-from odysseus.mcp.server import _load_text, _normalize_model_family, mcp
+from odysseus.mcp.server import _load_text, mcp, normalize_model_family
 from odysseus.project_dir import get_project_dir
 
 
@@ -100,7 +100,7 @@ async def model_specific_conventions(provider: str, model_family: str) -> str:
     (gpt-5.2-2025-03-11 -> gpt-5.2) and dots become dashes for filename
     lookup (gpt-5.2 -> gpt-5-2).
     """
-    sanitized = _normalize_model_family(model_family)
+    sanitized = normalize_model_family(model_family)
     relative_path = f"odysseus/agents/prompt_builder/conventions_{provider}_{sanitized}.md"
     path = _server._PROJECT_ROOT / relative_path
     if not path.is_file():

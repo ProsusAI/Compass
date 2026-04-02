@@ -3,52 +3,26 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, StringConstraints, field_validator
+
+NonEmptyStr = Annotated[str, StringConstraints(min_length=1, strip_whitespace=True)]
 
 
 class RouteDefinition(BaseModel):
     """A single route target in the routing system."""
 
-    name: str
-    description: str
-
-    @field_validator("name")
-    @classmethod
-    def name_must_be_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("name must be non-empty")
-        return v.strip()
-
-    @field_validator("description")
-    @classmethod
-    def description_must_be_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("description must be non-empty")
-        return v.strip()
+    name: NonEmptyStr
+    description: NonEmptyStr
 
 
 class RoutingDimension(BaseModel):
     """A dimension along which routes differ (e.g., cost, capability)."""
 
-    name: str
+    name: NonEmptyStr
     direction: Literal["lower_is_better", "higher_is_better"]
-    description: str
-
-    @field_validator("name")
-    @classmethod
-    def name_must_be_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("name must be non-empty")
-        return v.strip()
-
-    @field_validator("description")
-    @classmethod
-    def description_must_be_non_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("description must be non-empty")
-        return v.strip()
+    description: NonEmptyStr
 
 
 class RouteOrdering(BaseModel):
@@ -86,9 +60,7 @@ class RoutingContext(BaseModel):
 
     @field_validator("routing_dimensions")
     @classmethod
-    def dimensions_must_be_non_empty(
-        cls, v: list[RoutingDimension]
-    ) -> list[RoutingDimension]:
+    def dimensions_must_be_non_empty(cls, v: list[RoutingDimension]) -> list[RoutingDimension]:
         if len(v) == 0:
             raise ValueError("routing_dimensions must contain at least one dimension")
         return v

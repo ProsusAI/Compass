@@ -7,10 +7,23 @@ Never writes files — pure queries only.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
+from odysseus.agents.pipeline.instructions import (
+    STAGE_1_INSTRUCTION,
+    STAGE_2_INSTRUCTION,
+    STAGE_3_INSTRUCTION,
+    STAGE_4_BUILD_INSTRUCTION,
+    STAGE_4_COLD_START_INSTRUCTION,
+    STAGE_4_RERUN_INSTRUCTION,
+    STAGE_4_REVIEW_INSTRUCTION,
+    STAGE_5_INSTRUCTION,
+)
 from odysseus.project_dir import get_project_dir
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Stage definitions
@@ -25,79 +38,33 @@ _STAGES: list[dict[str, Any]] = [
 ]
 
 # ---------------------------------------------------------------------------
-# Stage 4 dynamic HARD_STOP templates
+# Deduplicated tool lists for Stage 4 phases
 # ---------------------------------------------------------------------------
 
-_STAGE_4_COLD_START_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 tools from the current context.\n\n"
-    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "build_review_briefing_tool, record_directive_outcomes_tool\n"
-    "Your tools: get_pipeline_status only\n\n"
-    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
-    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
-    "Do not call stage tools yourself.\n"
-    "</HARD_STOP>\n\n"
-    "<stage_system_prompt></stage_system_prompt>"
-)
+_REVIEW_TOOLS: list[str] = [
+    "get_search_state_tool",
+    "build_review_briefing_tool",
+    "record_directive_outcomes_tool",
+]
 
-_STAGE_4_BUILD_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
-    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
-    "advance_round_tool, run_eval\n"
-    "Your tools: get_pipeline_status only\n\n"
-    "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
-    "Do not call it from within the sub-agent.\n\n"
-    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
-    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
-    "Do not call stage tools yourself.\n"
-    "</HARD_STOP>\n\n"
-    "<stage_system_prompt></stage_system_prompt>"
-)
+_BUILD_TOOLS: list[str] = [
+    "get_search_state_tool",
+    "get_edit_directives_tool",
+    "init_search_state_tool",
+    "register_candidate_tool",
+    "record_eval_result_tool",
+    "advance_round_tool",
+    "run_eval",
+]
 
-_STAGE_4_RERUN_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
-    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
-    "advance_round_tool, run_eval\n"
-    "Your tools: get_pipeline_status only\n\n"
-    "NOTE: This is a rerun — the Prompt Builder Rerun agent will restructure the existing prompt "
-    "for the new backend. Source prompt version: '{source_prompt_version}'. "
-    "New backend: '{new_backend}'.\n\n"
-    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
-    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
-    "Do not call stage tools yourself.\n"
-    "</HARD_STOP>\n\n"
-    "<stage_system_prompt></stage_system_prompt>"
-)
-
-_STAGE_4_REVIEW_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
-    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "build_review_briefing_tool, record_directive_outcomes_tool\n"
-    "Your tools: get_pipeline_status only\n\n"
-    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
-    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
-    "Do not call stage tools yourself.\n"
-    "</HARD_STOP>\n\n"
-    "<stage_system_prompt></stage_system_prompt>"
-)
+_RERUN_TOOLS: list[str] = [
+    "get_search_state_tool",
+    "init_search_state_tool",
+    "register_candidate_tool",
+    "record_eval_result_tool",
+    "advance_round_tool",
+    "run_eval",
+]
 
 # ---------------------------------------------------------------------------
 # Next-action mapping
@@ -109,21 +76,7 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         "REQUIRED: activate prompt 'odysseus_routing_input' before calling any stage 1 tools.",
         ["submit_input_report"],
         ["odysseus_routing_input"],
-        (
-            "<HARD_STOP>\n"
-            "You MUST NOT call any Stage 1 tools from the current context.\n\n"
-            "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-            "PRE-DISPATCH: Call start_stage(stage='input_report') BEFORE spawning the sub-agent.\n"
-            "(No run_id yet — Stage 1 creates it via submit_input_report.)\n\n"
-            "Sub-agent tools: get_pipeline_status, submit_input_report\n"
-            "Your tools: get_pipeline_status only\n\n"
-            "POST-EXIT: After the sub-agent returns, extract the run_id from its output, "
-            "then call complete_stage(run_id='<run_id_from_submit>'), "
-            "then call get_pipeline_status.\n"
-            "If Stage 1 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
-            "</HARD_STOP>\n\n"
-            "<stage_system_prompt></stage_system_prompt>"
-        ),
+        STAGE_1_INSTRUCTION,
     ),
     2: (
         "Validate and transform the dataset, then produce the dev/holdout split. "
@@ -136,106 +89,28 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "stratified_split_tool",
         ],
         ["odysseus_data_validation"],
-        (
-            "<HARD_STOP>\n"
-            "You MUST NOT call any Stage 2 tools from the current context.\n\n"
-            "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='data_validation') "
-            "BEFORE spawning the sub-agent.\n\n"
-            "Sub-agent tools: get_pipeline_status, validate_dataset, "
-            "detect_and_parse_dataset, transform_dataset, save_routing_context, "
-            "stratified_split_tool, save_proposed_mapping\n"
-            "Your tools: get_pipeline_status only\n\n"
-            "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-            "then call get_pipeline_status.\n"
-            "If Stage 2 is not complete:\n"
-            "  - Check the status detail field. If detail is 'mapping_confirmation_needed', read the\n"
-            "    file at outputs/{run_id}/validation/proposed_mapping.json. Present the proposed\n"
-            "    field mapping as a table to the user (source field → target field), include a few\n"
-            "    sample rows for context, and list any unmapped fields. Ask the user to confirm the\n"
-            "    mapping or provide corrections.\n"
-            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or auto-confirm.\n"
-            "    Then re-dispatch the sub-agent with the confirmed (or corrected) mapping in the\n"
-            "    conversation context.\n"
-            "  - Otherwise, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
-            "  - If Stage 2 remains incomplete after 2 re-dispatches, report the error to the\n"
-            "    user and halt.\n"
-            "</HARD_STOP>\n\n"
-            "<stage_system_prompt></stage_system_prompt>"
-        ),
+        STAGE_2_INSTRUCTION,
     ),
     3: (
         "Configure at least one routing backend (create a backends/*.yaml file). "
         "REQUIRED: activate prompt 'odysseus_backend_setup' for guided configuration.",
         [],
         ["odysseus_backend_setup"],
-        (
-            "<HARD_STOP>\n"
-            "You MUST NOT perform backend setup from the current context.\n\n"
-            "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='backend_setup') "
-            "BEFORE spawning the sub-agent.\n\n"
-            "Sub-agent tools: get_pipeline_status, get_default_pricing, save_backend_options\n"
-            "Your tools: get_pipeline_status only\n\n"
-            "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-            "then call get_pipeline_status.\n"
-            "If Stage 3 is not complete:\n"
-            "  - Check the status detail field.\n"
-            "  - If detail is 'backend_selection_needed', read the file at\n"
-            "    outputs/{run_id}/backend_options.json. Present the available backends to the user.\n"
-            "    If backends exist: ask 'Choose one of these existing backends, or create a new one.'\n"
-            "    If no backends: ask 'No backends configured. Please provide: label, provider,\n"
-            "    model, requests_per_minute, and tokens_per_minute.'\n"
-            "    If the user chooses to create a new backend, collect: label, provider, model,\n"
-            "    requests_per_minute, and tokens_per_minute.\n"
-            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or fabricate\n"
-            "    the user's backend choice or configuration values.\n"
-            "    Then re-dispatch the sub-agent with the user's selection or config in the\n"
-            "    conversation context.\n"
-            "  - If detail is 'pricing_missing', ask the user for input_cost_per_million_tokens,\n"
-            "    cached_cost_per_million_tokens, and output_cost_per_million_tokens.\n"
-            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or fabricate values.\n"
-            "    Then re-dispatch the sub-agent with these pricing values in the conversation context.\n"
-            "  - Otherwise, re-dispatch the sub-agent. Do not perform backend setup yourself.\n"
-            "  - If Stage 3 remains incomplete after 3 re-dispatches, report the error to the\n"
-            "    user and halt.\n"
-            "</HARD_STOP>\n\n"
-            "<stage_system_prompt></stage_system_prompt>"
-        ),
+        STAGE_3_INSTRUCTION,
     ),
     # Stage 4 is handled dynamically by _next_action_for_stage_4
     5: (
         "The refinement loop has converged. Run holdout evaluation and generate the final report. "
         "REQUIRED: activate prompt 'odysseus_final_report' before calling any stage 5 tools.",
         [
-            "filter_holdout_dataset_tool", "list_pareto_candidates", "run_holdout_eval",
-            "build_final_report_briefing_tool", "save_final_report",
+            "filter_holdout_dataset_tool",
+            "list_pareto_candidates",
+            "run_holdout_eval",
+            "build_final_report_briefing_tool",
+            "save_final_report",
         ],
         ["odysseus_final_report"],
-        (
-            "<HARD_STOP>\n"
-            "You MUST NOT call any Stage 5 tools from the current context.\n\n"
-            "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-            "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='final_report') BEFORE spawning the sub-agent.\n\n"
-            "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, "
-            "list_pareto_candidates, run_holdout_eval, "
-            "build_final_report_briefing_tool, save_final_report\n"
-            "Your tools: get_pipeline_status only\n\n"
-            "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-            "then call get_pipeline_status.\n"
-            "If Stage 5 is not complete:\n"
-            "  - Check the status detail field. If detail is 'version_selection_needed', read the\n"
-            "    file at outputs/{run_id}/pareto_candidates_listed.json. Present the candidates\n"
-            "    to the user as a table (version, quality score, cost, round) and ask which\n"
-            "    prompt_version they want to evaluate on the holdout set. Then re-dispatch the\n"
-            "    sub-agent with the chosen prompt_version in the conversation context.\n"
-            "    You MUST wait for the user's actual reply. Do NOT assume, guess, or fabricate values.\n"
-            "  - Otherwise, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
-            "  - If Stage 5 remains incomplete after 2 re-dispatches, report the error to the\n"
-            "    user and halt.\n"
-            "</HARD_STOP>\n\n"
-            "<stage_system_prompt></stage_system_prompt>"
-        ),
+        STAGE_5_INSTRUCTION,
     ),
     6: (
         "Pipeline complete. Present exactly these three options to the user:\n"
@@ -265,7 +140,12 @@ def discover_runs(outputs_dir: Path) -> list[str]:
     runs: list[tuple[float, str]] = []
     if not outputs_dir.is_dir():
         return []
-    for candidate in outputs_dir.iterdir():
+    try:
+        entries = list(outputs_dir.iterdir())
+    except (PermissionError, OSError) as exc:
+        logger.warning("Cannot read outputs directory %s: %s", outputs_dir, exc)
+        return []
+    for candidate in entries:
         if not candidate.is_dir():
             continue
         report = candidate / "input" / "input_report.md"
@@ -342,6 +222,10 @@ def get_pipeline_status(
         run_id = runs[0]
 
     run_dir = outputs_dir / run_id
+
+    # Read rerun config once and pass through to avoid repeated file I/O
+    rerun_config = _read_rerun_config(run_dir)
+
     stage_results: list[dict[str, Any]] = []
     current_stage = 1
     found_incomplete = False
@@ -361,7 +245,12 @@ def get_pipeline_status(
             )
             continue
 
-        status, artifacts, detail = _check_stage(stage_def, run_dir, project_dir)
+        status, artifacts, detail = _check_stage(
+            stage_def,
+            run_dir,
+            project_dir,
+            rerun_config=rerun_config,
+        )
 
         entry: dict[str, Any] = {
             "stage": stage_num,
@@ -392,7 +281,10 @@ def get_pipeline_status(
 
     # Stage 4 uses dynamic next-action based on three-phase detection
     if current_stage == 4:
-        action, tools, prompts, subagent_instruction = _next_action_for_stage_4(run_dir)
+        action, tools, prompts, subagent_instruction = _next_action_for_stage_4(
+            run_dir,
+            rerun_config=rerun_config,
+        )
     else:
         action, tools, prompts, subagent_instruction = _next_action_for_stage(current_stage)
 
@@ -426,6 +318,7 @@ def _check_stage(
     stage_def: dict[str, Any],
     run_dir: Path,
     project_dir: Path,
+    rerun_config: dict[str, Any] | None = None,
 ) -> tuple[str, list[str], str]:
     """Check a single stage.
 
@@ -436,7 +329,7 @@ def _check_stage(
     if stage_num == 2:
         return _check_stage_2(run_dir)
     if stage_num == 3:
-        return _check_stage_3(project_dir, run_dir)
+        return _check_stage_3(project_dir, run_dir, rerun_config=rerun_config)
     if stage_num == 4:
         return _check_stage_4(run_dir)
     if stage_num == 5:
@@ -481,7 +374,11 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
     return "incomplete", artifacts, ""
 
 
-def _check_stage_3(project_dir: Path, run_dir: Path) -> tuple[str, list[str], str]:
+def _check_stage_3(
+    project_dir: Path,
+    run_dir: Path,
+    rerun_config: dict[str, Any] | None = None,
+) -> tuple[str, list[str], str]:
     """Stage 3: Backend Configured.
 
     In normal mode: at least one backends/*.yaml must have valid pricing.
@@ -490,13 +387,15 @@ def _check_stage_3(project_dir: Path, run_dir: Path) -> tuple[str, list[str], st
     """
     from odysseus.eval.backends.profile import BackendProfile
 
-    rerun_config = _read_rerun_config(run_dir)
+    # When called from _run_summary_for (no rerun_config passed), read from disk
+    if rerun_config is None:
+        rerun_config = _read_rerun_config(run_dir)
 
     if rerun_config is not None:
         # Rerun mode: new_backend must be explicitly set
         new_backend = rerun_config.get("new_backend")
         if not new_backend:
-            return "incomplete", [], ""
+            return "incomplete", [], "rerun_backend_not_configured"
 
         backends_dir = project_dir / "backends"
         yaml_path = backends_dir / f"{new_backend}.yaml"
@@ -574,22 +473,76 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
     return "incomplete", artifacts, ""
 
 
+# ---------------------------------------------------------------------------
+# Stage 4 — three-phase detection
+# ---------------------------------------------------------------------------
+
+_VALID_LOOP_PHASES = {"review", "build"}
+
+
+def _detect_stage_4_phase(
+    run_dir: Path,
+    rerun_config: dict[str, Any] | None,
+) -> str:
+    """Detect which phase Stage 4 is in.
+
+    Returns one of: ``"rerun"``, ``"cold_start"``, ``"build_v1"``,
+    ``"review"``, ``"build"``.
+    """
+    if rerun_config is not None:
+        return "rerun"
+
+    search_dir = run_dir / "search"
+    directive_history = search_dir / "directive_history.json"
+    search_state_path = search_dir / "search_state.json"
+    prompts_dir = run_dir / "prompts"
+    has_v1 = prompts_dir.is_dir() and (
+        any(prompts_dir.glob("v1.yaml"))
+        or any(prompts_dir.glob("v1.json"))
+        or any(prompts_dir.glob("v1.txt"))
+    )
+
+    # Phase 1: Cold-start — no directives and no search state
+    if not directive_history.is_file() and not search_state_path.is_file():
+        return "cold_start"
+
+    # Phase 2: Build v1 — directives exist but no compiled prompt yet
+    if not has_v1:
+        return "build_v1"
+
+    # Phase 3: Normal loop — read loop_phase from search state
+    loop_phase = "review"
+    if search_state_path.is_file():
+        try:
+            data = json.loads(search_state_path.read_text())
+            raw_phase = data.get("loop_phase", "review")
+            if raw_phase not in _VALID_LOOP_PHASES:
+                logger.warning(
+                    "Unexpected loop_phase '%s' in %s/search/search_state.json, defaulting to 'review'",
+                    raw_phase,
+                    run_dir,
+                )
+            else:
+                loop_phase = raw_phase
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
+
+    return loop_phase
+
+
 def _next_action_for_stage_4(
     run_dir: Path,
+    rerun_config: dict[str, Any] | None = None,
 ) -> tuple[str, list[str], list[str], str]:
-    """Return (action, tools, prompts, subagent_instruction) for Stage 4.
+    """Return (action, tools, prompts, subagent_instruction) for Stage 4."""
+    phase = _detect_stage_4_phase(run_dir, rerun_config)
 
-    Three-phase detection:
-    1. No directive_history.json and no search_state.json -> cold-start (Review Agent)
-    2. directive_history.json exists but no v1.* -> build-v1 (Prompt Builder)
-    3. v1.* exists and search_state.json exists -> normal loop (read loop_phase)
-    """
-    # Rerun mode: skip three-phase logic
-    rerun_config = _read_rerun_config(run_dir)
-    if rerun_config is not None:
+    # Rerun is special — needs template formatting with config values
+    if phase == "rerun":
+        assert rerun_config is not None  # noqa: S101
         source_version = rerun_config.get("source_prompt_version", "unknown")
         new_backend = rerun_config.get("new_backend", "unknown")
-        rerun_instr = _STAGE_4_RERUN_INSTRUCTION.format(
+        rerun_instr = STAGE_4_RERUN_INSTRUCTION.format(
             run_id=run_dir.name,
             source_prompt_version=source_version,
             new_backend=new_backend,
@@ -598,97 +551,47 @@ def _next_action_for_stage_4(
             "Stage 4 — rerun mode: spawn the Prompt Builder Rerun agent to restructure "
             f"the source prompt (version {source_version}) for the new backend ({new_backend}). "
             "REQUIRED: activate prompt 'odysseus_prompt_builder_rerun' before calling any build tools.",
-            [
-                "get_search_state_tool",
-                "init_search_state_tool",
-                "register_candidate_tool",
-                "record_eval_result_tool",
-                "advance_round_tool",
-                "run_eval",
-            ],
+            _RERUN_TOOLS,
             ["odysseus_prompt_builder_rerun"],
             rerun_instr,
         )
 
-    search_dir = run_dir / "search"
-    directive_history = search_dir / "directive_history.json"
-    search_state_path = search_dir / "search_state.json"
-    prompts_dir = run_dir / "prompts"
-    has_v1 = prompts_dir.is_dir() and bool(list(prompts_dir.glob("v1.*")))
-
-    # Phase 1: Cold-start — no directives and no search state
-    if not directive_history.is_file() and not search_state_path.is_file():
-        return (
+    # All other phases use a static dispatch table
+    phase_config: dict[str, tuple[str, list[str], list[str], str]] = {
+        "cold_start": (
             "Stage 4 — cold-start: spawn the Review Agent to select initial "
             "few-shot seed examples from the dataset. "
             "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
-            [
-                "get_search_state_tool",
-                "build_review_briefing_tool",
-                "record_directive_outcomes_tool",
-            ],
+            _REVIEW_TOOLS,
             ["odysseus_review_agent"],
-            _STAGE_4_COLD_START_INSTRUCTION,
-        )
-
-    # Phase 2: Build v1 — directives exist but no compiled prompt yet
-    if not has_v1:
-        return (
+            STAGE_4_COLD_START_INSTRUCTION,
+        ),
+        "build_v1": (
             "Stage 4 — build phase: spawn the Prompt Builder to compile the "
             "initial routing prompt (v1) using seed examples from the Review Agent. "
             "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
-            [
-                "get_search_state_tool",
-                "get_edit_directives_tool",
-                "init_search_state_tool",
-                "register_candidate_tool",
-                "record_eval_result_tool",
-                "advance_round_tool",
-                "run_eval",
-            ],
+            _BUILD_TOOLS,
             ["odysseus_prompt_builder"],
-            _STAGE_4_BUILD_INSTRUCTION,
-        )
-
-    # Phase 3: Normal loop — read loop_phase from search state
-    loop_phase = "review"
-    if search_state_path.is_file():
-        try:
-            data = json.loads(search_state_path.read_text())
-            loop_phase = data.get("loop_phase", "review")
-        except (json.JSONDecodeError, ValueError, TypeError):
-            pass
-
-    if loop_phase == "review":
-        return (
+            STAGE_4_BUILD_INSTRUCTION,
+        ),
+        "review": (
             "Stage 4 — review phase: spawn the Review Agent to analyse "
             "eval results and emit edit directives. "
             "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
-            [
-                "get_search_state_tool",
-                "build_review_briefing_tool",
-                "record_directive_outcomes_tool",
-            ],
+            _REVIEW_TOOLS,
             ["odysseus_review_agent"],
-            _STAGE_4_REVIEW_INSTRUCTION,
-        )
-    else:
-        return (
+            STAGE_4_REVIEW_INSTRUCTION,
+        ),
+        "build": (
             "Stage 4 — build phase: spawn the Prompt Builder to generate "
             "prompt variants and evaluate them. "
             "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
-            [
-                "get_search_state_tool",
-                "get_edit_directives_tool",
-                "init_search_state_tool",
-                "register_candidate_tool",
-                "record_eval_result_tool",
-                "advance_round_tool",
-                "run_eval",
-            ],
+            _BUILD_TOOLS,
             ["odysseus_prompt_builder"],
-            _STAGE_4_BUILD_INSTRUCTION,
-        )
+            STAGE_4_BUILD_INSTRUCTION,
+        ),
+    }
+    return phase_config[phase]
 
 
 def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str | None]:
@@ -699,12 +602,32 @@ def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str |
     )
 
 
-def _read_rerun_config(run_dir: Path) -> dict | None:
-    """Read rerun_config.json from run_dir, returning None if absent or malformed."""
+# ---------------------------------------------------------------------------
+# Rerun config helpers
+# ---------------------------------------------------------------------------
+
+
+def _validate_rerun_config(config: dict[str, Any]) -> tuple[bool, str]:
+    """Validate rerun config structure. Returns (is_valid, detail)."""
+    if config.get("mode") != "rerun":
+        return False, "rerun_config_invalid_mode"
+    if not config.get("source_prompt_version"):
+        return False, "rerun_config_missing_source_version"
+    return True, ""
+
+
+def _read_rerun_config(run_dir: Path) -> dict[str, Any] | None:
+    """Read and validate rerun_config.json, or None if absent/invalid."""
     config_path = run_dir / "rerun_config.json"
     if not config_path.is_file():
         return None
     try:
-        return json.loads(config_path.read_text())
-    except (json.JSONDecodeError, ValueError, OSError):
+        config = json.loads(config_path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read rerun_config.json in %s: %s", run_dir, exc)
         return None
+    valid, detail = _validate_rerun_config(config)
+    if not valid:
+        logger.warning("Invalid rerun_config.json in %s: %s", run_dir, detail)
+        return None
+    return config
