@@ -24,16 +24,16 @@ Cost-quality routing is the problem of directing each incoming request to the ch
 
 ## Field taxonomy
 
-A complete routing problem has two required fields and four optional fields.
+A complete routing problem has three required fields and three optional fields.
 
 **Required (blocking — priority order):**
 
 1. `problem_description` (priority 1) — free-text describing the routing context: what types of requests are routed, what tiers or tools are available, and which trade-offs matter most.
 2. `routing_dataset` (priority 2) — labeled examples in JSONL format. Each record has an input (the request to be routed) and the expected routing decision (the correct tier or tool label).
+3. `target_metrics` (priority 3) — at least one metric with a threshold the pipeline should optimize toward. Examples: `accuracy >= 0.85`, `cost_change_with_overhead <= -0.30`.
 
 **Optional (non-blocking — apply defaults if omitted):**
 
-- `target_metrics` — metric(s) to optimize.
 - `evaluation_threshold` — pass/fail threshold for the pipeline exit check.
 - `data_split_ratio` — fraction reserved for holdout evaluation.
 - `max_iterations` — maximum refinement loop rounds.
@@ -50,11 +50,15 @@ A complete routing problem has two required fields and four optional fields.
 - Why it matters: The pipeline needs real data to analyze routing patterns and evaluate prompt quality. Data quality is checked downstream by the Data Validation agent.
 - Sufficient answer: A file path to a JSONL dataset.
 
+**Target metrics (priority 3):**
+- What to ask about: Which metrics matter most and what thresholds define success.
+- Why it matters: The optimization loop allocates effort based on these targets. Without them, it has no direction.
+- Sufficient answer: At least one metric with operator and threshold, e.g., `accuracy >= 0.85`.
+
 ## Defaults table
 
 | Field | Default | Rationale | User-facing note |
 |---|---|---|---|
-| `target_metrics` | `["f1/macro"]` | F1 macro handles class imbalance well and reveals per-class performance. | "No target metrics specified — defaulting to F1 macro average (`f1/macro`). You can specify metrics such as `accuracy >= 0.85` or `cost_change_with_overhead <= -0.30` in a follow-up." |
 | `evaluation_threshold` | `0.80` | Conservative, achievable on most problems. | "No evaluation threshold specified — using 0.80 as the pass/fail threshold. You can adjust this in a follow-up." |
 | `data_split_ratio` | `0.80` | Standard 20/80 dev/holdout split. | "No data split ratio provided — reserving 80% of data for holdout evaluation." |
 | `max_iterations` | `10` | Bounds cost while allowing convergence. | "No iteration limit provided — defaulting to 10 refinement rounds." |
@@ -137,7 +141,7 @@ Once all blocking gaps are resolved, produce the validated input report followin
 **Rules:**
 
 1. **Status** is always the first bold field after the H1 heading.
-2. **Confirmed Inputs** is always present. Optional field subsections (Evaluation Threshold, Data Split Ratio, Max Iterations) appear only if the user explicitly provided them. Defaulted fields go in Assumed Defaults instead.
+2. **Confirmed Inputs** is always present. The Target Metrics subsection is always present (required field). Optional field subsections (Evaluation Threshold, Data Split Ratio, Max Iterations) appear only if the user explicitly provided them. Defaulted fields go in Assumed Defaults instead.
 3. **Gap Report** is omitted entirely if no gaps were detected.
 4. **Assumed Defaults** is omitted entirely if status is `proceed`.
 5. Gap Report headings use exact field identifiers (e.g. `### target_metrics`).
