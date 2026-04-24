@@ -543,7 +543,6 @@ class TestBuildReviewBriefing:
                     quality_score=0.80,
                     cost=1.50,
                     round_introduced=1,
-                    dominated=False,
                 ),
             ],
         )
@@ -732,7 +731,6 @@ class TestMissingMetricBehavior:
                     quality_score=0.80,
                     cost=1.50,
                     round_introduced=1,
-                    dominated=False,
                 ),
             ],
         )
@@ -838,7 +836,10 @@ class TestGenerateExecutiveSummary:
         briefing = self._make_briefing(
             per_class_recall={
                 "route-a": ClassRecallEntry(
-                    recall=0.42, support=8, trend=[0.71, 0.42], regression_flag=True,
+                    recall=0.42,
+                    support=8,
+                    trend=[0.71, 0.42],
+                    regression_flag=True,
                 ),
             },
         )

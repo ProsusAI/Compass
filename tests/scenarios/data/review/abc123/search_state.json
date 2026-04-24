@@ -9,8 +9,7 @@
       "parent_version": null,
       "quality_score": 0.72,
       "cost": 0.002,
-      "round_introduced": 1,
-      "dominated": false
+      "round_introduced": 1
     }
   ],
   "round_history": [],

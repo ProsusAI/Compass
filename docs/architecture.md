@@ -55,6 +55,9 @@ graph TD
 
 ## 4. Shared Models
 
+**`Candidate` / `SearchState` / `RoundSummary`** ([`odysseus/agents/prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py))
+`Candidate` is the canonical prompt-candidate record shared across all search strategies. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Strategy-specific optional fields (all default `None`): `secondary_parent_version` (beam/SMS-EMOA recombination), `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`, `trajectory_id` (EMOSA). Accepts `iteration_introduced` as an alias for `round_introduced` (SMS-EMOA back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`). `SearchState` holds the mutable search loop state. `RoundSummary` is the per-round progress record.
+
 **`DataQualityReport`** ([`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py))
 Top-level report from the Data Validation agent containing `SchemaFinding` list, `LabelDistribution`, `VolumeAssessment`, and optional `QueryLengthDistribution`. The LLM agent writes the narrative `summary`; the Python checks populate the structured sections.
 

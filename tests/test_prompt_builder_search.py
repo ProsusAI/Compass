@@ -26,7 +26,6 @@ def _candidate(
     quality_score: float = 0.9,
     cost: float = 0.01,
     round_introduced: int = 1,
-    dominated: bool = False,
     **kwargs,
 ) -> Candidate:
     return Candidate(
@@ -35,7 +34,6 @@ def _candidate(
         quality_score=quality_score,
         cost=cost,
         round_introduced=round_introduced,
-        dominated=dominated,
         **kwargs,
     )
 
@@ -53,19 +51,10 @@ class TestCandidate:
         assert c.quality_score == 0.85
         assert c.cost == 0.02
         assert c.round_introduced == 1
-        assert c.dominated is False
-
-    def test_dominated_defaults_false(self) -> None:
-        c = _candidate()
-        assert c.dominated is False
 
     def test_parent_version_can_be_string(self) -> None:
         c = _candidate(parent_version="v0")
         assert c.parent_version == "v0"
-
-    def test_dominated_can_be_true(self) -> None:
-        c = _candidate(dominated=True)
-        assert c.dominated is True
 
     def test_empty_prompt_version_rejected(self) -> None:
         with pytest.raises(ValidationError, match="prompt_version must be non-empty"):
@@ -102,6 +91,136 @@ class TestCandidate:
     def test_example_ids_defaults_empty(self) -> None:
         c = _candidate(prompt_version="v1")
         assert c.example_ids == []
+
+    # ------------------------------------------------------------------
+    # Optional strategy-specific fields
+    # ------------------------------------------------------------------
+
+    def test_optional_fields_default_none(self) -> None:
+        c = _candidate()
+        assert c.secondary_parent_version is None
+        assert c.eval_status is None
+        assert c.mutation_strategy is None
+        assert c.route_metrics is None
+        assert c.trajectory_id is None
+
+    def test_secondary_parent_version_can_be_set(self) -> None:
+        c = _candidate(secondary_parent_version="v0")
+        assert c.secondary_parent_version == "v0"
+
+    def test_eval_status_accepts_valid_literals(self) -> None:
+        for status in ("pending", "running", "complete", "failed"):
+            c = _candidate(eval_status=status)  # type: ignore[arg-type]
+            assert c.eval_status == status
+
+    def test_eval_status_rejects_invalid(self) -> None:
+        with pytest.raises(ValidationError):
+            _candidate(eval_status="unknown")  # type: ignore[arg-type]
+
+    def test_mutation_strategy_can_be_set(self) -> None:
+        c = _candidate(mutation_strategy="rule_add")
+        assert c.mutation_strategy == "rule_add"
+
+    def test_route_metrics_can_be_set(self) -> None:
+        metrics = {"accuracy": 0.9, "cost_per_token": 0.002}
+        c = _candidate(route_metrics=metrics)
+        assert c.route_metrics == metrics
+
+    def test_trajectory_id_can_be_set(self) -> None:
+        c = _candidate(trajectory_id=2)
+        assert c.trajectory_id == 2
+
+    # ------------------------------------------------------------------
+    # iteration_introduced alias
+    # ------------------------------------------------------------------
+
+    def test_iteration_introduced_alias_maps_to_round_introduced(self) -> None:
+        """SMS-EMOA state files use iteration_introduced; it must map to round_introduced."""
+        c = Candidate.model_validate(
+            {
+                "prompt_version": "v1",
+                "parent_version": None,
+                "quality_score": 0.9,
+                "cost": 0.01,
+                "iteration_introduced": 3,
+            }
+        )
+        assert c.round_introduced == 3
+
+    def test_round_introduced_wins_over_alias(self) -> None:
+        """If both keys are present, round_introduced takes precedence."""
+        c = Candidate.model_validate(
+            {
+                "prompt_version": "v1",
+                "parent_version": None,
+                "quality_score": 0.9,
+                "cost": 0.01,
+                "round_introduced": 5,
+                "iteration_introduced": 3,
+            }
+        )
+        assert c.round_introduced == 5
+
+    def test_serialisation_emits_round_introduced_not_alias(self) -> None:
+        """Round-trip: serialised JSON uses canonical round_introduced key."""
+        c = _candidate(round_introduced=4)
+        dumped = c.model_dump()
+        assert "round_introduced" in dumped
+        assert "iteration_introduced" not in dumped
+        assert dumped["round_introduced"] == 4
+
+    # ------------------------------------------------------------------
+    # Backward-compat: old fixtures with dominated field are ignored
+    # ------------------------------------------------------------------
+
+    def test_old_dominated_field_is_ignored_on_load(self) -> None:
+        """Fixtures from before the cross-branch generalisation may carry dominated.
+        With extra='ignore', the field is silently discarded and loading succeeds."""
+        c = Candidate.model_validate(
+            {
+                "prompt_version": "v1",
+                "parent_version": None,
+                "quality_score": 0.9,
+                "cost": 0.01,
+                "round_introduced": 1,
+                "dominated": True,  # old field — must be silently ignored
+            }
+        )
+        assert c.prompt_version == "v1"
+        assert not hasattr(c, "dominated")
+
+    def test_round_trip_with_all_optional_fields(self) -> None:
+        """Full round-trip: construct with all optional fields, serialise, reload."""
+        c = Candidate(
+            prompt_version="v1",
+            parent_version="v0",
+            quality_score=0.88,
+            cost=0.015,
+            round_introduced=2,
+            example_ids=["ex-1"],
+            secondary_parent_version="v0b",
+            eval_status="complete",
+            mutation_strategy="rule_add",
+            route_metrics={"accuracy": 0.88},
+            trajectory_id=1,
+        )
+        reloaded = Candidate.model_validate_json(c.model_dump_json())
+        assert reloaded.secondary_parent_version == "v0b"
+        assert reloaded.eval_status == "complete"
+        assert reloaded.mutation_strategy == "rule_add"
+        assert reloaded.route_metrics == {"accuracy": 0.88}
+        assert reloaded.trajectory_id == 1
+
+    def test_round_trip_with_no_optional_fields(self) -> None:
+        """Minimal candidate (no optional fields) round-trips cleanly."""
+        c = _candidate()
+        reloaded = Candidate.model_validate_json(c.model_dump_json())
+        assert reloaded.prompt_version == c.prompt_version
+        assert reloaded.secondary_parent_version is None
+        assert reloaded.eval_status is None
+        assert reloaded.mutation_strategy is None
+        assert reloaded.route_metrics is None
+        assert reloaded.trajectory_id is None
 
 
 # ---------------------------------------------------------------------------

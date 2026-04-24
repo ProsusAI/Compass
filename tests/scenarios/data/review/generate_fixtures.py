@@ -102,7 +102,6 @@ def gen_scenario_51():
                     "quality_score": 0.72,
                     "cost": 0.002,
                     "round_introduced": 1,
-                    "dominated": False,
                 }
             ],
             "round_history": [],
@@ -205,7 +204,6 @@ def gen_scenario_52():
                     "quality_score": 0.78,
                     "cost": 0.0025,
                     "round_introduced": 1,
-                    "dominated": False,
                 }
             ],
             "round_history": [],
@@ -315,7 +313,6 @@ def gen_scenario_53():
                     "quality_score": 0.89,
                     "cost": 0.0021,
                     "round_introduced": 5,
-                    "dominated": False,
                 }
             ],
             "round_history": [],

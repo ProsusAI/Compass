@@ -9,9 +9,9 @@ See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -19,15 +19,36 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Candidate(BaseModel):
-    """A single prompt candidate with quality and cost metrics."""
+    """A single prompt candidate with quality and cost metrics.
+
+    Optional fields cover strategy-specific metadata used by feature branches
+    (parallel-beam, SMS-EMOA, EMOSA).  All default to ``None`` / empty so that
+    main-branch (hill-climb) code never has to set them.
+
+    Serialisation note: old state files may contain a ``dominated`` field
+    (removed in the cross-branch generalisation).  ``extra="ignore"`` ensures
+    they load without error — the field is simply discarded.
+
+    Alias note: ``iteration_introduced`` is accepted as an input key and mapped
+    to ``round_introduced`` (the canonical name).  This makes SMS-EMOA state
+    files round-trippable without a migration step.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     prompt_version: str
     parent_version: str | None
     quality_score: float
     cost: float
     round_introduced: int
-    dominated: bool = False
     example_ids: list[str] = Field(default_factory=list)
+
+    # Strategy-specific optional fields
+    secondary_parent_version: str | None = None
+    eval_status: Literal["pending", "running", "complete", "failed"] | None = None
+    mutation_strategy: str | None = None
+    route_metrics: dict[str, Any] | None = None
+    trajectory_id: int | None = None
 
     @field_validator("prompt_version")
     @classmethod
@@ -35,6 +56,20 @@ class Candidate(BaseModel):
         if not v:
             raise ValueError("prompt_version must be non-empty")
         return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _alias_iteration_introduced(cls, data: Any) -> Any:
+        """Accept ``iteration_introduced`` as an alias for ``round_introduced``.
+
+        Enables SMS-EMOA state files (which use ``iteration_introduced``) to
+        round-trip without a migration step.  If both keys are present,
+        ``round_introduced`` wins.
+        """
+        if isinstance(data, dict) and "iteration_introduced" in data and "round_introduced" not in data:
+            data = dict(data)
+            data["round_introduced"] = data.pop("iteration_introduced")
+        return data
 
 
 class RoundSummary(BaseModel):
