@@ -656,6 +656,14 @@ def build_review_briefing(
     ]
     near_misses = compute_near_misses(current_candidates, pareto_front)
 
+    # Hill-climb stagnation signal — other strategies will write a different
+    # dict shape into this same field from their own preprocessor paths.
+    stagnation_signal: dict[str, Any] = {
+        "count": search_state.stagnation_count,
+        "limit": search_state.stagnation_limit,
+        "mutation_mode": search_state.mutation_mode,
+    }
+
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
@@ -670,6 +678,7 @@ def build_review_briefing(
         routing_context=routing_context,
         directive_history=directive_history,
         near_miss_candidates=near_misses,
+        stagnation_signal=stagnation_signal,
     )
     return briefing.model_copy(
         update={"executive_summary": generate_executive_summary(briefing, primary_metric)},

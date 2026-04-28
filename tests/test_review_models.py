@@ -718,6 +718,173 @@ class TestReviewResult:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# ReviewBriefing — strategy-specific optional fields (Increment 4)
+# ---------------------------------------------------------------------------
+
+
+class TestReviewBriefingStrategyFields:
+    """Round-trip and backward-compat tests for the new optional fields."""
+
+    def _make_minimal_briefing_kwargs(self) -> dict:
+        from odysseus.agents.prompt_builder.search import Candidate
+        from odysseus.agents.review.models import (
+            CandidateAnalysis,
+            ClassRecallEntry,
+            DiminishingReturns,
+            DiversityMetrics,
+            MetricDeltas,
+            MutationHistory,
+            OracleMetrics,
+        )
+
+        candidate = CandidateAnalysis(
+            candidate_version="v2",
+            parent_version="v1",
+            mutation_description="swap",
+            score_report=_make_score_report(),
+            delta_vs_parent=MetricDeltas(quality_delta=0.01, cost_delta=0.0, per_class_recall_deltas={}),
+            delta_vs_front=[],
+        )
+        front_member = Candidate(
+            prompt_version="v1",
+            parent_version=None,
+            quality_score=0.80,
+            cost=1.0,
+            round_introduced=1,
+        )
+        return dict(
+            round=2,
+            candidates=[candidate],
+            elite_set=[front_member],
+            per_class_recall={
+                "route_a": ClassRecallEntry(recall=0.85, support=50, trend=[0.80, 0.85], regression_flag=False)
+            },
+            diversity_metrics=DiversityMetrics(
+                example_overlap_ratio=0.2,
+                prompt_similarity=0.5,
+                mutation_type_distribution={"example_swap": 1},
+            ),
+            diminishing_returns=DiminishingReturns(
+                score_trajectory=[0.78, 0.80],
+                improvement_trend=0.02,
+                stagnation_flag=False,
+            ),
+            mutation_history=MutationHistory(
+                effective_mutations=[],
+                ineffective_mutations=[],
+                untried_mutation_types=["schema_change"],
+            ),
+            oracle_metrics=OracleMetrics(oracle_cost_change=0.10, oracle_quality_change=0.02),
+            prompt_versions={"v1": "prompt text v1", "v2": "prompt text v2"},
+            holdout_examples=[],
+        )
+
+    def test_strategy_fields_round_trip(self) -> None:
+        """All new optional fields survive a model_dump / model_validate round-trip."""
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(
+            **self._make_minimal_briefing_kwargs(),
+            stagnation_signal={"count": 2, "limit": 3, "mutation_mode": "targeted"},
+            parent_a_version="v1",
+            parent_b_version="v2",
+            beam_rank={"v1": 0, "v2": 1},
+            crowding_distance={"v1": 0.5, "v2": 1.2},
+            trajectory_id=3,
+            weight_vector=(0.7, 0.3),
+            binding_axis="quality",
+            acceptance_history=[True, False, True],
+            hypervolume=0.42,
+            reference_point=(0.0, 2.0),
+        )
+
+        data = briefing.model_dump()
+        restored = ReviewBriefing.model_validate(data)
+
+        assert restored.stagnation_signal == {"count": 2, "limit": 3, "mutation_mode": "targeted"}
+        assert restored.parent_a_version == "v1"
+        assert restored.parent_b_version == "v2"
+        assert restored.beam_rank == {"v1": 0, "v2": 1}
+        assert restored.crowding_distance == {"v1": 0.5, "v2": 1.2}
+        assert restored.trajectory_id == 3
+        assert restored.weight_vector == (0.7, 0.3)
+        assert restored.binding_axis == "quality"
+        assert restored.acceptance_history == [True, False, True]
+        assert restored.hypervolume == pytest.approx(0.42)
+        assert restored.reference_point == (0.0, 2.0)
+
+    def test_new_fields_default_to_none(self) -> None:
+        """When none of the optional fields are set, they all default to None."""
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**self._make_minimal_briefing_kwargs())
+
+        assert briefing.stagnation_signal is None
+        assert briefing.parent_a_version is None
+        assert briefing.parent_b_version is None
+        assert briefing.beam_rank is None
+        assert briefing.crowding_distance is None
+        assert briefing.trajectory_id is None
+        assert briefing.weight_vector is None
+        assert briefing.binding_axis is None
+        assert briefing.acceptance_history is None
+        assert briefing.hypervolume is None
+        assert briefing.reference_point is None
+
+    def test_old_json_without_new_fields_still_loads(self) -> None:
+        """A ReviewBriefing serialised before Increment 4 loads without error.
+
+        The new optional fields should simply be absent from the JSON dict;
+        extra="ignore" + defaulting to None ensures forward/backward compat.
+        """
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**self._make_minimal_briefing_kwargs())
+        data = briefing.model_dump()
+
+        # Simulate an old serialised briefing by removing all new fields
+        for field in (
+            "stagnation_signal",
+            "parent_a_version",
+            "parent_b_version",
+            "beam_rank",
+            "crowding_distance",
+            "trajectory_id",
+            "weight_vector",
+            "binding_axis",
+            "acceptance_history",
+            "hypervolume",
+            "reference_point",
+        ):
+            data.pop(field, None)
+
+        # Must not raise
+        restored = ReviewBriefing.model_validate(data)
+        assert restored.stagnation_signal is None
+        assert restored.trajectory_id is None
+        assert restored.hypervolume is None
+
+    def test_unknown_future_field_is_ignored(self) -> None:
+        """extra="ignore" ensures that unknown fields (from future strategy branches)
+        do not cause a validation error when loading an existing ReviewBriefing.
+        """
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**self._make_minimal_briefing_kwargs())
+        data = briefing.model_dump()
+        data["some_future_strategy_field"] = "this should be silently ignored"
+
+        # Must not raise
+        restored = ReviewBriefing.model_validate(data)
+        assert restored.round == 2
+
+
+# ---------------------------------------------------------------------------
+# ExampleContent (existing tests below)
+# ---------------------------------------------------------------------------
+
+
 def test_example_content_model():
     from odysseus.agents.review.models import ExampleContent
 

@@ -898,3 +898,96 @@ class TestExampleSummaryInputText:
     def test_input_text_defaults_to_none(self) -> None:
         es = ExampleSummary(example_id="h1", route="model-a")
         assert es.input_text is None
+
+
+# ---------------------------------------------------------------------------
+# build_review_briefing — stagnation_signal and strategy-specific fields
+# (Increment 4)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildReviewBriefingStagnationSignal:
+    """Tests that build_review_briefing populates stagnation_signal for hill-climb."""
+
+    def _make_hillclimb_briefing(self, **state_overrides: Any) -> Any:
+        base_state_kwargs: dict[str, Any] = dict(
+            round=3,
+            elite_set=[
+                Candidate(
+                    prompt_version="v1",
+                    parent_version=None,
+                    quality_score=0.80,
+                    cost=1.50,
+                    round_introduced=1,
+                ),
+            ],
+            stagnation_count=2,
+            stagnation_limit=3,
+            mutation_mode="exploratory",
+        )
+        base_state_kwargs.update(state_overrides)
+        search_state = _make_search_state(**base_state_kwargs)
+        score_reports = {
+            "v2": _make_report_dict(accuracy=0.82, cost=1.40),
+            "v1": _make_report_dict(accuracy=0.80, cost=1.50),
+        }
+        mutation_log = [
+            MutationRecord(
+                child_version="v2",
+                parent_version="v1",
+                mutation_type="rule_add",
+                description="Added rule",
+            ),
+        ]
+        return build_review_briefing(
+            search_state=search_state,
+            score_reports=score_reports,
+            historical_reports={1: {"v1": score_reports["v1"]}},
+            prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
+            mutation_log=mutation_log,
+            directive_history=[],
+            holdout_examples=[ExampleSummary(example_id="h1", route="model-a", ambiguity_tags=[])],
+            candidate_versions=["v2"],
+            parent_versions={"v2": "v1"},
+        )
+
+    def test_stagnation_signal_present(self) -> None:
+        """build_review_briefing populates stagnation_signal for hill-climb."""
+        briefing = self._make_hillclimb_briefing()
+        assert briefing.stagnation_signal is not None
+
+    def test_stagnation_signal_has_three_keys(self) -> None:
+        """Hill-climb stagnation_signal has count, limit, and mutation_mode."""
+        briefing = self._make_hillclimb_briefing()
+        sig = briefing.stagnation_signal
+        assert "count" in sig
+        assert "limit" in sig
+        assert "mutation_mode" in sig
+
+    def test_stagnation_signal_values_match_state(self) -> None:
+        """Stagnation signal values reflect SearchState fields."""
+        briefing = self._make_hillclimb_briefing()
+        sig = briefing.stagnation_signal
+        assert sig["count"] == 2
+        assert sig["limit"] == 3
+        assert sig["mutation_mode"] == "exploratory"
+
+    def test_stagnation_signal_targeted_mode(self) -> None:
+        briefing = self._make_hillclimb_briefing(stagnation_count=0, mutation_mode="targeted")
+        sig = briefing.stagnation_signal
+        assert sig["count"] == 0
+        assert sig["mutation_mode"] == "targeted"
+
+    def test_strategy_specific_fields_are_none_for_hillclimb(self) -> None:
+        """All strategy-specific optional fields should be None on hill-climb output."""
+        briefing = self._make_hillclimb_briefing()
+        assert briefing.parent_a_version is None
+        assert briefing.parent_b_version is None
+        assert briefing.beam_rank is None
+        assert briefing.crowding_distance is None
+        assert briefing.trajectory_id is None
+        assert briefing.weight_vector is None
+        assert briefing.binding_axis is None
+        assert briefing.acceptance_history is None
+        assert briefing.hypervolume is None
+        assert briefing.reference_point is None

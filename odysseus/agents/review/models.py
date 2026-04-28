@@ -5,7 +5,7 @@ See docs/superpowers/specs/2026-03-25-review-agent-design.md for the full spec.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -172,9 +172,14 @@ class NearMissCandidate(BaseModel):
 
 
 class ReviewBriefing(BaseModel):
-    """Complete pre-processed input for the Review Agent LLM."""
+    """Complete pre-processed input for the Review Agent LLM.
 
-    model_config = ConfigDict(extra="forbid")
+    ``extra="ignore"`` allows older serialised briefings that predate the
+    cross-branch generalisation (or future fields added on strategy branches)
+    to load without raising a validation error.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     round: int
     candidates: list[CandidateAnalysis]
@@ -190,6 +195,30 @@ class ReviewBriefing(BaseModel):
     near_miss_candidates: list[NearMissCandidate] = []
     directive_history: list[DirectiveOutcome] = Field(default_factory=list)
     executive_summary: str = ""
+
+    # Strategy-agnostic stagnation signal (populated by the strategy's preprocessor;
+    # shape depends on the strategy — see below for per-strategy dict schemas).
+    # hill-climb: {"count": int, "limit": int, "mutation_mode": str}
+    # beam:       {"hypervolume_delta": float, "backtrack_threshold": int}
+    # sms-emoa:   {"hypervolume_history": [...], "stagnation_window": int}
+    # emosa:      {"temperature": float, "t_min": float, "review_exit": bool}
+    stagnation_signal: dict[str, Any] | None = None
+
+    # Strategy-specific optional fields (populated by the strategy's preprocessor;
+    # the Review Agent overlay reads only the fields it cares about).
+    parent_a_version: str | None = None
+    parent_b_version: str | None = None  # SMS-EMOA recombination
+
+    beam_rank: dict[str, int] | None = None  # prompt_version -> rank within elite_set
+    crowding_distance: dict[str, float] | None = None  # prompt_version -> crowding distance
+
+    trajectory_id: int | None = None  # EMOSA: which trajectory this dispatch is bound to
+    weight_vector: tuple[float, float] | None = None  # EMOSA: (lambda_q, lambda_c)
+    binding_axis: Literal["quality", "cost"] | None = None  # EMOSA: argmax Tchebycheff term
+    acceptance_history: list[bool] | None = None  # EMOSA: per-trajectory recent acceptances
+
+    hypervolume: float | None = None  # beam, sms-emoa
+    reference_point: tuple[float, float] | None = None  # beam, sms-emoa
 
 
 # ---------------------------------------------------------------------------
