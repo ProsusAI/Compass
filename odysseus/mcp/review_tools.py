@@ -24,6 +24,15 @@ from odysseus.mcp.server import mcp
 from odysseus.project_dir import resolve_project_dir as _resolve_project_dir
 
 
+def _select_confusion_candidates(state: SearchState) -> list[str]:
+    """Select candidate versions for confusion analysis.
+
+    Defaults to the strategy's elite_set. Tests can monkey-patch this
+    helper to override selection without changing the tool signature.
+    """
+    return [c.prompt_version for c in (state.elite_set or [])]
+
+
 @mcp.tool()
 async def build_review_briefing_tool(
     ctx: Context,
@@ -163,6 +172,50 @@ async def build_review_briefing_tool(
     if dev_oracle_path.exists():
         dev_oracle = json.loads(dev_oracle_path.read_text(encoding="utf-8"))
 
+    # Load raw eval results and examples for confusion analysis
+    eval_results_for_confusion = None
+    examples_for_confusion = None
+
+    selected_versions = _select_confusion_candidates(state)
+    if selected_versions:
+        from odysseus.eval.models import EvalResult, Example
+
+        all_eval_results: list[EvalResult] = []
+        for version in selected_versions:
+            results_path = out / run_id / "eval" / version / "results.jsonl"
+            if results_path.exists():
+                for line in results_path.read_text(encoding="utf-8").splitlines():
+                    stripped = line.strip()
+                    if not stripped:
+                        continue
+                    try:
+                        row = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        continue
+                    if row.get("__meta__"):
+                        continue
+                    try:
+                        all_eval_results.append(EvalResult.model_validate(row))
+                    except Exception:
+                        continue
+        if all_eval_results:
+            eval_results_for_confusion = all_eval_results
+
+        # Load dataset examples (dev set)
+        dev_path = out / run_id / "analysis" / "dev.jsonl"
+        if dev_path.exists():
+            loaded_examples: list[Example] = []
+            for line in dev_path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                try:
+                    loaded_examples.append(Example.model_validate_json(stripped))
+                except Exception:
+                    continue
+            if loaded_examples:
+                examples_for_confusion = loaded_examples
+
     # Build briefing
     briefing = build_review_briefing(
         search_state=state,
@@ -178,6 +231,9 @@ async def build_review_briefing_tool(
         user_targets=user_targets,
         full_dataset_oracle=full_dataset_oracle,
         dev_oracle=dev_oracle,
+        eval_results=eval_results_for_confusion,
+        examples=examples_for_confusion,
+        run_dir=out / run_id,
     )
 
     # Save current round's reports for future historical access

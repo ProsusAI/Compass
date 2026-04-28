@@ -636,6 +636,19 @@ def generate_executive_summary(
                 f"REGRESSION: {route} recall {prev_str} -> {entry.recall:.2f} (support={entry.support})."
             )
 
+    # Top confusion cells
+    if briefing.confusion_analysis:
+        for ci in briefing.confusion_analysis[:3]:
+            persist_label = "structural" if ci.persistence_rate > 0.8 else (
+                "prompt-sensitive" if ci.persistence_rate < 0.3 else "mixed"
+            )
+            lines.append(
+                f"CONFUSION: {ci.true_route}->{ci.predicted_route}: "
+                f"{ci.count}/{ci.support} samples ({ci.misroute_rate:.0%}), "
+                f"cost impact {ci.cost_impact:+.4f}, quality impact {ci.quality_impact:+.4f}, "
+                f"persistence {ci.persistence_rate:.0%} ({persist_label})."
+            )
+
     # Oracle gap
     om = briefing.oracle_metrics
     if om is not None:
@@ -925,6 +938,9 @@ def build_review_briefing(
     user_targets: list[UserTarget] | None = None,
     full_dataset_oracle: dict[str, float] | None = None,
     dev_oracle: dict[str, float] | None = None,
+    eval_results: list[EvalResult] | None = None,
+    examples: list[Example] | None = None,
+    run_dir: Path | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 
@@ -1128,6 +1144,18 @@ def build_review_briefing(
             "mutation_mode": mutation_mode,
         }
 
+    # Confusion analysis
+    confusion_analysis: list[ConfusionImpact] = []
+    if eval_results and examples:
+        confusion_analysis = build_confusion_analysis(
+            eval_results=eval_results,
+            examples=examples,
+            elite_versions=[c.prompt_version for c in elite_set],
+            parent_versions=[c.parent_version for c in elite_set if c.parent_version],
+            run_dir=run_dir,
+            max_cells=20,
+        )
+
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
@@ -1144,6 +1172,7 @@ def build_review_briefing(
         backtracking=backtracking,
         child_variants=child_variants or [],
         stagnation_signal=stagnation_signal,
+        confusion_analysis=confusion_analysis,
     )
     return briefing.model_copy(
         update={

@@ -7,7 +7,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from odysseus.mcp import get_prompt_text_tool, query_holdout_examples_tool, record_directive_outcomes_tool
+from odysseus.mcp import (
+    build_review_briefing_tool,
+    get_prompt_text_tool,
+    query_holdout_examples_tool,
+    record_directive_outcomes_tool,
+)
 
 _RESOLVE_PROJECT_DIR = "odysseus.mcp.review_tools._resolve_project_dir"
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
@@ -319,3 +324,276 @@ class TestQueryHoldoutExamplesPagination:
         result = json.loads(result_json)
         assert result["total_matching"] == 10
         assert result["examples"] == []
+
+
+# ---------------------------------------------------------------------------
+# Helpers for build_review_briefing_tool tests
+# ---------------------------------------------------------------------------
+
+def _write_state(tmp_path: Path, run_id: str, state_dict: dict) -> None:
+    """Write a search_state.json for the given run."""
+    search_dir = tmp_path / "outputs" / run_id / "search"
+    search_dir.mkdir(parents=True, exist_ok=True)
+    (search_dir / "search_state.json").write_text(json.dumps(state_dict), encoding="utf-8")
+
+
+def _write_results_jsonl(
+    tmp_path: Path,
+    run_id: str,
+    version: str,
+    rows: list[dict],
+) -> None:
+    """Write eval/<version>/results.jsonl for the given run."""
+    eval_dir = tmp_path / "outputs" / run_id / "eval" / version
+    eval_dir.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps(r) for r in rows]
+    (eval_dir / "results.jsonl").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _write_dev_jsonl(tmp_path: Path, run_id: str, examples: list[dict]) -> None:
+    """Write analysis/dev.jsonl for the given run."""
+    analysis_dir = tmp_path / "outputs" / run_id / "analysis"
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    lines = [json.dumps(e) for e in examples]
+    (analysis_dir / "dev.jsonl").write_text("\n".join(lines), encoding="utf-8")
+
+
+def _make_state_dict(
+    run_id: str,
+    elite_set: list[dict],
+    round_: int = 2,
+) -> dict:
+    return {
+        "search_state_id": run_id,
+        "backend": "anthropic",
+        "round": round_,
+        "elite_set": elite_set,
+        "round_history": [],
+        "stagnation_count": 0,
+        "stagnation_limit": 3,
+        "convergence_limit": 5,
+        "max_rounds": 50,
+        "mutation_mode": "targeted",
+        "converged": False,
+    }
+
+
+def _make_eval_result(example_id: str, route: str) -> dict:
+    """Minimal EvalResult dict with route output."""
+    return {
+        "example_id": example_id,
+        "model": "test-model",
+        "output": {"route": route},
+        "error": None,
+        "latency_ms": 10.0,
+        "retries": 0,
+        "token_usage": None,
+        "cost": 0.001,
+    }
+
+
+def _make_example(id_: str, true_route: str, routes: list[str] | None = None) -> dict:
+    """Minimal Example dict."""
+    route_names = routes or [true_route, "complex"]
+    routes_dict = {r: {"cost": 0.01 * (i + 1), "quality_score": 0.8 + 0.05 * i}
+                   for i, r in enumerate(route_names)}
+    return {
+        "id": id_,
+        "input": f"query for {id_}",
+        "expected": {"route": true_route, "routes": routes_dict},
+    }
+
+
+class TestBuildReviewBriefingToolSelector:
+    """Tests for confusion-analysis selector behavior in build_review_briefing_tool."""
+
+    _RUN_ID = "test-run-confusion"
+
+    async def test_elite_set_two_candidates_yields_non_empty_confusion(
+        self, tmp_path: Path
+    ) -> None:
+        """elite_set with two candidates: confusion_analysis is non-empty and deduped."""
+        run_id = self._RUN_ID + "-two"
+        # Two elite candidates
+        state_dict = _make_state_dict(
+            run_id,
+            elite_set=[
+                {
+                    "prompt_version": "v1",
+                    "parent_version": None,
+                    "quality_score": 0.80,
+                    "cost": 1.0,
+                    "round_introduced": 1,
+                },
+                {
+                    "prompt_version": "v2",
+                    "parent_version": "v1",
+                    "quality_score": 0.82,
+                    "cost": 1.0,
+                    "round_introduced": 2,
+                },
+            ],
+        )
+        _write_state(tmp_path, run_id, state_dict)
+
+        # Both v1 and v2 misroute "e1" (simple→complex)
+        # v2 additionally misroutes "e2"
+        _write_results_jsonl(tmp_path, run_id, "v1", [
+            _make_eval_result("e1", "complex"),  # misroute
+            _make_eval_result("e2", "simple"),   # correct
+        ])
+        _write_results_jsonl(tmp_path, run_id, "v2", [
+            _make_eval_result("e1", "complex"),  # same misroute as v1
+            _make_eval_result("e2", "complex"),  # additional misroute
+        ])
+        _write_dev_jsonl(tmp_path, run_id, [
+            _make_example("e1", "simple"),
+            _make_example("e2", "simple"),
+        ])
+
+        # Write a dummy report for scoring (avoids empty score_reports)
+        from datetime import UTC, datetime
+        now = datetime.now(tz=UTC).isoformat()
+        for v in ("v1", "v2"):
+            report = {
+                "metrics": {"accuracy": 0.80},
+                "summary": {"total": 2, "succeeded": 2, "failed": 0,
+                             "total_cost": 0.01, "start_time": now, "end_time": now,
+                             "duration_seconds": 1.0},
+                "errors": [],
+                "diff": None,
+                "report_path": str(tmp_path / "outputs" / run_id / "eval" / v / "report.json"),
+                "results_path": str(tmp_path / "outputs" / run_id / "eval" / v / "results.jsonl"),
+            }
+            report_path = tmp_path / "outputs" / run_id / "eval" / v / "report.json"
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            result = await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        # Extract briefing JSON from output (may have executive summary header)
+        briefing_json = result.split("# Full Briefing Data\n\n", 1)[1] if "# Full Briefing Data" in result else result
+        briefing = json.loads(briefing_json)
+
+        confusion = briefing.get("confusion_analysis", [])
+        assert len(confusion) > 0, "expected non-empty confusion_analysis"
+
+        # Count unique misrouted example IDs: e1 appears in both versions but
+        # dedup should count it once. e2 appears in v2 only. So count == 2.
+        simple_to_complex = next(
+            (c for c in confusion
+             if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
+            None,
+        )
+        assert simple_to_complex is not None
+        assert simple_to_complex["count"] == 2  # deduped: e1 + e2, not 3
+
+    async def test_empty_elite_set_yields_empty_confusion(self, tmp_path: Path) -> None:
+        """Round 0 / empty elite_set: confusion_analysis == [] without errors."""
+        run_id = self._RUN_ID + "-empty"
+        state_dict = _make_state_dict(run_id, elite_set=[], round_=0)
+        _write_state(tmp_path, run_id, state_dict)
+
+        with _patch_project_dir(tmp_path):
+            result = await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        briefing_json = result.split("# Full Briefing Data\n\n", 1)[1] if "# Full Briefing Data" in result else result
+        briefing = json.loads(briefing_json)
+        assert briefing.get("confusion_analysis") == []
+
+    async def test_monkey_patch_selector_limits_to_single_version(
+        self, tmp_path: Path
+    ) -> None:
+        """Monkey-patching _select_confusion_candidates limits analysis to one version."""
+        import odysseus.mcp.review_tools as _rt
+
+        run_id = self._RUN_ID + "-patch"
+        state_dict = _make_state_dict(
+            run_id,
+            elite_set=[
+                {
+                    "prompt_version": "va",
+                    "parent_version": None,
+                    "quality_score": 0.80,
+                    "cost": 1.0,
+                    "round_introduced": 1,
+                },
+                {
+                    "prompt_version": "vb",
+                    "parent_version": "va",
+                    "quality_score": 0.82,
+                    "cost": 1.0,
+                    "round_introduced": 2,
+                },
+            ],
+        )
+        _write_state(tmp_path, run_id, state_dict)
+
+        # va misroutes e1 only; vb misroutes both e1 and e2
+        _write_results_jsonl(tmp_path, run_id, "va", [
+            _make_eval_result("e1", "complex"),
+            _make_eval_result("e2", "simple"),  # correct
+        ])
+        _write_results_jsonl(tmp_path, run_id, "vb", [
+            _make_eval_result("e1", "complex"),
+            _make_eval_result("e2", "complex"),
+        ])
+        _write_dev_jsonl(tmp_path, run_id, [
+            _make_example("e1", "simple"),
+            _make_example("e2", "simple"),
+        ])
+
+        from datetime import UTC, datetime
+        now = datetime.now(tz=UTC).isoformat()
+        for v in ("va", "vb"):
+            report = {
+                "metrics": {"accuracy": 0.80},
+                "summary": {"total": 2, "succeeded": 2, "failed": 0,
+                             "total_cost": 0.01, "start_time": now, "end_time": now,
+                             "duration_seconds": 1.0},
+                "errors": [],
+                "diff": None,
+                "report_path": str(tmp_path / "outputs" / run_id / "eval" / v / "report.json"),
+                "results_path": str(tmp_path / "outputs" / run_id / "eval" / v / "results.jsonl"),
+            }
+            rp = tmp_path / "outputs" / run_id / "eval" / v / "report.json"
+            rp.parent.mkdir(parents=True, exist_ok=True)
+            rp.write_text(json.dumps(report), encoding="utf-8")
+
+        original_selector = _rt._select_confusion_candidates
+        try:
+            # Override: only analyse "va"
+            _rt._select_confusion_candidates = lambda state: ["va"]  # type: ignore[assignment]
+
+            with _patch_project_dir(tmp_path):
+                result = await build_review_briefing_tool(
+                    ctx=None,
+                    run_id=run_id,
+                    output_dir="outputs",
+                )
+        finally:
+            _rt._select_confusion_candidates = original_selector
+
+        briefing_json = result.split("# Full Briefing Data\n\n", 1)[1] if "# Full Briefing Data" in result else result
+        briefing = json.loads(briefing_json)
+
+        confusion = briefing.get("confusion_analysis", [])
+        # Only va's misroutes counted: e1 only → count == 1
+        simple_to_complex = next(
+            (c for c in confusion
+             if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
+            None,
+        )
+        assert simple_to_complex is not None
+        assert simple_to_complex["count"] == 1, (
+            "selector override to 'va' only should reflect 1 unique misroute (e1), not 2"
+        )

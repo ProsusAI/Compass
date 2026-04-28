@@ -615,6 +615,69 @@ class TestMissingMetricBehavior:
         assert len(briefing.candidates) == 1
         assert briefing.candidates[0].delta_vs_parent.quality_delta is None
 
+    def test_confusion_analysis_populated_when_results_provided(self) -> None:
+        from odysseus.eval.models import EvalResult, Example, Expected, ModelCostQuality
+
+        search_state = _make_search_state(
+            round=2,
+            elite_set=[
+                Candidate(prompt_version="v1", parent_version=None,
+                          quality_score=0.80, cost=1.50, round_introduced=1),
+            ],
+        )
+        score_reports = {
+            "v2": _make_report_dict(accuracy=0.85, cost=1.20),
+            "v1": _make_report_dict(accuracy=0.80, cost=1.50),
+        }
+        routes = {
+            "simple": ModelCostQuality(cost=0.01, quality_score=0.80),
+            "complex": ModelCostQuality(cost=0.10, quality_score=0.95),
+        }
+        examples = [
+            Example(id="e1", input="a", expected=Expected(route="simple", routes=routes)),
+            Example(id="e2", input="b", expected=Expected(route="simple", routes=routes)),
+        ]
+        eval_results = [
+            EvalResult(example_id="e1", model="test", output={"route": "complex"},
+                       error=None, latency_ms=100, retries=0, token_usage=None, cost=0.01),
+            EvalResult(example_id="e2", model="test", output={"route": "simple"},
+                       error=None, latency_ms=100, retries=0, token_usage=None, cost=0.01),
+        ]
+        briefing = build_review_briefing(
+            search_state=search_state,
+            score_reports=score_reports,
+            historical_reports={1: {"v1": score_reports["v1"]}},
+            prompt_texts={"v1": "p1", "v2": "p2"},
+            directive_history=[],
+            candidate_versions=["v2"],
+            parent_versions={"v2": "v1"},
+            eval_results=eval_results,
+            examples=examples,
+        )
+        assert len(briefing.confusion_analysis) == 1
+        assert briefing.confusion_analysis[0].true_route == "simple"
+        assert briefing.confusion_analysis[0].predicted_route == "complex"
+
+    def test_confusion_analysis_empty_when_no_results(self) -> None:
+        search_state = _make_search_state(round=2, elite_set=[
+            Candidate(prompt_version="v1", parent_version=None,
+                      quality_score=0.80, cost=1.50, round_introduced=1),
+        ])
+        score_reports = {
+            "v2": _make_report_dict(accuracy=0.85),
+            "v1": _make_report_dict(accuracy=0.80),
+        }
+        briefing = build_review_briefing(
+            search_state=search_state,
+            score_reports=score_reports,
+            historical_reports={1: {"v1": score_reports["v1"]}},
+            prompt_texts={"v1": "p1", "v2": "p2"},
+            directive_history=[],
+            candidate_versions=["v2"],
+            parent_versions={"v2": "v1"},
+        )
+        assert briefing.confusion_analysis == []
+
 
 class TestGenerateExecutiveSummary:
     def _make_briefing(self, **overrides: Any) -> Any:
@@ -722,6 +785,20 @@ class TestGenerateExecutiveSummary:
         briefing = self._make_briefing(candidates=[])
         summary = generate_executive_summary(briefing)
         assert "Round 3" in summary
+
+    def test_includes_confusion_analysis(self) -> None:
+        from odysseus.agents.review.models import ConfusionImpact
+        briefing = self._make_briefing()
+        ci = ConfusionImpact(
+            true_route="simple", predicted_route="complex", count=10, support=40,
+            misroute_rate=0.25, cost_impact=0.50, quality_impact=-0.10,
+            avg_cost_impact=0.05, avg_quality_impact=-0.01,
+            persistence_rate=0.85, persistent_count=8, volatile_count=2,
+        )
+        briefing = briefing.model_copy(update={"confusion_analysis": [ci]})
+        summary = generate_executive_summary(briefing)
+        assert "CONFUSION: simple->complex" in summary
+        assert "structural" in summary
 
 
 class TestExampleSummaryInputText:
