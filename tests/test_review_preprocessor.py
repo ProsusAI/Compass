@@ -12,6 +12,7 @@ from odysseus.agents.review.preprocessor import (
     _delta,
     _extract_metric,
     build_candidate_comparisons,
+    build_confusion_analysis,
     build_review_briefing,
     compute_diminishing_returns,
     compute_diversity_metrics,
@@ -820,3 +821,313 @@ class TestBuildReviewBriefingStagnationSignal:
         assert briefing.acceptance_history is None
         assert briefing.hypervolume is None
         assert briefing.reference_point is None
+
+
+class TestBuildConfusionAnalysis:
+    def _make_example(self, eid: str, route: str, routes: dict[str, tuple[float, float]]) -> Any:
+        """Helper: routes dict is {route_name: (cost, quality_score)}."""
+        from odysseus.eval.models import Example, Expected, ModelCostQuality
+
+        return Example(
+            id=eid,
+            input=f"input for {eid}",
+            expected=Expected(
+                route=route,
+                routes={name: ModelCostQuality(cost=c, quality_score=q) for name, (c, q) in routes.items()},
+            ),
+        )
+
+    def _make_result(self, eid: str, route: str) -> Any:
+        from odysseus.eval.models import EvalResult
+
+        return EvalResult(
+            example_id=eid,
+            model="test",
+            output={"route": route},
+            error=None,
+            latency_ms=100.0,
+            retries=0,
+            token_usage=None,
+            cost=0.01,
+        )
+
+    @staticmethod
+    def _write_results(run_dir: Any, version: str, results: list[Any]) -> None:
+        """Write results.jsonl for a version to disk."""
+        import json
+
+        eval_dir = run_dir / "eval" / version
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        with open(eval_dir / "results.jsonl", "w") as f:
+            f.write(
+                json.dumps(
+                    {
+                        "__meta__": "run_fingerprint",
+                        "prompt_version": version,
+                        "backend": "test",
+                        "data_source": "test",
+                    }
+                )
+                + "\n"
+            )
+            for r in results:
+                f.write(r.model_dump_json() + "\n")
+
+    def test_basic_impact_computation(self) -> None:
+        """3 examples (2 simple, 1 complex), 1 misrouted (simple->complex)."""
+        examples = [
+            self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+            self._make_example("e2", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+            self._make_example("e3", "complex", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+        ]
+        results = [
+            self._make_result("e1", "complex"),  # misrouted
+            self._make_result("e2", "simple"),   # correct
+            self._make_result("e3", "complex"),  # correct
+        ]
+        cells = build_confusion_analysis(
+            eval_results=results,
+            examples=examples,
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert len(cells) == 1
+        cell = cells[0]
+        assert cell.true_route == "simple"
+        assert cell.predicted_route == "complex"
+        assert cell.count == 1
+        assert cell.support == 2  # 2 examples with true_route=simple
+        assert cell.cost_impact == pytest.approx(0.09)   # 0.10 - 0.01
+        assert cell.quality_impact == pytest.approx(0.15)  # 0.95 - 0.80
+
+    def test_empty_results(self) -> None:
+        """Empty inputs -> empty list."""
+        cells = build_confusion_analysis(
+            eval_results=[],
+            examples=[],
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert cells == []
+
+    def test_no_misclassifications(self) -> None:
+        """All correct -> empty list."""
+        examples = [
+            self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+            self._make_example("e2", "complex", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+        ]
+        results = [
+            self._make_result("e1", "simple"),
+            self._make_result("e2", "complex"),
+        ]
+        cells = build_confusion_analysis(
+            eval_results=results,
+            examples=examples,
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert cells == []
+
+    def test_hallucinated_route_excluded(self) -> None:
+        """Predicted route not in example's routes dict -> excluded."""
+        examples = [
+            self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+        ]
+        results = [
+            self._make_result("e1", "unknown_route"),  # not in routes dict
+        ]
+        cells = build_confusion_analysis(
+            eval_results=results,
+            examples=examples,
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert cells == []
+
+    def test_missing_cost_data(self) -> None:
+        """Routes with cost=None and quality_score=None -> cost_impact=0.0, quality_impact=0.0."""
+        from odysseus.eval.models import Example, Expected, ModelCostQuality
+
+        examples = [
+            Example(
+                id="e1",
+                input="input",
+                expected=Expected(
+                    route="simple",
+                    routes={
+                        "simple": ModelCostQuality(cost=None, quality_score=None),
+                        "complex": ModelCostQuality(cost=None, quality_score=None),
+                    },
+                ),
+            )
+        ]
+        results = [self._make_result("e1", "complex")]
+        cells = build_confusion_analysis(
+            eval_results=results,
+            examples=examples,
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert len(cells) == 1
+        assert cells[0].cost_impact == pytest.approx(0.0)
+        assert cells[0].quality_impact == pytest.approx(0.0)
+
+    def test_sorted_by_impact_and_capped(self) -> None:
+        """Create 25+ distinct cells, verify len <= 20 and sorted descending by impact."""
+        from odysseus.eval.models import EvalResult, Example, Expected, ModelCostQuality
+
+        examples = []
+        results = []
+        # Create 25 distinct (true, predicted) pairs each with one example
+        for i in range(25):
+            true_route = f"route_true_{i}"
+            pred_route = f"route_pred_{i}"
+            cost_diff = (i + 1) * 0.01
+            examples.append(
+                Example(
+                    id=f"e{i}",
+                    input=f"input {i}",
+                    expected=Expected(
+                        route=true_route,
+                        routes={
+                            true_route: ModelCostQuality(cost=0.01, quality_score=0.5),
+                            pred_route: ModelCostQuality(cost=0.01 + cost_diff, quality_score=0.5),
+                        },
+                    ),
+                )
+            )
+            results.append(
+                EvalResult(
+                    example_id=f"e{i}",
+                    model="test",
+                    output={"route": pred_route},
+                    error=None,
+                    latency_ms=100.0,
+                    retries=0,
+                    token_usage=None,
+                    cost=0.01,
+                )
+            )
+
+        cells = build_confusion_analysis(
+            eval_results=results,
+            examples=examples,
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert len(cells) <= 20
+        # Verify sorted descending by abs(cost_impact) + abs(quality_impact)
+        impacts = [abs(c.cost_impact) + abs(c.quality_impact) for c in cells]
+        assert impacts == sorted(impacts, reverse=True)
+
+    # --- Task 4: Persistence tests ---
+
+    def test_persistence_across_versions(self, tmp_path: Any) -> None:
+        """Both simple misrouted in best candidate. v1: e1 wrong, e2 correct. v2: both wrong.
+        e1 persistent (wrong in all: v1+v2), e2 volatile (correct in v1)."""
+        examples = [
+            self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+            self._make_example("e2", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+        ]
+        best_results = [
+            self._make_result("e1", "complex"),
+            self._make_result("e2", "complex"),
+        ]
+        # v1: e1 wrong, e2 correct
+        v1_results = [
+            self._make_result("e1", "complex"),
+            self._make_result("e2", "simple"),
+        ]
+        # v2: both wrong
+        v2_results = [
+            self._make_result("e1", "complex"),
+            self._make_result("e2", "complex"),
+        ]
+        self._write_results(tmp_path, "v1", v1_results)
+        self._write_results(tmp_path, "v2", v2_results)
+
+        cells = build_confusion_analysis(
+            eval_results=best_results,
+            examples=examples,
+            elite_versions=["v1"],
+            parent_versions=["v2"],
+            run_dir=tmp_path,
+        )
+        assert len(cells) == 1
+        cell = cells[0]
+        assert cell.count == 2
+        assert cell.persistent_count == 1  # e1 persistent, e2 volatile
+        assert cell.volatile_count == 1
+        assert cell.persistence_rate == pytest.approx(0.5)
+
+    def test_persistence_missing_results_file(self, tmp_path: Any) -> None:
+        """Elite version points to nonexistent file -> skipped, persistence_rate=0.0."""
+        examples = [
+            self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+        ]
+        best_results = [self._make_result("e1", "complex")]
+
+        cells = build_confusion_analysis(
+            eval_results=best_results,
+            examples=examples,
+            elite_versions=["v_nonexistent"],
+            parent_versions=[],
+            run_dir=tmp_path,
+        )
+        assert len(cells) == 1
+        assert cells[0].persistence_rate == pytest.approx(0.0)
+
+    def test_persistence_single_version_fallback(self, tmp_path: Any) -> None:
+        """No elite/parent versions, run_dir=None -> persistence_rate=0.0."""
+        examples = [
+            self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}),
+        ]
+        best_results = [self._make_result("e1", "complex")]
+
+        cells = build_confusion_analysis(
+            eval_results=best_results,
+            examples=examples,
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert len(cells) == 1
+        assert cells[0].persistence_rate == pytest.approx(0.0)
+
+    def test_dedupes_overlapping_misroutes(self) -> None:
+        """Three EvalResults with same example_id and same wrong route.
+
+        Dedup ensures count == 1 (not 3), and cost/quality impacts reflect
+        a single-example contribution.
+        """
+        example = self._make_example(
+            "e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}
+        )
+        examples = [example]
+        # Three results from three "candidates" — same example_id, same wrong route
+        results = [
+            self._make_result("e1", "complex"),
+            self._make_result("e1", "complex"),
+            self._make_result("e1", "complex"),
+        ]
+        cells = build_confusion_analysis(
+            eval_results=results,
+            examples=examples,
+            elite_versions=[],
+            parent_versions=[],
+            run_dir=None,
+        )
+        assert len(cells) == 1
+        cell = cells[0]
+        support = 1  # only one example with true_route=simple
+        assert cell.count == 1  # dedup: not 3
+        assert cell.misroute_rate == pytest.approx(1 / support)
+        # Single-example cost and quality deltas
+        assert cell.cost_impact == pytest.approx(0.10 - 0.01)   # 0.09
+        assert cell.quality_impact == pytest.approx(0.95 - 0.80)  # 0.15

@@ -7,11 +7,14 @@ beyond stdlib.
 
 from __future__ import annotations
 
+import json
 import logging
 import operator as _operator_mod
 import re
 import statistics
+from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from odysseus.agents.prompt_builder.search import Candidate
@@ -20,6 +23,7 @@ from odysseus.agents.review.models import (
     CandidateAnalysis,
     ChildVariant,
     ClassRecallEntry,
+    ConfusionImpact,
     DiminishingReturns,
     DirectiveOutcome,
     DiversityMetrics,
@@ -31,7 +35,7 @@ from odysseus.agents.review.models import (
     UserTargetProgress,
 )
 from odysseus.agents.routing_context import RoutingContext
-from odysseus.eval.models import ScoreReport
+from odysseus.eval.models import EvalResult, Example, ScoreReport
 
 _log = logging.getLogger(__name__)
 
@@ -705,6 +709,205 @@ def generate_executive_summary(
         )
 
     return "\n".join(lines)
+
+
+def _compute_persistence(
+    *,
+    cell_samples: dict[tuple[str, str], list[str]],
+    examples_by_id: dict[str, Example],
+    elite_versions: list[str],
+    parent_versions: list[str],
+    run_dir: Path | None,
+    max_versions: int = 6,
+) -> dict[tuple[str, str], tuple[int, int]]:
+    """Compute (persistent_count, count) for each confusion cell.
+
+    persistent_count = number of samples that are wrong in ALL loaded versions.
+    """
+    # If no run_dir, return zeros
+    if run_dir is None:
+        return {key: (0, len(ids)) for key, ids in cell_samples.items()}
+
+    # Collect and deduplicate versions to load, cap at max_versions
+    all_versions: list[str] = []
+    seen: set[str] = set()
+    for v in elite_versions + parent_versions:
+        if v not in seen:
+            seen.add(v)
+            all_versions.append(v)
+    versions_to_load = all_versions[:max_versions]
+
+    # Load misclassified example_ids per version
+    # version -> set of example_ids that were wrong in that version
+    version_wrong: dict[str, set[str]] = {}
+    loaded_versions: list[str] = []
+    for version in versions_to_load:
+        results_path = run_dir / "eval" / version / "results.jsonl"
+        if not results_path.exists():
+            continue
+        wrong_ids: set[str] = set()
+        with open(results_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # Skip __meta__ fingerprint lines
+                if row.get("__meta__"):
+                    continue
+                eid = row.get("example_id")
+                output = row.get("output")
+                if eid is None:
+                    continue
+                predicted = output.get("route") if isinstance(output, dict) else None
+                # Look up expected route
+                example = examples_by_id.get(eid)
+                if example is None:
+                    continue
+                expected = example.expected.route
+                if predicted != expected:
+                    wrong_ids.add(eid)
+        version_wrong[version] = wrong_ids
+        loaded_versions.append(version)
+
+    # If no versions loaded, return zeros
+    if not loaded_versions:
+        return {key: (0, len(ids)) for key, ids in cell_samples.items()}
+
+    result: dict[tuple[str, str], tuple[int, int]] = {}
+    for cell_key, sample_ids in cell_samples.items():
+        count = len(sample_ids)
+        persistent = sum(
+            1 for eid in sample_ids
+            if all(eid in version_wrong[v] for v in loaded_versions)
+        )
+        result[cell_key] = (persistent, count)
+    return result
+
+
+def build_confusion_analysis(
+    *,
+    eval_results: list[EvalResult],
+    examples: list[Example],
+    elite_versions: list[str],
+    parent_versions: list[str],
+    run_dir: Path | None,
+    max_cells: int = 20,
+) -> list[ConfusionImpact]:
+    """Build an impact-weighted confusion analysis from eval results.
+
+    Accepts concatenated results from one or more candidates. Deduplicates
+    by (example_id, true_route, predicted_route) so each unique misrouted
+    example contributes to a cell at most once, keeping counts candidate-
+    count-independent.
+
+    Returns at most max_cells ConfusionImpact objects sorted by
+    abs(cost_impact) + abs(quality_impact) descending.
+    """
+    # 1. Build examples_by_id lookup
+    examples_by_id: dict[str, Example] = {ex.id: ex for ex in examples}
+
+    # 2. Collect misclassification data per (true_route, predicted_route) cell
+    #    Dedup by (example_id, true_route, predicted_route) triple.
+    cell_samples: dict[tuple[str, str], list[str]] = {}
+    cell_cost_deltas: dict[tuple[str, str], list[float]] = {}
+    cell_quality_deltas: dict[tuple[str, str], list[float]] = {}
+    seen_triples: set[tuple[str, str, str]] = set()
+
+    for result in eval_results:
+        if result.output is None:
+            continue
+        predicted = result.output.get("route")
+        if predicted is None:
+            continue
+        example = examples_by_id.get(result.example_id)
+        if example is None:
+            continue
+        expected = example.expected.route
+        if predicted == expected:
+            continue
+        # Only include if predicted route exists in the example's routes dict
+        routes = example.expected.routes
+        if predicted not in routes:
+            continue
+
+        # Dedup: skip if this (example_id, true_route, predicted_route) triple was seen
+        triple = (result.example_id, expected, predicted)
+        if triple in seen_triples:
+            continue
+        seen_triples.add(triple)
+
+        cost_delta = (
+            (routes[predicted].cost or 0.0) - (routes[expected].cost or 0.0)
+            if expected in routes
+            else 0.0
+        )
+        quality_delta = (
+            (routes[predicted].quality_score or 0.0) - (routes[expected].quality_score or 0.0)
+            if expected in routes
+            else 0.0
+        )
+
+        cell_key = (expected, predicted)
+        cell_samples.setdefault(cell_key, []).append(result.example_id)
+        cell_cost_deltas.setdefault(cell_key, []).append(cost_delta)
+        cell_quality_deltas.setdefault(cell_key, []).append(quality_delta)
+
+    if not cell_samples:
+        return []
+
+    # 3. Compute support per true_route from ALL results (count all examples)
+    support_counter: Counter[str] = Counter()
+    for ex in examples:
+        support_counter[ex.expected.route] += 1
+
+    # 4. Compute persistence
+    persistence = _compute_persistence(
+        cell_samples=cell_samples,
+        examples_by_id=examples_by_id,
+        elite_versions=elite_versions,
+        parent_versions=parent_versions,
+        run_dir=run_dir,
+    )
+
+    # 5. Build ConfusionImpact objects
+    impacts: list[ConfusionImpact] = []
+    for cell_key, sample_ids in cell_samples.items():
+        true_route, predicted_route = cell_key
+        count = len(sample_ids)
+        support = support_counter[true_route]
+        cost_deltas = cell_cost_deltas[cell_key]
+        quality_deltas = cell_quality_deltas[cell_key]
+        total_cost = sum(cost_deltas)
+        total_quality = sum(quality_deltas)
+        avg_cost = total_cost / count if count else 0.0
+        avg_quality = total_quality / count if count else 0.0
+        misroute_rate = count / support if support > 0 else 0.0
+        persistent_count, _ = persistence.get(cell_key, (0, count))
+        volatile_count = count - persistent_count
+        persistence_rate = persistent_count / count if count > 0 else 0.0
+
+        impacts.append(ConfusionImpact(
+            true_route=true_route,
+            predicted_route=predicted_route,
+            count=count,
+            support=support,
+            misroute_rate=misroute_rate,
+            cost_impact=total_cost,
+            quality_impact=total_quality,
+            avg_cost_impact=avg_cost,
+            avg_quality_impact=avg_quality,
+            persistence_rate=persistence_rate,
+            persistent_count=persistent_count,
+            volatile_count=volatile_count,
+        ))
+
+    # Sort by abs(cost_impact) + abs(quality_impact) descending, cap at max_cells
+    impacts.sort(key=lambda c: abs(c.cost_impact) + abs(c.quality_impact), reverse=True)
+    return impacts[:max_cells]
 
 
 def build_review_briefing(
