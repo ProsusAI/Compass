@@ -193,9 +193,11 @@ def _build_optimization_journey(
     best_cost: list[float] = []
     front_sizes: list[int] = []
     for rh in round_history:
-        front_sizes.append(rh.get("front_size", 0))
+        # Accept both new name (elite_size) and old name (front_size) for backward compat
+        front_sizes.append(rh.get("elite_size", rh.get("front_size", 0)))
 
-    pareto_front: list[dict] = search_state.get("pareto_front", [])
+    # Accept both new name (elite_set) and old name (pareto_front) for backward compat
+    pareto_front: list[dict] = search_state.get("elite_set") or search_state.get("pareto_front", [])
     _build_quality_cost_trajectory(pareto_front, total_rounds, best_quality, best_cost)
 
     oracle_cost: float | None = None
@@ -249,7 +251,8 @@ def _extract_pareto_front(search_state: dict | list | None) -> list[PromptSummar
     """Extract Pareto front members as PromptSummary list."""
     if not search_state or not isinstance(search_state, dict):
         return []
-    front = search_state.get("pareto_front", [])
+    # Accept both new name (elite_set) and old name (pareto_front) for backward compat
+    front = search_state.get("elite_set") or search_state.get("pareto_front", [])
     return [
         PromptSummary(
             version=c.get("prompt_version", "unknown"),

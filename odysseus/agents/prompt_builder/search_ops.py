@@ -205,7 +205,7 @@ def register_candidate(
     pending = _load_pending(run_id, output_dir)
 
     # Collect all known versions
-    front_versions = {c.prompt_version for c in state.pareto_front}
+    front_versions = {c.prompt_version for c in state.elite_set}
     history_versions: set[str] = set()
     for summary in state.round_history:
         history_versions.update(summary.candidates_evaluated)
@@ -255,10 +255,10 @@ def get_candidate_example_ids(
     if output_dir is None:
         output_dir = _default_output_dir()
     state = _load_state(run_id, output_dir)
-    for candidate in state.pareto_front:
+    for candidate in state.elite_set:
         if candidate.prompt_version == prompt_version:
             return candidate.example_ids
-    raise ValueError(f"prompt_version '{prompt_version}' not found on Pareto front")
+    raise ValueError(f"prompt_version '{prompt_version}' not found on elite set")
 
 
 # ---------------------------------------------------------------------------
@@ -348,11 +348,11 @@ def advance_round(
 
     new_round = state.round + 1
 
-    # Update Pareto front
-    new_front, new_pareto_points = update_pareto_front(state.pareto_front, pending)
+    # Update elite set
+    new_front, new_elite_entries = update_pareto_front(state.elite_set, pending)
 
     # Update stagnation
-    improvement = compute_front_improvement(state.pareto_front, new_front)
+    improvement = compute_front_improvement(state.elite_set, new_front)
     new_stagnation_count = 0 if improvement > state.epsilon else state.stagnation_count + 1
 
     # Determine mutation mode
@@ -397,12 +397,12 @@ def advance_round(
     summary = RoundSummary(
         round=new_round,
         candidates_evaluated=candidates_evaluated,
-        new_pareto_points=new_pareto_points,
-        front_size=len(new_front),
+        new_elite_entries=new_elite_entries,
+        elite_size=len(new_front),
         mutation_mode=new_mutation_mode,
         stagnation_count=new_stagnation_count,
         converged=converged,
-        front_improvement=improvement,
+        target_improvement=improvement,
         front_quality_spread=front_quality_spread,
         round_routing_cost=round_routing_cost,
         convergence_reason=convergence_reason,
@@ -412,7 +412,7 @@ def advance_round(
     updated_state = state.model_copy(
         update={
             "round": new_round,
-            "pareto_front": new_front,
+            "elite_set": new_front,
             "round_history": [*state.round_history, summary],
             "stagnation_count": new_stagnation_count,
             "convergence_limit": new_convergence_limit,

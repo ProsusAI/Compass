@@ -488,7 +488,7 @@ def generate_executive_summary(briefing: ReviewBriefing, primary_metric: str = "
 
     # Round and scale
     n_candidates = len(briefing.candidates)
-    n_front = len(briefing.pareto_front)
+    n_front = len(briefing.elite_set)
     lines.append(f"Round {briefing.round}. {n_candidates} candidate(s) evaluated against {n_front} front member(s).")
 
     # Best candidate by quality delta vs parent
@@ -576,7 +576,7 @@ def build_review_briefing(
     """
     current_round: int = search_state.round
     primary_metric: str = search_state.primary_metric_name or "accuracy"
-    pareto_front = search_state.pareto_front
+    pareto_front = search_state.elite_set
     front_versions = [c.prompt_version for c in pareto_front]
 
     # Mutation descriptions for current candidates
@@ -659,7 +659,7 @@ def build_review_briefing(
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
-        pareto_front=pareto_front,
+        elite_set=pareto_front,
         per_class_recall=per_class_recall,
         diversity_metrics=diversity_metrics,
         diminishing_returns=diminishing_returns,

@@ -71,7 +71,7 @@ async def build_review_briefing_tool(
 
     # Load score reports for current candidates + front + parents
     all_versions: set[str] = set(candidate_versions)
-    for c in state.pareto_front:
+    for c in state.elite_set:
         all_versions.add(c.prompt_version)
     for parent in parent_versions.values():
         if parent is not None:
@@ -226,8 +226,8 @@ async def record_directive_outcomes_tool(
                 summary = RoundSummary(
                     round=state.round,
                     candidates_evaluated=[c.prompt_version for c in pending],
-                    new_pareto_points=0,
-                    front_size=len(state.pareto_front),
+                    new_elite_entries=0,
+                    elite_size=len(state.elite_set),
                     mutation_mode=state.mutation_mode,
                     stagnation_count=state.stagnation_count,
                     converged=True,

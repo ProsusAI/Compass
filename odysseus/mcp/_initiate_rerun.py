@@ -55,13 +55,15 @@ def initiate_rerun_logic(
 
     # Select source prompt version
     if source_prompt_version is None:
-        pareto_front_data: list[dict] = data.get("pareto_front", [])
-        if not pareto_front_data:
+        # Look for elite_set first (new canonical key), fall back to pareto_front
+        # for state files written before the cross-branch rename.
+        elite_set_data: list[dict] = data.get("elite_set") or data.get("pareto_front", [])
+        if not elite_set_data:
             raise ValueError(
-                f"No candidates on Pareto front for run '{run_id}'. "
+                f"No candidates on elite set for run '{run_id}'. "
                 f"Cannot select best prompt version automatically."
             )
-        front = [Candidate.model_validate(c) for c in pareto_front_data]
+        front = [Candidate.model_validate(c) for c in elite_set_data]
         source_prompt_version = select_best(front)
 
     # Rename search_state.json to search_state_original.json so _check_stage_4

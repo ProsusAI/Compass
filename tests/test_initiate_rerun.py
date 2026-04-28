@@ -128,3 +128,22 @@ class TestInitiateRerun:
         (tmp_path / "r1" / "input" / "input_report.md").write_text("# Report")
         with pytest.raises(ValueError, match="Stage 4 is not complete"):
             _run_initiate_rerun(tmp_path, "r1")
+
+    def test_elite_set_key_takes_precedence_over_pareto_front(self, tmp_path: Path) -> None:
+        """State files with elite_set use that; pareto_front is only a fallback."""
+        _setup_stage4_converged_with_pareto(tmp_path, "r2")
+        # Overwrite the state file to use the new elite_set key
+        search_dir = tmp_path / "r2" / "search"
+        state = json.loads((search_dir / "search_state.json").read_text())
+        # Move pareto_front → elite_set (as the new code serialises it)
+        state["elite_set"] = state.pop("pareto_front")
+        (search_dir / "search_state.json").write_text(json.dumps(state))
+        result = _run_initiate_rerun(tmp_path, "r2")
+        assert result["source_prompt_version"] == "v3"
+
+    def test_pareto_front_fallback_loads_old_state_files(self, tmp_path: Path) -> None:
+        """Old state files that only have pareto_front are still accepted."""
+        _setup_stage4_converged_with_pareto(tmp_path, "r3")
+        # Fixture already writes pareto_front (no elite_set key) — should work as-is
+        result = _run_initiate_rerun(tmp_path, "r3")
+        assert result["source_prompt_version"] == "v3"

@@ -347,7 +347,7 @@ class TestReviewBriefing:
         return ReviewBriefing(
             round=2,
             candidates=[candidate],
-            pareto_front=[front_member],
+            elite_set=[front_member],
             per_class_recall={
                 "route_a": ClassRecallEntry(recall=0.85, support=50, trend=[0.80, 0.85], regression_flag=False)
             },
@@ -375,7 +375,7 @@ class TestReviewBriefing:
         briefing = self._make_briefing()
         assert briefing.round == 2
         assert len(briefing.candidates) == 1
-        assert len(briefing.pareto_front) == 1
+        assert len(briefing.elite_set) == 1
         assert "route_a" in briefing.per_class_recall
 
     def test_empty_collections(self) -> None:
@@ -390,7 +390,7 @@ class TestReviewBriefing:
         briefing = ReviewBriefing(
             round=1,
             candidates=[],
-            pareto_front=[],
+            elite_set=[],
             per_class_recall={},
             diversity_metrics=DiversityMetrics(
                 example_overlap_ratio=0.0,

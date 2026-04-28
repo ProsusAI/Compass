@@ -14,6 +14,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ---------------------------------------------------------------------------
+# Type alias for algorithm discriminator
+# ---------------------------------------------------------------------------
+
+AlgorithmType = Literal["hill_climb", "beam", "sms_emoa", "emosa"]
+
+# ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
 
@@ -73,29 +79,88 @@ class Candidate(BaseModel):
 
 
 class RoundSummary(BaseModel):
-    """Summary of a single search round."""
+    """Summary of a single search round.
+
+    Field names follow the unified cross-branch schema:
+    - ``new_elite_entries`` (was ``new_pareto_points`` on main)
+    - ``elite_size`` (was ``front_size`` on main)
+    - ``target_improvement`` (was ``front_improvement`` on main)
+
+    Backward-compat: a ``model_validator(mode="before")`` maps the old names to
+    the new ones so that state files produced before this rename still load
+    without a migration step.
+
+    Strategy-specific optional fields default to ``None``; each strategy fills
+    only what is meaningful for its algorithm.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     round: int = Field(ge=1)
     candidates_evaluated: list[str]
-    new_pareto_points: int
-    front_size: int
-    mutation_mode: Literal["targeted", "exploratory"]
-    stagnation_count: int
+    new_elite_entries: int
+    elite_size: int
+    # Hill-climb specific — Optional since other strategies do not populate them
+    mutation_mode: Literal["targeted", "exploratory"] | None = None
+    stagnation_count: int | None = None
     converged: bool = False
-    front_improvement: float = 0.0
+    target_improvement: float = 0.0
     front_quality_spread: float = 0.0
     round_routing_cost: float = 0.0
     convergence_reason: str | None = None
+    # Strategy-specific optional fields
+    hypervolume: float | None = None
+    reference_point: tuple[float, float] | None = None
+    acceptance_rates: dict[int, float] | None = None
+    reduce_case: Literal["singleton", "dominated", "delta_s_argmin"] | None = None
+    evicted_version: str | None = None
+    temperature: float | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_old_field_names(cls, data: Any) -> Any:
+        """Map old serialised field names to the new canonical names.
+
+        Handles state files written before the cross-branch rename:
+        - ``new_pareto_points`` → ``new_elite_entries``
+        - ``front_size`` → ``elite_size``
+        - ``front_improvement`` → ``target_improvement``
+        """
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        if "new_pareto_points" in data and "new_elite_entries" not in data:
+            data["new_elite_entries"] = data.pop("new_pareto_points")
+        if "front_size" in data and "elite_size" not in data:
+            data["elite_size"] = data.pop("front_size")
+        if "front_improvement" in data and "target_improvement" not in data:
+            data["target_improvement"] = data.pop("front_improvement")
+        return data
 
 
 class SearchState(BaseModel):
-    """Full mutable state for the Prompt Builder search loop."""
+    """Full mutable state for the Prompt Builder search loop.
+
+    The ``elite_set`` field (formerly ``pareto_front`` on main) holds the
+    current non-dominated candidate set.  It is renamed to match the three
+    feature branches and to be algorithm-agnostic.
+
+    Backward-compat: a ``model_validator(mode="before")`` maps old
+    ``pareto_front`` keys to ``elite_set`` so that state files written before
+    this rename still load without error.
+
+    The ``algorithm`` discriminator records which search strategy produced this
+    state; ``algorithm_state`` is a free-form pocket for strategy-specific
+    sub-state (e.g. beam_width for beam, AnnealingState dict for EMOSA).
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     search_state_id: str
     backend: str
     primary_metric_name: str | None = None
     round: int = 0
-    pareto_front: list[Candidate] = Field(default_factory=list)
+    elite_set: list[Candidate] = Field(default_factory=list)
     round_history: list[RoundSummary] = Field(default_factory=list)
     stagnation_count: int = 0
     stagnation_limit: int = 3
@@ -106,6 +171,9 @@ class SearchState(BaseModel):
     loop_phase: Literal["build", "review"] = "review"
     epsilon: float = 0.001
     total_routing_cost: float = 0.0
+    # Cross-branch generalization fields
+    algorithm: AlgorithmType = "hill_climb"
+    algorithm_state: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("search_state_id")
     @classmethod
@@ -113,6 +181,23 @@ class SearchState(BaseModel):
         if not v:
             raise ValueError("search_state_id must be non-empty")
         return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_pareto_front(cls, data: Any) -> Any:
+        """Map old ``pareto_front`` key to ``elite_set``.
+
+        State files written before the cross-branch rename carry
+        ``"pareto_front": [...]`` instead of ``"elite_set": [...]``.
+        This validator transparently promotes the old key so those files
+        load without a migration step.
+        """
+        if not isinstance(data, dict):
+            return data
+        if "pareto_front" in data and "elite_set" not in data:
+            data = dict(data)
+            data["elite_set"] = data.pop("pareto_front")
+        return data
 
     @model_validator(mode="after")
     def convergence_limit_gt_stagnation_limit(self) -> SearchState:

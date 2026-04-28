@@ -90,7 +90,7 @@ class TestSearchStateTools:
 
             adv = json.loads(await advance_round_tool(_RUN_ID))
             assert adv["round"] == 1
-            assert adv["new_pareto_points"] == 1
+            assert adv["new_elite_entries"] == 1
 
             state = json.loads(await get_search_state_tool(_RUN_ID))
             assert state["round"] == 1
@@ -161,14 +161,14 @@ class TestSearchStateTools:
             await register_candidate_tool(_RUN_ID, "v1")
             await record_eval_result_tool(_RUN_ID, "v1", 0.8, 0.1)
             r1 = json.loads(await advance_round_tool(_RUN_ID))
-            assert r1["new_pareto_points"] == 1
+            assert r1["new_elite_entries"] == 1
             assert r1["stagnation_count"] == 0
 
             # Round 2: dominated candidate - no improvement
             await register_candidate_tool(_RUN_ID, "v2")
             await record_eval_result_tool(_RUN_ID, "v2", 0.5, 0.5)
             r2 = json.loads(await advance_round_tool(_RUN_ID))
-            assert r2["new_pareto_points"] == 0
+            assert r2["new_elite_entries"] == 0
             assert r2["stagnation_count"] == 1
 
 

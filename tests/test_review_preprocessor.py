@@ -518,7 +518,7 @@ def _make_search_state(**overrides: Any) -> SearchState:
         search_state_id="test-search",
         backend="anthropic",
         round=1,
-        pareto_front=[],
+        elite_set=[],
         round_history=[],
         stagnation_count=0,
         stagnation_limit=3,
@@ -536,7 +536,7 @@ class TestBuildReviewBriefing:
         """Integration test: all components assembled into a ReviewBriefing."""
         search_state = _make_search_state(
             round=2,
-            pareto_front=[
+            elite_set=[
                 Candidate(
                     prompt_version="v1",
                     parent_version=None,
@@ -724,7 +724,7 @@ class TestMissingMetricBehavior:
         """End-to-end: briefing assembles without crashing when a candidate has no primary metric."""
         search_state = _make_search_state(
             round=2,
-            pareto_front=[
+            elite_set=[
                 Candidate(
                     prompt_version="v1",
                     parent_version=None,
@@ -795,7 +795,7 @@ class TestGenerateExecutiveSummary:
                     delta_vs_front=[],
                 ),
             ],
-            pareto_front=[],
+            elite_set=[],
             per_class_recall={},
             diversity_metrics=DiversityMetrics(
                 example_overlap_ratio=0.3,

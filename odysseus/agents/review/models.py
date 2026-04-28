@@ -178,7 +178,7 @@ class ReviewBriefing(BaseModel):
 
     round: int
     candidates: list[CandidateAnalysis]
-    pareto_front: list[Candidate]
+    elite_set: list[Candidate]
     per_class_recall: dict[str, ClassRecallEntry]
     diversity_metrics: DiversityMetrics
     diminishing_returns: DiminishingReturns

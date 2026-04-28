@@ -164,10 +164,10 @@ async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
     )
 
     state = get_search_state(run_id=run_id)
-    if not state.pareto_front:
-        raise ToolError("No Pareto front candidates found in search state.")
+    if not state.elite_set:
+        raise ToolError("No elite set candidates found in search state.")
 
-    auto_version = select_best(state.pareto_front)
+    auto_version = select_best(state.elite_set)
 
     candidates = sorted(
         [
@@ -178,7 +178,7 @@ async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
                 "round_introduced": c.round_introduced,
                 "is_auto_selected": c.prompt_version == auto_version,
             }
-            for c in state.pareto_front
+            for c in state.elite_set
         ],
         key=lambda c: (-c["quality_score"], c["cost"]),
     )
@@ -246,14 +246,14 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
 
     state = get_search_state(run_id=run_id)
 
-    if not state.pareto_front:
-        raise ToolError("No candidates on the Pareto front — cannot determine best prompt.")
+    if not state.elite_set:
+        raise ToolError("No candidates on the elite set — cannot determine best prompt.")
 
-    # Validate user choice is on the Pareto front
-    valid_versions = {c.prompt_version for c in state.pareto_front}
+    # Validate user choice is on the elite set
+    valid_versions = {c.prompt_version for c in state.elite_set}
     if prompt_version not in valid_versions:
         raise ToolError(
-            f"Prompt version '{prompt_version}' is not on the Pareto front. Valid versions: {sorted(valid_versions)}"
+            f"Prompt version '{prompt_version}' is not on the elite set. Valid versions: {sorted(valid_versions)}"
         )
 
     if not state.backend:

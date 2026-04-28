@@ -56,7 +56,32 @@ graph TD
 ## 4. Shared Models
 
 **`Candidate` / `SearchState` / `RoundSummary`** ([`odysseus/agents/prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py))
-`Candidate` is the canonical prompt-candidate record shared across all search strategies. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Strategy-specific optional fields (all default `None`): `secondary_parent_version` (beam/SMS-EMOA recombination), `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`, `trajectory_id` (EMOSA). Accepts `iteration_introduced` as an alias for `round_introduced` (SMS-EMOA back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`). `SearchState` holds the mutable search loop state. `RoundSummary` is the per-round progress record.
+`Candidate` is the canonical prompt-candidate record shared across all search strategies. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Strategy-specific optional fields (all default `None`): `secondary_parent_version` (beam/SMS-EMOA recombination), `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`, `trajectory_id` (EMOSA). Accepts `iteration_introduced` as an alias for `round_introduced` (SMS-EMOA back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`).
+
+`SearchState` holds the mutable search loop state. Key fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `elite_set` | `list[Candidate]` | Current non-dominated candidate set (formerly `pareto_front`; old files with `pareto_front` key are migrated on load) |
+| `algorithm` | `Literal["hill_climb", "beam", "sms_emoa", "emosa"]` | Discriminator for which search strategy produced this state; defaults to `"hill_climb"` |
+| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket (e.g. `beam_width` for beam, `AnnealingState` dict for EMOSA); defaults to `{}` |
+| `round`, `stagnation_count`, `mutation_mode` | — | Hill-climb bookkeeping fields |
+| `converged`, `loop_phase` | — | Convergence flag and current sub-phase (`"build"` or `"review"`) |
+
+`RoundSummary` is the per-round progress record. Field names follow the unified cross-branch schema:
+
+| Canonical field | Renamed from | Strategy |
+|---|---|---|
+| `new_elite_entries` | `new_pareto_points` (main) | all |
+| `elite_size` | `front_size` (main) | all |
+| `target_improvement` | `front_improvement` (main) | all |
+| `mutation_mode`, `stagnation_count` | — (main only) | optional (hill-climb) |
+| `hypervolume`, `reference_point` | — | optional (beam, SMS-EMOA) |
+| `acceptance_rates` | — | optional (EMOSA) |
+| `reduce_case`, `evicted_version` | — | optional (SMS-EMOA) |
+| `temperature` | — | optional (EMOSA) |
+
+Old state files with `new_pareto_points` / `front_size` / `front_improvement` are migrated on load via a `model_validator(mode="before")`.
 
 **`DataQualityReport`** ([`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py))
 Top-level report from the Data Validation agent containing `SchemaFinding` list, `LabelDistribution`, `VolumeAssessment`, and optional `QueryLengthDistribution`. The LLM agent writes the narrative `summary`; the Python checks populate the structured sections.

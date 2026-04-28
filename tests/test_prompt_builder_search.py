@@ -233,15 +233,15 @@ class TestRoundSummary:
         rs = RoundSummary(
             round=1,
             candidates_evaluated=["v1", "v2"],
-            new_pareto_points=1,
-            front_size=2,
+            new_elite_entries=1,
+            elite_size=2,
             mutation_mode="targeted",
             stagnation_count=0,
         )
         assert rs.round == 1
         assert rs.candidates_evaluated == ["v1", "v2"]
-        assert rs.new_pareto_points == 1
-        assert rs.front_size == 2
+        assert rs.new_elite_entries == 1
+        assert rs.elite_size == 2
         assert rs.mutation_mode == "targeted"
         assert rs.stagnation_count == 0
 
@@ -249,8 +249,8 @@ class TestRoundSummary:
         rs = RoundSummary(
             round=2,
             candidates_evaluated=[],
-            new_pareto_points=0,
-            front_size=3,
+            new_elite_entries=0,
+            elite_size=3,
             mutation_mode="exploratory",
             stagnation_count=2,
         )
@@ -261,8 +261,8 @@ class TestRoundSummary:
             RoundSummary(
                 round=0,
                 candidates_evaluated=[],
-                new_pareto_points=0,
-                front_size=0,
+                new_elite_entries=0,
+                elite_size=0,
                 mutation_mode="targeted",
                 stagnation_count=0,
             )
@@ -272,8 +272,8 @@ class TestRoundSummary:
             RoundSummary(
                 round=1,
                 candidates_evaluated=[],
-                new_pareto_points=0,
-                front_size=0,
+                new_elite_entries=0,
+                elite_size=0,
                 mutation_mode="random",  # type: ignore[arg-type]
                 stagnation_count=0,
             )
@@ -282,12 +282,63 @@ class TestRoundSummary:
         rs = RoundSummary(
             round=1,
             candidates_evaluated=[],
-            new_pareto_points=0,
-            front_size=0,
+            new_elite_entries=0,
+            elite_size=0,
             mutation_mode="targeted",
             stagnation_count=0,
         )
         assert rs.candidates_evaluated == []
+
+    def test_old_field_names_load_via_validator(self) -> None:
+        """State files written before the rename use new_pareto_points / front_size / front_improvement."""
+        rs = RoundSummary.model_validate(
+            {
+                "round": 3,
+                "candidates_evaluated": ["v5"],
+                "new_pareto_points": 2,
+                "front_size": 4,
+                "mutation_mode": "targeted",
+                "stagnation_count": 0,
+                "front_improvement": 0.05,
+            }
+        )
+        assert rs.new_elite_entries == 2
+        assert rs.elite_size == 4
+        assert rs.target_improvement == pytest.approx(0.05)
+
+    def test_optional_strategy_fields_default_none(self) -> None:
+        rs = RoundSummary(
+            round=1,
+            candidates_evaluated=["v1"],
+            new_elite_entries=1,
+            elite_size=1,
+        )
+        assert rs.hypervolume is None
+        assert rs.reference_point is None
+        assert rs.acceptance_rates is None
+        assert rs.reduce_case is None
+        assert rs.evicted_version is None
+        assert rs.temperature is None
+
+    def test_optional_strategy_fields_can_be_set(self) -> None:
+        rs = RoundSummary(
+            round=1,
+            candidates_evaluated=["v1"],
+            new_elite_entries=1,
+            elite_size=1,
+            hypervolume=0.42,
+            reference_point=(1.0, 0.5),
+            acceptance_rates={0: 0.33, 1: 0.67},
+            reduce_case="dominated",
+            evicted_version="v0",
+            temperature=0.8,
+        )
+        assert rs.hypervolume == pytest.approx(0.42)
+        assert rs.reference_point == (1.0, 0.5)
+        assert rs.acceptance_rates == {0: 0.33, 1: 0.67}
+        assert rs.reduce_case == "dominated"
+        assert rs.evicted_version == "v0"
+        assert rs.temperature == pytest.approx(0.8)
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +361,7 @@ class TestSearchState:
         assert s.backend == "anthropic"
         assert s.primary_metric_name is None
         assert s.round == 0
-        assert s.pareto_front == []
+        assert s.elite_set == []
         assert s.round_history == []
         assert s.stagnation_count == 0
         assert s.stagnation_limit == 3
@@ -319,27 +370,67 @@ class TestSearchState:
         assert s.mutation_mode == "targeted"
         assert s.converged is False
 
+    def test_default_algorithm_is_hill_climb(self) -> None:
+        s = SearchState(**self._valid_state())
+        assert s.algorithm == "hill_climb"
+
+    def test_algorithm_state_defaults_empty_dict(self) -> None:
+        s = SearchState(**self._valid_state())
+        assert s.algorithm_state == {}
+
+    def test_algorithm_can_be_set(self) -> None:
+        s = SearchState(**self._valid_state(algorithm="beam"))
+        assert s.algorithm == "beam"
+
+    def test_algorithm_state_can_be_set(self) -> None:
+        s = SearchState(**self._valid_state(algorithm_state={"beam_width": 4}))
+        assert s.algorithm_state == {"beam_width": 4}
+
     def test_primary_metric_name_can_be_set(self) -> None:
         s = SearchState(**self._valid_state(primary_metric_name="f1_macro"))
         assert s.primary_metric_name == "f1_macro"
 
-    def test_pareto_front_can_hold_candidates(self) -> None:
+    def test_elite_set_can_hold_candidates(self) -> None:
         c = _candidate()
-        s = SearchState(**self._valid_state(pareto_front=[c]))
-        assert len(s.pareto_front) == 1
-        assert s.pareto_front[0].prompt_version == "v1"
+        s = SearchState(**self._valid_state(elite_set=[c]))
+        assert len(s.elite_set) == 1
+        assert s.elite_set[0].prompt_version == "v1"
 
     def test_round_history_can_hold_summaries(self) -> None:
         rs = RoundSummary(
             round=1,
             candidates_evaluated=["v1"],
-            new_pareto_points=1,
-            front_size=1,
+            new_elite_entries=1,
+            elite_size=1,
             mutation_mode="targeted",
             stagnation_count=0,
         )
         s = SearchState(**self._valid_state(round_history=[rs]))
         assert len(s.round_history) == 1
+
+    def test_old_pareto_front_key_loads_via_validator(self) -> None:
+        """State files written before the rename carry pareto_front; must map to elite_set."""
+        c = _candidate()
+        s = SearchState.model_validate(
+            {
+                "search_state_id": "state-1",
+                "backend": "anthropic",
+                "pareto_front": [c.model_dump()],
+            }
+        )
+        assert len(s.elite_set) == 1
+        assert s.elite_set[0].prompt_version == "v1"
+
+    def test_old_state_without_algorithm_loads_with_defaults(self) -> None:
+        """Old state files that lack algorithm / algorithm_state load with defaults."""
+        s = SearchState.model_validate(
+            {
+                "search_state_id": "state-1",
+                "backend": "anthropic",
+            }
+        )
+        assert s.algorithm == "hill_climb"
+        assert s.algorithm_state == {}
 
     def test_empty_search_state_id_rejected(self) -> None:
         with pytest.raises(ValidationError, match="search_state_id must be non-empty"):
@@ -608,8 +699,8 @@ class TestRoundSummaryConverged:
         rs = RoundSummary(
             round=1,
             candidates_evaluated=["v1"],
-            new_pareto_points=1,
-            front_size=1,
+            new_elite_entries=1,
+            elite_size=1,
             mutation_mode="targeted",
             stagnation_count=0,
         )
@@ -619,8 +710,8 @@ class TestRoundSummaryConverged:
         rs = RoundSummary(
             round=1,
             candidates_evaluated=["v1"],
-            new_pareto_points=0,
-            front_size=1,
+            new_elite_entries=0,
+            elite_size=1,
             mutation_mode="targeted",
             stagnation_count=5,
             converged=True,

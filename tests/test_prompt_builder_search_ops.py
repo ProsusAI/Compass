@@ -61,7 +61,7 @@ class TestInitSearchState:
         assert state.convergence_limit == 5
         assert state.primary_metric_name is None
         assert state.round == 0
-        assert state.pareto_front == []
+        assert state.elite_set == []
         assert state.converged is False
 
     def test_creates_state_with_custom_params(self, tmp_path) -> None:
@@ -259,8 +259,8 @@ class TestAdvanceRound:
         _register_and_score("run030", "v1", 0.9, 0.01, tmp_path)
         summary = advance_round("run030", output_dir=tmp_path)
         assert summary.round == 1
-        assert summary.new_pareto_points == 1
-        assert summary.front_size == 1
+        assert summary.new_elite_entries == 1
+        assert summary.elite_size == 1
         assert "v1" in summary.candidates_evaluated
 
     def test_state_round_incremented(self, tmp_path) -> None:
@@ -286,7 +286,7 @@ class TestAdvanceRound:
         _register_and_score("run033", "v2", 0.5, 0.5, tmp_path)
         summary = advance_round("run033", output_dir=tmp_path)
         assert summary.stagnation_count == 1
-        assert summary.new_pareto_points == 0
+        assert summary.new_elite_entries == 0
 
     def test_stagnation_resets_on_improvement(self, tmp_path) -> None:
         init_search_state("anthropic", run_id="run034", output_dir=tmp_path)
@@ -300,7 +300,7 @@ class TestAdvanceRound:
         _register_and_score("run034", "v3", 0.95, 0.1, tmp_path)
         summary = advance_round("run034", output_dir=tmp_path)
         assert summary.stagnation_count == 0
-        assert summary.new_pareto_points > 0
+        assert summary.new_elite_entries > 0
 
     def test_switches_to_exploratory_at_stagnation_limit(self, tmp_path) -> None:
         # stagnation_limit=3, convergence_limit=5
@@ -372,13 +372,13 @@ class TestAdvanceRound:
         assert len(updated.round_history) == 1
         assert updated.round_history[0].round == 1
 
-    def test_pareto_front_updated_in_state(self, tmp_path) -> None:
+    def test_elite_set_updated_in_state(self, tmp_path) -> None:
         init_search_state("anthropic", run_id="run041", output_dir=tmp_path)
         _register_and_score("run041", "v1", 0.9, 0.01, tmp_path)
         advance_round("run041", output_dir=tmp_path)
         updated = get_search_state("run041", output_dir=tmp_path)
-        assert len(updated.pareto_front) == 1
-        assert updated.pareto_front[0].prompt_version == "v1"
+        assert len(updated.elite_set) == 1
+        assert updated.elite_set[0].prompt_version == "v1"
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +398,7 @@ class TestAdvanceRoundLoopPhase:
     def test_sets_loop_phase_build_when_converged(self, tmp_path) -> None:
         # convergence_limit=2, stagnation_limit=1: converges after 2 stagnation rounds
         init_search_state("anthropic", run_id="r1", output_dir=tmp_path, convergence_limit=2, stagnation_limit=1)
-        # Round 1: v1 added to empty front → new_pareto_points=1, stagnation_count=0
+        # Round 1: v1 added to empty elite set → new_elite_entries=1, stagnation_count=0
         _register_and_score("r1", "v1", 0.8, 0.5, tmp_path)
         advance_round("r1", output_dir=tmp_path)
         # Round 2: dominated → stagnation_count=1
