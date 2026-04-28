@@ -962,3 +962,188 @@ class TestReviewBriefingStrategyFields:
         assert briefing.acceptance_history is None
         assert briefing.hypervolume is None
         assert briefing.reference_point is None
+
+
+# ---------------------------------------------------------------------------
+# ConfusionImpact
+# ---------------------------------------------------------------------------
+
+
+class TestConfusionImpact:
+    def test_basic_construction(self) -> None:
+        from odysseus.agents.review.models import ConfusionImpact
+
+        ci = ConfusionImpact(
+            true_route="billing",
+            predicted_route="support",
+            count=12,
+            support=80,
+            misroute_rate=0.15,
+            cost_impact=0.30,
+            quality_impact=-0.05,
+            avg_cost_impact=0.025,
+            avg_quality_impact=-0.004,
+            persistence_rate=0.75,
+            persistent_count=9,
+            volatile_count=3,
+        )
+        assert ci.true_route == "billing"
+        assert ci.predicted_route == "support"
+        assert ci.count == 12
+        assert ci.persistence_rate == 0.75
+
+    def test_forbids_extra_fields(self) -> None:
+        from odysseus.agents.review.models import ConfusionImpact
+
+        with pytest.raises(ValidationError):
+            ConfusionImpact(  # type: ignore[call-arg]
+                true_route="billing",
+                predicted_route="support",
+                count=5,
+                support=40,
+                misroute_rate=0.125,
+                cost_impact=0.10,
+                quality_impact=-0.02,
+                avg_cost_impact=0.02,
+                avg_quality_impact=-0.004,
+                persistence_rate=0.6,
+                persistent_count=3,
+                volatile_count=2,
+                extra_field="should_fail",  # type: ignore[call-arg]
+            )
+
+
+# ---------------------------------------------------------------------------
+# ContrastPairContent
+# ---------------------------------------------------------------------------
+
+
+class TestContrastPairContent:
+    def _make_example(self, route: str):  # type: ignore[return]  # noqa: ANN201
+        from odysseus.agents.review.models import ExampleContent
+
+        return ExampleContent(
+            input="Some input text",
+            route=route,
+            reasoning="Because reasons",
+            exclusions=[],
+        )
+
+    def test_basic_construction(self) -> None:
+        from odysseus.agents.review.models import ContrastPairContent
+
+        cp = ContrastPairContent(
+            example_a=self._make_example("billing"),
+            example_b=self._make_example("support"),
+            distinguishing_signal="mentions invoice",
+            contrast_reasoning="billing mentions a payment, support does not",
+            target_true_route="billing",
+            target_predicted_route="support",
+        )
+        assert cp.example_a.route == "billing"
+        assert cp.example_b.route == "support"
+        assert cp.distinguishing_signal == "mentions invoice"
+
+    def test_routes_must_differ(self) -> None:
+        from odysseus.agents.review.models import ContrastPairContent
+
+        with pytest.raises(ValueError, match="different routes"):
+            ContrastPairContent(
+                example_a=self._make_example("billing"),
+                example_b=self._make_example("billing"),
+                distinguishing_signal="none",
+                contrast_reasoning="same route — invalid",
+                target_true_route="billing",
+                target_predicted_route="billing",
+            )
+
+    def test_routes_must_match_target(self) -> None:
+        from odysseus.agents.review.models import ContrastPairContent
+
+        with pytest.raises(ValueError, match="must match"):
+            ContrastPairContent(
+                example_a=self._make_example("billing"),
+                example_b=self._make_example("support"),
+                distinguishing_signal="mentions invoice",
+                contrast_reasoning="routes don't align with targets",
+                target_true_route="billing",
+                target_predicted_route="other_route",  # mismatch
+            )
+
+
+# ---------------------------------------------------------------------------
+# EditDirective — contrast_pair block type
+# ---------------------------------------------------------------------------
+
+
+class TestEditDirectiveContrastPair:
+    def test_contrast_pair_block_type(self) -> None:
+        from odysseus.agents.review.models import ContrastPairContent, EditDirective, ExampleContent
+
+        example_a = ExampleContent(
+            input="My invoice is wrong",
+            route="billing",
+            reasoning="Mentions invoice",
+            exclusions=[],
+        )
+        example_b = ExampleContent(
+            input="I need help with my account",
+            route="support",
+            reasoning="General support request",
+            exclusions=[],
+        )
+        cp = ContrastPairContent(
+            example_a=example_a,
+            example_b=example_b,
+            distinguishing_signal="invoice mention",
+            contrast_reasoning="billing vs support boundary",
+            target_true_route="billing",
+            target_predicted_route="support",
+        )
+        ed = EditDirective(
+            directive_id="d-cp1",
+            target_version="v1",
+            block_type="contrast_pair",
+            block_identifier="pair_001",
+            granularity="macro",
+            directive="Add contrast pair for billing/support boundary",
+            priority="high",
+            contrast_pair_content=cp,
+        )
+        assert ed.block_type == "contrast_pair"
+        assert ed.contrast_pair_content is not None
+        assert ed.contrast_pair_content.example_a.route == "billing"
+
+
+# ---------------------------------------------------------------------------
+# ReviewBriefing — confusion_analysis field
+# ---------------------------------------------------------------------------
+
+
+class TestReviewBriefingConfusionAnalysis:
+    def test_confusion_analysis_default_empty(self) -> None:
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
+        assert briefing.confusion_analysis == []
+
+    def test_confusion_analysis_populated(self) -> None:
+        from odysseus.agents.review.models import ConfusionImpact, ReviewBriefing
+
+        ci = ConfusionImpact(
+            true_route="billing",
+            predicted_route="support",
+            count=12,
+            support=80,
+            misroute_rate=0.15,
+            cost_impact=0.30,
+            quality_impact=-0.05,
+            avg_cost_impact=0.025,
+            avg_quality_impact=-0.004,
+            persistence_rate=0.75,
+            persistent_count=9,
+            volatile_count=3,
+        )
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs(), confusion_analysis=[ci])
+        assert len(briefing.confusion_analysis) == 1
+        assert briefing.confusion_analysis[0].true_route == "billing"

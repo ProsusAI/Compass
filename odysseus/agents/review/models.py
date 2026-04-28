@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.routing_context import RoutingContext
@@ -122,6 +122,31 @@ class ExampleContent(BaseModel):
     exclusions: list[dict[str, str]] = Field(description="List of {route, reason} for excluded routes")
 
 
+class ContrastPairContent(BaseModel):
+    """Two similar inputs that route differently, teaching boundary discrimination."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    example_a: ExampleContent
+    example_b: ExampleContent
+    distinguishing_signal: str
+    contrast_reasoning: str
+    target_true_route: str
+    target_predicted_route: str
+
+    @model_validator(mode="after")
+    def validate_contrast_pair(self) -> ContrastPairContent:
+        if self.example_a.route == self.example_b.route:
+            raise ValueError("Contrast pair examples must have different routes")
+        pair_routes = {self.example_a.route, self.example_b.route}
+        target_routes = {self.target_true_route, self.target_predicted_route}
+        if pair_routes != target_routes:
+            raise ValueError(
+                f"Example routes {pair_routes} must match target routes {target_routes}"
+            )
+        return self
+
+
 class ExampleSummary(BaseModel):
     """Lightweight reference to a holdout example for the exemplar bank."""
 
@@ -143,6 +168,25 @@ class OracleMetrics(BaseModel):
     candidate_cost_captured: float | None = None
     candidate_cost_captured_with_overhead: float | None = None
     candidate_quality_captured: float | None = None
+
+
+class ConfusionImpact(BaseModel):
+    """Impact-weighted confusion matrix cell with persistence analysis."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    true_route: str
+    predicted_route: str
+    count: int
+    support: int
+    misroute_rate: float
+    cost_impact: float
+    quality_impact: float
+    avg_cost_impact: float
+    avg_quality_impact: float
+    persistence_rate: float
+    persistent_count: int
+    volatile_count: int
 
 
 class NearMissCandidate(BaseModel):
@@ -180,6 +224,7 @@ class ReviewBriefing(BaseModel):
     batch_outcomes: list[BatchOutcome] = Field(default_factory=list)
     target_progress: list[UserTargetProgress] = Field(default_factory=list)
     backtracking: bool = False
+    confusion_analysis: list[ConfusionImpact] = Field(default_factory=list)
     child_variants: list[ChildVariant] = Field(default_factory=list)
 
     # Strategy-agnostic stagnation signal (populated by the strategy's preprocessor;
@@ -229,12 +274,13 @@ class EditDirective(BaseModel):
 
     directive_id: str
     target_version: str
-    block_type: Literal["rule", "example", "output_schema", "vocabulary"]
+    block_type: Literal["rule", "example", "output_schema", "vocabulary", "contrast_pair"]
     block_identifier: str
     granularity: Literal["macro", "micro"]
     directive: str
     priority: Literal["high", "medium", "low"]
     example_content: ExampleContent | None = None
+    contrast_pair_content: ContrastPairContent | None = None
 
 
 class ChildVariant(BaseModel):
