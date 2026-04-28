@@ -4,15 +4,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from odysseus.agents.review.models import DirectiveOutcome, EditDirective, ExampleContent, MutationRecord
+from odysseus.agents.review.models import (
+    ChildVariant,
+    DirectiveOutcome,
+    EditDirective,
+    ExampleContent,
+)
 from odysseus.agents.review.ops import (
+    load_child_variants,
     load_directive_history,
     load_edit_directives,
-    load_mutation_log,
     load_round_reports,
+    save_child_variants,
     save_directive_history,
     save_edit_directives,
-    save_mutation_log,
     save_round_report,
 )
 
@@ -29,13 +34,23 @@ def _make_directive_outcome(directive_id: str, outcome: str = "improved") -> Dir
     )
 
 
-def _make_mutation_record(child: str, parent: str) -> MutationRecord:
-    return MutationRecord(
-        child_version=child,
-        parent_version=parent,
-        mutation_type="example_swap",
-        description=f"Swap example in {child}",
-        directive_ids=None,
+def _make_edit_directive(directive_id: str, version: str = "v1") -> EditDirective:
+    return EditDirective(
+        directive_id=directive_id,
+        target_version=version,
+        block_type="rule",
+        block_identifier="Rule 1",
+        granularity="micro",
+        directive="Tighten wording",
+        priority="medium",
+    )
+
+
+def _make_child_variant(variant_id: str | None = None) -> ChildVariant:
+    return ChildVariant(
+        variant_id=variant_id,
+        hypothesis="Test hypothesis",
+        directives=[_make_edit_directive("d1")],
     )
 
 
@@ -93,49 +108,39 @@ class TestSaveLoadDirectiveHistory:
 
 
 # ---------------------------------------------------------------------------
-# Mutation log
+# Child variants
 # ---------------------------------------------------------------------------
 
 
-class TestSaveLoadMutationLog:
+class TestSaveLoadChildVariants:
     def test_roundtrip(self, tmp_path: Path) -> None:
-        log = [
-            _make_mutation_record("v2", "v1"),
-            _make_mutation_record("v3", "v1"),
+        variants = [
+            _make_child_variant("cv-0-0"),
+            _make_child_variant("cv-0-1"),
         ]
-        save_mutation_log("state-abc", log, output_dir=tmp_path)
-        loaded = load_mutation_log("state-abc", output_dir=tmp_path)
+        save_child_variants("state-abc", variants, output_dir=tmp_path)
+        loaded = load_child_variants("state-abc", output_dir=tmp_path)
 
         assert len(loaded) == 2
-        assert loaded[0].child_version == "v2"
-        assert loaded[0].parent_version == "v1"
-        assert loaded[0].mutation_type == "example_swap"
-        assert loaded[1].child_version == "v3"
+        assert loaded[0].variant_id == "cv-0-0"
+        assert loaded[1].variant_id == "cv-0-1"
+        assert loaded[0].hypothesis == "Test hypothesis"
 
     def test_load_returns_empty_when_no_file(self, tmp_path: Path) -> None:
-        result = load_mutation_log("nonexistent-state", output_dir=tmp_path)
+        result = load_child_variants("nonexistent-state", output_dir=tmp_path)
         assert result == []
 
-    def test_roundtrip_with_directive_ids(self, tmp_path: Path) -> None:
-        record = MutationRecord(
-            child_version="v4",
-            parent_version="v3",
-            mutation_type="rule_edit",
-            description="Edit rule based on directives",
-            directive_ids=["dir-001", "dir-002"],
-        )
-        save_mutation_log("state-dirs", [record], output_dir=tmp_path)
-        loaded = load_mutation_log("state-dirs", output_dir=tmp_path)
-
+    def test_variant_without_id(self, tmp_path: Path) -> None:
+        """Variant with variant_id=None round-trips correctly."""
+        variant = _make_child_variant(variant_id=None)
+        save_child_variants("state-abc", [variant], output_dir=tmp_path)
+        loaded = load_child_variants("state-abc", output_dir=tmp_path)
         assert len(loaded) == 1
-        assert loaded[0].directive_ids == ["dir-001", "dir-002"]
+        assert loaded[0].variant_id is None
 
     def test_creates_directory_structure(self, tmp_path: Path) -> None:
-        log = [_make_mutation_record("v2", "v1")]
-        save_mutation_log("state-new", log, output_dir=tmp_path)
-
-        expected_path = tmp_path / "state-new" / "search" / "mutation_log.json"
-        assert expected_path.exists()
+        save_child_variants("state-new", [_make_child_variant("cv-0-0")], output_dir=tmp_path)
+        assert (tmp_path / "state-new" / "search" / "child_variants.json").exists()
 
 
 # ---------------------------------------------------------------------------

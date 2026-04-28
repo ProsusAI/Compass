@@ -8,7 +8,6 @@ from typing import Any
 import pytest
 
 from odysseus.agents.prompt_builder.search import Candidate, SearchState
-from odysseus.agents.review.models import ExampleSummary, MutationRecord
 from odysseus.agents.review.preprocessor import (
     _delta,
     _extract_metric,
@@ -19,7 +18,6 @@ from odysseus.agents.review.preprocessor import (
     compute_near_misses,
     compute_oracle_metrics,
     compute_oracle_metrics_from_report,
-    correlate_mutations,
     extract_per_class_recall,
     generate_executive_summary,
 )
@@ -58,13 +56,11 @@ class TestBuildCandidateComparisons:
         }
         mutation_descriptions = {"v1": "Initial compilation"}
         parent_versions = {"v1": None}
-        front_versions: list[str] = []
 
         result = build_candidate_comparisons(
             score_reports=score_reports,
             mutation_descriptions=mutation_descriptions,
             parent_versions=parent_versions,
-            front_versions=front_versions,
             primary_metric="accuracy",
         )
 
@@ -72,24 +68,20 @@ class TestBuildCandidateComparisons:
         assert result[0].candidate_version == "v1"
         assert result[0].parent_version is None
         assert result[0].delta_vs_parent.quality_delta is None
-        assert result[0].delta_vs_front == []
 
-    def test_candidate_with_parent_and_front(self) -> None:
-        """Later round: candidate has parent, front has members."""
+    def test_candidate_with_parent(self) -> None:
+        """Later round: candidate has parent."""
         score_reports = {
             "v3": _make_report_dict(accuracy=0.85, cost=1.20),
-            "v1": _make_report_dict(accuracy=0.80, cost=1.50),  # front member
-            "v2": _make_report_dict(accuracy=0.82, cost=1.30),  # parent + front
+            "v2": _make_report_dict(accuracy=0.82, cost=1.30),  # parent
         }
         mutation_descriptions = {"v3": "Swapped Example 3"}
         parent_versions = {"v3": "v2"}
-        front_versions = ["v1", "v2"]
 
         result = build_candidate_comparisons(
             score_reports=score_reports,
             mutation_descriptions=mutation_descriptions,
             parent_versions=parent_versions,
-            front_versions=front_versions,
             primary_metric="accuracy",
         )
 
@@ -98,7 +90,6 @@ class TestBuildCandidateComparisons:
         assert ca.candidate_version == "v3"
         assert ca.delta_vs_parent.quality_delta == pytest.approx(0.03)
         assert ca.delta_vs_parent.cost_delta == pytest.approx(-0.10)
-        assert len(ca.delta_vs_front) == 2
 
     def test_multiple_candidates(self) -> None:
         """Multiple candidates in one round."""
@@ -112,13 +103,11 @@ class TestBuildCandidateComparisons:
             "v4": "Pruned Rule 2",
         }
         parent_versions = {"v3": "v2", "v4": "v2"}
-        front_versions = ["v2"]
 
         result = build_candidate_comparisons(
             score_reports=score_reports,
             mutation_descriptions=mutation_descriptions,
             parent_versions=parent_versions,
-            front_versions=front_versions,
             primary_metric="accuracy",
         )
 
@@ -196,9 +185,7 @@ class TestComputeDiversityMetrics:
         }
         result = compute_diversity_metrics(
             prompt_texts=prompt_texts,
-            mutation_log=[],
         )
-        assert result.prompt_similarity == 0.0  # identical = no diversity
         assert result.example_overlap_ratio == 1.0  # fully overlapping
 
     def test_completely_different_prompts(self) -> None:
@@ -208,43 +195,13 @@ class TestComputeDiversityMetrics:
         }
         result = compute_diversity_metrics(
             prompt_texts=prompt_texts,
-            mutation_log=[],
         )
-        assert result.prompt_similarity > 0.0
-
-    def test_mutation_type_distribution(self) -> None:
-        log = [
-            MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type="example_swap",
-                description="swap",
-            ),
-            MutationRecord(
-                child_version="v3",
-                parent_version="v2",
-                mutation_type="example_swap",
-                description="swap",
-            ),
-            MutationRecord(
-                child_version="v4",
-                parent_version="v2",
-                mutation_type="rule_edit",
-                description="edit",
-            ),
-        ]
-        result = compute_diversity_metrics(
-            prompt_texts={"v1": "a", "v2": "b"},
-            mutation_log=log,
-        )
-        assert result.mutation_type_distribution == {"example_swap": 2, "rule_edit": 1}
+        assert result.example_overlap_ratio < 1.0
 
     def test_single_prompt_on_front(self) -> None:
         result = compute_diversity_metrics(
             prompt_texts={"v1": "## Rules\n1. Route to A"},
-            mutation_log=[],
         )
-        assert result.prompt_similarity == 0.0
         assert result.example_overlap_ratio == 1.0
 
 
@@ -403,72 +360,6 @@ class TestComputeNearMisses:
         assert nm.domination_gap_cost == pytest.approx(0.04)
 
 
-class TestCorrelateMutations:
-    def test_classifies_effective_and_ineffective(self) -> None:
-        log = [
-            MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type="example_swap",
-                description="swap ex 3",
-            ),
-            MutationRecord(
-                child_version="v3",
-                parent_version="v2",
-                mutation_type="rule_edit",
-                description="tighten rule 1",
-            ),
-        ]
-        # v2 improved over v1, v3 did not improve over v2
-        score_history = {
-            "v1": 0.80,
-            "v2": 0.85,
-            "v3": 0.84,
-        }
-
-        result = correlate_mutations(
-            mutation_log=log,
-            score_history=score_history,
-        )
-
-        assert len(result.effective_mutations) == 1
-        assert result.effective_mutations[0].child_version == "v2"
-        assert len(result.ineffective_mutations) == 1
-        assert result.ineffective_mutations[0].child_version == "v3"
-
-    def test_identifies_untried_types(self) -> None:
-        log = [
-            MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type="example_swap",
-                description="swap",
-            ),
-        ]
-        all_mutation_types = [
-            "example_swap",
-            "rule_edit",
-            "schema_change",
-            "rule_add",
-            "rule_remove",
-            "vocabulary_edit",
-        ]
-
-        result = correlate_mutations(
-            mutation_log=log,
-            score_history={"v1": 0.8, "v2": 0.85},
-            all_mutation_types=all_mutation_types,
-        )
-
-        assert "rule_edit" in result.untried_mutation_types
-        assert "example_swap" not in result.untried_mutation_types
-
-    def test_empty_log(self) -> None:
-        result = correlate_mutations(mutation_log=[], score_history={})
-        assert result.effective_mutations == []
-        assert result.ineffective_mutations == []
-
-
 class TestComputeOracleMetrics:
     def test_normal_case(self) -> None:
         result = compute_oracle_metrics(
@@ -583,25 +474,13 @@ class TestBuildReviewBriefing:
             "v1": "## Rules\n1. Route to A\n\n## Examples\n### Example 1\nfoo",
             "v2": "## Rules\n1. Route to A\n2. Prefer B for complex\n\n## Examples\n### Example 1\nfoo",
         }
-        mutation_log = [
-            MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type="rule_add",
-                description="Added complexity routing rule",
-            ),
-        ]
 
         briefing = build_review_briefing(
             search_state=search_state,
             score_reports=score_reports,
             historical_reports=historical_reports,
             prompt_texts=prompt_texts,
-            mutation_log=mutation_log,
             directive_history=[],
-            holdout_examples=[
-                ExampleSummary(example_id="h1", route="model-a", ambiguity_tags=[]),
-            ],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -684,7 +563,6 @@ class TestMissingMetricBehavior:
             score_reports=score_reports,
             mutation_descriptions={"v2": "test mutation"},
             parent_versions={"v2": "v1"},
-            front_versions=[],
             primary_metric="accuracy",
         )
         assert len(result) == 1
@@ -702,23 +580,6 @@ class TestMissingMetricBehavior:
         assert "route-a" in deltas
         assert deltas["route-a"] == pytest.approx(0.05)
         assert "route-b" not in deltas  # skipped, not defaulted to 0.0
-
-    def test_correlate_mutations_missing_score(self) -> None:
-        """Missing score in history -> unscored_mutations, not effective/ineffective."""
-        log = [
-            MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type="example_swap",
-                description="swap",
-            ),
-        ]
-        # v1 missing from history
-        result = correlate_mutations(mutation_log=log, score_history={"v2": 0.85})
-        assert len(result.effective_mutations) == 0
-        assert len(result.ineffective_mutations) == 0
-        assert len(result.unscored_mutations) == 1
-        assert result.unscored_mutations[0].child_version == "v2"
 
     def test_build_review_briefing_with_missing_metric(self) -> None:
         """End-to-end: briefing assembles without crashing when a candidate has no primary metric."""
@@ -738,23 +599,13 @@ class TestMissingMetricBehavior:
             "v2": _make_empty_metrics_report(),
             "v1": _make_report_dict(accuracy=0.80, cost=1.50),
         }
-        mutation_log = [
-            MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type="rule_edit",
-                description="test",
-            ),
-        ]
 
         briefing = build_review_briefing(
             search_state=search_state,
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
-            mutation_log=mutation_log,
             directive_history=[],
-            holdout_examples=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -772,7 +623,6 @@ class TestGenerateExecutiveSummary:
             DiminishingReturns,
             DiversityMetrics,
             MetricDeltas,
-            MutationHistory,
             ReviewBriefing,
         )
         from odysseus.eval.models import ScoreReport
@@ -792,29 +642,19 @@ class TestGenerateExecutiveSummary:
                         cost_delta=-0.10,
                         per_class_recall_deltas={"model-a": 0.05},
                     ),
-                    delta_vs_front=[],
                 ),
             ],
             elite_set=[],
             per_class_recall={},
             diversity_metrics=DiversityMetrics(
                 example_overlap_ratio=0.3,
-                prompt_similarity=0.5,
-                mutation_type_distribution={"example_swap": 2},
             ),
             diminishing_returns=DiminishingReturns(
                 score_trajectory=[0.78, 0.82, 0.85],
                 improvement_trend=0.035,
                 stagnation_flag=False,
             ),
-            mutation_history=MutationHistory(
-                effective_mutations=[],
-                ineffective_mutations=[],
-                untried_mutation_types=["vocabulary_edit"],
-            ),
             oracle_metrics=None,
-            prompt_versions={},
-            holdout_examples=[],
         )
         defaults.update(overrides)
         return ReviewBriefing(**defaults)
@@ -876,11 +716,6 @@ class TestGenerateExecutiveSummary:
         summary = generate_executive_summary(briefing)
         assert "Stagnation flag is set" in summary
 
-    def test_lists_untried_mutations(self) -> None:
-        briefing = self._make_briefing()
-        summary = generate_executive_summary(briefing)
-        assert "vocabulary_edit" in summary
-
     def test_no_crash_on_minimal_briefing(self) -> None:
         """Minimal briefing with no candidates produces a non-crashing summary."""
         briefing = self._make_briefing(candidates=[])
@@ -890,12 +725,16 @@ class TestGenerateExecutiveSummary:
 
 class TestExampleSummaryInputText:
     def test_input_text_round_trips(self) -> None:
+        from odysseus.agents.review.models import ExampleSummary
+
         es = ExampleSummary(example_id="h1", route="model-a", input_text="Hello world")
         data = es.model_dump()
         restored = ExampleSummary.model_validate(data)
         assert restored.input_text == "Hello world"
 
     def test_input_text_defaults_to_none(self) -> None:
+        from odysseus.agents.review.models import ExampleSummary
+
         es = ExampleSummary(example_id="h1", route="model-a")
         assert es.input_text is None
 
@@ -931,22 +770,12 @@ class TestBuildReviewBriefingStagnationSignal:
             "v2": _make_report_dict(accuracy=0.82, cost=1.40),
             "v1": _make_report_dict(accuracy=0.80, cost=1.50),
         }
-        mutation_log = [
-            MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type="rule_add",
-                description="Added rule",
-            ),
-        ]
         return build_review_briefing(
             search_state=search_state,
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
-            mutation_log=mutation_log,
             directive_history=[],
-            holdout_examples=[ExampleSummary(example_id="h1", route="model-a", ambiguity_tags=[])],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )

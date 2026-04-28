@@ -28,14 +28,34 @@ class MetricDeltas(BaseModel):
     per_class_recall_deltas: dict[str, float]
 
 
-class FrontComparison(BaseModel):
-    """How a candidate compares to a specific Pareto front member."""
+class UserTarget(BaseModel):
+    """A user-specified target metric with threshold."""
 
     model_config = ConfigDict(extra="forbid")
 
-    front_candidate_version: str
-    quality_delta: float | None
-    cost_delta: float | None
+    metric: str
+    operator: Literal["<=", ">=", "<", ">", "=="]
+    threshold: float
+
+
+class UserTargetProgress(BaseModel):
+    """Progress toward a single user target."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    target: UserTarget
+    current_value: float | None
+    met: bool
+    progress_ratio: float | None
+    oracle_ceiling: float | None
+    full_dataset_oracle_ceiling: float | None = None
+    target_above_oracle: bool
+    translated_threshold: float | None = None
+    capture_ratio: float | None = None
+    # Merged from TargetSlack — slack/budget relative to target threshold
+    surplus: float | None = None
+    regression_budget: float | None = None
+    priority_weight: float | None = None
 
 
 class CandidateAnalysis(BaseModel):
@@ -48,7 +68,6 @@ class CandidateAnalysis(BaseModel):
     mutation_description: str
     score_report: ScoreReport
     delta_vs_parent: MetricDeltas
-    delta_vs_front: list[FrontComparison]
 
 
 class ClassRecallEntry(BaseModel):
@@ -63,13 +82,11 @@ class ClassRecallEntry(BaseModel):
 
 
 class DiversityMetrics(BaseModel):
-    """Measures of search diversity across the Pareto front."""
+    """Measures of search diversity across the elite set."""
 
     model_config = ConfigDict(extra="forbid")
 
     example_overlap_ratio: float = Field(ge=0.0, le=1.0)
-    prompt_similarity: float = Field(ge=0.0, le=1.0)
-    mutation_type_distribution: dict[str, int]
 
 
 class DiminishingReturns(BaseModel):
@@ -82,39 +99,6 @@ class DiminishingReturns(BaseModel):
     stagnation_flag: bool
     improvement_stddev: float = 0.0
     effective_threshold: float = 0.005
-
-
-MutationType = Literal[
-    "example_swap",
-    "rule_edit",
-    "schema_change",
-    "rule_add",
-    "rule_remove",
-    "vocabulary_edit",
-]
-
-
-class MutationRecord(BaseModel):
-    """What the Prompt Builder changed and why."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    child_version: str
-    parent_version: str
-    mutation_type: MutationType
-    description: str
-    directive_ids: list[str] | None = None
-
-
-class MutationHistory(BaseModel):
-    """Aggregated mutation effectiveness data."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    effective_mutations: list[MutationRecord]
-    ineffective_mutations: list[MutationRecord]
-    untried_mutation_types: list[str]
-    unscored_mutations: list[MutationRecord] = Field(default_factory=list)
 
 
 class ExampleContent(BaseModel):
@@ -187,14 +171,16 @@ class ReviewBriefing(BaseModel):
     per_class_recall: dict[str, ClassRecallEntry]
     diversity_metrics: DiversityMetrics
     diminishing_returns: DiminishingReturns
-    mutation_history: MutationHistory
     oracle_metrics: OracleMetrics | None = None
-    prompt_versions: dict[str, str]
-    holdout_examples: list[ExampleSummary]
     routing_context: RoutingContext | None = None
     near_miss_candidates: list[NearMissCandidate] = []
     directive_history: list[DirectiveOutcome] = Field(default_factory=list)
     executive_summary: str = ""
+    beam_width: int = 2
+    batch_outcomes: list[BatchOutcome] = Field(default_factory=list)
+    target_progress: list[UserTargetProgress] = Field(default_factory=list)
+    backtracking: bool = False
+    child_variants: list[ChildVariant] = Field(default_factory=list)
 
     # Strategy-agnostic stagnation signal (populated by the strategy's preprocessor;
     # shape depends on the strategy — see below for per-strategy dict schemas).
@@ -251,6 +237,30 @@ class EditDirective(BaseModel):
     example_content: ExampleContent | None = None
 
 
+class ChildVariant(BaseModel):
+    """A group of directives that should be applied together as one child prompt."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    variant_id: str | None = None  # assigned by algorithm; maps to Candidate.source_directive_batch_id
+    parent_preference: Literal[
+        "best_quality", "best_cost",
+        "weakest_on_class", "nearest_target",
+    ] | None = None
+    parent_preference_class: str | None = None
+    parent_preference_metric: str | None = None
+    parent_version: str | None = None  # assigned by algorithm after preference resolution
+    secondary_parent_preference: Literal[
+        "best_quality", "best_cost",
+        "weakest_on_class", "nearest_target",
+    ] | None = None
+    secondary_parent_preference_class: str | None = None
+    secondary_parent_preference_metric: str | None = None
+    secondary_parent_version: str | None = None  # resolved by algorithm
+    hypothesis: str
+    directives: list[EditDirective]
+
+
 class PromotionDecision(BaseModel):
     """Whether a candidate should be promoted, refined, or pruned."""
 
@@ -297,13 +307,31 @@ class DirectiveOutcome(BaseModel):
     outcome: Literal["improved", "no_effect", "regressed"]
 
 
+class BatchOutcome(BaseModel):
+    """Links a child variant to the candidate it produced and its eval result."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    variant_id: str
+    parent_version: str
+    mutation_strategy: Literal["targeted", "exploratory", "structural"]
+    directive_ids: list[str] = Field(default_factory=list)
+    candidate_version: str | None
+    eval_status: Literal["scored", "failed"] | None
+    quality_delta_vs_parent: float | None
+    is_new_best: bool
+    secondary_parent_version: str | None = None
+    metric_deltas_vs_parent: dict[str, float] | None = None
+    metric_deltas_vs_secondary_parent: dict[str, float] | None = None
+
+
 class ReviewResult(BaseModel):
     """Complete structured output from the Review Agent LLM."""
 
     model_config = ConfigDict(extra="forbid")
 
     candidate_ranking: list[RankedCandidate]
-    edit_directives: list[EditDirective]
+    child_variants: list[ChildVariant]
     promotion_decisions: list[PromotionDecision]
     loop_signal: LoopSignal
     regression_guards: list[RegressionFlag]

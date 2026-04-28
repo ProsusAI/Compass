@@ -83,6 +83,8 @@ STAGE_REGISTRY: dict[str, list[str]] = {
     "review": [
         "build_review_briefing_tool",
         "record_directive_outcomes_tool",
+        "query_holdout_examples_tool",
+        "get_prompt_text_tool",
         "get_search_state_tool",
         "run_eval",
         "get_pipeline_status",

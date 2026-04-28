@@ -55,32 +55,13 @@ class TestMetricDeltas:
 
 
 # ---------------------------------------------------------------------------
-# FrontComparison
-# ---------------------------------------------------------------------------
-
-
-class TestFrontComparison:
-    def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import FrontComparison
-
-        fc = FrontComparison(
-            front_candidate_version="v1",
-            quality_delta=0.02,
-            cost_delta=-0.05,
-        )
-        assert fc.front_candidate_version == "v1"
-        assert fc.quality_delta == 0.02
-        assert fc.cost_delta == -0.05
-
-
-# ---------------------------------------------------------------------------
 # CandidateAnalysis
 # ---------------------------------------------------------------------------
 
 
 class TestCandidateAnalysis:
     def test_with_parent(self) -> None:
-        from odysseus.agents.review.models import CandidateAnalysis, FrontComparison, MetricDeltas
+        from odysseus.agents.review.models import CandidateAnalysis, MetricDeltas
 
         ca = CandidateAnalysis(
             candidate_version="v2",
@@ -88,7 +69,6 @@ class TestCandidateAnalysis:
             mutation_description="added an example",
             score_report=_make_score_report(),
             delta_vs_parent=MetricDeltas(quality_delta=0.01, cost_delta=0.0, per_class_recall_deltas={}),
-            delta_vs_front=[FrontComparison(front_candidate_version="v1", quality_delta=0.01, cost_delta=0.0)],
         )
         assert ca.candidate_version == "v2"
         assert ca.parent_version == "v1"
@@ -102,7 +82,6 @@ class TestCandidateAnalysis:
             mutation_description="seed candidate",
             score_report=_make_score_report(),
             delta_vs_parent=MetricDeltas(quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={}),
-            delta_vs_front=[],
         )
         assert ca.parent_version is None
 
@@ -144,11 +123,20 @@ class TestDiversityMetrics:
 
         dm = DiversityMetrics(
             example_overlap_ratio=0.3,
-            prompt_similarity=0.7,
-            mutation_type_distribution={"example_swap": 2, "rule_edit": 1},
         )
         assert dm.example_overlap_ratio == 0.3
-        assert dm.mutation_type_distribution["example_swap"] == 2
+
+    def test_full_overlap(self) -> None:
+        from odysseus.agents.review.models import DiversityMetrics
+
+        dm = DiversityMetrics(example_overlap_ratio=1.0)
+        assert dm.example_overlap_ratio == 1.0
+
+    def test_zero_overlap(self) -> None:
+        from odysseus.agents.review.models import DiversityMetrics
+
+        dm = DiversityMetrics(example_overlap_ratio=0.0)
+        assert dm.example_overlap_ratio == 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -170,89 +158,188 @@ class TestDiminishingReturns:
 
 
 # ---------------------------------------------------------------------------
-# MutationRecord
+# UserTarget
 # ---------------------------------------------------------------------------
 
 
-class TestMutationRecord:
-    def test_with_directive_ids(self) -> None:
-        from odysseus.agents.review.models import MutationRecord
+class TestUserTarget:
+    def test_basic_construction(self) -> None:
+        from odysseus.agents.review.models import UserTarget
 
-        mr = MutationRecord(
-            child_version="v3",
-            parent_version="v2",
-            mutation_type="example_swap",
-            description="swapped two examples",
-            directive_ids=["d1", "d2"],
-        )
-        assert mr.mutation_type == "example_swap"
-        assert mr.directive_ids == ["d1", "d2"]
+        t = UserTarget(metric="accuracy", operator=">=", threshold=0.90)
+        assert t.metric == "accuracy"
+        assert t.operator == ">="
+        assert t.threshold == 0.90
 
-    def test_directive_ids_optional_none(self) -> None:
-        from odysseus.agents.review.models import MutationRecord
+    def test_all_operators_valid(self) -> None:
+        from odysseus.agents.review.models import UserTarget
 
-        mr = MutationRecord(
-            child_version="v3",
-            parent_version="v2",
-            mutation_type="rule_edit",
-            description="edited a rule",
-        )
-        assert mr.directive_ids is None
+        for op in ("<=", ">=", "<", ">", "=="):
+            t = UserTarget(metric="cost", operator=op, threshold=1.0)  # type: ignore[arg-type]
+            assert t.operator == op
 
-    def test_invalid_mutation_type(self) -> None:
-        from odysseus.agents.review.models import MutationRecord
+    def test_invalid_operator_raises(self) -> None:
+        from odysseus.agents.review.models import UserTarget
 
         with pytest.raises(ValidationError):
-            MutationRecord(
-                child_version="v3",
-                parent_version="v2",
-                mutation_type="invalid_type",  # type: ignore[arg-type]
-                description="bad",
-            )
-
-    def test_all_mutation_types_valid(self) -> None:
-        from odysseus.agents.review.models import MutationRecord, MutationType
-
-        valid_types: list[MutationType] = [
-            "example_swap",
-            "rule_edit",
-            "schema_change",
-            "rule_add",
-            "rule_remove",
-            "vocabulary_edit",
-        ]
-        for mt in valid_types:
-            mr = MutationRecord(
-                child_version="v2",
-                parent_version="v1",
-                mutation_type=mt,
-                description="test",
-            )
-            assert mr.mutation_type == mt
+            UserTarget(metric="accuracy", operator="!=", threshold=0.5)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
-# MutationHistory
+# UserTargetProgress
 # ---------------------------------------------------------------------------
 
 
-class TestMutationHistory:
+class TestUserTargetProgress:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import MutationHistory, MutationRecord
+        from odysseus.agents.review.models import UserTarget, UserTargetProgress
 
-        record = MutationRecord(
-            child_version="v2",
+        target = UserTarget(metric="accuracy", operator=">=", threshold=0.90)
+        utp = UserTargetProgress(
+            target=target,
+            current_value=0.85,
+            met=False,
+            progress_ratio=0.94,
+            oracle_ceiling=0.95,
+            target_above_oracle=False,
+        )
+        assert utp.met is False
+        assert utp.current_value == 0.85
+        assert utp.progress_ratio == pytest.approx(0.94)
+
+    def test_met_target(self) -> None:
+        from odysseus.agents.review.models import UserTarget, UserTargetProgress
+
+        target = UserTarget(metric="accuracy", operator=">=", threshold=0.80)
+        utp = UserTargetProgress(
+            target=target,
+            current_value=0.92,
+            met=True,
+            progress_ratio=1.0,
+            oracle_ceiling=None,
+            target_above_oracle=False,
+        )
+        assert utp.met is True
+
+    def test_surplus_fields_optional(self) -> None:
+        from odysseus.agents.review.models import UserTarget, UserTargetProgress
+
+        target = UserTarget(metric="cost", operator="<=", threshold=1.0)
+        utp = UserTargetProgress(
+            target=target,
+            current_value=0.8,
+            met=True,
+            progress_ratio=1.0,
+            oracle_ceiling=None,
+            target_above_oracle=False,
+            surplus=0.2,
+            regression_budget=0.2,
+            priority_weight=0.0,
+        )
+        assert utp.surplus == pytest.approx(0.2)
+        assert utp.regression_budget == pytest.approx(0.2)
+        assert utp.priority_weight == 0.0
+
+
+# ---------------------------------------------------------------------------
+# ChildVariant
+# ---------------------------------------------------------------------------
+
+
+class TestChildVariant:
+    def test_basic_construction(self) -> None:
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+
+        ed = EditDirective(
+            directive_id="d1",
+            target_version="v1",
+            block_type="rule",
+            block_identifier="Rule 1",
+            granularity="micro",
+            directive="Tighten wording",
+            priority="medium",
+        )
+        cv = ChildVariant(
+            variant_id="cv-0-0",
+            hypothesis="Test hypothesis",
+            directives=[ed],
+        )
+        assert cv.variant_id == "cv-0-0"
+        assert len(cv.directives) == 1
+
+    def test_variant_id_defaults_to_none(self) -> None:
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(hypothesis="hypothesis", directives=[])
+        assert cv.variant_id is None
+
+    def test_parent_preference_fields(self) -> None:
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(
+            variant_id="cv-1-0",
+            hypothesis="target weak class",
+            directives=[],
+            parent_preference="weakest_on_class",
+            parent_preference_class="route_a",
+        )
+        assert cv.parent_preference == "weakest_on_class"
+        assert cv.parent_preference_class == "route_a"
+
+
+# ---------------------------------------------------------------------------
+# BatchOutcome
+# ---------------------------------------------------------------------------
+
+
+class TestBatchOutcome:
+    def test_basic_construction(self) -> None:
+        from odysseus.agents.review.models import BatchOutcome
+
+        bo = BatchOutcome(
+            variant_id="cv-0-0",
             parent_version="v1",
-            mutation_type="rule_add",
-            description="added a rule",
+            mutation_strategy="targeted",
+            directive_ids=["d1", "d2"],
+            candidate_version="v2",
+            eval_status="scored",
+            quality_delta_vs_parent=0.03,
+            is_new_best=True,
         )
-        mh = MutationHistory(
-            effective_mutations=[record],
-            ineffective_mutations=[],
-            untried_mutation_types=["schema_change", "vocabulary_edit"],
+        assert bo.variant_id == "cv-0-0"
+        assert bo.eval_status == "scored"
+        assert bo.quality_delta_vs_parent == pytest.approx(0.03)
+        assert bo.is_new_best is True
+
+    def test_failed_eval(self) -> None:
+        from odysseus.agents.review.models import BatchOutcome
+
+        bo = BatchOutcome(
+            variant_id="cv-0-1",
+            parent_version="v1",
+            mutation_strategy="exploratory",
+            candidate_version=None,
+            eval_status="failed",
+            quality_delta_vs_parent=None,
+            is_new_best=False,
         )
-        assert len(mh.effective_mutations) == 1
-        assert mh.untried_mutation_types == ["schema_change", "vocabulary_edit"]
+        assert bo.eval_status == "failed"
+        assert bo.candidate_version is None
+        assert bo.quality_delta_vs_parent is None
+
+    def test_invalid_mutation_strategy_raises(self) -> None:
+        from odysseus.agents.review.models import BatchOutcome
+
+        with pytest.raises(ValidationError):
+            BatchOutcome(
+                variant_id="cv-0-2",
+                parent_version="v1",
+                mutation_strategy="random",  # type: ignore[arg-type]
+                candidate_version=None,
+                eval_status=None,
+                quality_delta_vs_parent=None,
+                is_new_best=False,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -314,65 +401,53 @@ class TestOracleMetrics:
 # ---------------------------------------------------------------------------
 
 
+def _make_minimal_briefing_kwargs() -> dict:
+    from odysseus.agents.prompt_builder.search import Candidate
+    from odysseus.agents.review.models import (
+        CandidateAnalysis,
+        ClassRecallEntry,
+        DiminishingReturns,
+        DiversityMetrics,
+        MetricDeltas,
+        OracleMetrics,
+    )
+
+    candidate = CandidateAnalysis(
+        candidate_version="v2",
+        parent_version="v1",
+        mutation_description="swap",
+        score_report=_make_score_report(),
+        delta_vs_parent=MetricDeltas(quality_delta=0.01, cost_delta=0.0, per_class_recall_deltas={}),
+    )
+    front_member = Candidate(
+        prompt_version="v1",
+        parent_version=None,
+        quality_score=0.80,
+        cost=1.0,
+        round_introduced=1,
+    )
+    return dict(
+        round=2,
+        candidates=[candidate],
+        elite_set=[front_member],
+        per_class_recall={
+            "route_a": ClassRecallEntry(recall=0.85, support=50, trend=[0.80, 0.85], regression_flag=False)
+        },
+        diversity_metrics=DiversityMetrics(example_overlap_ratio=0.2),
+        diminishing_returns=DiminishingReturns(
+            score_trajectory=[0.78, 0.80],
+            improvement_trend=0.02,
+            stagnation_flag=False,
+        ),
+        oracle_metrics=OracleMetrics(oracle_cost_change=0.10, oracle_quality_change=0.02),
+    )
+
+
 class TestReviewBriefing:
-    def _make_briefing(self) -> ReviewBriefing:  # noqa: F821
-        from odysseus.agents.prompt_builder.search import Candidate
-        from odysseus.agents.review.models import (
-            CandidateAnalysis,
-            ClassRecallEntry,
-            DiminishingReturns,
-            DiversityMetrics,
-            ExampleSummary,
-            MetricDeltas,
-            MutationHistory,
-            OracleMetrics,
-            ReviewBriefing,
-        )
-
-        candidate = CandidateAnalysis(
-            candidate_version="v2",
-            parent_version="v1",
-            mutation_description="swap",
-            score_report=_make_score_report(),
-            delta_vs_parent=MetricDeltas(quality_delta=0.01, cost_delta=0.0, per_class_recall_deltas={}),
-            delta_vs_front=[],
-        )
-        front_member = Candidate(
-            prompt_version="v1",
-            parent_version=None,
-            quality_score=0.80,
-            cost=1.0,
-            round_introduced=1,
-        )
-        return ReviewBriefing(
-            round=2,
-            candidates=[candidate],
-            elite_set=[front_member],
-            per_class_recall={
-                "route_a": ClassRecallEntry(recall=0.85, support=50, trend=[0.80, 0.85], regression_flag=False)
-            },
-            diversity_metrics=DiversityMetrics(
-                example_overlap_ratio=0.2,
-                prompt_similarity=0.5,
-                mutation_type_distribution={"example_swap": 1},
-            ),
-            diminishing_returns=DiminishingReturns(
-                score_trajectory=[0.78, 0.80],
-                improvement_trend=0.02,
-                stagnation_flag=False,
-            ),
-            mutation_history=MutationHistory(
-                effective_mutations=[],
-                ineffective_mutations=[],
-                untried_mutation_types=["schema_change"],
-            ),
-            oracle_metrics=OracleMetrics(oracle_cost_change=0.10, oracle_quality_change=0.02),
-            prompt_versions={"v1": "prompt text v1", "v2": "prompt text v2"},
-            holdout_examples=[ExampleSummary(example_id="ex-1", route="route_a", ambiguity_tags=[])],
-        )
-
     def test_basic_construction(self) -> None:
-        briefing = self._make_briefing()
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
         assert briefing.round == 2
         assert len(briefing.candidates) == 1
         assert len(briefing.elite_set) == 1
@@ -382,7 +457,6 @@ class TestReviewBriefing:
         from odysseus.agents.review.models import (
             DiminishingReturns,
             DiversityMetrics,
-            MutationHistory,
             OracleMetrics,
             ReviewBriefing,
         )
@@ -392,27 +466,51 @@ class TestReviewBriefing:
             candidates=[],
             elite_set=[],
             per_class_recall={},
-            diversity_metrics=DiversityMetrics(
-                example_overlap_ratio=0.0,
-                prompt_similarity=0.0,
-                mutation_type_distribution={},
-            ),
+            diversity_metrics=DiversityMetrics(example_overlap_ratio=0.0),
             diminishing_returns=DiminishingReturns(
                 score_trajectory=[],
                 improvement_trend=0.0,
                 stagnation_flag=False,
             ),
-            mutation_history=MutationHistory(
-                effective_mutations=[],
-                ineffective_mutations=[],
-                untried_mutation_types=[],
-            ),
             oracle_metrics=OracleMetrics(oracle_cost_change=0.0, oracle_quality_change=0.0),
-            prompt_versions={},
-            holdout_examples=[],
         )
         assert briefing.candidates == []
-        assert briefing.holdout_examples == []
+        assert briefing.batch_outcomes == []
+        assert briefing.child_variants == []
+        assert briefing.target_progress == []
+
+    def test_new_fields_default(self) -> None:
+        """New fields default to empty/False."""
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
+        assert briefing.batch_outcomes == []
+        assert briefing.child_variants == []
+        assert briefing.target_progress == []
+        assert briefing.backtracking is False
+        assert briefing.beam_width == 2
+
+    def test_old_json_without_new_fields_still_loads(self) -> None:
+        """A ReviewBriefing serialised before new fields loads without error (extra=ignore)."""
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
+        data = briefing.model_dump()
+        # Simulate old serialised briefing by removing new fields
+        for field in ("batch_outcomes", "child_variants", "target_progress", "backtracking"):
+            data.pop(field, None)
+        restored = ReviewBriefing.model_validate(data)
+        assert restored.round == 2
+
+    def test_unknown_future_field_is_ignored(self) -> None:
+        """extra='ignore' ensures unknown fields do not raise."""
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
+        data = briefing.model_dump()
+        data["some_future_strategy_field"] = "this should be silently ignored"
+        restored = ReviewBriefing.model_validate(data)
+        assert restored.round == 2
 
 
 # ---------------------------------------------------------------------------
@@ -654,6 +752,7 @@ class TestDirectiveOutcome:
 class TestReviewResult:
     def test_basic_construction(self) -> None:
         from odysseus.agents.review.models import (
+            ChildVariant,
             DirectiveOutcome,
             EditDirective,
             LoopSignal,
@@ -665,15 +764,21 @@ class TestReviewResult:
 
         result = ReviewResult(
             candidate_ranking=[RankedCandidate(version="v2", rank=1, rationale="best")],
-            edit_directives=[
-                EditDirective(
-                    directive_id="d1",
-                    target_version="v2",
-                    block_type="example",
-                    block_identifier="ex_001",
-                    granularity="macro",
-                    directive="Replace with a clearer example.",
-                    priority="medium",
+            child_variants=[
+                ChildVariant(
+                    variant_id="cv-0-0",
+                    hypothesis="Fix recall on route_a",
+                    directives=[
+                        EditDirective(
+                            directive_id="d1",
+                            target_version="v2",
+                            block_type="example",
+                            block_identifier="ex_001",
+                            granularity="macro",
+                            directive="Replace with a clearer example.",
+                            priority="medium",
+                        )
+                    ],
                 )
             ],
             promotion_decisions=[PromotionDecision(version="v2", decision="promote", reason="top rank")],
@@ -693,7 +798,8 @@ class TestReviewResult:
         )
         assert result.loop_signal.action == "exit"
         assert len(result.candidate_ranking) == 1
-        assert len(result.edit_directives) == 1
+        assert len(result.child_variants) == 1
+        assert result.child_variants[0].variant_id == "cv-0-0"
         assert len(result.promotion_decisions) == 1
         assert len(result.regression_guards) == 1
         assert len(result.directive_history_update) == 1
@@ -703,185 +809,18 @@ class TestReviewResult:
 
         result = ReviewResult(
             candidate_ranking=[],
-            edit_directives=[],
+            child_variants=[],
             promotion_decisions=[],
             loop_signal=LoopSignal(action="refine", reason="still iterating"),
             regression_guards=[],
             directive_history_update=[],
         )
         assert result.candidate_ranking == []
-        assert result.edit_directives == []
+        assert result.child_variants == []
 
 
 # ---------------------------------------------------------------------------
 # ExampleContent
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# ReviewBriefing — strategy-specific optional fields (Increment 4)
-# ---------------------------------------------------------------------------
-
-
-class TestReviewBriefingStrategyFields:
-    """Round-trip and backward-compat tests for the new optional fields."""
-
-    def _make_minimal_briefing_kwargs(self) -> dict:
-        from odysseus.agents.prompt_builder.search import Candidate
-        from odysseus.agents.review.models import (
-            CandidateAnalysis,
-            ClassRecallEntry,
-            DiminishingReturns,
-            DiversityMetrics,
-            MetricDeltas,
-            MutationHistory,
-            OracleMetrics,
-        )
-
-        candidate = CandidateAnalysis(
-            candidate_version="v2",
-            parent_version="v1",
-            mutation_description="swap",
-            score_report=_make_score_report(),
-            delta_vs_parent=MetricDeltas(quality_delta=0.01, cost_delta=0.0, per_class_recall_deltas={}),
-            delta_vs_front=[],
-        )
-        front_member = Candidate(
-            prompt_version="v1",
-            parent_version=None,
-            quality_score=0.80,
-            cost=1.0,
-            round_introduced=1,
-        )
-        return dict(
-            round=2,
-            candidates=[candidate],
-            elite_set=[front_member],
-            per_class_recall={
-                "route_a": ClassRecallEntry(recall=0.85, support=50, trend=[0.80, 0.85], regression_flag=False)
-            },
-            diversity_metrics=DiversityMetrics(
-                example_overlap_ratio=0.2,
-                prompt_similarity=0.5,
-                mutation_type_distribution={"example_swap": 1},
-            ),
-            diminishing_returns=DiminishingReturns(
-                score_trajectory=[0.78, 0.80],
-                improvement_trend=0.02,
-                stagnation_flag=False,
-            ),
-            mutation_history=MutationHistory(
-                effective_mutations=[],
-                ineffective_mutations=[],
-                untried_mutation_types=["schema_change"],
-            ),
-            oracle_metrics=OracleMetrics(oracle_cost_change=0.10, oracle_quality_change=0.02),
-            prompt_versions={"v1": "prompt text v1", "v2": "prompt text v2"},
-            holdout_examples=[],
-        )
-
-    def test_strategy_fields_round_trip(self) -> None:
-        """All new optional fields survive a model_dump / model_validate round-trip."""
-        from odysseus.agents.review.models import ReviewBriefing
-
-        briefing = ReviewBriefing(
-            **self._make_minimal_briefing_kwargs(),
-            stagnation_signal={"count": 2, "limit": 3, "mutation_mode": "targeted"},
-            parent_a_version="v1",
-            parent_b_version="v2",
-            beam_rank={"v1": 0, "v2": 1},
-            crowding_distance={"v1": 0.5, "v2": 1.2},
-            trajectory_id=3,
-            weight_vector=(0.7, 0.3),
-            binding_axis="quality",
-            acceptance_history=[True, False, True],
-            hypervolume=0.42,
-            reference_point=(0.0, 2.0),
-        )
-
-        data = briefing.model_dump()
-        restored = ReviewBriefing.model_validate(data)
-
-        assert restored.stagnation_signal == {"count": 2, "limit": 3, "mutation_mode": "targeted"}
-        assert restored.parent_a_version == "v1"
-        assert restored.parent_b_version == "v2"
-        assert restored.beam_rank == {"v1": 0, "v2": 1}
-        assert restored.crowding_distance == {"v1": 0.5, "v2": 1.2}
-        assert restored.trajectory_id == 3
-        assert restored.weight_vector == (0.7, 0.3)
-        assert restored.binding_axis == "quality"
-        assert restored.acceptance_history == [True, False, True]
-        assert restored.hypervolume == pytest.approx(0.42)
-        assert restored.reference_point == (0.0, 2.0)
-
-    def test_new_fields_default_to_none(self) -> None:
-        """When none of the optional fields are set, they all default to None."""
-        from odysseus.agents.review.models import ReviewBriefing
-
-        briefing = ReviewBriefing(**self._make_minimal_briefing_kwargs())
-
-        assert briefing.stagnation_signal is None
-        assert briefing.parent_a_version is None
-        assert briefing.parent_b_version is None
-        assert briefing.beam_rank is None
-        assert briefing.crowding_distance is None
-        assert briefing.trajectory_id is None
-        assert briefing.weight_vector is None
-        assert briefing.binding_axis is None
-        assert briefing.acceptance_history is None
-        assert briefing.hypervolume is None
-        assert briefing.reference_point is None
-
-    def test_old_json_without_new_fields_still_loads(self) -> None:
-        """A ReviewBriefing serialised before Increment 4 loads without error.
-
-        The new optional fields should simply be absent from the JSON dict;
-        extra="ignore" + defaulting to None ensures forward/backward compat.
-        """
-        from odysseus.agents.review.models import ReviewBriefing
-
-        briefing = ReviewBriefing(**self._make_minimal_briefing_kwargs())
-        data = briefing.model_dump()
-
-        # Simulate an old serialised briefing by removing all new fields
-        for field in (
-            "stagnation_signal",
-            "parent_a_version",
-            "parent_b_version",
-            "beam_rank",
-            "crowding_distance",
-            "trajectory_id",
-            "weight_vector",
-            "binding_axis",
-            "acceptance_history",
-            "hypervolume",
-            "reference_point",
-        ):
-            data.pop(field, None)
-
-        # Must not raise
-        restored = ReviewBriefing.model_validate(data)
-        assert restored.stagnation_signal is None
-        assert restored.trajectory_id is None
-        assert restored.hypervolume is None
-
-    def test_unknown_future_field_is_ignored(self) -> None:
-        """extra="ignore" ensures that unknown fields (from future strategy branches)
-        do not cause a validation error when loading an existing ReviewBriefing.
-        """
-        from odysseus.agents.review.models import ReviewBriefing
-
-        briefing = ReviewBriefing(**self._make_minimal_briefing_kwargs())
-        data = briefing.model_dump()
-        data["some_future_strategy_field"] = "this should be silently ignored"
-
-        # Must not raise
-        restored = ReviewBriefing.model_validate(data)
-        assert restored.round == 2
-
-
-# ---------------------------------------------------------------------------
-# ExampleContent (existing tests below)
 # ---------------------------------------------------------------------------
 
 
@@ -962,3 +901,64 @@ class TestExampleContent:
             exclusions=[],
         )
         assert content.example_id is None
+
+
+# ---------------------------------------------------------------------------
+# ReviewBriefing — strategy-specific optional fields (Increment 4)
+# ---------------------------------------------------------------------------
+
+
+class TestReviewBriefingStrategyFields:
+    """Round-trip and backward-compat tests for the new optional fields."""
+
+    def test_strategy_fields_round_trip(self) -> None:
+        """All strategy-specific optional fields survive a model_dump / model_validate round-trip."""
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(
+            **_make_minimal_briefing_kwargs(),
+            stagnation_signal={"count": 2, "limit": 3, "mutation_mode": "targeted"},
+            parent_a_version="v1",
+            parent_b_version="v2",
+            beam_rank={"v1": 0, "v2": 1},
+            crowding_distance={"v1": 0.5, "v2": 1.2},
+            trajectory_id=3,
+            weight_vector=(0.7, 0.3),
+            binding_axis="quality",
+            acceptance_history=[True, False, True],
+            hypervolume=0.42,
+            reference_point=(0.0, 2.0),
+        )
+
+        data = briefing.model_dump()
+        restored = ReviewBriefing.model_validate(data)
+
+        assert restored.stagnation_signal == {"count": 2, "limit": 3, "mutation_mode": "targeted"}
+        assert restored.parent_a_version == "v1"
+        assert restored.parent_b_version == "v2"
+        assert restored.beam_rank == {"v1": 0, "v2": 1}
+        assert restored.crowding_distance == {"v1": 0.5, "v2": 1.2}
+        assert restored.trajectory_id == 3
+        assert restored.weight_vector == (0.7, 0.3)
+        assert restored.binding_axis == "quality"
+        assert restored.acceptance_history == [True, False, True]
+        assert restored.hypervolume == pytest.approx(0.42)
+        assert restored.reference_point == (0.0, 2.0)
+
+    def test_new_fields_default_to_none(self) -> None:
+        """When none of the optional fields are set, they all default to None."""
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
+
+        assert briefing.stagnation_signal is None
+        assert briefing.parent_a_version is None
+        assert briefing.parent_b_version is None
+        assert briefing.beam_rank is None
+        assert briefing.crowding_distance is None
+        assert briefing.trajectory_id is None
+        assert briefing.weight_vector is None
+        assert briefing.binding_axis is None
+        assert briefing.acceptance_history is None
+        assert briefing.hypervolume is None
+        assert briefing.reference_point is None

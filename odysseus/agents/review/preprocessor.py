@@ -2,38 +2,49 @@
 
 Pure computation functions that transform raw ScoreReports, SearchState,
 and historical data into a ReviewBriefing. No external dependencies
-beyond stdlib (difflib).
+beyond stdlib.
 """
 
 from __future__ import annotations
 
-import difflib
 import logging
+import operator as _operator_mod
 import re
 import statistics
-from collections import Counter
+from dataclasses import dataclass
 from typing import Any
 
 from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.review.models import (
+    BatchOutcome,
     CandidateAnalysis,
+    ChildVariant,
     ClassRecallEntry,
     DiminishingReturns,
     DirectiveOutcome,
     DiversityMetrics,
-    ExampleSummary,
-    FrontComparison,
     MetricDeltas,
-    MutationHistory,
-    MutationRecord,
     NearMissCandidate,
     OracleMetrics,
     ReviewBriefing,
+    UserTarget,
+    UserTargetProgress,
 )
 from odysseus.agents.routing_context import RoutingContext
 from odysseus.eval.models import ScoreReport
 
 _log = logging.getLogger(__name__)
+
+
+@dataclass
+class _TargetSlackResult:
+    """Local result type for compute_target_slack — decoupled from TargetSlack model."""
+
+    metric: str
+    surplus: float
+    regression_budget: float
+    priority_weight: float
+    current_value: float | None = None
 
 
 def _extract_metric(report: dict[str, Any], metric: str) -> float | None:
@@ -70,27 +81,42 @@ def _compute_recall_deltas(
     return deltas
 
 
+def _compute_metric_deltas(
+    candidate_report: dict[str, Any],
+    reference_report: dict[str, Any],
+) -> dict[str, float]:
+    """Compute deltas for all shared metrics between candidate and reference."""
+    candidate_metrics = candidate_report.get("metrics", {})
+    reference_metrics = reference_report.get("metrics", {})
+    deltas: dict[str, float] = {}
+    for key in candidate_metrics:
+        if key in reference_metrics:
+            deltas[key] = candidate_metrics[key] - reference_metrics[key]
+    return deltas
+
+
 def build_candidate_comparisons(
     *,
     score_reports: dict[str, dict[str, Any]],
     mutation_descriptions: dict[str, str],
     parent_versions: dict[str, str | None],
-    front_versions: list[str],
     primary_metric: str = "accuracy",
 ) -> list[CandidateAnalysis]:
-    """Build per-candidate analysis with deltas vs parent and front.
+    """Build per-candidate analysis with deltas vs parent.
 
     Args:
-        score_reports: All available reports keyed by version (candidates + front).
+        score_reports: All available reports keyed by version (candidates + elite).
         mutation_descriptions: What changed, keyed by candidate version.
         parent_versions: Parent version for each candidate.
-        front_versions: Versions currently on the Pareto front.
         primary_metric: The quality metric to use for deltas.
     """
     candidate_versions = list(mutation_descriptions.keys())
     results: list[CandidateAnalysis] = []
 
     for version in candidate_versions:
+        if version not in score_reports:
+            _log.warning("Skipping candidate %s: no score report loaded", version)
+            continue
         report = score_reports[version]
         parent = parent_versions.get(version)
         candidate_quality = _extract_metric(report, primary_metric)
@@ -110,21 +136,6 @@ def build_candidate_comparisons(
         else:
             delta_parent = MetricDeltas(quality_delta=None, cost_delta=None, per_class_recall_deltas={})
 
-        # Delta vs each front member
-        delta_front: list[FrontComparison] = []
-        for fv in front_versions:
-            if fv in score_reports:
-                front_report = score_reports[fv]
-                front_quality = _extract_metric(front_report, primary_metric)
-                front_cost = _extract_metric(front_report, "cost")
-                delta_front.append(
-                    FrontComparison(
-                        front_candidate_version=fv,
-                        quality_delta=_delta(candidate_quality, front_quality),
-                        cost_delta=_delta(candidate_cost, front_cost),
-                    )
-                )
-
         results.append(
             CandidateAnalysis(
                 candidate_version=version,
@@ -132,7 +143,6 @@ def build_candidate_comparisons(
                 mutation_description=mutation_descriptions[version],
                 score_report=ScoreReport.model_validate(report),
                 delta_vs_parent=delta_parent,
-                delta_vs_front=delta_front,
             )
         )
 
@@ -208,20 +218,6 @@ def _extract_example_ids(prompt_text: str) -> set[str]:
     return set(re.findall(r"###\s+Example\s+(\S+)", prompt_text))
 
 
-def _pairwise_dissimilarity(texts: list[str]) -> float:
-    """Average pairwise dissimilarity (1 - SequenceMatcher ratio) across texts."""
-    if len(texts) < 2:
-        return 0.0
-    total = 0.0
-    pairs = 0
-    for i in range(len(texts)):
-        for j in range(i + 1, len(texts)):
-            ratio = difflib.SequenceMatcher(None, texts[i], texts[j]).ratio()
-            total += 1.0 - ratio
-            pairs += 1
-    return total / pairs if pairs > 0 else 0.0
-
-
 def _example_overlap_ratio(prompt_texts: dict[str, str]) -> float:
     """Fraction of examples shared across all prompts on the front."""
     if len(prompt_texts) < 2:
@@ -237,21 +233,60 @@ def _example_overlap_ratio(prompt_texts: dict[str, str]) -> float:
 def compute_diversity_metrics(
     *,
     prompt_texts: dict[str, str],
-    mutation_log: list[MutationRecord],
 ) -> DiversityMetrics:
-    """Compute diversity metrics across Pareto front prompts.
+    """Compute diversity metrics across elite set prompts.
 
-    prompt_similarity: 0.0 = identical, approaching 1.0 = very different.
     example_overlap_ratio: 1.0 = all prompts use same examples, 0.0 = no overlap.
     """
-    texts = list(prompt_texts.values())
-    type_counts = Counter(m.mutation_type for m in mutation_log)
+    return DiversityMetrics(example_overlap_ratio=_example_overlap_ratio(prompt_texts))
 
-    return DiversityMetrics(
-        example_overlap_ratio=_example_overlap_ratio(prompt_texts),
-        prompt_similarity=_pairwise_dissimilarity(texts),
-        mutation_type_distribution=dict(type_counts),
-    )
+
+def compute_target_slack(
+    targets: list[UserTarget],
+    best_metrics: dict[str, float],
+) -> list[_TargetSlackResult]:
+    """Compute per-target surplus/deficit for aggressiveness allocation."""
+    slacks: list[_TargetSlackResult] = []
+    for t in targets:
+        current = best_metrics.get(t.metric)
+        if current is None:
+            slacks.append(_TargetSlackResult(
+                metric=t.metric,
+                surplus=-abs(t.threshold) if t.threshold != 0 else -1.0,
+                regression_budget=0.0,
+                priority_weight=1.0,
+                current_value=None,
+            ))
+            continue
+
+        if t.operator in (">=", ">"):
+            surplus = current - t.threshold
+        elif t.operator in ("<=", "<"):
+            surplus = t.threshold - current
+        else:
+            surplus = -abs(current - t.threshold)
+
+        slacks.append(_TargetSlackResult(
+            metric=t.metric,
+            surplus=surplus,
+            regression_budget=max(0.0, surplus),
+            priority_weight=0.0,
+            current_value=current,
+        ))
+
+    deficits = [max(0.0, -s.surplus) for s in slacks]
+    total_deficit = sum(deficits)
+    if total_deficit > 0:
+        for i, s in enumerate(slacks):
+            slacks[i] = _TargetSlackResult(
+                metric=s.metric,
+                surplus=s.surplus,
+                regression_budget=s.regression_budget,
+                priority_weight=deficits[i] / total_deficit,
+                current_value=s.current_value,
+            )
+
+    return slacks
 
 
 def compute_near_misses(
@@ -328,64 +363,132 @@ def compute_diminishing_returns(
     )
 
 
-_ALL_MUTATION_TYPES = [
-    "example_swap",
-    "rule_edit",
-    "schema_change",
-    "rule_add",
-    "rule_remove",
-    "vocabulary_edit",
-]
-
-
-def correlate_mutations(
-    *,
-    mutation_log: list[MutationRecord],
-    score_history: dict[str, float],
-    all_mutation_types: list[str] | None = None,
-) -> MutationHistory:
-    """Classify mutations as effective or ineffective based on score changes.
-
-    A mutation is effective if the child's score exceeds the parent's score.
-
-    Args:
-        mutation_log: All mutations recorded so far.
-        score_history: version -> primary metric score.
-        all_mutation_types: Full list of possible mutation types (defaults to built-in list).
-    """
-    if all_mutation_types is None:
-        all_mutation_types = _ALL_MUTATION_TYPES
-
-    effective: list[MutationRecord] = []
-    ineffective: list[MutationRecord] = []
-    unscored: list[MutationRecord] = []
-    tried_types: set[str] = set()
-
-    for mutation in mutation_log:
-        tried_types.add(mutation.mutation_type)
-        child_score = score_history.get(mutation.child_version)
-        parent_score = score_history.get(mutation.parent_version)
-        if child_score is None or parent_score is None:
-            _log.warning(
-                "Missing score for mutation %s -> %s, skipping classification",
-                mutation.parent_version,
-                mutation.child_version,
-            )
-            unscored.append(mutation)
-            continue
-        if child_score > parent_score:
-            effective.append(mutation)
-        else:
-            ineffective.append(mutation)
-
-    untried = [t for t in all_mutation_types if t not in tried_types]
-
-    return MutationHistory(
-        effective_mutations=effective,
-        ineffective_mutations=ineffective,
-        untried_mutation_types=untried,
-        unscored_mutations=unscored,
+def parse_user_targets(report_text: str) -> list[UserTarget]:
+    """Parse target metrics from a validated input report's '### Target Metrics' section."""
+    # Find the Target Metrics section
+    section_match = re.search(
+        r"###\s*Target\s+Metrics\s*\n(.*?)(?=\n###|\n##|\Z)",
+        report_text,
+        re.DOTALL | re.IGNORECASE,
     )
+    if not section_match:
+        return []
+
+    section_text = section_match.group(1)
+    targets: list[UserTarget] = []
+    # Match lines like: - `cost_change_with_overhead` <= -0.45
+    # or: - cost_change_with_overhead <= -0.45
+    pattern = re.compile(r"-\s*`?(\w+)`?\s*(<=|>=|<|>|==)\s*(-?[\d.]+)")
+    for match in pattern.finditer(section_text):
+        metric = match.group(1)
+        op = match.group(2)
+        threshold = float(match.group(3))
+        # The regex guarantees op is one of the valid Literal values
+        targets.append(UserTarget(metric=metric, operator=op, threshold=threshold))  # type: ignore[arg-type]
+
+    return targets
+
+
+_OPERATOR_MAP: dict[str, Any] = {
+    "<=": _operator_mod.le,
+    ">=": _operator_mod.ge,
+    "<": _operator_mod.lt,
+    ">": _operator_mod.gt,
+    "==": _operator_mod.eq,
+}
+
+# Map user-facing metric names to oracle metric keys
+_ORACLE_METRIC_MAP: dict[str, str] = {
+    "cost_change": "oracle_cost_change",
+    "cost_change_with_overhead": "oracle_cost_change",
+    "quality_change": "oracle_quality_change",
+}
+
+
+def compute_target_progress(
+    targets: list[UserTarget],
+    best_metrics: dict[str, float],
+    oracle_metrics: OracleMetrics | None,
+    full_dataset_oracle: dict[str, float] | None = None,
+    dev_oracle: dict[str, float] | None = None,
+) -> list[UserTargetProgress]:
+    """Compute progress toward each user target from the best candidate's metrics."""
+    results: list[UserTargetProgress] = []
+    for target in targets:
+        current_value = best_metrics.get(target.metric)
+
+        # Evaluate whether target is met
+        if current_value is not None:
+            op_fn = _OPERATOR_MAP[target.operator]
+            met = bool(op_fn(current_value, target.threshold))
+        else:
+            met = False
+
+        # Compute progress ratio (0.0 = no progress, 1.0 = target met)
+        progress_ratio: float | None = None
+        if current_value is not None and target.threshold != 0.0:
+            progress_ratio = max(0.0, abs(current_value / target.threshold))
+            # Ensure met targets always show ratio >= 1.0
+            if met and progress_ratio < 1.0:
+                progress_ratio = 1.0
+
+        # Oracle ceiling lookup
+        oracle_ceiling: float | None = None
+        target_above_oracle = False
+        oracle_key = _ORACLE_METRIC_MAP.get(target.metric)
+        if oracle_key is not None:
+            # Prefer dev_oracle (precomputed dataset-level) over per-eval oracle_metrics
+            if dev_oracle is not None:
+                oracle_ceiling = dev_oracle.get(oracle_key)
+            elif oracle_metrics is not None:
+                oracle_ceiling = getattr(oracle_metrics, oracle_key, None)
+            if oracle_ceiling is not None and target.threshold != 0.0:
+                # Check if target is more aggressive than oracle
+                if target.operator in ("<=", "<"):
+                    # For cost: target wants lower, oracle is the floor
+                    target_above_oracle = target.threshold < oracle_ceiling
+                elif target.operator in (">=", ">"):
+                    # For quality: target wants higher, oracle is the ceiling
+                    target_above_oracle = target.threshold > oracle_ceiling
+
+        # Full-dataset oracle translation
+        full_dataset_oracle_ceiling: float | None = None
+        capture_ratio: float | None = None
+        translated_threshold: float | None = None
+        if full_dataset_oracle is not None and oracle_key is not None:
+            full_oracle_value = full_dataset_oracle.get(oracle_key)
+            if full_oracle_value is not None:
+                full_dataset_oracle_ceiling = full_oracle_value
+                if full_oracle_value != 0.0:
+                    capture_ratio = target.threshold / full_oracle_value
+                    # Translate target threshold to dev-set scale using dev oracle ceiling
+                    dev_oracle_ceiling = oracle_ceiling
+                    if dev_oracle_ceiling is not None and dev_oracle_ceiling != 0.0:
+                        translated_threshold = capture_ratio * dev_oracle_ceiling
+                    # Override target_above_oracle using capture_ratio
+                    target_above_oracle = abs(capture_ratio) > 1.0
+                    # Override met and progress_ratio using translated threshold
+                    if translated_threshold is not None and current_value is not None:
+                        op_fn = _OPERATOR_MAP[target.operator]
+                        met = bool(op_fn(current_value, translated_threshold))
+                        if translated_threshold != 0.0:
+                            progress_ratio = max(0.0, abs(current_value / translated_threshold))
+                            if met and progress_ratio < 1.0:
+                                progress_ratio = 1.0
+
+        results.append(UserTargetProgress(
+            target=target,
+            current_value=current_value,
+            met=met,
+            progress_ratio=progress_ratio,
+            oracle_ceiling=oracle_ceiling,
+            full_dataset_oracle_ceiling=full_dataset_oracle_ceiling,
+            target_above_oracle=target_above_oracle,
+            translated_threshold=translated_threshold,
+            capture_ratio=capture_ratio,
+        ))
+
+    return results
 
 
 def compute_oracle_metrics(
@@ -482,14 +585,18 @@ def _build_score_history(
     return scores
 
 
-def generate_executive_summary(briefing: ReviewBriefing, primary_metric: str = "accuracy") -> str:
+def generate_executive_summary(
+    briefing: ReviewBriefing,
+    primary_metric: str = "accuracy",
+    best_ever_version: str | None = None,
+) -> str:
     """Generate a purely factual executive summary of the briefing data."""
     lines: list[str] = []
 
     # Round and scale
     n_candidates = len(briefing.candidates)
-    n_front = len(briefing.elite_set)
-    lines.append(f"Round {briefing.round}. {n_candidates} candidate(s) evaluated against {n_front} front member(s).")
+    n_elite = len(briefing.elite_set)
+    lines.append(f"Round {briefing.round}. {n_candidates} candidate(s) evaluated against {n_elite} elite candidate(s).")
 
     # Best candidate by quality delta vs parent
     candidates_with_quality = [
@@ -539,20 +646,63 @@ def generate_executive_summary(briefing: ReviewBriefing, primary_metric: str = "
             parts.append("cost: no headroom (oracle change is 0)")
         lines.append("Oracle gap: " + ", ".join(parts) + ".")
 
+    # User target progress
+    if briefing.target_progress:
+        all_met = all(tp.met for tp in briefing.target_progress)
+        if all_met:
+            lines.append("USER TARGETS: All targets met.")
+        elif any(tp.met for tp in briefing.target_progress):
+            lines.append("USER TARGETS: Some targets unmet.")
+        else:
+            lines.append("USER TARGETS: No targets met yet.")
+
+        for tp in briefing.target_progress:
+            t = tp.target
+            current_str = f"{tp.current_value:.4f}" if tp.current_value is not None else "N/A"
+            progress_str = f"{tp.progress_ratio:.0%}" if tp.progress_ratio is not None else "N/A"
+            status = "MET" if tp.met else "UNMET"
+            line = f"  {t.metric} {t.operator} {t.threshold}"
+            if tp.translated_threshold is not None:
+                line += f" (dev target: {tp.translated_threshold:.4f}, capture: {tp.capture_ratio:.0%})"
+            line += f": current={current_str}, progress={progress_str} [{status}]"
+            if tp.target_above_oracle:
+                line += " WARNING: target exceeds oracle ceiling"
+            if tp.oracle_ceiling is not None or tp.full_dataset_oracle_ceiling is not None:
+                full_str = (
+                    f"{tp.full_dataset_oracle_ceiling:.4f}"
+                    if tp.full_dataset_oracle_ceiling is not None
+                    else "N/A"
+                )
+                dev_str = f"{tp.oracle_ceiling:.4f}" if tp.oracle_ceiling is not None else "N/A"
+                line += f"\n    oracle: full_dataset={full_str}, dev_set={dev_str}"
+            lines.append(line)
+
+    # Target slack (now merged into target_progress items)
+    for tp in briefing.target_progress:
+        if tp.surplus is not None:
+            if tp.surplus < 0:
+                lines.append(
+                    f"  DEFICIT: {tp.target.metric} short by {abs(tp.surplus):.4f} "
+                    f"(priority weight: {tp.priority_weight:.0%})"
+                )
+            elif tp.surplus > 0:
+                lines.append(
+                    f"  SURPLUS: {tp.target.metric} ahead by {tp.surplus:.4f} "
+                    f"(regression budget: {tp.regression_budget:.4f})"
+                )
+
     # Stagnation
     dr = briefing.diminishing_returns
     sign = "+" if dr.improvement_trend >= 0 else ""
     stag = " Stagnation flag is set." if dr.stagnation_flag else ""
     lines.append(f"Improvement trend: {sign}{dr.improvement_trend:.4f}/round.{stag}")
 
-    # Diversity
-    dm = briefing.diversity_metrics
-    lines.append(f"Diversity: prompt_similarity={dm.prompt_similarity:.2f} (0=identical, 1=different).")
-    untried = briefing.mutation_history.untried_mutation_types
-    if untried:
-        lines.append(f"Untried mutation types: {', '.join(untried)}.")
-    else:
-        lines.append("All mutation types have been tried.")
+    # Backtracking
+    if briefing.backtracking:
+        version_str = f" ({best_ever_version})" if best_ever_version else ""
+        lines.append(
+            f"Backtracking active: all hypotheses will target best-ever version{version_str}."
+        )
 
     return "\n".join(lines)
 
@@ -563,12 +713,15 @@ def build_review_briefing(
     score_reports: dict[str, dict[str, Any]],
     historical_reports: dict[int, dict[str, dict[str, Any]]],
     prompt_texts: dict[str, str],
-    mutation_log: list[MutationRecord],
     directive_history: list[DirectiveOutcome],
-    holdout_examples: list[ExampleSummary],
     candidate_versions: list[str],
     parent_versions: dict[str, str | None],
     routing_context: RoutingContext | None = None,
+    child_variants: list[ChildVariant] | None = None,
+    pending_candidates: list[Candidate] | None = None,
+    user_targets: list[UserTarget] | None = None,
+    full_dataset_oracle: dict[str, float] | None = None,
+    dev_oracle: dict[str, float] | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 
@@ -576,21 +729,17 @@ def build_review_briefing(
     """
     current_round: int = search_state.round
     primary_metric: str = search_state.primary_metric_name or "accuracy"
-    pareto_front = search_state.elite_set
-    front_versions = [c.prompt_version for c in pareto_front]
+    elite_set = search_state.elite_set
+    elite_versions = [c.prompt_version for c in elite_set]
 
     # Mutation descriptions for current candidates
-    mutation_descriptions: dict[str, str] = {}
-    for version in candidate_versions:
-        matching = [m for m in mutation_log if m.child_version == version]
-        mutation_descriptions[version] = matching[-1].description if matching else "No mutation record"
+    mutation_descriptions: dict[str, str] = {v: "" for v in candidate_versions}
 
     # 1. Candidate comparisons
     candidates = build_candidate_comparisons(
         score_reports=score_reports,
         mutation_descriptions=mutation_descriptions,
         parent_versions=parent_versions,
-        front_versions=front_versions,
         primary_metric=primary_metric,
     )
 
@@ -601,11 +750,10 @@ def build_review_briefing(
         current_round=current_round,
     )
 
-    # 3. Diversity metrics (front prompts only)
-    front_prompt_texts = {v: prompt_texts[v] for v in front_versions if v in prompt_texts}
+    # 3. Diversity metrics (elite set prompts only)
+    front_prompt_texts = {v: prompt_texts[v] for v in elite_versions if v in prompt_texts}
     diversity_metrics = compute_diversity_metrics(
         prompt_texts=front_prompt_texts,
-        mutation_log=mutation_log,
     )
 
     # 4. Diminishing returns
@@ -622,64 +770,182 @@ def build_review_briefing(
         stagnation_threshold=effective_threshold,
     )
 
-    # 5. Mutation correlation
-    score_history = _build_score_history(
-        historical_reports,
-        score_reports,
-        primary_metric,
-    )
-    mutation_history = correlate_mutations(
-        mutation_log=mutation_log,
-        score_history=score_history,
-    )
-
-    # 6. Oracle metrics — use the best current candidate's report
-    best_candidate = max(
-        candidate_versions,
-        key=lambda v: _extract_metric(score_reports.get(v, {}), primary_metric) or 0.0,
-    )
-    oracle_metrics = compute_oracle_metrics_from_report(
-        metrics=score_reports[best_candidate].get("metrics", {}),
-    )
-
-    # 7. Near-miss candidates
-    current_candidates = [
-        Candidate(
-            prompt_version=v,
-            parent_version=parent_versions.get(v),
-            quality_score=_extract_metric(score_reports[v], primary_metric) or 0.0,
-            cost=_extract_metric(score_reports[v], "cost") or 0.0,
-            round_introduced=current_round,
+    # 5. Oracle metrics — prefer full-dataset oracle (dataset-level, constant across versions)
+    oracle_versions = candidate_versions or elite_versions
+    if full_dataset_oracle is not None and oracle_versions:
+        best_candidate = max(
+            oracle_versions,
+            key=lambda v: _extract_metric(score_reports.get(v, {}), primary_metric) or 0.0,
         )
-        for v in candidate_versions
-        if v in score_reports
-    ]
-    near_misses = compute_near_misses(current_candidates, pareto_front)
+        best_metrics = score_reports.get(best_candidate, {}).get("metrics", {})
+        oracle_metrics = compute_oracle_metrics(
+            oracle_cost_change=full_dataset_oracle["oracle_cost_change"],
+            oracle_quality_change=full_dataset_oracle["oracle_quality_change"],
+            candidate_cost_change=best_metrics.get("cost_change", 0.0),
+            candidate_cost_change_with_overhead=best_metrics.get("cost_change_with_overhead", 0.0),
+            candidate_quality_change=best_metrics.get("quality_change", 0.0),
+        )
+    else:
+        # Fallback: extract from best candidate's report
+        if oracle_versions:
+            best_candidate = max(
+                oracle_versions,
+                key=lambda v: _extract_metric(score_reports.get(v, {}), primary_metric) or 0.0,
+            )
+            oracle_metrics = compute_oracle_metrics_from_report(
+                metrics=score_reports.get(best_candidate, {}).get("metrics", {}),
+            )
+        else:
+            oracle_metrics = compute_oracle_metrics_from_report(metrics={})
 
-    # Hill-climb stagnation signal — other strategies will write a different
-    # dict shape into this same field from their own preprocessor paths.
-    stagnation_signal: dict[str, Any] = {
-        "count": search_state.stagnation_count,
-        "limit": search_state.stagnation_limit,
-        "mutation_mode": search_state.mutation_mode,
-    }
+    # 6b. User target progress (with slack merged in) — globally-best-candidate semantics
+    target_progress_list: list[UserTargetProgress] = []
+    if user_targets:
+        # Pick a single best version by primary metric, then read all target metrics off it
+        best_versions = candidate_versions or elite_versions
+        if best_versions:
+            best_version = max(
+                best_versions,
+                key=lambda v: _extract_metric(score_reports.get(v, {}), primary_metric) or 0.0,
+            )
+            best_metrics = score_reports.get(best_version, {}).get("metrics", {})
+            target_progress_list = compute_target_progress(
+                user_targets,
+                best_metrics,
+                oracle_metrics,
+                full_dataset_oracle=full_dataset_oracle,
+                dev_oracle=dev_oracle,
+            )
+            # Merge target slack into target progress items
+            slack_by_metric = {
+                s.metric: s for s in compute_target_slack(user_targets, best_metrics)
+            }
+            merged: list[UserTargetProgress] = []
+            for tp in target_progress_list:
+                slack = slack_by_metric.get(tp.target.metric)
+                if slack is not None:
+                    merged.append(tp.model_copy(update={
+                        "surplus": slack.surplus,
+                        "regression_budget": slack.regression_budget,
+                        "priority_weight": slack.priority_weight,
+                    }))
+                else:
+                    merged.append(tp)
+            target_progress_list = merged
+
+    # 7. Build batch outcomes — match child variants to candidates via variant_id
+    beam_width = getattr(search_state, "beam_width", 2)
+    batch_outcomes: list[BatchOutcome] = []
+
+    if child_variants and pending_candidates is not None:
+        # Build a lookup: source_directive_batch_id -> Candidate
+        candidate_by_variant = {
+            getattr(c, "source_directive_batch_id"): c
+            for c in pending_candidates
+            if getattr(c, "source_directive_batch_id", None) is not None
+        }
+
+        # best_ever_quality for is_new_best check
+        best_ever_quality: float = getattr(search_state, "best_ever_quality", 0.0)
+
+        # Build parent quality lookup from elite set
+        parent_quality = {c.prompt_version: c.quality_score for c in elite_set}
+
+        for cv in child_variants:
+            if cv.variant_id is None:
+                continue
+            candidate = candidate_by_variant.get(cv.variant_id)
+            if candidate is not None:
+                parent_q = parent_quality.get(candidate.parent_version or "")
+                quality_delta = (
+                    candidate.quality_score - parent_q
+                    if parent_q is not None and candidate.eval_status == "scored"
+                    else None
+                )
+                # Compute full metric deltas vs primary parent
+                parent_report = score_reports.get(candidate.parent_version or "")
+                metric_deltas_vs_parent = (
+                    _compute_metric_deltas(score_reports[candidate.prompt_version], parent_report)
+                    if candidate.eval_status == "scored" and candidate.prompt_version in score_reports and parent_report
+                    else None
+                )
+
+                # Compute full metric deltas vs secondary parent (merge only)
+                secondary_pv = getattr(candidate, "secondary_parent_version", None)
+                metric_deltas_vs_secondary = None
+                if secondary_pv and candidate.eval_status == "scored" and candidate.prompt_version in score_reports:
+                    secondary_report = score_reports.get(secondary_pv)
+                    if secondary_report:
+                        metric_deltas_vs_secondary = _compute_metric_deltas(
+                            score_reports[candidate.prompt_version], secondary_report
+                        )
+
+                batch_outcomes.append(BatchOutcome(
+                    variant_id=cv.variant_id,
+                    parent_version=candidate.parent_version or "",
+                    mutation_strategy=candidate.mutation_strategy or "targeted",  # type: ignore[arg-type]
+                    directive_ids=[d.directive_id for d in cv.directives],
+                    candidate_version=candidate.prompt_version,
+                    eval_status=candidate.eval_status if candidate.eval_status in ("scored", "failed") else None,
+                    quality_delta_vs_parent=quality_delta,
+                    is_new_best=candidate.quality_score > best_ever_quality,
+                    secondary_parent_version=secondary_pv,
+                    metric_deltas_vs_parent=metric_deltas_vs_parent,
+                    metric_deltas_vs_secondary_parent=metric_deltas_vs_secondary,
+                ))
+            else:
+                batch_outcomes.append(BatchOutcome(
+                    variant_id=cv.variant_id,
+                    parent_version=cv.parent_version or "",
+                    mutation_strategy="targeted",
+                    directive_ids=[d.directive_id for d in cv.directives],
+                    candidate_version=None,
+                    eval_status=None,
+                    quality_delta_vs_parent=None,
+                    is_new_best=False,
+                ))
+
+    recent_directive_history = directive_history[-15:]
+
+    backtracking = (
+        getattr(search_state, "stagnation_count", 0)
+        >= getattr(search_state, "backtrack_threshold", float("inf"))
+    )
+    best_ever_version_val: str | None = getattr(search_state, "best_ever_version", None)
+
+    # Build hill-climb stagnation signal from core search state fields
+    stagnation_signal: dict[str, Any] | None = None
+    stagnation_count = getattr(search_state, "stagnation_count", None)
+    stagnation_limit = getattr(search_state, "stagnation_limit", None)
+    mutation_mode = getattr(search_state, "mutation_mode", None)
+    if stagnation_count is not None and stagnation_limit is not None and mutation_mode is not None:
+        stagnation_signal = {
+            "count": stagnation_count,
+            "limit": stagnation_limit,
+            "mutation_mode": mutation_mode,
+        }
 
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
-        elite_set=pareto_front,
+        elite_set=elite_set,
         per_class_recall=per_class_recall,
         diversity_metrics=diversity_metrics,
         diminishing_returns=diminishing_returns,
-        mutation_history=mutation_history,
         oracle_metrics=oracle_metrics,
-        prompt_versions=prompt_texts,
-        holdout_examples=holdout_examples,
         routing_context=routing_context,
-        directive_history=directive_history,
-        near_miss_candidates=near_misses,
+        directive_history=recent_directive_history,
+        beam_width=beam_width,
+        batch_outcomes=batch_outcomes,
+        target_progress=target_progress_list,
+        backtracking=backtracking,
+        child_variants=child_variants or [],
         stagnation_signal=stagnation_signal,
     )
     return briefing.model_copy(
-        update={"executive_summary": generate_executive_summary(briefing, primary_metric)},
+        update={
+            "executive_summary": generate_executive_summary(
+                briefing, primary_metric, best_ever_version_val
+            )
+        },
     )

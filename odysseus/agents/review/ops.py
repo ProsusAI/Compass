@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from odysseus.agents.review.models import (
+    ChildVariant,
     DirectiveOutcome,
     EditDirective,
-    MutationRecord,
 )
 from odysseus.project_dir import get_project_dir
 
@@ -30,8 +30,8 @@ def _directive_history_path(run_id: str, output_dir: Path) -> Path:
     return _search_dir(run_id, output_dir) / "directive_history.json"
 
 
-def _mutation_log_path(run_id: str, output_dir: Path) -> Path:
-    return _search_dir(run_id, output_dir) / "mutation_log.json"
+def _child_variants_path(run_id: str, output_dir: Path) -> Path:
+    return _search_dir(run_id, output_dir) / "child_variants.json"
 
 
 def _edit_directives_path(run_id: str, output_dir: Path) -> Path:
@@ -40,6 +40,24 @@ def _edit_directives_path(run_id: str, output_dir: Path) -> Path:
 
 def _round_reports_dir(run_id: str, output_dir: Path) -> Path:
     return _search_dir(run_id, output_dir) / "round_reports"
+
+
+def _review_result_path(run_id: str, output_dir: Path) -> Path:
+    return _search_dir(run_id, output_dir) / "review_result.json"
+
+
+def save_review_result(
+    run_id: str,
+    result: dict[str, Any],
+    *,
+    output_dir: Path | None = None,
+) -> None:
+    """Persist the full ReviewResult for debugging/auditing."""
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    path = _review_result_path(run_id, output_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result, indent=2), encoding="utf-8")
 
 
 def save_directive_history(
@@ -100,32 +118,34 @@ def load_edit_directives(
     return [EditDirective.model_validate(d) for d in data]
 
 
-def save_mutation_log(
+def save_child_variants(
     run_id: str,
-    log: list[MutationRecord],
+    variants: list[ChildVariant],
     *,
     output_dir: Path | None = None,
 ) -> None:
+    """Persist child variants from the Review Agent for the Prompt Builder to consume."""
     if output_dir is None:
         output_dir = _default_output_dir()
-    path = _mutation_log_path(run_id, output_dir)
+    path = _child_variants_path(run_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = [r.model_dump(mode="json") for r in log]
+    data = [v.model_dump(mode="json") for v in variants]
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
-def load_mutation_log(
+def load_child_variants(
     run_id: str,
     *,
     output_dir: Path | None = None,
-) -> list[MutationRecord]:
+) -> list[ChildVariant]:
+    """Load the most recently persisted child variants."""
     if output_dir is None:
         output_dir = _default_output_dir()
-    path = _mutation_log_path(run_id, output_dir)
+    path = _child_variants_path(run_id, output_dir)
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
-    return [MutationRecord.model_validate(d) for d in data]
+    return [ChildVariant.model_validate(v) for v in data]
 
 
 def save_round_report(

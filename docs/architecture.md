@@ -90,7 +90,7 @@ Top-level report from the Data Validation agent containing `SchemaFinding` list,
 Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Prompt Builder Agent.
 
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
-`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `MutationHistory`, `OracleMetrics`, per-class recall, and holdout example summaries. `ReviewResult` is the LLM output: `candidate_ranking`, `edit_directives`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, mutation log, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Edit directives are persisted to `edit_directives.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_edit_directives_tool`.
+`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets), `BatchOutcome` list (linking child variants to their eval results), and `ChildVariant` list. `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_edit_directives_tool`.
 
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
@@ -126,8 +126,10 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation/detect.py`](../odysseus/agents/data_validation/detect.py) |
 | `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; accepts `run_id` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
 | `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
-| `build_review_briefing_tool` | Planned | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py) |
-| `record_directive_outcomes_tool` | Implemented | Persist directive outcomes and apply the Review Agent's `loop_signal` (early exit or budget/mode overrides) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `build_review_briefing_tool` | Implemented | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `record_directive_outcomes_tool` | Implemented | Persist child variants + directive outcomes; apply the Review Agent's `loop_signal` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `query_holdout_examples_tool` | Implemented | Query holdout examples, optionally filtered by route, for directive crafting | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_prompt_text_tool` | Implemented | Retrieve the full text of a versioned prompt for review or analysis | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `build_final_report_briefing_tool` | Implemented | Pre-process all pipeline artifacts into a structured briefing with charts for the Final Report Agent | [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py) |
 | `save_final_report` | Implemented | Save the final report markdown to disk | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
 | `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–5, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
@@ -155,7 +157,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
 | `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
-| `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
+| `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
 #### Sub-Agent Guard Pattern
@@ -217,7 +219,7 @@ For `expected=1`, fanout is complete when `search/child_variants.json` exists.  
 
 **`child_variants.json`**
 
-Written by `record_directive_outcomes_tool` alongside `edit_directives.json` whenever edit directives are saved.  Acts as the canonical review-completion sentinel checked by `review_fanout_status`.
+Written by `record_directive_outcomes_tool` whenever child variants are saved.  Acts as the canonical review-completion sentinel checked by `review_fanout_status`.
 
 **Defense-in-depth phase flip**
 
@@ -296,7 +298,8 @@ The Review Agent prompt is assembled at dispatch time from three layers: a share
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
-| `outputs/<run_id>/search/edit_directives.json` | `EditDirective[]` — current round's block-level edit directives for the Prompt Builder |
+| `outputs/<run_id>/search/child_variants.json` | `ChildVariant[]` — Review Agent output: grouped directives with parent preferences and hypotheses |
+| `outputs/<run_id>/search/edit_directives.json` | `EditDirective[]` — legacy flat directive list (still consumed by `get_edit_directives_tool`) |
 | `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |
 | `outputs/<run_id>/search/search_state_original.json` | Preserved original search state from before rerun initiation |
 | `outputs/<run_id>/eval/` | Pipeline run: dev evaluation results and reports |

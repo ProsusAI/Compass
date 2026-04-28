@@ -1,4 +1,4 @@
-"""Review tools — briefing builder and directive outcomes."""
+"""Review tools — briefing builder, directive outcomes, and query tools."""
 
 import json
 from pathlib import Path
@@ -28,40 +28,44 @@ from odysseus.project_dir import resolve_project_dir as _resolve_project_dir
 async def build_review_briefing_tool(
     ctx: Context,
     run_id: str,
-    candidate_versions: list[str],
-    parent_versions: dict[str, str | None],
-    report_paths: dict[str, str],
-    holdout_jsonl_path: str = "",
+    candidate_versions: list[str] | None = None,
+    parent_versions: dict[str, str | None] | None = None,
+    report_paths: dict[str, str] | None = None,
     output_dir: str = "outputs",
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Build a ReviewBriefing for the Review Agent.
 
     Pre-processes all numerical data.
 
-    Loads search state, score reports, prompt texts, mutation log, and directive
-    history, then computes candidate comparisons, per-class recall, diversity
-    metrics, diminishing returns, mutation correlation, and oracle metrics.
+    Loads search state, score reports, prompt texts, directive
+    history, and child variants, then computes candidate comparisons, per-class
+    recall, diversity metrics, diminishing returns, oracle
+    metrics, and batch outcomes linking directives to eval results.
+
+    All parameters except run_id are optional and auto-discovered.
 
     Args:
         run_id: Pipeline run identifier.
-        candidate_versions: Versions evaluated in the current round.
-        parent_versions: Mapping of candidate -> parent version.
+        candidate_versions: Versions evaluated in the current round. Auto-discovered
+            from pending candidates on disk if omitted.
+        parent_versions: Mapping of candidate -> parent version. Auto-discovered
+            from pending candidates if omitted.
         report_paths: Mapping of version -> path to its ScoreReport JSON.
-        holdout_jsonl_path: Path to holdout JSONL file (optional).
+            Auto-discovered from disk (outputs/<run_id>/eval/<version>/report.json)
+            if omitted.
         output_dir: Output directory (default "outputs").
 
     Returns:
         JSON-serialized ReviewBriefing.
     """
     from odysseus.agents.prompt_builder.search_ops import get_search_state
-    from odysseus.agents.review.models import ExampleSummary
     from odysseus.agents.review.ops import (
+        load_child_variants,
         load_directive_history,
-        load_mutation_log,
         load_round_reports,
         save_round_report,
     )
-    from odysseus.agents.review.preprocessor import build_review_briefing
+    from odysseus.agents.review.preprocessor import build_review_briefing, parse_user_targets
     from odysseus.prompts.manager import FilePromptManager
 
     project_dir = await _resolve_project_dir(ctx)
@@ -73,6 +77,15 @@ async def build_review_briefing_tool(
     except FileNotFoundError:
         state = SearchState(search_state_id=run_id, backend="")
 
+    # Auto-discover pending candidates
+    pending_candidates_list = _load_pending(run_id, out)
+
+    # Auto-populate candidate_versions and parent_versions from pending candidates
+    if candidate_versions is None:
+        candidate_versions = [c.prompt_version for c in pending_candidates_list]
+    if parent_versions is None:
+        parent_versions = {c.prompt_version: c.parent_version for c in pending_candidates_list}
+
     # Load score reports for current candidates + front + parents
     all_versions: set[str] = set(candidate_versions)
     for c in state.elite_set:
@@ -83,6 +96,14 @@ async def build_review_briefing_tool(
 
     # Load historical round reports
     historical = load_round_reports(run_id, output_dir=out)
+
+    # Auto-discover report_paths from disk if not provided
+    if report_paths is None:
+        report_paths = {}
+        for version in candidate_versions:
+            default_path = out / run_id / "eval" / version / "report.json"
+            if default_path.exists():
+                report_paths[version] = str(default_path)
 
     # Load current round reports via report_paths param; fall back to historical for front members
     score_reports: dict[str, Any] = {}
@@ -97,7 +118,7 @@ async def build_review_briefing_tool(
                     score_reports[version] = round_data[version]
                     break
 
-    # Load prompt texts
+    # Load prompt texts (used internally for diversity metrics, not surfaced in briefing)
     import contextlib
 
     prompt_mgr = FilePromptManager(project_dir / "prompts")
@@ -106,30 +127,11 @@ async def build_review_briefing_tool(
         with contextlib.suppress(FileNotFoundError):
             prompt_texts[version] = prompt_mgr.load(version)
 
-    # Load mutation log and directive history
-    mutation_log = load_mutation_log(run_id, output_dir=out)
+    # Load directive history
     directive_history = load_directive_history(run_id, output_dir=out)
 
-    # Auto-discover holdout path if not explicitly provided
-    if not holdout_jsonl_path:
-        default_holdout = out / run_id / "analysis" / "holdout.jsonl"
-        if default_holdout.exists():
-            holdout_jsonl_path = str(default_holdout)
-
-    # Load holdout examples from JSONL file if path provided
-    holdout_examples: list[ExampleSummary] = []
-    if holdout_jsonl_path:
-        holdout_path = Path(holdout_jsonl_path)
-        if holdout_path.exists():
-            for line in holdout_path.read_text(encoding="utf-8").strip().splitlines():
-                example = json.loads(line)
-                holdout_examples.append(
-                    ExampleSummary(
-                        example_id=example.get("id", ""),
-                        route=example.get("expected", {}).get("route", ""),
-                        input_text=example.get("input"),
-                    )
-                )
+    # Load child variants for batch outcome tracking
+    child_variants = load_child_variants(run_id, output_dir=out) or None
 
     # Load routing context
     routing_context = None
@@ -140,18 +142,39 @@ async def build_review_briefing_tool(
             routing_context_path.read_text(encoding="utf-8")
         )
 
+    # Load user targets from validated input report
+    user_targets = None
+    input_report_path = out / run_id / "validation" / "input_report.md"
+    if input_report_path.exists():
+        user_targets = parse_user_targets(input_report_path.read_text(encoding="utf-8"))
+
+    # Load full-dataset oracle if available
+    full_dataset_oracle: dict[str, float] | None = None
+    oracle_path = out / run_id / "eval" / "oracle_metrics.json"
+    if oracle_path.exists():
+        full_dataset_oracle = json.loads(oracle_path.read_text(encoding="utf-8"))
+
+    # Load dev-set oracle if available
+    dev_oracle: dict[str, float] | None = None
+    dev_oracle_path = out / run_id / "eval" / "dev_oracle_metrics.json"
+    if dev_oracle_path.exists():
+        dev_oracle = json.loads(dev_oracle_path.read_text(encoding="utf-8"))
+
     # Build briefing
     briefing = build_review_briefing(
         search_state=state,
         score_reports=score_reports,
         historical_reports=historical,
         prompt_texts=prompt_texts,
-        mutation_log=mutation_log,
         directive_history=directive_history,
-        holdout_examples=holdout_examples,
         candidate_versions=candidate_versions,
         parent_versions=parent_versions,
         routing_context=routing_context,
+        child_variants=child_variants,
+        pending_candidates=pending_candidates_list,
+        user_targets=user_targets,
+        full_dataset_oracle=full_dataset_oracle,
+        dev_oracle=dev_oracle,
     )
 
     # Save current round's reports for future historical access
@@ -176,7 +199,7 @@ async def record_directive_outcomes_tool(
     run_id: str,
     outcomes: list[dict[str, Any]],
     loop_signal: dict[str, Any] | None = None,
-    edit_directives: list[dict[str, Any]] | None = None,
+    child_variants: list[dict[str, Any]] | None = None,
     output_dir: str = "outputs",
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Record the outcomes of prior Review Agent directives.
@@ -190,7 +213,7 @@ async def record_directive_outcomes_tool(
         run_id: Pipeline run identifier.
         outcomes: List of DirectiveOutcome dicts to record.
         loop_signal: Optional LoopSignal dict from the Review Agent.
-        edit_directives: Optional list of EditDirective dicts to persist for the Prompt Builder.
+        child_variants: Optional list of ChildVariant dicts (Review Agent output).
         output_dir: Output directory (default "outputs").
 
     Returns:
@@ -198,8 +221,12 @@ async def record_directive_outcomes_tool(
     """
     import contextlib
 
-    from odysseus.agents.review.models import DirectiveOutcome, LoopSignal
-    from odysseus.agents.review.ops import load_directive_history, save_directive_history
+    from odysseus.agents.review.models import ChildVariant, DirectiveOutcome, LoopSignal
+    from odysseus.agents.review.ops import (
+        load_directive_history,
+        save_child_variants,
+        save_directive_history,
+    )
 
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
@@ -212,23 +239,36 @@ async def record_directive_outcomes_tool(
         "total": len(existing) + len(parsed),
     }
 
-    # Persist edit directives for Prompt Builder consumption.
-    # Also writes child_variants.json — the canonical fanout-completion sentinel
-    # checked by review_fanout_status / complete_stage("review").
-    if edit_directives is not None:
-        from odysseus.agents.review.models import EditDirective
-        from odysseus.agents.review.ops import save_edit_directives
+    # Persist child variants and write the canonical fanout-completion sentinel.
+    # Also assigns stable variant_ids so the Prompt Builder can reference them
+    # and batch_outcomes can link directives to eval results.
+    if child_variants is not None:
+        parsed_variants = [ChildVariant.model_validate(v) for v in child_variants]
 
-        parsed_directives = [EditDirective.model_validate(d) for d in edit_directives]
-        save_edit_directives(run_id, parsed_directives, output_dir=out)
-        result["edit_directives_saved"] = len(parsed_directives)
+        # Assign stable variant_ids so the Prompt Builder can reference them
+        # and batch_outcomes can link directives to eval results
+        current_round = 0
+        with contextlib.suppress(FileNotFoundError):
+            current_round = _load_state(run_id, out).round
+        for i, v in enumerate(parsed_variants):
+            if v.variant_id is None:
+                parsed_variants[i] = v.model_copy(
+                    update={"variant_id": f"cv-{current_round}-{i}"}
+                )
+
+        save_child_variants(run_id, parsed_variants, output_dir=out)
+        result["child_variants_saved"] = len(parsed_variants)
+        result["variants_summary"] = [
+            {"variant_id": v.variant_id, "hypothesis": v.hypothesis[:80]}
+            for v in parsed_variants
+        ]
 
         # Write the shared child_variants.json sentinel so review_fanout_status
         # can confirm the fanout is complete without knowledge of directive format.
         child_variants_path = out / run_id / "search" / "child_variants.json"
         child_variants_path.parent.mkdir(parents=True, exist_ok=True)
         child_variants_path.write_text(
-            json.dumps([d.model_dump(mode="json") for d in parsed_directives], indent=2),
+            json.dumps([v.model_dump(mode="json") for v in parsed_variants], indent=2),
             encoding="utf-8",
         )
 
@@ -269,3 +309,77 @@ async def record_directive_outcomes_tool(
         _set_loop_phase(run_id, "build", output_dir=out)
     clear_review_dispatched(run_id, output_dir=out)
     return json.dumps(result)
+
+
+@mcp.tool()
+async def query_holdout_examples_tool(
+    ctx: Context,
+    run_id: str,
+    route: str | None = None,
+    limit: int = 20,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Refinement Loop -- Review] Query holdout examples, optionally filtered by route.
+
+    Returns full example objects from the holdout dataset including input text
+    and per-route cost/quality data. Use this to find examples for specific
+    routes when crafting few-shot example directives.
+
+    Args:
+        run_id: Pipeline run identifier.
+        route: Filter by expected route name. Returns all routes if omitted.
+        limit: Maximum number of examples to return (default 20).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON object with examples list and total_matching count.
+    """
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    holdout_path = out / run_id / "analysis" / "holdout.jsonl"
+    if not holdout_path.exists():
+        return json.dumps({"examples": [], "total_matching": 0, "error": "holdout.jsonl not found"})
+
+    examples: list[dict[str, Any]] = []
+    total_matching = 0
+    for line in holdout_path.read_text(encoding="utf-8").strip().splitlines():
+        if not line.strip():
+            continue
+        example = json.loads(line)
+        expected_route = example.get("expected", {}).get("route", "")
+        if route is not None and expected_route != route:
+            continue
+        total_matching += 1
+        if len(examples) < limit:
+            examples.append(example)
+
+    return json.dumps({"examples": examples, "total_matching": total_matching})
+
+
+@mcp.tool()
+async def get_prompt_text_tool(
+    ctx: Context,
+    version: str,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Refinement Loop -- Review] Retrieve the full text of a prompt version.
+
+    Use this to inspect the actual prompt content for a specific version
+    when analyzing misrouting patterns or reviewing directive effects.
+
+    Args:
+        version: Prompt version string (e.g., "v3").
+        output_dir: Output directory (default "outputs", reserved for future run-specific fallback).
+
+    Returns:
+        The full prompt text.
+    """
+    from odysseus.prompts.manager import FilePromptManager
+
+    project_dir = await _resolve_project_dir(ctx)
+    prompt_mgr = FilePromptManager(project_dir / "prompts")
+    try:
+        return prompt_mgr.load(version)
+    except FileNotFoundError:
+        return json.dumps({"error": f"Prompt version '{version}' not found"})

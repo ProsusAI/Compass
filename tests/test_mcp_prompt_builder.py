@@ -279,9 +279,9 @@ class TestRecordDirectiveOutcomesToolLoopPhase:
 
 class TestEditDirectivesPersistence:
     @pytest.mark.asyncio
-    async def test_record_persists_edit_directives(self, tmp_path: Path) -> None:
+    async def test_record_persists_child_variants(self, tmp_path: Path) -> None:
         from odysseus.agents.prompt_builder.search_ops import init_search_state, set_loop_phase
-        from odysseus.agents.review.ops import load_edit_directives
+        from odysseus.agents.review.ops import load_child_variants
         from odysseus.mcp import record_directive_outcomes_tool
 
         with _patch_project_dir(tmp_path):
@@ -293,24 +293,27 @@ class TestEditDirectivesPersistence:
                 ctx=None,
                 run_id=_RUN_ID,
                 outcomes=[],
-                edit_directives=[{
-                    "directive_id": "d1",
-                    "target_version": "v1",
-                    "block_type": "example",
-                    "block_identifier": "Example 1",
-                    "granularity": "macro",
-                    "directive": "Add example",
-                    "priority": "high",
+                child_variants=[{
+                    "hypothesis": "Add a clearer boundary example",
+                    "directives": [{
+                        "directive_id": "d1",
+                        "target_version": "v1",
+                        "block_type": "example",
+                        "block_identifier": "Example 1",
+                        "granularity": "macro",
+                        "directive": "Add example",
+                        "priority": "high",
+                    }],
                 }],
                 output_dir=str(tmp_path / "outputs"),
             )
 
             data = json.loads(result)
-            assert data["edit_directives_saved"] == 1
+            assert data["child_variants_saved"] == 1
 
-            loaded = load_edit_directives(_RUN_ID, output_dir=tmp_path / "outputs")
+            loaded = load_child_variants(_RUN_ID, output_dir=tmp_path / "outputs")
             assert len(loaded) == 1
-            assert loaded[0].directive_id == "d1"
+            assert loaded[0].directives[0].directive_id == "d1"
 
     @pytest.mark.asyncio
     async def test_get_edit_directives_tool(self, tmp_path: Path) -> None:

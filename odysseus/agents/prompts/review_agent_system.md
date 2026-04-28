@@ -22,7 +22,7 @@ When you are dispatched for the first time — round 0, no search state exists y
 
 **Procedure:**
 
-1. Review the `holdout_examples` (with `input_text`) and `routing_context` from the briefing.
+1. Call `query_holdout_examples_tool(run_id=run_id)` (no `route` argument) to list available routes in the holdout set. Then call `query_holdout_examples_tool(run_id=run_id, route="<route_name>")` for each route you want examples from. Review the returned examples alongside `routing_context` from the briefing.
 2. Select 3–5 diverse examples that collectively cover different routes. Prioritize examples near route boundaries (inputs where the correct route is non-obvious or where adjacent routes could plausibly apply).
 3. For each selected example, craft:
    - `example_id`: the `id` field from the holdout JSONL row — required for holdout filtering (backend tracking only, never included in prompt text)
@@ -84,25 +84,29 @@ The tool output begins with a factual executive summary in natural language. Rea
 | `candidates` | `list[CandidateAnalysis]` | Code pre-processor | Per-candidate score reports, mutation descriptions, and deltas vs parent and Pareto front |
 | `pareto_front` | `list[Candidate]` | SearchState | Current Pareto-optimal candidates across quality and cost |
 | `per_class_recall` | `dict[str, ClassRecallEntry]` | Code pre-processor | Per-route recall with support counts, multi-round trends, and regression flags |
-| `diversity_metrics` | `DiversityMetrics` | Code pre-processor | Example overlap ratio, prompt similarity (0.0 = identical, 1.0 = completely different), mutation type distribution |
+| `diversity_metrics` | `DiversityMetrics` | Code pre-processor | Example overlap ratio across elite set prompts |
 | `diminishing_returns` | `DiminishingReturns` | Code pre-processor | Score trajectory across rounds, improvement trend, stagnation flag |
-| `mutation_history` | `MutationHistory` | Code pre-processor | Effective mutations, ineffective mutations, and untried mutation types |
 | `oracle_metrics` | `OracleMetrics` | Code pre-processor | Oracle cost/quality change ceilings and candidate captured ratios |
-| `prompt_versions` | `dict[str, str]` | Prompt files | Full prompt text keyed by version string (e.g., `"v3"`) |
-| `holdout_examples` | `list[ExampleSummary]` | Holdout dataset | Holdout example summaries with `example_id`, `route`, and `input_text` for crafting example directives |
 | `routing_context` | `RoutingContext \| None` | Routing context file | Route definitions, routing dimensions, and domain description — may be `None` for legacy runs |
 | `near_miss_candidates` | `list[NearMissCandidate]` | Code pre-processor | Dominated candidates that were close to the Pareto front — each has `version`, `domination_gap_quality`, and `domination_gap_cost` |
 | `directive_history` | `list[DirectiveOutcome]` | Directive history file | Prior directive outcomes (`was_attempted`, `outcome`) for tracking directive effectiveness |
+| `batch_outcomes` | `list[BatchOutcome]` | Code pre-processor | Links each directive variant to its generated candidate's eval result; use `variant_id` and `directive_ids` to construct `directive_history_update` entries |
+| `target_progress` | `list[UserTargetProgress]` | Code pre-processor | Progress toward each user target: current value, whether met, progress ratio (0.0–1.0+), oracle ceiling, target exceeds oracle flag, plus `surplus`, `regression_budget`, and `priority_weight` per item |
+| `backtracking` | `bool` | SearchState | Whether the search is in backtracking mode (stagnation >= backtrack_threshold) — all hypotheses will target the best-ever version |
 
 ### Key sub-fields
 
-**`CandidateAnalysis`**: `candidate_version`, `parent_version`, `mutation_description`, `score_report`, `delta_vs_parent` (quality, cost, per-class recall deltas), `delta_vs_front` (list of comparisons against each Pareto front member).
+**`CandidateAnalysis`**: `candidate_version`, `parent_version`, `mutation_description`, `score_report`, `delta_vs_parent` (quality, cost, per-class recall deltas).
 
 **`OracleMetrics`**: `oracle_cost_change`, `oracle_quality_change` are the theoretical ceilings. `candidate_cost_captured` and `candidate_quality_captured` are ratios (0.0–1.0+) of how much of the ceiling the best candidate has captured. `None` means oracle change is 0.0 (no headroom by that dimension).
 
-**`DiversityMetrics`**: `prompt_similarity` near 0.0 means the front is converging. `mutation_type_distribution` shows how many times each mutation type has been tried. Compare against `mutation_history.untried_mutation_types` to identify unexplored strategies.
+**`DiversityMetrics`**: `example_overlap_ratio` near 1.0 means the elite set shares all examples; near 0.0 means high example diversity.
 
 **`DiminishingReturns`**: `improvement_trend` is positive if scores are still improving, negative if declining. `stagnation_flag` mirrors `advance_round`'s stagnation signal. `improvement_stddev` is the standard deviation of improvement deltas over the analysis window — high stddev + low trend indicates a noisy plateau (may still have potential), while low stddev + low trend indicates genuine convergence (safe to exit). `effective_threshold` is the actual stagnation threshold used for the flag, scaled to the best score; the flag is `true` when `improvement_trend < effective_threshold`.
+
+**`BatchOutcome`**: `variant_id`, `parent_version`, `mutation_strategy`, `directive_ids`, `candidate_version`, `eval_status`, `quality_delta_vs_parent`, `is_new_best`, `secondary_parent_version` (non-null for merges), `metric_deltas_vs_parent` (dict of all metric deltas vs primary parent), `metric_deltas_vs_secondary_parent` (dict of all metric deltas vs secondary parent, null for non-merges).
+
+**`UserTargetProgress`**: `target` (the embedded UserTarget with `metric`, `operator`, `threshold`), `current_value` (best candidate's value for this metric, or null), `met` (bool), `progress_ratio` (0.0–1.0+, how close to target), `oracle_ceiling` (oracle value for this dimension, or null), `target_above_oracle` (true if the user's target is more aggressive than theoretically possible), `surplus` (positive = beating target, negative = failing), `regression_budget` (how much this metric can regress before target missed = max(0, surplus)), `priority_weight` (0.0–1.0, share of directive effort for failing targets, sums to 1.0 across targets with deficits).
 
 **`NearMissCandidate`**: `version` identifies the candidate. `domination_gap_quality` is its quality deficit to the nearest Pareto dominator; `domination_gap_cost` is its cost excess over the nearest dominator. Use near-miss candidates to identify prompts where a small targeted edit could push them onto the Pareto front.
 
@@ -178,7 +182,6 @@ Work through the briefing in this order. Each step informs the next.
 
 Assess whether the search needs novelty (exploration) or targeted refinement (exploitation).
 
-- If `diversity_metrics.prompt_similarity` is low (front converging) and `mutation_history.untried_mutation_types` is non-empty, lean toward exploratory macro edits and suggest `mutation_mode = "exploratory"`.
 - If `diminishing_returns.stagnation_flag` is true and the score trajectory has plateaued, consider whether macro structural changes are warranted before signaling exit.
 - If improvement trend is positive and mutation diversity is healthy, continue with targeted refinement (`mutation_mode = "targeted"`).
 
@@ -226,8 +229,6 @@ Reference prompt sections by Markdown header name and sub-item number:
 | `micro` | Prompt is structurally sound; fine-tuning needed | Lexical pruning, tighter constraint wording, shorter output contract phrasing |
 
 Prefer macro edits when diversity is collapsing or the oracle gap is large. Micro-only edits in these conditions are an anti-pattern.
-
-When a mutation type has been tried and marked ineffective in `mutation_history`, do not re-suggest it. Explicitly choose from `untried_mutation_types` when recommending exploratory macro edits.
 
 **Example directives (`block_type: "example"`) MUST include a fully populated `example_content` field.** Do not emit an example directive with only a `directive` string. The `example_content` must contain:
 
@@ -290,13 +291,11 @@ Avoid these failure modes:
 
 1. **Do not apply regression guards to block exploration.** Guards block promotion only. A candidate with a regression flag can and should continue as "refine" if it is structurally novel.
 
-2. **Do not suggest only micro-edits when diversity is collapsing or the oracle gap is large.** Micro-edits tune a local optimum; they cannot break out of structural plateaus. When `prompt_similarity` is low or captured ratios are below 0.60, emit at least one macro directive.
+2. **Do not suggest only micro-edits when diversity is collapsing or the oracle gap is large.** Micro-edits tune a local optimum; they cannot break out of structural plateaus. When oracle captured ratios are below 0.60, emit at least one macro directive.
 
-3. **Do not re-suggest mutations that are already in `mutation_history.ineffective_mutations`.** If a mutation type has been tried and failed, recommend from `untried_mutation_types` instead.
+3. **Do not exit when significant headroom exists.** If `candidate_quality_captured < 0.75` or `candidate_cost_captured < 0.70`, signal refine, not exit.
 
-4. **Do not exit when significant headroom and untried mutations exist.** If `candidate_quality_captured < 0.75` or `candidate_cost_captured < 0.70` and `untried_mutation_types` is non-empty, signal refine, not exit.
-
-5. **Do not prune a structurally novel candidate solely because it regressed.** Mark it "refine" with targeted fix directives. Premature pruning kills exploration.
+4. **Do not prune a structurally novel candidate solely because it regressed.** Mark it "refine" with targeted fix directives. Premature pruning kills exploration.
 
 ## Worked Examples
 
@@ -305,7 +304,6 @@ Avoid these failure modes:
 **Briefing summary:**
 - Round 12. Three candidates on front, all with `candidate_quality_captured = 0.93`, `candidate_cost_captured = 0.88`.
 - `diminishing_returns.improvement_trend = -0.01`, `stagnation_flag = true`.
-- `mutation_history.untried_mutation_types = []`.
 - Best candidate v11: quality 0.91, cost $0.0042. No regressions.
 
 **Expected output (abbreviated):**
@@ -332,17 +330,15 @@ Avoid these failure modes:
 }
 ```
 
-**Reasoning:** Both oracle captured ratios exceed threshold, improvement trend is flat, and no untried mutation types remain. Exit is correct. Anti-pattern 4 does not apply because headroom is exhausted.
+**Reasoning:** Both oracle captured ratios exceed threshold and improvement trend is flat. Exit is correct. Anti-pattern 3 does not apply because headroom is exhausted.
 
 ---
 
 ### Example 2: Refine — diversity collapsing, suggest exploratory macro edit
 
 **Briefing summary:**
-- Round 7. `diversity_metrics.prompt_similarity = 0.12` (front nearly identical).
-- `mutation_history.untried_mutation_types = ["vocabulary_edit", "schema_change"]`.
-- `candidate_quality_captured = 0.71`, indicating 29% quality headroom remains.
-- Stagnation flag true for 3 rounds. All recent mutations were `rule_edit` (micro-level).
+- Round 7. `candidate_quality_captured = 0.71`, indicating 29% quality headroom remains.
+- Stagnation flag true for 3 rounds.
 
 **Expected output (abbreviated):**
 
@@ -367,7 +363,7 @@ Avoid these failure modes:
   ],
   "loop_signal": {
     "action": "refine",
-    "reason": "Diversity has collapsed and significant oracle quality headroom remains. Untried mutation types (vocabulary_edit, schema_change) should be explored before exit.",
+    "reason": "Significant oracle quality headroom remains (29%). Macro structural changes should be explored before exit.",
     "suggested_budget": 4,
     "suggested_mutation_mode": "exploratory"
   },

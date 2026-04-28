@@ -62,6 +62,8 @@ from odysseus.mcp.resources import (
 )
 from odysseus.mcp.review_tools import (
     build_review_briefing_tool,
+    get_prompt_text_tool,
+    query_holdout_examples_tool,
     record_directive_outcomes_tool,
 )
 from odysseus.mcp.server import (
@@ -93,9 +95,11 @@ __all__ = [
     "get_default_pricing",
     "get_edit_directives_tool",
     "get_pipeline_status",
+    "get_prompt_text_tool",
     "get_search_state_tool",
     "init_search_state_tool",
     "optimize_routing_prompt",
+    "query_holdout_examples_tool",
     "record_directive_outcomes_tool",
     "record_eval_result_tool",
     "register_candidate_tool",

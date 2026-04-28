@@ -53,7 +53,9 @@ from odysseus.agents.prompt_builder import (
 
 # --- Review ---
 from odysseus.agents.review import (
+    BatchOutcome,
     CandidateAnalysis,
+    ChildVariant,
     ClassRecallEntry,
     DirectiveOutcome,
     DiversityMetrics,
@@ -62,14 +64,15 @@ from odysseus.agents.review import (
     ExampleSummary,
     LoopSignal,
     MetricDeltas,
-    MutationHistory,
-    MutationRecord,
+    NearMissCandidate,
     OracleMetrics,
     PromotionDecision,
     RankedCandidate,
     RegressionFlag,
     ReviewBriefing,
     ReviewResult,
+    UserTarget,
+    UserTargetProgress,
 )
 
 # --- Routing Context ---
@@ -130,7 +133,9 @@ __all__ = [
     "select_best",
     "update_pareto_front",
     # Review
+    "BatchOutcome",
     "CandidateAnalysis",
+    "ChildVariant",
     "ClassRecallEntry",
     "DirectiveOutcome",
     "DiversityMetrics",
@@ -139,12 +144,13 @@ __all__ = [
     "ExampleSummary",
     "LoopSignal",
     "MetricDeltas",
-    "MutationHistory",
-    "MutationRecord",
+    "NearMissCandidate",
     "OracleMetrics",
     "PromotionDecision",
     "RankedCandidate",
     "RegressionFlag",
     "ReviewBriefing",
     "ReviewResult",
+    "UserTarget",
+    "UserTargetProgress",
 ]
