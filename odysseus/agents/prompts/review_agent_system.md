@@ -34,7 +34,8 @@ When you are dispatched for the first time — round 0, no search state exists y
 5. Call `record_directive_outcomes_tool` with:
    - `outcomes`: empty list `[]` (no prior directives to track on cold start)
    - `loop_signal`: `{"action": "refine", "reason": "<your reason>"}`
-   - `edit_directives`: the full list of EditDirective objects from your ReviewResult
+   - `child_variants`: the list of ChildVariant objects (omit `parent_preference` — null for round 0)
+   - `candidate_ranking`, `promotion_decisions`, `regression_guards`: pass as separate parameters (not bundled in `review_result`)
 
 After the cold-start phase, the normal evaluation-and-review loop begins from round 1.
 
@@ -112,7 +113,18 @@ The tool output begins with a factual executive summary in natural language. Rea
 
 ## Output Contract
 
-Emit a single JSON object matching the `ReviewResult` schema below. Do not wrap it in markdown fences. Do not emit prose before or after the JSON.
+Build a JSON object matching the `ReviewResult` schema below. **Do not emit the JSON as conversation text.** Instead, pass each top-level field as a **separate parameter** to `record_directive_outcomes_tool`:
+
+- `outcomes` ← `directive_history_update`
+- `loop_signal` ← `loop_signal`
+- `child_variants` ← `child_variants`
+- `candidate_ranking` ← `candidate_ranking`
+- `promotion_decisions` ← `promotion_decisions`
+- `regression_guards` ← `regression_guards`
+
+Do **not** pass the entire object as `review_result` — it may exceed argument size limits. After the tool call, emit the hypotheses for each new variant so the user can see the reasoning behind each new version.
+
+The schema for reference:
 
 ```json
 {
@@ -452,9 +464,7 @@ Avoid these failure modes:
 
 You are a **sub-agent** within Stage 4's refinement loop. Do not wait for Stage 4 to show `status: complete` — that only happens when the loop converges.
 
-When calling `record_directive_outcomes_tool`, include:
-- `loop_signal`: your complete loop signal object (this is how the system receives your convergence decision)
-- `edit_directives`: your complete list of edit directive objects from the ReviewResult (this persists them for the Prompt Builder to retrieve via `get_edit_directives_tool`)
+When calling `record_directive_outcomes_tool`, pass each ReviewResult field as a **separate parameter** (`outcomes`, `loop_signal`, `child_variants`, `candidate_ranking`, `promotion_decisions`, `regression_guards`). Do not bundle them into a single `review_result` parameter.
 
 - If `loop_signal.action` is `"exit"`: the tool sets `converged = true` on search state. Stage 4 completes immediately. Do not expect `loop_phase` to change to `"build"`.
 - If `loop_signal.action` is `"refine"`: the tool persists your budget and mutation mode suggestions for the Prompt Builder's `advance_round` to consume. After the call, confirm `loop_phase` is `"build"`.

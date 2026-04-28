@@ -200,6 +200,10 @@ async def record_directive_outcomes_tool(
     outcomes: list[dict[str, Any]],
     loop_signal: dict[str, Any] | None = None,
     child_variants: list[dict[str, Any]] | None = None,
+    review_result: dict[str, Any] | None = None,
+    candidate_ranking: list[dict[str, Any]] | None = None,
+    promotion_decisions: list[dict[str, Any]] | None = None,
+    regression_guards: list[dict[str, Any]] | None = None,
     output_dir: str = "outputs",
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Record the outcomes of prior Review Agent directives.
@@ -209,11 +213,25 @@ async def record_directive_outcomes_tool(
     (converged=true). When "refine", the signal is persisted for advance_round
     to consume (budget extensions, mutation mode overrides).
 
+    Prefer passing ReviewResult fields as separate parameters (candidate_ranking,
+    promotion_decisions, regression_guards) rather than as a single review_result
+    dict to avoid hitting JSON size limits.
+
     Args:
         run_id: Pipeline run identifier.
         outcomes: List of DirectiveOutcome dicts to record.
         loop_signal: Optional LoopSignal dict from the Review Agent.
         child_variants: Optional list of ChildVariant dicts (Review Agent output).
+        review_result: Optional full ReviewResult dict to persist to disk. Legacy fallback —
+            prefer decomposed parameters. When provided, child_variants, loop_signal, and
+            outcomes are extracted from it as fallbacks for any of those params not explicitly
+            provided.
+        candidate_ranking: Decomposed ReviewResult field — list of ranked candidate dicts.
+            Recommended over review_result to avoid size limits.
+        promotion_decisions: Decomposed ReviewResult field — list of promotion decision dicts.
+            Recommended over review_result to avoid size limits.
+        regression_guards: Decomposed ReviewResult field — list of regression guard dicts.
+            Recommended over review_result to avoid size limits.
         output_dir: Output directory (default "outputs").
 
     Returns:
@@ -233,6 +251,26 @@ async def record_directive_outcomes_tool(
     parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
     existing = load_directive_history(run_id, output_dir=out)
     save_directive_history(run_id, existing + parsed, output_dir=out)
+
+    # When decomposed params are provided, assemble and persist an audit ReviewResult.
+    # When only review_result is provided, persist it as-is (legacy path).
+    if review_result is None and any([candidate_ranking, promotion_decisions, regression_guards]):
+        from odysseus.agents.review.ops import save_review_result
+
+        reconstructed: dict[str, Any] = {
+            "candidate_ranking": candidate_ranking or [],
+            "promotion_decisions": promotion_decisions or [],
+            "regression_guards": regression_guards or [],
+            "directive_history_update": [o.model_dump(mode="json") for o in parsed],
+        }
+        if child_variants is not None:
+            reconstructed["child_variants"] = child_variants
+        if loop_signal is not None:
+            reconstructed["loop_signal"] = loop_signal
+        save_review_result(run_id, reconstructed, output_dir=out)
+    elif review_result is not None:
+        from odysseus.agents.review.ops import save_review_result
+        save_review_result(run_id, review_result, output_dir=out)
 
     result: dict[str, Any] = {
         "recorded": len(parsed),

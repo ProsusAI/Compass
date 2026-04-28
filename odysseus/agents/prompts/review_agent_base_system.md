@@ -43,7 +43,16 @@ Every directive must cite the confusion cell or threshold it is meant to move.
 
 ## Output
 
-Call `record_directive_outcomes_tool(run_id, outcomes=[...], selection_hint=<see overlay>)`. Each `ChildVariant`:
+Call `record_directive_outcomes_tool` with each ReviewResult field as a **separate parameter** to avoid MCP argument-size limits:
+
+- `outcomes` ← `directive_history_update`
+- `loop_signal` ← `loop_signal`
+- `child_variants` ← `child_variants`
+- `candidate_ranking` ← `candidate_ranking`
+- `promotion_decisions` ← `promotion_decisions`
+- `regression_guards` ← `regression_guards`
+
+Do **not** pass the entire object as `review_result` — use the decomposed parameters above. Each `ChildVariant`:
 
 - `hypothesis` (1–3 sentences)
 - `parent_version` (your overlay specifies how to select it; set `secondary_parent_version` only if your overlay requires it)
