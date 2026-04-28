@@ -9,10 +9,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.prompt_builder.search_ops import (
     _load_pending,
     _loop_signal_path,
     _save_loop_signal,
+    _save_pending,
+    _save_state,
     advance_round,
     get_candidate_example_ids,
     get_search_state,
@@ -705,3 +708,136 @@ class TestAdvanceStepTool:
 
             with pytest.raises(NotImplementedError, match="beam"):
                 await advance_step_tool("run-st2")
+
+
+# ---------------------------------------------------------------------------
+# eval_status lifecycle (Commit 1 — A2)
+# ---------------------------------------------------------------------------
+
+
+class TestEvalStatusLifecycle:
+    """Tests for active_evals guard and eval_status filtering in advance_round."""
+
+    def test_advance_round_blocked_by_active_evals(self, tmp_path: Path) -> None:
+        """advance_round raises ValueError when active_evals is non-empty."""
+        init_search_state("anthropic", run_id="aes-run1", output_dir=tmp_path)
+        _register_and_score("aes-run1", "v1", 0.9, 0.01, tmp_path)
+
+        # Inject active_evals into the persisted state to simulate in-flight eval.
+        state = get_search_state("aes-run1", output_dir=tmp_path)
+        updated = state.model_copy(update={"active_evals": ["v3"]})
+        _save_state("aes-run1", updated, tmp_path)
+
+        with pytest.raises(ValueError, match="v3"):
+            advance_round("aes-run1", output_dir=tmp_path)
+
+    def test_advance_round_filters_failed_from_elite_update(self, tmp_path: Path) -> None:
+        """Failed candidates are excluded; only scored candidates enter the elite set."""
+        init_search_state("anthropic", run_id="aes-run2", output_dir=tmp_path)
+
+        # Build pending list manually: v2 scored, v3 failed.
+        pending = [
+            Candidate(
+                prompt_version="v2",
+                parent_version=None,
+                quality_score=0.9,
+                cost=0.01,
+                round_introduced=1,
+                eval_status="complete",
+            ),
+            Candidate(
+                prompt_version="v3",
+                parent_version=None,
+                quality_score=0.0,
+                cost=0.0,
+                round_introduced=1,
+                eval_status="failed",
+            ),
+        ]
+        _save_pending("aes-run2", pending, tmp_path)
+
+        advance_round("aes-run2", output_dir=tmp_path)
+        state = get_search_state("aes-run2", output_dir=tmp_path)
+
+        versions_on_elite = {c.prompt_version for c in state.elite_set}
+        assert "v2" in versions_on_elite
+        assert "v3" not in versions_on_elite
+        assert len(state.elite_set) == 1
+
+    def test_advance_round_all_failed_increments_stagnation(self, tmp_path: Path) -> None:
+        """When all pending candidates failed, stagnation increments and elite is unchanged."""
+        init_search_state("anthropic", run_id="aes-run3", output_dir=tmp_path)
+
+        # Seed the elite set via a normal first round.
+        _register_and_score("aes-run3", "v1", 0.9, 0.01, tmp_path)
+        advance_round("aes-run3", output_dir=tmp_path)
+        state_after_r1 = get_search_state("aes-run3", output_dir=tmp_path)
+        assert len(state_after_r1.elite_set) == 1
+
+        # Round 2: both candidates failed.
+        pending = [
+            Candidate(
+                prompt_version="v2",
+                parent_version=None,
+                quality_score=0.0,
+                cost=0.0,
+                round_introduced=2,
+                eval_status="failed",
+            ),
+            Candidate(
+                prompt_version="v3",
+                parent_version=None,
+                quality_score=0.0,
+                cost=0.0,
+                round_introduced=2,
+                eval_status="failed",
+            ),
+        ]
+        _save_pending("aes-run3", pending, tmp_path)
+
+        summary = advance_round("aes-run3", output_dir=tmp_path)
+        state = get_search_state("aes-run3", output_dir=tmp_path)
+
+        assert state.stagnation_count == 1
+        assert len(state.elite_set) == 1
+        assert state.elite_set[0].prompt_version == "v1"
+        assert summary.round_routing_cost == 0.0
+
+    def test_register_candidate_sets_eval_status_pending(self, tmp_path: Path) -> None:
+        """register_candidate without explicit eval_status sets it to 'pending'."""
+        init_search_state("anthropic", run_id="aes-run4", output_dir=tmp_path)
+        register_candidate("aes-run4", "v1", output_dir=tmp_path)
+        pending = _load_pending("aes-run4", tmp_path)
+        assert len(pending) == 1
+        assert pending[0].eval_status == "pending"
+
+    def test_record_eval_result_sets_eval_status_complete(self, tmp_path: Path) -> None:
+        """record_eval_result transitions eval_status from 'pending' to 'complete'."""
+        init_search_state("anthropic", run_id="aes-run5", output_dir=tmp_path)
+        register_candidate("aes-run5", "v1", output_dir=tmp_path)
+        record_eval_result("aes-run5", "v1", quality_score=0.85, cost=0.02, output_dir=tmp_path)
+        pending = _load_pending("aes-run5", tmp_path)
+        assert pending[0].eval_status == "complete"
+
+    def test_advance_round_treats_none_eval_status_as_complete(self, tmp_path: Path) -> None:
+        """Backward compat: eval_status=None (old state files) is treated as 'complete'."""
+        init_search_state("anthropic", run_id="aes-run6", output_dir=tmp_path)
+
+        # Simulate an old-format candidate with eval_status=None and a real score.
+        pending = [
+            Candidate(
+                prompt_version="v1",
+                parent_version=None,
+                quality_score=0.9,
+                cost=0.01,
+                round_introduced=1,
+                eval_status=None,  # old state file — no eval_status field
+            ),
+        ]
+        _save_pending("aes-run6", pending, tmp_path)
+
+        advance_round("aes-run6", output_dir=tmp_path)
+        state = get_search_state("aes-run6", output_dir=tmp_path)
+
+        # v1 should be on the elite set — None treated as "complete".
+        assert any(c.prompt_version == "v1" for c in state.elite_set)

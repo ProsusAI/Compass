@@ -179,6 +179,10 @@ class SearchState(BaseModel):
     # Cross-branch generalization fields
     algorithm: AlgorithmType = "hill_climb"
     algorithm_state: dict[str, Any] = Field(default_factory=dict)
+    # Batch eval tracking — versions currently in flight (pending or running).
+    # Used by _detect_stage_4_phase to detect build_recovering and by
+    # advance_round to guard against advancing while evals are in flight.
+    active_evals: list[str] = Field(default_factory=list)
 
     @field_validator("search_state_id")
     @classmethod

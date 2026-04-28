@@ -15,6 +15,7 @@ See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -28,6 +29,8 @@ from odysseus.agents.prompt_builder.search import (
 )
 from odysseus.agents.review.models import LoopSignal
 from odysseus.project_dir import get_project_dir
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -184,6 +187,7 @@ def register_candidate(
     parent_version: str | None = None,
     example_ids: list[str] | None = None,
     output_dir: Path | None = None,
+    eval_status: Literal["pending", "running", "complete", "failed"] | None = "pending",
 ) -> SearchState:
     """Register a new candidate for the current round.
 
@@ -233,6 +237,7 @@ def register_candidate(
         cost=0.0,
         round_introduced=state.round + 1,
         example_ids=example_ids or [],
+        eval_status=eval_status,
     )
     pending.append(candidate)
     _save_pending(run_id, pending, output_dir)
@@ -308,7 +313,9 @@ def record_eval_result(
     if found_index is None:
         raise ValueError(f"prompt_version '{prompt_version}' not found in pending candidates")
 
-    updated = pending[found_index].model_copy(update={"quality_score": quality_score, "cost": cost})
+    updated = pending[found_index].model_copy(
+        update={"quality_score": quality_score, "cost": cost, "eval_status": "complete"}
+    )
     pending[found_index] = updated
     _save_pending(run_id, pending, output_dir)
 
@@ -347,6 +354,13 @@ def advance_round(
     if output_dir is None:
         output_dir = _default_output_dir()
     state = _load_state(run_id, output_dir)
+
+    # Guard: do not advance while batch evals are still in flight.
+    if state.active_evals:
+        raise ValueError(
+            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
+        )
+
     pending = _load_pending(run_id, output_dir)
 
     if not pending:
@@ -354,21 +368,49 @@ def advance_round(
 
     new_round = state.round + 1
 
-    # Update elite set
-    new_front, new_elite_entries = update_pareto_front(state.elite_set, pending)
+    # Split pending into scored and failed candidates.
+    # Backward-compat: candidates from old state files have eval_status=None
+    # (the field didn't exist); treat None as "complete" since we have no
+    # evidence they failed.
+    scored = [c for c in pending if c.eval_status in ("complete", None)]
+    failed_evals = [c for c in pending if c.eval_status == "failed"]
 
-    # Update stagnation
-    improvement = compute_front_improvement(state.elite_set, new_front)
-    new_stagnation_count = 0 if improvement > state.epsilon else state.stagnation_count + 1
+    for c in failed_evals:
+        logger.warning(
+            "Candidate %s has eval_status='failed' and will be excluded from elite-set update",
+            c.prompt_version,
+        )
 
-    # Determine mutation mode
-    if new_stagnation_count == 0 and state.stagnation_count > 0:
-        # Improvement after stagnation — reset to targeted
-        new_mutation_mode = "targeted"
-    elif new_stagnation_count >= state.stagnation_limit:
-        new_mutation_mode = "exploratory"
+    candidates_evaluated = [c.prompt_version for c in pending]
+
+    if not scored:
+        # All candidates failed — carry elite set forward unchanged, increment stagnation.
+        new_front = state.elite_set
+        new_elite_entries = 0
+        improvement = 0.0
+        new_stagnation_count = state.stagnation_count + 1
+        round_routing_cost = 0.0
+        new_mutation_mode = (
+            "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
+        )
     else:
-        new_mutation_mode = state.mutation_mode
+        # Normal path — use only scored candidates.
+        new_front, new_elite_entries = update_pareto_front(state.elite_set, scored)
+
+        # Update stagnation
+        improvement = compute_front_improvement(state.elite_set, new_front)
+        new_stagnation_count = 0 if improvement > state.epsilon else state.stagnation_count + 1
+
+        # Determine mutation mode
+        if new_stagnation_count == 0 and state.stagnation_count > 0:
+            # Improvement after stagnation — reset to targeted
+            new_mutation_mode = "targeted"
+        elif new_stagnation_count >= state.stagnation_limit:
+            new_mutation_mode = "exploratory"
+        else:
+            new_mutation_mode = state.mutation_mode
+
+        round_routing_cost = sum(c.cost for c in scored)
 
     # Check convergence
     converged = new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
@@ -388,11 +430,8 @@ def advance_round(
         if signal.suggested_mutation_mode is not None:
             new_mutation_mode = signal.suggested_mutation_mode
 
-    candidates_evaluated = [c.prompt_version for c in pending]
-
     qualities = [c.quality_score for c in new_front]
     front_quality_spread = max(qualities) - min(qualities) if len(new_front) > 1 else 0.0
-    round_routing_cost = sum(c.cost for c in pending)
     convergence_reason: str | None = None
     if converged:
         if new_round >= state.max_rounds:
@@ -434,6 +473,18 @@ def advance_round(
     _save_pending(run_id, [], output_dir)
 
     return summary
+
+
+def _clear_active_evals(run_id: str, output_dir: Path) -> None:
+    """Reset ``active_evals`` to an empty list and persist the state.
+
+    Defensive utility used by batch-eval machinery (commits 2–4) to drain the
+    in-flight tracker after all candidates have settled.  Not called from
+    ``advance_round`` itself.
+    """
+    state = _load_state(run_id, output_dir)
+    updated = state.model_copy(update={"active_evals": []})
+    _save_state(run_id, updated, output_dir)
 
 
 def set_loop_phase(
