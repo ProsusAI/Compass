@@ -212,7 +212,7 @@ class TestSubagentInstruction:
         assert instr is not None
         assert "<HARD_STOP>" in instr
         assert "<stage_system_prompt>" in instr
-        assert result["activate_prompt"] == "odysseus_review_agent"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
     def test_stage4_available_tools_correct(self, tmp_path: Path) -> None:
         """Stage 4 cold-start available_tools should include review tools."""
@@ -260,7 +260,7 @@ class TestStage4ThreePhaseDetection:
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
         assert "cold-start" in result["next_action"].lower()
 
     def test_build_v1_after_cold_start(self, tmp_path: Path) -> None:
@@ -273,7 +273,7 @@ class TestStage4ThreePhaseDetection:
         _setup_stage4_v1_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent"
+        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
 
     def test_normal_loop_build_phase(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
@@ -500,7 +500,7 @@ class TestStage4RerunMode:
         """Without rerun_config.json, Stage 4 still uses the three-phase detection."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["activate_prompt"] == "odysseus_review_agent"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
 
 class TestStage5FinalReport:

@@ -28,7 +28,7 @@ graph TD
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
 | Prompt Builder Rerun | LLM-driven | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) | Done | `run_id`, `source_prompt_version`, `new_backend` (from subagent instruction) | `prompt_version` (restructured) |
-| Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) | Done | `eval_score_report`, `review_briefing` | `review_result` |
+| Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), three-tier prompt: `review_agent_base_system.md` + phase base + strategy overlay (see Prompts table) | Done | `eval_score_report`, `review_briefing` | `review_result` |
 | Final Report | Hybrid (code + LLM) | [`odysseus/agents/final_report/models.py`](../odysseus/agents/final_report/models.py), [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py), [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md), [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, `baseline_comparison.json`, optimization charts |
 
 ## 3. Context Dict Reference
@@ -233,10 +233,29 @@ Retained as a back-compat shim for runs paused before automated marker clearing 
 |---|---|---|
 | `odysseus_routing_input` | Activate the User Input agent conversation | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md) |
 | `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
-| `odysseus_review_agent` | Review Agent system prompt — receives ReviewBriefing, emits ReviewResult JSON | [`odysseus/agents/prompts/review_agent_system.md`](../odysseus/agents/prompts/review_agent_system.md) |
+| `odysseus_review_agent_iterative(algorithm)` | Review Agent — iterative phase (round ≥ 2); assembled from three-tier prompt: base + iterative phase base + strategy overlay | see Review Agent prompt files below |
+| `odysseus_review_agent_cold_start(algorithm)` | Review Agent — cold-start / seeding phase; assembled from three-tier prompt: base + cold-start phase base + strategy overlay | see Review Agent prompt files below |
 | `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
 | `odysseus_final_report` | Final Report agent — holdout eval + report generation | [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) |
 | `odysseus_prompt_builder_rerun` | Prompt Builder Rerun agent — format-only restructure for a different backend (single eval round) | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) |
+
+**Review Agent prompt files — three-tier structure**
+
+The Review Agent prompt is assembled at dispatch time from three layers: a shared base, a phase-specific base, and a strategy overlay. The `algorithm` argument on the MCP prompt selects the overlay. Strategy branches contribute additional overlay files and keep only those diffs.
+
+| File | Role |
+|---|---|
+| [`odysseus/agents/prompts/review_agent_base_system.md`](../odysseus/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
+| [`odysseus/agents/prompts/review_agent_iterative_base_system.md`](../odysseus/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
+| [`odysseus/agents/prompts/review_agent_cold_start_base_system.md`](../odysseus/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
+| [`odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md) | Iterative overlay for `hill_climb` — mutation-mode toggle, single parent, 1 child |
+| [`odysseus/agents/prompts/review_agent_iterative_overlay_beam.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_beam.md) | Iterative overlay for `beam` — beam-rank / crowding-distance, HV-delta stagnation, 1 child |
+| [`odysseus/agents/prompts/review_agent_iterative_overlay_sms_emoa.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_sms_emoa.md) | Iterative overlay for `sms_emoa` — two-parent recombination, HV-plateau stagnation, 1 child |
+| [`odysseus/agents/prompts/review_agent_iterative_overlay_emosa.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_emosa.md) | Iterative overlay for `emosa` — K-fanout dispatch, weight-vector / binding-axis, 1 child per trajectory |
+| [`odysseus/agents/prompts/review_agent_cold_start_overlay_hillclimb.md`](../odysseus/agents/prompts/review_agent_cold_start_overlay_hillclimb.md) | Cold-start overlay for `hill_climb` — round-1 batch, initial prompt parent |
+| [`odysseus/agents/prompts/review_agent_cold_start_overlay_beam.md`](../odysseus/agents/prompts/review_agent_cold_start_overlay_beam.md) | Cold-start overlay for `beam` — K = beam_width, diversity spans cost regions |
+| [`odysseus/agents/prompts/review_agent_warmup_overlay_sms_emoa.md`](../odysseus/agents/prompts/review_agent_warmup_overlay_sms_emoa.md) | Cold-start overlay for `sms_emoa` — warmup_seed phase, K = mu, no recombination yet |
+| [`odysseus/agents/prompts/review_agent_cold_start_overlay_emosa.md`](../odysseus/agents/prompts/review_agent_cold_start_overlay_emosa.md) | Cold-start overlay for `emosa` — calibration phase, K = #trajectories, per-trajectory pinning |
 
 ### Resources
 

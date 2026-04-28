@@ -14,6 +14,7 @@ from odysseus.agents.pipeline.dispatch import (
 from odysseus.agents.pipeline.guards import check_artifacts  # noqa: F401
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status
 from odysseus.mcp.server import (
+    _REVIEW_AGENT_PROMPT_NAMES,
     _STAGE_PROMPT_MAP,
     STAGE_REGISTRY,
     _load_text,
@@ -127,24 +128,40 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
     current_stage = result.get("current_stage")
     activate_prompt = result.get("activate_prompt")
+    algorithm = result.get("algorithm", "hill_climb")
     subagent_instruction = result.get("subagent_instruction")
 
     # Stage 4 has dynamic prompt lookup by activate_prompt name (cold-start/review/build phase).
     # All other stages look up by stage number.
     lookup_key: int | str | None = activate_prompt if current_stage == 4 and activate_prompt else current_stage
 
-    if lookup_key in _STAGE_PROMPT_MAP and subagent_instruction:
+    if subagent_instruction:
         placeholder = "<stage_system_prompt></stage_system_prompt>"
         if placeholder in subagent_instruction:
             try:
-                system_prompt = _load_text(_STAGE_PROMPT_MAP[lookup_key])
-                result["subagent_instruction"] = subagent_instruction.replace(
-                    placeholder,
-                    f"<stage_system_prompt>\n{system_prompt}\n</stage_system_prompt>",
-                )
+                if activate_prompt in _REVIEW_AGENT_PROMPT_NAMES:
+                    # Strategy-aware assembly: base + phase-base + strategy overlay
+                    from odysseus.mcp.prompts import assemble_review_prompt
+
+                    phase = "cold_start" if activate_prompt == "odysseus_review_agent_cold_start" else "iterative"
+                    system_prompt = assemble_review_prompt(algorithm, phase)
+                elif lookup_key in _STAGE_PROMPT_MAP:
+                    system_prompt = _load_text(_STAGE_PROMPT_MAP[lookup_key])
+                else:
+                    system_prompt = None
+
+                if system_prompt is not None:
+                    result["subagent_instruction"] = subagent_instruction.replace(
+                        placeholder,
+                        f"<stage_system_prompt>\n{system_prompt}\n</stage_system_prompt>",
+                    )
             except FileNotFoundError as e:
                 raise ToolError(
                     f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
+                ) from e
+            except ValueError as e:
+                raise ToolError(
+                    f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}"
                 ) from e
 
     if result.get("subagent_instruction"):

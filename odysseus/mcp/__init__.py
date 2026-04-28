@@ -40,7 +40,8 @@ from odysseus.mcp.prompts import (
     odysseus_data_validation,
     odysseus_final_report,
     odysseus_prompt_builder,
-    odysseus_review_agent,
+    odysseus_review_agent_cold_start,
+    odysseus_review_agent_iterative,
     odysseus_routing_input,
 )
 from odysseus.mcp.resources import (
@@ -112,7 +113,8 @@ __all__ = [
     "odysseus_data_validation",
     "odysseus_final_report",
     "odysseus_prompt_builder",
-    "odysseus_review_agent",
+    "odysseus_review_agent_cold_start",
+    "odysseus_review_agent_iterative",
     "odysseus_routing_input",
     # Resources
     "backend_profile",

@@ -292,8 +292,9 @@ def get_pipeline_status(
     )
 
     # Stage 4 uses dynamic next-action based on three-phase detection
+    algorithm: str = "hill_climb"
     if current_stage == 4:
-        action, tools, prompts, subagent_instruction = _next_action_for_stage_4(
+        action, tools, prompts, subagent_instruction, algorithm = _next_action_for_stage_4(
             run_dir,
             rerun_config=rerun_config,
         )
@@ -316,6 +317,7 @@ def get_pipeline_status(
         "next_action": action,
         "available_tools": tools,
         "activate_prompt": prompts[0] if prompts else None,
+        "algorithm": algorithm,
         "subagent_instruction": subagent_instruction,
         "discovered_runs": discovered_runs,
     }
@@ -573,12 +575,35 @@ def _detect_stage_4_phase(
     return loop_phase
 
 
+def _read_algorithm_from_state(run_dir: Path) -> str:
+    """Read the algorithm discriminator from search_state.json.
+
+    Returns ``"hill_climb"`` (the default) when the file is absent, unreadable,
+    or does not contain an ``algorithm`` field.
+    """
+    search_state_path = run_dir / "search" / "search_state.json"
+    if not search_state_path.is_file():
+        return "hill_climb"
+    try:
+        data = json.loads(search_state_path.read_text())
+        return str(data.get("algorithm", "hill_climb"))
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        logger.warning("Failed to read algorithm from %s: %s", search_state_path, exc)
+        return "hill_climb"
+
+
 def _next_action_for_stage_4(
     run_dir: Path,
     rerun_config: dict[str, Any] | None = None,
-) -> tuple[str, list[str], list[str], str]:
-    """Return (action, tools, prompts, subagent_instruction) for Stage 4."""
+) -> tuple[str, list[str], list[str], str, str]:
+    """Return (action, tools, prompts, subagent_instruction, algorithm) for Stage 4.
+
+    The ``algorithm`` element is the search strategy discriminator read from
+    ``search_state.json`` (defaults to ``"hill_climb"`` when absent).  It is
+    used by the orchestrator to compose the strategy-aware Review Agent prompt.
+    """
     phase = _detect_stage_4_phase(run_dir, rerun_config)
+    algorithm = _read_algorithm_from_state(run_dir)
 
     # Rerun is special — needs template formatting with config values
     if phase == "rerun":
@@ -597,6 +622,7 @@ def _next_action_for_stage_4(
             _RERUN_TOOLS,
             ["odysseus_prompt_builder_rerun"],
             rerun_instr,
+            algorithm,
         )
 
     # All other phases use a static dispatch table.
@@ -604,13 +630,17 @@ def _next_action_for_stage_4(
     # feature branches; on main (hill-climb) they are never entered.  They are
     # mapped to the nearest equivalent action so the orchestrator always has a
     # valid next action even when reading state from a feature-branch run.
+    #
+    # Review phases use strategy-aware prompt names so the orchestrator can
+    # compose base + phase-base + strategy overlay at dispatch time.
     _review_entry = (
         "Stage 4 — review phase: spawn the Review Agent to analyse "
         "eval results and emit edit directives. "
-        "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
+        "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools.",
         _REVIEW_TOOLS,
-        ["odysseus_review_agent"],
+        ["odysseus_review_agent_iterative"],
         STAGE_4_REVIEW_INSTRUCTION,
+        algorithm,
     )
     _build_entry = (
         "Stage 4 — build phase: spawn the Prompt Builder to generate "
@@ -619,15 +649,17 @@ def _next_action_for_stage_4(
         _BUILD_TOOLS,
         ["odysseus_prompt_builder"],
         STAGE_4_BUILD_INSTRUCTION,
+        algorithm,
     )
-    phase_config: dict[str, tuple[str, list[str], list[str], str]] = {
+    phase_config: dict[str, tuple[str, list[str], list[str], str, str]] = {
         "cold_start": (
-            "Stage 4 — cold-start: spawn the Review Agent to select initial "
-            "few-shot seed examples from the dataset. "
-            "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
+            "Stage 4 — cold-start: spawn the Review Agent to seed the search "
+            "with diverse initial hypotheses. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
             _REVIEW_TOOLS,
-            ["odysseus_review_agent"],
+            ["odysseus_review_agent_cold_start"],
             STAGE_4_COLD_START_INSTRUCTION,
+            algorithm,
         ),
         "build_v1": (
             "Stage 4 — build phase: spawn the Prompt Builder to compile the "
@@ -636,14 +668,29 @@ def _next_action_for_stage_4(
             _BUILD_TOOLS,
             ["odysseus_prompt_builder"],
             STAGE_4_BUILD_INSTRUCTION,
+            algorithm,
         ),
         "review": _review_entry,
         "build": _build_entry,
         # Extended phases — feature branches only; mapped to nearest equivalent
-        "warmup_seed": _review_entry,
+        "warmup_seed": (
+            "Stage 4 — warmup-seed phase: spawn the Review Agent to seed the population. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
+            _REVIEW_TOOLS,
+            ["odysseus_review_agent_cold_start"],
+            STAGE_4_COLD_START_INSTRUCTION,
+            algorithm,
+        ),
         "warmup_build": _build_entry,
         "warmup_reduce": _build_entry,
-        "calibration": _review_entry,
+        "calibration": (
+            "Stage 4 — calibration phase: spawn the Review Agent to seed trajectories. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
+            _REVIEW_TOOLS,
+            ["odysseus_review_agent_cold_start"],
+            STAGE_4_COLD_START_INSTRUCTION,
+            algorithm,
+        ),
         "build_recovering": _build_entry,
     }
     return phase_config[phase]

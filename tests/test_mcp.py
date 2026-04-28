@@ -313,12 +313,28 @@ def test_get_edit_directives_tool_registered() -> None:
     assert "get_edit_directives_tool" in tool_names
 
 
-def test_review_agent_prompt_registered() -> None:
-    """Verify odysseus_review_agent is a registered MCP prompt."""
+def test_review_agent_iterative_prompt_registered() -> None:
+    """Verify odysseus_review_agent_iterative is a registered MCP prompt."""
     from odysseus.mcp import mcp
 
     prompt_names = [p.name for p in mcp._prompt_manager.list_prompts()]
-    assert "odysseus_review_agent" in prompt_names
+    assert "odysseus_review_agent_iterative" in prompt_names
+
+
+def test_review_agent_cold_start_prompt_registered() -> None:
+    """Verify odysseus_review_agent_cold_start is a registered MCP prompt."""
+    from odysseus.mcp import mcp
+
+    prompt_names = [p.name for p in mcp._prompt_manager.list_prompts()]
+    assert "odysseus_review_agent_cold_start" in prompt_names
+
+
+def test_review_agent_old_prompt_not_registered() -> None:
+    """Verify the retired odysseus_review_agent prompt is no longer registered."""
+    from odysseus.mcp import mcp
+
+    prompt_names = [p.name for p in mcp._prompt_manager.list_prompts()]
+    assert "odysseus_review_agent" not in prompt_names
 
 
 class TestLoadText:

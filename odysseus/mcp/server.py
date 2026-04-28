@@ -25,10 +25,15 @@ _STAGE_PROMPT_MAP: dict[int | str, str] = {
     3: "odysseus/agents/prompts/backend_setup_system.md",
     # Stage 4 is dynamic — looked up by activate_prompt name:
     "odysseus_prompt_builder": "odysseus/agents/prompts/prompt_builder_system.md",
-    "odysseus_review_agent": "odysseus/agents/prompts/review_agent_system.md",
     "odysseus_prompt_builder_rerun": "odysseus/agents/prompts/prompt_builder_rerun_system.md",
     5: "odysseus/agents/prompts/final_report_system.md",
 }
+
+# Review Agent prompts that require strategy-aware assembly via assemble_review_prompt().
+# These are NOT in _STAGE_PROMPT_MAP — orchestrator_tools.py handles them separately.
+_REVIEW_AGENT_PROMPT_NAMES: frozenset[str] = frozenset(
+    {"odysseus_review_agent_iterative", "odysseus_review_agent_cold_start"}
+)
 
 # ---------------------------------------------------------------------------
 # Stage registry — maps each pipeline stage to the tool names visible to the
