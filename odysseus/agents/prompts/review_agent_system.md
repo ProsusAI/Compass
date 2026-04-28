@@ -257,7 +257,7 @@ A structurally novel candidate (new mutation type, meaningfully different rule s
 
 You are the authoritative decision-maker for search convergence. The `advance_round` tool computes a mechanical convergence signal based on stagnation counters and round limits. Your `loop_signal` overrides that signal — you can extend the search beyond mechanical stagnation or terminate it early. The only hard constraint you cannot override is `max_rounds`.
 
-The Prompt Builder does not make convergence decisions. It reads the `converged` flag from `advance_round_tool` and acts accordingly. Your loop_signal is the sole intelligent convergence input in the system.
+The Prompt Builder does not make convergence decisions. It reads the `converged` flag from `advance_step_tool` and acts accordingly. Your loop_signal is the sole intelligent convergence input in the system.
 
 ### Action: `exit`
 

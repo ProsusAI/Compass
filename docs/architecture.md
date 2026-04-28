@@ -135,7 +135,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `record_eval_result_tool` | Implemented | Record evaluation results for Pareto tracking | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
-| `advance_round_tool` | Implemented | Close round, update Pareto front, check convergence | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
+| `advance_step_tool` | Implemented | Strategy-dispatched step advance; `"hill_climb"` arm closes round, updates elite set, checks convergence | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `get_search_state_tool` | Implemented | Load current search state | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `filter_holdout_dataset_tool` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder/holdout_filter.py`](../odysseus/agents/prompt_builder/holdout_filter.py) |
 | `get_edit_directives_tool` | Implemented | Retrieve the current round's block-level edit directives for the Prompt Builder | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
@@ -154,7 +154,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_round_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 

@@ -42,13 +42,15 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `init_search_state_tool` | Initialize search state for optimization run |
 | `register_candidate_tool` | Register a new prompt candidate |
 | `record_eval_result_tool` | Record eval results for Pareto tracking |
-| `advance_round_tool` | Close round, update front, check convergence |
+| `advance_step_tool` | Close round, update front, check convergence |
 | `get_search_state_tool` | Read current search state |
 | `save_prompt_tool` | Save compiled prompt text to disk |
 | `get_edit_directives_tool` | Retrieve Review Agent's edit directives (block-level edits, example content) |
 | `run_eval` | Evaluate a prompt version against the dev set |
 
 > Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 4 sub-agent tool. Do not call it from this context.
+
+> Note: `init_search_state_tool` accepts an optional `algorithm` parameter (default `"hill_climb"`). On this branch only `"hill_climb"` is active; `"beam"`, `"sms_emoa"`, and `"emosa"` are implemented on their respective strategy branches.
 
 ## Resources
 
@@ -115,7 +117,7 @@ Execute these steps exactly in order on round 1.
 10. **Evaluate.** Call `run_eval(prompt_version="v1", data_source=dev_jsonl_path, backend=backend)`.
 11. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
 12. **Record result.** Call `record_eval_result_tool(search_state_id, "v1", quality_score, cost)`.
-13. **Advance round.** Call `advance_round_tool(search_state_id)`.
+13. **Advance round.** Call `advance_step_tool(search_state_id)`.
 14. **Set output.** Set `prompt_version = "v1"` in context. This triggers the Review Agent.
 
 ## Phase 2 — Optimization loop
@@ -138,14 +140,14 @@ Execute on round 2 and every subsequent round.
    - Call `run_eval(prompt_version="vN", data_source=dev_jsonl_path, backend=backend)`.
    - Extract `quality_score` and `cost` from the ScoreReport.
    - Call `record_eval_result_tool(search_state_id, "vN", quality_score, cost)`.
-7. **Advance round.** Call `advance_round_tool(search_state_id)`. Read the returned RoundSummary.
+7. **Advance round.** Call `advance_step_tool(search_state_id)`. Read the returned RoundSummary.
 8. **Read round result.**
    - If `converged` is true: select the best candidate from the Pareto front (highest quality, break ties by lowest cost). Set `prompt_version` to that candidate. Done.
    - If not converged: set `prompt_version` to the best new candidate from this round. This triggers the Review Agent for the next iteration.
 
 ## Convergence
 
-The `advance_round_tool` returns a `RoundSummary` containing `converged`, `mutation_mode`, and `stagnation_count`. Use `mutation_mode` to guide your mutation strategy (see Phase 2, step 4). Convergence decisions are determined by the search state mechanics and the Review Agent's loop signal — the Prompt Builder does not make convergence decisions.
+The `advance_step_tool` returns a `RoundSummary` containing `converged`, `mutation_mode`, and `stagnation_count`. Use `mutation_mode` to guide your mutation strategy (see Phase 2, step 4). Convergence decisions are determined by the search state mechanics and the Review Agent's loop signal — the Prompt Builder does not make convergence decisions.
 
 ## Output contract
 
@@ -172,7 +174,7 @@ Set these context keys when the optimization loop completes (or after round 1 fo
 
 You are a **sub-agent** within Stage 4's refinement loop. Do not wait for Stage 4 to show `status: complete` — that only happens when the loop converges.
 
-After calling `advance_round_tool`, check the returned `RoundSummary`:
+After calling `advance_step_tool`, check the returned `RoundSummary`:
 
 - **If `converged: true`:** The loop is done. Call `get_pipeline_status` and confirm Stage 4 shows `status: complete`. Exit.
 - **If `converged: false`:** Your build phase is complete. Call `get_search_state_tool` and confirm `loop_phase` is `"review"`. Then exit immediately — the orchestrator will spawn the Review Agent next.

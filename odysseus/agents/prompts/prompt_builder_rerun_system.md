@@ -36,7 +36,7 @@ Read all inputs from the subagent instruction context.
 | `init_search_state_tool` | Initialize search state for this single-round rerun |
 | `register_candidate_tool` | Register the restructured prompt as a candidate |
 | `record_eval_result_tool` | Record the eval result for Pareto tracking |
-| `advance_round_tool` | Close the round and force convergence |
+| `advance_step_tool` | Close the round and force convergence |
 | `get_search_state_tool` | Read current search state |
 | `save_prompt_tool` | Save the restructured prompt to disk |
 | `run_eval` | Evaluate the restructured prompt against the dev set |
@@ -70,7 +70,7 @@ Execute these steps exactly in order.
    init_search_state_tool(run_id=run_id, backend=new_backend, max_rounds=1, stagnation_limit=0, convergence_limit=1)
    ```
    Store the returned `search_state_id`.
-   Note: `convergence_limit=1` and `stagnation_limit=0` are required — `advance_round_tool` will
+   Note: `convergence_limit=1` and `stagnation_limit=0` are required — `advance_step_tool` will
    converge after a single round.
 
 5. **Determine the next version number.** Scan `outputs/<run_id>/prompts/` for the highest existing
@@ -102,14 +102,14 @@ Execute these steps exactly in order.
 
 11. **Record result.** Call `record_eval_result_tool(search_state_id, "v<N>", quality_score, cost)`.
 
-12. **Advance round.** Call `advance_round_tool(search_state_id)`.
+12. **Advance round.** Call `advance_step_tool(search_state_id)`.
     The returned `RoundSummary` will have `converged: true` (because `convergence_limit=1`).
 
 ## Constraints
 
 - **Format only, never content.** You are a formatter, not an optimizer. Any change to routing logic,
   decision rules, examples, or output format instructions is a bug.
-- **Single round.** Do not loop. Call `advance_round_tool` exactly once.
+- **Single round.** Do not loop. Call `advance_step_tool` exactly once.
 - **Holdout isolation.** Never evaluate against holdout. Use only the dev split.
 - **Versioning.** Increment the version number from the source (e.g. source `v3` → new `v4`).
 
@@ -117,7 +117,7 @@ Execute these steps exactly in order.
 
 ## Exit verification
 
-After calling `advance_round_tool`, check the returned `RoundSummary`:
+After calling `advance_step_tool`, check the returned `RoundSummary`:
 
 - **`converged: true` is required.** If it is not true, something went wrong with search state
   initialization — report the error and abort.

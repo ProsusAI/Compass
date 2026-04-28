@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from odysseus.mcp import (
-    advance_round_tool,
+    advance_step_tool,
     filter_holdout_dataset_tool,
     get_edit_directives_tool,
     get_search_state_tool,
@@ -88,7 +88,7 @@ class TestSearchStateTools:
             await register_candidate_tool(_RUN_ID, "v1")
             await record_eval_result_tool(_RUN_ID, "v1", 0.85, 0.12)
 
-            adv = json.loads(await advance_round_tool(_RUN_ID))
+            adv = json.loads(await advance_step_tool(_RUN_ID))
             assert adv["round"] == 1
             assert adv["new_elite_entries"] == 1
 
@@ -143,7 +143,7 @@ class TestSearchStateTools:
             await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test")
 
             with pytest.raises(ToolError):
-                await advance_round_tool(_RUN_ID)
+                await advance_step_tool(_RUN_ID)
 
     async def test_get_search_state_unknown_id_raises_tool_error(self, tmp_path: Path) -> None:
         from mcp.server.fastmcp.exceptions import ToolError
@@ -160,14 +160,14 @@ class TestSearchStateTools:
             # Round 1: new candidate improves front
             await register_candidate_tool(_RUN_ID, "v1")
             await record_eval_result_tool(_RUN_ID, "v1", 0.8, 0.1)
-            r1 = json.loads(await advance_round_tool(_RUN_ID))
+            r1 = json.loads(await advance_step_tool(_RUN_ID))
             assert r1["new_elite_entries"] == 1
             assert r1["stagnation_count"] == 0
 
             # Round 2: dominated candidate - no improvement
             await register_candidate_tool(_RUN_ID, "v2")
             await record_eval_result_tool(_RUN_ID, "v2", 0.5, 0.5)
-            r2 = json.loads(await advance_round_tool(_RUN_ID))
+            r2 = json.loads(await advance_step_tool(_RUN_ID))
             assert r2["new_elite_entries"] == 0
             assert r2["stagnation_count"] == 1
 

@@ -27,7 +27,7 @@ from odysseus.mcp.orchestrator_tools import (
     start_stage,
 )
 from odysseus.mcp.prompt_building_tools import (
-    advance_round_tool,
+    advance_step_tool,
     get_edit_directives_tool,
     get_search_state_tool,
     init_search_state_tool,
@@ -83,7 +83,7 @@ __all__ = [
     "mcp",
     # Tools
     "STAGE_REGISTRY",
-    "advance_round_tool",
+    "advance_step_tool",
     "build_final_report_briefing_tool",
     "build_review_briefing_tool",
     "complete_stage",

@@ -53,7 +53,7 @@ _BUILD_TOOLS: list[str] = [
     "init_search_state_tool",
     "register_candidate_tool",
     "record_eval_result_tool",
-    "advance_round_tool",
+    "advance_step_tool",
     "run_eval",
 ]
 
@@ -62,7 +62,7 @@ _RERUN_TOOLS: list[str] = [
     "init_search_state_tool",
     "register_candidate_tool",
     "record_eval_result_tool",
-    "advance_round_tool",
+    "advance_step_tool",
     "run_eval",
 ]
 

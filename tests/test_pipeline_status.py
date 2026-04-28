@@ -487,7 +487,7 @@ class TestStage4RerunMode:
         assert "init_search_state_tool" in tools
         assert "register_candidate_tool" in tools
         assert "run_eval" in tools
-        assert "advance_round_tool" in tools
+        assert "advance_step_tool" in tools
         assert "build_review_briefing_tool" not in tools
 
     def test_normal_stage4_unaffected_without_rerun_config(self, tmp_path: Path) -> None:

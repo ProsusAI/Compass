@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from odysseus.agents.prompt_builder.search import (
     Candidate,
@@ -116,6 +116,8 @@ def init_search_state(
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
+    algorithm: Literal["hill_climb", "beam", "sms_emoa", "emosa"] = "hill_climb",
+    algorithm_state: dict[str, Any] | None = None,
 ) -> SearchState:
     """Create and persist a new SearchState.
 
@@ -127,6 +129,8 @@ def init_search_state(
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
         convergence_limit: Stagnation rounds that trigger convergence.
         primary_metric_name: Optional name of the primary quality metric.
+        algorithm: Search algorithm discriminator.  Defaults to ``"hill_climb"``.
+        algorithm_state: Optional free-form pocket for strategy-specific sub-state.
 
     Returns:
         The newly created :class:`SearchState`.
@@ -141,6 +145,8 @@ def init_search_state(
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
         primary_metric_name=primary_metric_name,
+        algorithm=algorithm,
+        algorithm_state=algorithm_state or {},
     )
     _save_state(run_id, state, output_dir)
     return state

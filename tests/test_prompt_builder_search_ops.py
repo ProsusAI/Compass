@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import json
+from contextlib import contextmanager
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from odysseus.agents.prompt_builder.search_ops import (
@@ -17,6 +22,16 @@ from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase,
 )
 from odysseus.agents.review.models import LoopSignal
+
+_RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
+_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
+
+
+@contextmanager
+def _patch_project_dir(tmp_path: Path):
+    """Patch project dir resolution in the search ops module."""
+    with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
+        yield
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -622,3 +637,71 @@ class TestConvergenceReason:
         summary = advance_round("cr-run3", output_dir=tmp_path)
         assert summary.converged is False
         assert summary.convergence_reason is None
+
+
+# ---------------------------------------------------------------------------
+# advance_step_tool dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestAdvanceStepTool:
+    """Tests for the advance_step_tool strategy-dispatch shape."""
+
+    async def test_hill_climb_arm_behaves_like_advance_round(self, tmp_path: Path) -> None:
+        """advance_step_tool with algorithm='hill_climb' produces a valid RoundSummary."""
+        from odysseus.mcp import (
+            advance_step_tool,
+            init_search_state_tool,
+            record_eval_result_tool,
+            register_candidate_tool,
+        )
+
+        with (
+            patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch(_SEARCH_OPS_PATCH, return_value=tmp_path),
+        ):
+            # Set up stage 4 guard artifact
+            analysis_dir = tmp_path / "outputs" / "run-st1" / "analysis"
+            analysis_dir.mkdir(parents=True, exist_ok=True)
+            (analysis_dir / "dev.jsonl").write_text("")
+
+            # Init with default algorithm="hill_climb"
+            state_json = await init_search_state_tool(
+                ctx=None,
+                run_id="run-st1",
+                backend="test",
+                algorithm="hill_climb",
+            )
+            state_data = json.loads(state_json)
+            assert state_data["algorithm"] == "hill_climb"
+
+            await register_candidate_tool("run-st1", "v1")
+            await record_eval_result_tool("run-st1", "v1", 0.85, 0.12)
+
+            result_json = await advance_step_tool("run-st1")
+            result = json.loads(result_json)
+            assert result["round"] == 1
+            assert result["new_elite_entries"] == 1
+
+    async def test_non_hill_climb_raises_not_implemented(self, tmp_path: Path) -> None:
+        """advance_step_tool raises NotImplementedError for algorithms not yet implemented."""
+        from odysseus.mcp import advance_step_tool, init_search_state_tool
+
+        with (
+            patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch(_SEARCH_OPS_PATCH, return_value=tmp_path),
+        ):
+            analysis_dir = tmp_path / "outputs" / "run-st2" / "analysis"
+            analysis_dir.mkdir(parents=True, exist_ok=True)
+            (analysis_dir / "dev.jsonl").write_text("")
+
+            await init_search_state_tool(
+                ctx=None,
+                run_id="run-st2",
+                backend="test",
+                # Force a non-hill-climb algorithm into the state
+                algorithm="beam",
+            )
+
+            with pytest.raises(NotImplementedError, match="beam"):
+                await advance_step_tool("run-st2")
