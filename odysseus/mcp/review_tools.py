@@ -119,13 +119,16 @@ async def build_review_briefing_tool(
                     break
 
     # Load prompt texts (used internally for diversity metrics, not surfaced in briefing)
-    import contextlib
-
-    prompt_mgr = FilePromptManager(project_dir / "prompts")
+    run_prompts_dir = out / run_id / "prompts"
+    project_prompts_dir = project_dir / "prompts"
     prompt_texts: dict[str, str] = {}
     for version in all_versions:
-        with contextlib.suppress(FileNotFoundError):
-            prompt_texts[version] = prompt_mgr.load(version)
+        for prompts_dir in (run_prompts_dir, project_prompts_dir):
+            try:
+                prompt_texts[version] = FilePromptManager(prompts_dir).load(version)
+                break
+            except FileNotFoundError:
+                continue
 
     # Load directive history
     directive_history = load_directive_history(run_id, output_dir=out)
@@ -399,6 +402,7 @@ async def query_holdout_examples_tool(
 async def get_prompt_text_tool(
     ctx: Context,
     version: str,
+    run_id: str,
     output_dir: str = "outputs",
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Retrieve the full text of a prompt version.
@@ -408,7 +412,9 @@ async def get_prompt_text_tool(
 
     Args:
         version: Prompt version string (e.g., "v3").
-        output_dir: Output directory (default "outputs", reserved for future run-specific fallback).
+        run_id: Pipeline run identifier. Looks in outputs/<run_id>/prompts/ first,
+            then falls back to the project-level prompts/ directory.
+        output_dir: Output directory (default "outputs").
 
     Returns:
         The full prompt text.
@@ -416,8 +422,11 @@ async def get_prompt_text_tool(
     from odysseus.prompts.manager import FilePromptManager
 
     project_dir = await _resolve_project_dir(ctx)
-    prompt_mgr = FilePromptManager(project_dir / "prompts")
-    try:
-        return prompt_mgr.load(version)
-    except FileNotFoundError:
-        return json.dumps({"error": f"Prompt version '{version}' not found"})
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    for prompts_dir in (out / run_id / "prompts", project_dir / "prompts"):
+        try:
+            return FilePromptManager(prompts_dir).load(version)
+        except FileNotFoundError:
+            continue
+    return json.dumps({"error": f"Prompt version '{version}' not found"})

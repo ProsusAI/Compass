@@ -37,6 +37,10 @@ Set `parent_version` (and `secondary_parent_version` if required) per your overl
 
 ### Then: self-check (grounding / distinctness / relevance), per the base.
 
+## Fetching prompt text
+
+To inspect the full text of a candidate, call `get_prompt_text_tool(run_id=run_id, version="<version>")`. Always pass `run_id` — the tool looks in the run-specific prompt directory first and falls back to the project-level directory. Omitting `run_id` is an error.
+
 ## What the overlay tells you
 
 Before running this flow, your overlay specifies:

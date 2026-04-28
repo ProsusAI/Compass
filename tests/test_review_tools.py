@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from odysseus.mcp import record_directive_outcomes_tool
+from odysseus.mcp import get_prompt_text_tool, record_directive_outcomes_tool
 
 _RESOLVE_PROJECT_DIR = "odysseus.mcp.review_tools._resolve_project_dir"
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
@@ -193,3 +193,67 @@ class TestChildVariantNoParentPreference:
         )
         assert cv.parent_preference == "weakest_on_class"
         assert cv.parent_preference_class == "route_a"
+
+
+class TestGetPromptTextTool:
+    """Tests for get_prompt_text_tool prompt-directory fallback and run_id requirement."""
+
+    _RUN_ID = "test-run-prompt"
+
+    async def test_version_found_in_run_specific_dir(self, tmp_path: Path) -> None:
+        """Version in outputs/<run_id>/prompts/ is returned without checking project dir."""
+        run_prompts = tmp_path / "outputs" / self._RUN_ID / "prompts"
+        run_prompts.mkdir(parents=True)
+        (run_prompts / "v1.txt").write_text("run-specific content")
+
+        project_prompts = tmp_path / "prompts"
+        project_prompts.mkdir()
+        (project_prompts / "v1.txt").write_text("project content")
+
+        with _patch_project_dir(tmp_path):
+            result = await get_prompt_text_tool(
+                ctx=None, version="v1", run_id=self._RUN_ID, output_dir="outputs"
+            )
+
+        assert result == "run-specific content"
+
+    async def test_fallback_to_project_dir_when_absent_from_run(self, tmp_path: Path) -> None:
+        """Version absent from run-specific dir is loaded from project-level prompts/."""
+        run_prompts = tmp_path / "outputs" / self._RUN_ID / "prompts"
+        run_prompts.mkdir(parents=True)
+
+        project_prompts = tmp_path / "prompts"
+        project_prompts.mkdir()
+        (project_prompts / "v2.txt").write_text("project v2")
+
+        with _patch_project_dir(tmp_path):
+            result = await get_prompt_text_tool(
+                ctx=None, version="v2", run_id=self._RUN_ID, output_dir="outputs"
+            )
+
+        assert result == "project v2"
+
+    async def test_error_json_when_version_in_neither_dir(self, tmp_path: Path) -> None:
+        """Version absent from both dirs returns a JSON error with the expected shape."""
+        run_prompts = tmp_path / "outputs" / self._RUN_ID / "prompts"
+        run_prompts.mkdir(parents=True)
+        project_prompts = tmp_path / "prompts"
+        project_prompts.mkdir()
+
+        with _patch_project_dir(tmp_path):
+            result = await get_prompt_text_tool(
+                ctx=None, version="vX", run_id=self._RUN_ID, output_dir="outputs"
+            )
+
+        parsed = json.loads(result)
+        assert "error" in parsed
+        assert "vX" in parsed["error"]
+
+    def test_run_id_is_required(self) -> None:
+        """get_prompt_text_tool requires run_id — calling without it raises TypeError."""
+        import inspect
+
+        sig = inspect.signature(get_prompt_text_tool)
+        param = sig.parameters.get("run_id")
+        assert param is not None, "run_id parameter not found on get_prompt_text_tool"
+        assert param.default is inspect.Parameter.empty, "run_id must have no default (required)"
