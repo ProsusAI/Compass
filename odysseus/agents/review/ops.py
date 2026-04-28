@@ -178,3 +178,108 @@ def load_round_reports(
         round_num = int(path.stem.split("_")[1])
         result[round_num] = json.loads(path.read_text(encoding="utf-8"))
     return result
+
+
+def _cell_attempt_history_path(run_id: str, output_dir: Path) -> Path:
+    return _search_dir(run_id, output_dir) / "cell_attempt_history.json"
+
+
+def load_cell_attempt_history(
+    run_id: str,
+    *,
+    output_dir: Path | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Load cell attempt history from disk."""
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    path = _cell_attempt_history_path(run_id, output_dir)
+    if not path.exists():
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def save_cell_attempt_history(
+    run_id: str,
+    history: dict[str, list[dict[str, Any]]],
+    *,
+    output_dir: Path | None = None,
+) -> None:
+    """Persist cell attempt history to disk."""
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    path = _cell_attempt_history_path(run_id, output_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(history, indent=2), encoding="utf-8")
+
+
+def update_cell_attempt_history(
+    run_id: str,
+    batch_outcomes: list[Any],
+    child_variants: list[Any],
+    confusion_analysis: list[Any],
+    *,
+    current_round: int,
+    output_dir: Path | None = None,
+) -> None:
+    """Update cell attempt history based on batch outcomes.
+
+    For each batch outcome whose source variant targeted a confusion cell,
+    determine the outcome and append to that cell's history.
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+
+    # Build variant_id -> target_confusion_cell lookup
+    variant_cells: dict[str, str] = {}
+    for cv in child_variants:
+        vid = cv.variant_id if hasattr(cv, "variant_id") else None
+        cell = cv.target_confusion_cell if hasattr(cv, "target_confusion_cell") else None
+        if vid and cell:
+            variant_cells[vid] = cell
+
+    if not variant_cells:
+        return
+
+    # Build confusion cell -> (cost_impact, quality_impact) for metric dimension selection
+    cell_impacts: dict[str, tuple[float, float]] = {}
+    for ci in confusion_analysis:
+        key = f"{ci.true_route}/{ci.predicted_route}"
+        cell_impacts[key] = (ci.cost_impact, ci.quality_impact)
+
+    history = load_cell_attempt_history(run_id, output_dir=output_dir)
+
+    for bo in batch_outcomes:
+        vid = bo.variant_id if hasattr(bo, "variant_id") else None
+        cell = variant_cells.get(vid or "")
+        if not cell:
+            continue
+
+        cost_imp, quality_imp = cell_impacts.get(cell, (0.0, 0.0))
+        deltas = bo.metric_deltas_vs_parent if hasattr(bo, "metric_deltas_vs_parent") else None
+
+        if deltas and abs(cost_imp) > abs(quality_imp):
+            # Cost-dominated cell: negative delta = candidate is cheaper = improved
+            cost_delta = deltas.get("cost_change_with_overhead", 0.0)
+            if cost_delta < -0.005:
+                outcome = "improved"
+            elif cost_delta > 0.005:
+                outcome = "regressed"
+            else:
+                outcome = "no_effect"
+        else:
+            # Quality-dominated cell (default)
+            quality_delta = bo.quality_delta_vs_parent if hasattr(bo, "quality_delta_vs_parent") else None
+            if quality_delta is not None and quality_delta > 0.005:
+                outcome = "improved"
+            elif quality_delta is not None and quality_delta < -0.005:
+                outcome = "regressed"
+            else:
+                outcome = "no_effect"
+
+        history.setdefault(cell, []).append({
+            "round": current_round,
+            "variant_id": vid,
+            "outcome": outcome,
+        })
+
+    save_cell_attempt_history(run_id, history, output_dir=output_dir)

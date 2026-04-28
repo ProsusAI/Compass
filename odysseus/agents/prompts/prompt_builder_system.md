@@ -98,11 +98,9 @@ Execute these steps exactly in order on round 1.
    - **Objective** — state the classification/routing task derived from `routing_context.domain`.
    - **Categories** — enumerate every route from `routing_context.routes` with its description and distinguishing criteria. Use the vocabulary from `routing_context` — these may be called "routes," "categories," "tiers," or other domain-appropriate terms.
    - **Decision logic** — encode the decision logic, edge cases, and disambiguation rules. If `routing_context.route_ordering` is present, reflect the ordering relationship. If `routing_context.routing_dimensions` specify directional preferences (e.g., `lower_is_better`), encode those as prioritization rules.
-   - **Examples** — use the examples extracted from Review Agent directives in step 5. Each `example_content` contains `input`, `route`, `reasoning`, and `exclusions`. Render only `input` and `route` into each compiled example:
-     - `input` → the example's input block
-     - `route` → the route value in the example's output/answer
-     - Do not include `reasoning` or `exclusions` in the compiled prompt. These fields are used internally for evaluation and review — they must not appear in the prompt seen by the target model.
-     - `example_id` → never include in prompt text (backend tracking only)
+   - **Examples** — render few-shot examples and boundary cases in this section.
+     - **Few-shot examples** (`block_type == 'example'`): each `example_content` contains `input`, `route`, `reasoning`, and `exclusions`. Render only `input` and `route` — the target model's output is a route only, so example outputs must model that format. `reasoning` and `exclusions` are internal metadata for evaluation and review; `example_id` is for backend tracking. None of these three fields appear in prompt text.
+     - **Boundary cases** (`block_type == 'contrast_pair'`): render as a "Boundary Cases" subsection after the few-shot examples following the provider-specific convention template. Include both examples, `distinguishing_signal`, and `contrast_reasoning` as the template specifies — this is pedagogical system-message content that teaches boundary discrimination, not output-format demonstration.
    - **Output format** — specify the exact response schema the model must produce.
    This section order is mandatory. Output format must always be the final section of the compiled prompt. Placing it before examples or decision logic degrades the target model's compliance with the response schema.
 

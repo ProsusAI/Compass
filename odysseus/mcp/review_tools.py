@@ -69,10 +69,12 @@ async def build_review_briefing_tool(
     """
     from odysseus.agents.prompt_builder.search_ops import get_search_state
     from odysseus.agents.review.ops import (
+        load_cell_attempt_history,
         load_child_variants,
         load_directive_history,
         load_round_reports,
         save_round_report,
+        update_cell_attempt_history,
     )
     from odysseus.agents.review.preprocessor import build_review_briefing, parse_user_targets
     from odysseus.prompts.manager import FilePromptManager
@@ -216,6 +218,9 @@ async def build_review_briefing_tool(
             if loaded_examples:
                 examples_for_confusion = loaded_examples
 
+    # Load cell attempt history for confusion cell exhaustion tracking
+    cell_attempt_history = load_cell_attempt_history(run_id, output_dir=out)
+
     # Build briefing
     briefing = build_review_briefing(
         search_state=state,
@@ -234,11 +239,23 @@ async def build_review_briefing_tool(
         eval_results=eval_results_for_confusion,
         examples=examples_for_confusion,
         run_dir=out / run_id,
+        cell_attempt_history=cell_attempt_history or None,
     )
 
     # Save current round's reports for future historical access
     current_round_reports = {v: score_reports[v] for v in candidate_versions if v in score_reports}
     save_round_report(run_id, state.round, current_round_reports, output_dir=out)
+
+    # Update cell attempt history from batch outcomes (links prior child variants to outcomes)
+    if briefing.batch_outcomes and child_variants:
+        update_cell_attempt_history(
+            run_id,
+            briefing.batch_outcomes,
+            child_variants,
+            briefing.confusion_analysis,
+            current_round=state.round,
+            output_dir=out,
+        )
 
     # Record that the Review Agent sub-agent is now in-flight for this round.
     record_review_dispatched(run_id, round=state.round, output_dir=out)

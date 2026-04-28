@@ -57,8 +57,22 @@ Do **not** pass the entire object as `review_result` — use the decomposed para
 - `hypothesis` (1–3 sentences)
 - `parent_version` (your overlay specifies how to select it; set `secondary_parent_version` only if your overlay requires it)
 - `directives: list[EditDirective]` — each cites the confusion cell / threshold / example ids it targets
+- `target_confusion_cell: str | None` — set to `"true_route/predicted_route"` when this variant's hypothesis targets a specific confusion cell; `null` otherwise
 
 The number of children you emit is set by your overlay. Do **not** include numeric impact estimates (expected metric deltas) on directives or child variants — those are measured by eval, not guessed by you.
+
+### contrast_pair directive content schema
+
+When `block_type == "contrast_pair"`, populate `contrast_pair_content` with:
+
+| Field | Meaning |
+|-------|---------|
+| `example_a` | First example (`input`, `route`) |
+| `example_b` | Second example (`input`, `route`) — must differ from `example_a` by at most one semantic dimension |
+| `distinguishing_signal` | The feature or phrase that makes `example_b`'s route correct when `example_a`'s is not |
+| `contrast_reasoning` | One sentence explaining why these two routes are the right contrast for the targeted cell |
+| `target_true_route` | The true (correct) route for the harder-to-classify example |
+| `target_predicted_route` | The route the model currently predicts for it (the wrong route) |
 
 ## Self-check before emitting
 

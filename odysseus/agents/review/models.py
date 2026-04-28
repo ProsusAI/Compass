@@ -187,6 +187,11 @@ class ConfusionImpact(BaseModel):
     persistence_rate: float
     persistent_count: int
     volatile_count: int
+    attempt_count: int = 0
+    failed_attempt_count: int = 0
+    last_attempted_round: int | None = None
+    best_outcome: Literal["improved", "no_effect", "regressed"] | None = None
+    effective_impact: float = 0.0
 
 
 class NearMissCandidate(BaseModel):
@@ -305,6 +310,7 @@ class ChildVariant(BaseModel):
     secondary_parent_version: str | None = None  # resolved by algorithm
     hypothesis: str
     directives: list[EditDirective]
+    target_confusion_cell: str | None = None  # Format: "true_route/predicted_route"
 
 
 class PromotionDecision(BaseModel):

@@ -39,6 +39,31 @@ from odysseus.eval.models import EvalResult, Example, ScoreReport
 
 _log = logging.getLogger(__name__)
 
+_PRIMARY_METRICS = frozenset({
+    "accuracy", "cost_change", "cost_change_with_overhead", "quality_change", "f1/macro",
+})
+
+
+def _filter_metric_deltas(
+    deltas: dict[str, float],
+    primary_metrics: frozenset[str] | set[str] = _PRIMARY_METRICS,
+    target_metrics: set[str] | None = None,
+    threshold: float = 0.01,
+) -> dict[str, float]:
+    """Filter metric deltas to significant changes only.
+
+    Keeps: primary metrics, metrics matching user targets, and any metric
+    with abs(delta) > threshold. Removes confusion/* keys.
+    """
+    target_metrics = target_metrics or set()
+    filtered: dict[str, float] = {}
+    for key, value in deltas.items():
+        if key.startswith("confusion/"):
+            continue
+        if key in primary_metrics or key in target_metrics or abs(value) > threshold:
+            filtered[key] = value
+    return filtered
+
 
 @dataclass
 class _TargetSlackResult:
@@ -140,12 +165,20 @@ def build_candidate_comparisons(
         else:
             delta_parent = MetricDeltas(quality_delta=None, cost_delta=None, per_class_recall_deltas={})
 
+        # Filter confusion/* keys from score_report metrics (copy, do not mutate original)
+        report_dict: dict[str, Any] = report
+        if report_dict.get("metrics"):
+            report_dict = {**report_dict, "metrics": {
+                k: v for k, v in report_dict["metrics"].items()
+                if not k.startswith("confusion/")
+            }}
+
         results.append(
             CandidateAnalysis(
                 candidate_version=version,
                 parent_version=parent,
                 mutation_description=mutation_descriptions[version],
-                score_report=ScoreReport.model_validate(report),
+                score_report=ScoreReport.model_validate(report_dict),
                 delta_vs_parent=delta_parent,
             )
         )
@@ -206,6 +239,8 @@ def extract_per_class_recall(
         current_recall = trend[-1] if trend else 0.0
         previous_recall = trend[-2] if len(trend) >= 2 else current_recall
         regression_flag = current_recall < previous_recall
+
+        trend = trend[-5:]  # Keep last 5 rounds only
 
         result[route] = ClassRecallEntry(
             recall=current_recall,
@@ -345,7 +380,7 @@ def compute_diminishing_returns(
     """
     if len(score_trajectory) < 2:
         return DiminishingReturns(
-            score_trajectory=score_trajectory,
+            score_trajectory=score_trajectory[-8:],
             improvement_trend=0.0,
             stagnation_flag=False,
             improvement_stddev=0.0,
@@ -359,7 +394,7 @@ def compute_diminishing_returns(
     stddev = statistics.pstdev(deltas) if len(deltas) >= 2 else 0.0
 
     return DiminishingReturns(
-        score_trajectory=score_trajectory,
+        score_trajectory=score_trajectory[-8:],
         improvement_trend=trend,
         stagnation_flag=trend < stagnation_threshold,
         improvement_stddev=stddev,
@@ -923,6 +958,63 @@ def build_confusion_analysis(
     return impacts[:max_cells]
 
 
+def enrich_confusion_with_history(
+    impacts: list[ConfusionImpact],
+    cell_history: dict[str, list[dict[str, Any]]],
+) -> list[ConfusionImpact]:
+    """Enrich ConfusionImpact objects with attempt history and re-sort by effective_impact.
+
+    Applies exponential decay: effective_impact = raw_impact * (0.5 ^ failed_attempt_count).
+    A successful attempt resets failed_attempt_count to 0.
+    """
+    enriched: list[ConfusionImpact] = []
+    for ci in impacts:
+        cell_key = f"{ci.true_route}/{ci.predicted_route}"
+        entries = cell_history.get(cell_key, [])
+
+        if not entries:
+            raw_impact = abs(ci.cost_impact) + abs(ci.quality_impact)
+            enriched.append(ci.model_copy(update={"effective_impact": raw_impact}))
+            continue
+
+        attempt_count = len(entries)
+
+        # Determine best_outcome across all attempts
+        best_outcome: str | None = None
+        last_round: int | None = None
+        outcome_priority = {"improved": 2, "no_effect": 1, "regressed": 0}
+        for entry in entries:
+            outcome = entry.get("outcome", "no_effect")
+            if best_outcome is None or outcome_priority.get(outcome, 0) > outcome_priority.get(best_outcome, 0):
+                best_outcome = outcome
+            round_num = entry.get("round")
+            if round_num is not None:
+                last_round = max(last_round or 0, round_num)
+
+        # Count failed attempts since last success
+        failed_count = 0
+        for entry in reversed(entries):
+            if entry.get("outcome") == "improved":
+                break
+            if entry.get("outcome") in ("no_effect", "regressed"):
+                failed_count += 1
+
+        raw_impact = abs(ci.cost_impact) + abs(ci.quality_impact)
+        effective = raw_impact * (0.5 ** failed_count)
+
+        enriched.append(ci.model_copy(update={
+            "attempt_count": attempt_count,
+            "failed_attempt_count": failed_count,
+            "last_attempted_round": last_round,
+            "best_outcome": best_outcome,
+            "effective_impact": effective,
+        }))
+
+    # Re-sort by effective_impact descending
+    enriched.sort(key=lambda c: c.effective_impact, reverse=True)
+    return enriched
+
+
 def build_review_briefing(
     *,
     search_state: Any,
@@ -941,6 +1033,7 @@ def build_review_briefing(
     eval_results: list[EvalResult] | None = None,
     examples: list[Example] | None = None,
     run_dir: Path | None = None,
+    cell_attempt_history: dict[str, list[dict[str, Any]]] | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 
@@ -1099,6 +1192,16 @@ def build_review_briefing(
                             score_reports[candidate.prompt_version], secondary_report
                         )
 
+                target_metric_names = {t.metric for t in (user_targets or [])}
+                if metric_deltas_vs_parent:
+                    metric_deltas_vs_parent = _filter_metric_deltas(
+                        metric_deltas_vs_parent, target_metrics=target_metric_names,
+                    )
+                if metric_deltas_vs_secondary:
+                    metric_deltas_vs_secondary = _filter_metric_deltas(
+                        metric_deltas_vs_secondary, target_metrics=target_metric_names,
+                    )
+
                 batch_outcomes.append(BatchOutcome(
                     variant_id=cv.variant_id,
                     parent_version=candidate.parent_version or "",
@@ -1155,6 +1258,9 @@ def build_review_briefing(
             run_dir=run_dir,
             max_cells=20,
         )
+
+    if confusion_analysis and cell_attempt_history:
+        confusion_analysis = enrich_confusion_with_history(confusion_analysis, cell_attempt_history)
 
     briefing = ReviewBriefing(
         round=current_round,

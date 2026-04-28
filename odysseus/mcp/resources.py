@@ -110,8 +110,12 @@ async def model_specific_conventions(provider: str, model_family: str) -> str:
 
 @mcp.resource("odysseus://agents/review-agent/guidelines")
 async def review_agent_guidelines() -> str:
-    """Review criteria and evaluation priority reference for the Review Agent."""
-    return _load_text("odysseus/agents/prompts/review_agent_system.md")
+    """Review Agent base system prompt plus iterative-phase shared guidelines."""
+    return (
+        _load_text("odysseus/agents/prompts/review_agent_base_system.md")
+        + "\n\n---\n\n"
+        + _load_text("odysseus/agents/prompts/review_agent_iterative_base_system.md")
+    )
 
 
 @mcp.resource("odysseus://agents/final-report/template")

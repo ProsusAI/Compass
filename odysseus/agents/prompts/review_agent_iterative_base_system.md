@@ -13,11 +13,21 @@ You run this flow **once per child variant** you emit. How many children this di
 Open `confusion_analysis` and `threshold_targets` in the briefing. Pick **one** specific target:
 
 - An unmet `threshold_target` (quality, cost, or other). Name the metric and how far it is from the goal.
-- OR a `confusion_analysis` cell with the largest impact on the currently binding axis. Your overlay tells you which axis is binding for this dispatch.
+- OR a `confusion_analysis` cell with the largest `effective_impact` on the currently binding axis. Your overlay tells you which axis is binding for this dispatch.
 
-Do not pick a category ("examples look weak", "rules are vague"). Pick a cell.
+Cells are sorted by `effective_impact` (not raw impact). `effective_impact` applies an exponential decay of `0.5 ^ failed_attempt_count` to the raw impact so that repeatedly-attempted cells rank lower until a fix succeeds. Additional fields available on each cell:
 
-If every cell looks equally bad, pick the one whose fix is most likely to move a binding threshold — not the largest raw impact.
+| Field | Meaning |
+|-------|---------|
+| `attempt_count` | Total number of variants that targeted this cell |
+| `failed_attempt_count` | Consecutive failures from the most recent attempt (reset on `"improved"`) |
+| `best_outcome` | Best outcome seen: `"improved"` > `"no_effect"` > `"regressed"` |
+| `last_attempted_round` | Round number of the most recent attempt |
+| `effective_impact` | Decay-adjusted impact used for ranking |
+
+If `attempt_count >= 2` and `best_outcome != "improved"`, switch to a different **fix type** for this cell (e.g. if previous attempts added rules, try a `contrast_pair` instead; if examples were tried, try a rule). Do not pick a category ("examples look weak", "rules are vague"). Pick a cell.
+
+If every cell looks equally bad, pick the one whose fix is most likely to move a binding threshold — not the largest effective impact.
 
 ### 2. Hypothesise from data
 
@@ -34,6 +44,8 @@ The hypothesis must be falsifiable by the next eval. If you cannot cite a specif
 Choose the directive type(s) from the base's directive-type table that most directly test the hypothesis. Bundle the minimum set of directives that together test **one** hypothesis — they may span multiple types (e.g. one rule plus one example plus one contrast pair) as long as they share the same mechanism. Do not mix unrelated hypotheses into one child.
 
 Set `parent_version` (and `secondary_parent_version` if required) per your overlay. Do not populate expected-delta fields.
+
+When this variant targets a specific confusion cell, set `target_confusion_cell = "true_route/predicted_route"` on the `ChildVariant`. This links the variant to the cell so attempt history is tracked across rounds. Leave `target_confusion_cell` as `null` when the hypothesis targets a threshold metric rather than a specific cell.
 
 ### Then: self-check (grounding / distinctness / relevance), per the base.
 

@@ -1208,3 +1208,62 @@ class TestBuildConfusionAnalysis:
         # Single-example cost and quality deltas
         assert cell.cost_impact == pytest.approx(0.10 - 0.01)   # 0.09
         assert cell.quality_impact == pytest.approx(0.95 - 0.80)  # 0.15
+
+
+class TestSignalToNoiseFilters:
+    def test_filter_metric_deltas_basic(self) -> None:
+        from odysseus.agents.review.preprocessor import _filter_metric_deltas
+
+        deltas = {
+            "accuracy": 0.05,
+            "cost_change": -0.02,
+            "recall/route_a": 0.001,  # below threshold
+            "confusion/a/b": 3.0,     # confusion key
+            "f1/macro": 0.015,
+            "recall/route_b": 0.0,    # zero delta
+        }
+        filtered = _filter_metric_deltas(deltas)
+        assert "accuracy" in filtered
+        assert "cost_change" in filtered
+        assert "f1/macro" in filtered
+        assert "recall/route_a" not in filtered
+        assert "confusion/a/b" not in filtered
+        assert "recall/route_b" not in filtered
+
+    def test_target_metrics_always_kept(self) -> None:
+        from odysseus.agents.review.preprocessor import _filter_metric_deltas
+
+        deltas = {"recall/route_a": 0.005}
+        filtered = _filter_metric_deltas(deltas, target_metrics={"recall/route_a"})
+        assert "recall/route_a" in filtered
+
+    def test_primary_metrics_kept_even_at_zero(self) -> None:
+        from odysseus.agents.review.preprocessor import _filter_metric_deltas
+
+        deltas = {"accuracy": 0.0}
+        filtered = _filter_metric_deltas(deltas)
+        assert "accuracy" in filtered
+
+    def test_per_class_recall_trend_truncated(self) -> None:
+        """Trend should be limited to last 5 rounds."""
+        historical = {}
+        for i in range(1, 12):
+            historical[i] = {"v1": _make_report_dict(**{
+                "recall/route_a": 0.50 + i * 0.02,
+                "support/route_a": 10,
+            })}
+        current = {"v1": _make_report_dict(**{
+            "recall/route_a": 0.75,
+            "support/route_a": 10,
+        })}
+        result = extract_per_class_recall(
+            current_reports=current,
+            historical_reports=historical,
+            current_round=12,
+        )
+        assert len(result["route_a"].trend) <= 5
+
+    def test_diminishing_returns_trajectory_truncated(self) -> None:
+        trajectory = [0.5 + i * 0.01 for i in range(15)]
+        result = compute_diminishing_returns(score_trajectory=trajectory)
+        assert len(result.score_trajectory) <= 8
