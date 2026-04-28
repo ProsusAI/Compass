@@ -65,6 +65,7 @@ To inspect the full text of a candidate, call `get_prompt_text_tool(run_id=run_i
 | `progress_ratio` | Normalised progress toward the threshold (0.0–1.0+; 1.0 = met) |
 | `source_version` | The single candidate version these metrics come from — all entries share the same `source_version` |
 | `surplus` / `regression_budget` | Slack relative to the threshold |
+| `priority_weight` | Share of directive effort to allocate to this target across this dispatch's K children (0.0–1.0; sums to 1.0 across deficit targets). When K children would each address a different deficit target, prefer allocating to higher-weight deficits first. |
 
 `single_candidate_meets_all` is `true` when every entry in `target_progress` has `met == true` for the same `source_version`. This is the **only** safe condition for `LoopSignal{action="exit"}`. When `false`, prefer `LoopSignal{action="refine"}` and explain in `reason` which targets remain unmet.
 

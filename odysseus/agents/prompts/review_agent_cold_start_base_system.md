@@ -23,9 +23,10 @@ Produce **K** diagnoses of what makes this specific routing problem hard — eac
 - **Per-route rationale at the boundary.** For each route involved in this diagnosis, name *why* a query would belong there — the underlying intent, content type, complexity level, or use-case the route is designed to serve. The diagnosis must engage with these reasons, not just with surface signals. ("Route A handles factual lookups where speed matters; route B handles multi-step reasoning where accuracy matters" is a rationale; "route A is the cheap one and route B is the expensive one" is not — that's a label.)
 - **Where the hard boundary lives.** Which pair (or triple) of routes has the most ambiguous boundary, given those rationales? What linguistic or semantic signal sits on the boundary? (E.g. "the boundary between routes A and B hinges on implicit urgency cues that dev-set examples 12/47/91 carry.") A boundary that doesn't trace back to a rationale clash is a surface pattern, not a real boundary — discard it.
 - **Why it is hard.** Why do the rationales blur in this domain? Is it ambiguous wording, overlapping vocabulary, conflicting user intents, long-tail edge cases, cost-vs-quality tension, high label-noise in training signal, or something else grounded in what you read in step 1?
+- **Cognitive strategy the prompt would need to scaffold.** What reasoning approach would help the router most for this diagnosis: deductive rule application, inductive pattern matching, contrastive elimination between candidates, or hierarchical narrowing? This is a question to ask of *this* diagnosis, not a list to pick from — different diagnoses imply different cognitive strategies, and that difference is part of what makes them distinct.
 - **What a prompt-level fix would have to do** to disambiguate — still at the level of the problem, not at the level of directive types. The fix should make at least one route's rationale visible to the model where it currently is not.
 
-Diversity across the K diagnoses means different **per-route rationales in tension**, different **boundaries**, and different **sources of hardness**. If two diagnoses reduce to the same rationale clash, the same boundary, and the same source of hardness, replace one. Do not differentiate diagnoses by which directive type the fix will use — the directive type is decided in step 3, not here.
+Diversity across the K diagnoses means different **per-route rationales in tension**, different **boundaries**, different **sources of hardness**, and different **cognitive strategies**. If two diagnoses reduce to the same rationale clash, the same boundary, the same source of hardness, and the same cognitive strategy, replace one. Do not differentiate diagnoses by which directive type the fix will use — the directive type is decided in step 3, not here.
 
 ### 3. Turn each strategy into a child variant
 
@@ -36,7 +37,15 @@ Only now bring directives into the picture. For each of the K diagnoses, produce
 - `parent_version` per the overlay.
 - `parent_preference`: omit (leave null) — there is no elite set to resolve against in round 0.
 
-### Then: self-check, per the base. The **distinctness** check applies pairwise across the K children you are about to emit, not just against existing elites.
+### Self-check before emitting
+
+Run these checks against the K hypothesis strings only — read them as a reader who has not seen your reasoning trace:
+
+- **Grounding test.** Each hypothesis must name something specific about *this* routing problem (a route pair, a vocabulary clash, a context signal). Reject hypotheses that could be pasted into a different routing problem unchanged.
+- **Reconstruction test.** A reader should be able to recover the diagnosis from the hypothesis even if all directives were deleted. Reject hypotheses that read as directive summaries ("focus on examples", "add rules for X").
+- **Distinctness test.** Pairwise across the K hypotheses, no two may reduce to the same diagnosis along all of: per-route rationale, hard boundary, source of hardness, and cognitive strategy. If two collapse, replace one.
+
+These checks are in addition to the base self-check (grounding / distinctness / relevance); run them before the base pass.
 
 ## What the overlay tells you
 
