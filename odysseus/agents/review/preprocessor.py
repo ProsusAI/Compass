@@ -840,7 +840,7 @@ def build_review_briefing(
     if child_variants and pending_candidates is not None:
         # Build a lookup: source_directive_batch_id -> Candidate
         candidate_by_variant = {
-            getattr(c, "source_directive_batch_id"): c
+            c.source_directive_batch_id: c
             for c in pending_candidates
             if getattr(c, "source_directive_batch_id", None) is not None
         }

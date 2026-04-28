@@ -128,7 +128,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
 | `build_review_briefing_tool` | Implemented | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `record_directive_outcomes_tool` | Implemented | Persist child variants + directive outcomes; apply the Review Agent's `loop_signal` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `query_holdout_examples_tool` | Implemented | Query holdout examples, optionally filtered by route, for directive crafting | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `query_holdout_examples_tool` | Implemented | Query holdout examples, optionally filtered by route, with `offset`/`limit` pagination for directive crafting | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `get_prompt_text_tool` | Implemented | Retrieve the full text of a versioned prompt; requires `run_id`; checks `outputs/<run_id>/prompts/` first, falls back to project-level `prompts/` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `build_final_report_briefing_tool` | Implemented | Pre-process all pipeline artifacts into a structured briefing with charts for the Final Report Agent | [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py) |
 | `save_final_report` | Implemented | Save the final report markdown to disk | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |

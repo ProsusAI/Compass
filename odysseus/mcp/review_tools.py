@@ -357,6 +357,7 @@ async def query_holdout_examples_tool(
     ctx: Context,
     run_id: str,
     route: str | None = None,
+    offset: int = 0,
     limit: int = 20,
     output_dir: str = "outputs",
 ) -> str:
@@ -369,6 +370,7 @@ async def query_holdout_examples_tool(
     Args:
         run_id: Pipeline run identifier.
         route: Filter by expected route name. Returns all routes if omitted.
+        offset: Skip the first N matching examples (default 0). Use with limit for pagination.
         limit: Maximum number of examples to return (default 20).
         output_dir: Output directory (default "outputs").
 
@@ -392,6 +394,8 @@ async def query_holdout_examples_tool(
         if route is not None and expected_route != route:
             continue
         total_matching += 1
+        if total_matching <= offset:
+            continue
         if len(examples) < limit:
             examples.append(example)
 

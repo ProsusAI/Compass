@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from odysseus.mcp import get_prompt_text_tool, record_directive_outcomes_tool
+from odysseus.mcp import get_prompt_text_tool, query_holdout_examples_tool, record_directive_outcomes_tool
 
 _RESOLVE_PROJECT_DIR = "odysseus.mcp.review_tools._resolve_project_dir"
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
@@ -257,3 +257,65 @@ class TestGetPromptTextTool:
         param = sig.parameters.get("run_id")
         assert param is not None, "run_id parameter not found on get_prompt_text_tool"
         assert param.default is inspect.Parameter.empty, "run_id must have no default (required)"
+
+
+class TestQueryHoldoutExamplesPagination:
+    """Smoke tests for offset pagination in query_holdout_examples_tool."""
+
+    _RUN_ID = "test-run-pagination"
+    _ROUTE = "route_x"
+    _OTHER_ROUTE = "route_y"
+
+    def _make_holdout(self, tmp_path: Path, n_matching: int, n_other: int = 5) -> None:
+        """Write a holdout.jsonl with n_matching rows for _ROUTE and n_other for _OTHER_ROUTE."""
+        analysis_dir = tmp_path / "outputs" / self._RUN_ID / "analysis"
+        analysis_dir.mkdir(parents=True)
+        rows = []
+        for i in range(n_matching):
+            rows.append(
+                json.dumps({"id": f"m{i}", "input": f"text {i}", "expected": {"route": self._ROUTE}})
+            )
+        for i in range(n_other):
+            rows.append(
+                json.dumps({"id": f"o{i}", "input": f"other {i}", "expected": {"route": self._OTHER_ROUTE}})
+            )
+        (analysis_dir / "holdout.jsonl").write_text("\n".join(rows))
+
+    async def test_offset_returns_correct_slice(self, tmp_path: Path) -> None:
+        """offset=20, limit=10 returns exactly 10 items starting at the 21st matching row."""
+        self._make_holdout(tmp_path, n_matching=35)
+
+        with _patch_project_dir(tmp_path):
+            result_json = await query_holdout_examples_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                route=self._ROUTE,
+                offset=20,
+                limit=10,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert result["total_matching"] == 35
+        assert len(result["examples"]) == 10
+        # The 21st–30th matching rows have ids m20 through m29
+        returned_ids = [ex["id"] for ex in result["examples"]]
+        assert returned_ids == [f"m{i}" for i in range(20, 30)]
+
+    async def test_offset_past_end_returns_empty(self, tmp_path: Path) -> None:
+        """offset beyond total_matching returns an empty examples list."""
+        self._make_holdout(tmp_path, n_matching=10)
+
+        with _patch_project_dir(tmp_path):
+            result_json = await query_holdout_examples_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                route=self._ROUTE,
+                offset=50,
+                limit=10,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert result["total_matching"] == 10
+        assert result["examples"] == []

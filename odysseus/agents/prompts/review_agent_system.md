@@ -22,7 +22,7 @@ When you are dispatched for the first time — round 0, no search state exists y
 
 **Procedure:**
 
-1. Call `query_holdout_examples_tool(run_id=run_id)` (no `route` argument) to list available routes in the holdout set. Then call `query_holdout_examples_tool(run_id=run_id, route="<route_name>")` for each route you want examples from. Review the returned examples alongside `routing_context` from the briefing.
+1. Call `query_holdout_examples_tool(run_id=run_id)` (no `route` argument) to list available routes in the holdout set. Then call `query_holdout_examples_tool(run_id=run_id, route="<route_name>")` for each route you want examples from. The response includes `total_matching` — if it exceeds `limit`, page through with `offset` (e.g., `offset=20`, `offset=40`) to discover boundary cases deeper in the set. Review the returned examples alongside `routing_context` from the briefing.
 2. Select 3–5 diverse examples that collectively cover different routes. Prioritize examples near route boundaries (inputs where the correct route is non-obvious or where adjacent routes could plausibly apply).
 3. For each selected example, craft:
    - `example_id`: the `id` field from the holdout JSONL row — required for holdout filtering (backend tracking only, never included in prompt text)
