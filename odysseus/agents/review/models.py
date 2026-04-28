@@ -56,6 +56,7 @@ class UserTargetProgress(BaseModel):
     surplus: float | None = None
     regression_budget: float | None = None
     priority_weight: float | None = None
+    source_version: str | None = None
 
 
 class CandidateAnalysis(BaseModel):
@@ -228,6 +229,7 @@ class ReviewBriefing(BaseModel):
     beam_width: int = 2
     batch_outcomes: list[BatchOutcome] = Field(default_factory=list)
     target_progress: list[UserTargetProgress] = Field(default_factory=list)
+    single_candidate_meets_all: bool = False
     backtracking: bool = False
     confusion_analysis: list[ConfusionImpact] = Field(default_factory=list)
     child_variants: list[ChildVariant] = Field(default_factory=list)

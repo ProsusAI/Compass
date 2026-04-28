@@ -1267,3 +1267,173 @@ class TestSignalToNoiseFilters:
         trajectory = [0.5 + i * 0.01 for i in range(15)]
         result = compute_diminishing_returns(score_trajectory=trajectory)
         assert len(result.score_trajectory) <= 8
+
+
+# ---------------------------------------------------------------------------
+# Holistic version selection and single_candidate_meets_all
+# ---------------------------------------------------------------------------
+
+
+class TestHolisticVersionSelection:
+    """Tests for the holistic tuple scoring and single_candidate_meets_all flag."""
+
+    def _make_state(self, elite_versions: list[str]) -> Any:
+        """Build a minimal SearchState with the given elite set."""
+        from odysseus.agents.prompt_builder.search import Candidate
+
+        return _make_search_state(
+            round=2,
+            elite_set=[
+                Candidate(
+                    prompt_version=v,
+                    parent_version=None,
+                    quality_score=0.80,
+                    cost=1.0,
+                    round_introduced=1,
+                )
+                for v in elite_versions
+            ],
+        )
+
+    def test_holistic_tuple_beats_primary_metric_tie(self) -> None:
+        """Candidate B meets more targets than A, so B wins even if A scores higher on primary."""
+        from odysseus.agents.review.models import UserTarget
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        user_targets = [
+            UserTarget(metric="quality_change", operator=">=", threshold=0.03),
+            UserTarget(metric="cost_change_with_overhead", operator="<=", threshold=-0.30),
+        ]
+        # v_a: high primary (quality) but only meets quality target
+        # v_b: lower quality but meets both targets
+        score_reports = {
+            "v_a": _make_report_dict(**{
+                "quality_change": 0.040,           # meets quality target
+                "cost_change_with_overhead": -0.20, # misses cost target
+                "cost_change": -0.10,
+                "oracle_cost_change": 0.5,
+                "oracle_quality_change": 0.1,
+            }),
+            "v_b": _make_report_dict(**{
+                "quality_change": 0.035,           # meets quality target
+                "cost_change_with_overhead": -0.35, # meets cost target
+                "cost_change": -0.25,
+                "oracle_cost_change": 0.5,
+                "oracle_quality_change": 0.1,
+            }),
+        }
+        state = self._make_state(["v_a", "v_b"])
+        briefing = build_review_briefing(
+            search_state=state,
+            score_reports=score_reports,
+            historical_reports={1: {"v_a": score_reports["v_a"]}},
+            prompt_texts={"v_a": "## Rules\n1. foo", "v_b": "## Rules\n1. bar"},
+            directive_history=[],
+            candidate_versions=["v_a", "v_b"],
+            parent_versions={"v_a": None, "v_b": None},
+            user_targets=user_targets,
+        )
+        # v_b meets both targets; v_a meets only one — holistic tuple selects v_b
+        sources = {tp.source_version for tp in briefing.target_progress}
+        assert sources == {"v_b"}
+        assert briefing.single_candidate_meets_all is True
+
+    def test_single_candidate_meets_all_true(self) -> None:
+        """Flag is True when the single candidate satisfies every target."""
+        from odysseus.agents.review.models import UserTarget
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        user_targets = [
+            UserTarget(metric="quality_change", operator=">=", threshold=0.03),
+        ]
+        score_reports = {
+            "v1": _make_report_dict(**{
+                "quality_change": 0.05,   # meets target
+                "cost_change": -0.10,
+                "oracle_cost_change": 0.5,
+                "oracle_quality_change": 0.1,
+            }),
+        }
+        state = self._make_state(["v1"])
+        briefing = build_review_briefing(
+            search_state=state,
+            score_reports=score_reports,
+            historical_reports={1: {"v1": score_reports["v1"]}},
+            prompt_texts={"v1": "## Rules\n1. foo"},
+            directive_history=[],
+            candidate_versions=["v1"],
+            parent_versions={"v1": None},
+            user_targets=user_targets,
+        )
+        assert briefing.single_candidate_meets_all is True
+
+    def test_single_candidate_meets_all_false(self) -> None:
+        """Flag is False when at least one target is not met."""
+        from odysseus.agents.review.models import UserTarget
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        user_targets = [
+            UserTarget(metric="quality_change", operator=">=", threshold=0.10),  # high bar
+        ]
+        score_reports = {
+            "v1": _make_report_dict(**{
+                "quality_change": 0.02,   # misses target
+                "cost_change": -0.10,
+                "oracle_cost_change": 0.5,
+                "oracle_quality_change": 0.1,
+            }),
+        }
+        state = self._make_state(["v1"])
+        briefing = build_review_briefing(
+            search_state=state,
+            score_reports=score_reports,
+            historical_reports={1: {"v1": score_reports["v1"]}},
+            prompt_texts={"v1": "## Rules\n1. foo"},
+            directive_history=[],
+            candidate_versions=["v1"],
+            parent_versions={"v1": None},
+            user_targets=user_targets,
+        )
+        assert briefing.single_candidate_meets_all is False
+
+    def test_source_version_matches_best_version(self) -> None:
+        """Every target_progress entry's source_version equals the chosen best version."""
+        from odysseus.agents.review.models import UserTarget
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        user_targets = [
+            UserTarget(metric="quality_change", operator=">=", threshold=0.03),
+            UserTarget(metric="cost_change_with_overhead", operator="<=", threshold=-0.20),
+        ]
+        score_reports = {
+            "v1": _make_report_dict(**{
+                "quality_change": 0.04,
+                "cost_change_with_overhead": -0.25,
+                "cost_change": -0.15,
+                "oracle_cost_change": 0.5,
+                "oracle_quality_change": 0.1,
+            }),
+            "v2": _make_report_dict(**{
+                "quality_change": 0.02,
+                "cost_change_with_overhead": -0.10,
+                "cost_change": -0.05,
+                "oracle_cost_change": 0.5,
+                "oracle_quality_change": 0.1,
+            }),
+        }
+        state = self._make_state(["v1", "v2"])
+        briefing = build_review_briefing(
+            search_state=state,
+            score_reports=score_reports,
+            historical_reports={1: {"v1": score_reports["v1"]}},
+            prompt_texts={"v1": "## Rules\n1. foo", "v2": "## Rules\n1. bar"},
+            directive_history=[],
+            candidate_versions=["v1", "v2"],
+            parent_versions={"v1": None, "v2": None},
+            user_targets=user_targets,
+        )
+        assert len(briefing.target_progress) == 2
+        # All entries must share the same source_version (no cross-version composite)
+        source_versions = {tp.source_version for tp in briefing.target_progress}
+        assert len(source_versions) == 1
+        assert source_versions.pop() is not None

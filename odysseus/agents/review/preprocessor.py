@@ -444,12 +444,56 @@ _ORACLE_METRIC_MAP: dict[str, str] = {
 }
 
 
+def _count_targets_met(targets: list[UserTarget], metrics: dict[str, float]) -> int:
+    """Return the number of targets whose threshold is satisfied by the given metrics."""
+    count = 0
+    for target in targets:
+        value = metrics.get(target.metric)
+        if value is None:
+            continue
+        op_fn = _OPERATOR_MAP[target.operator]
+        if bool(op_fn(value, target.threshold)):
+            count += 1
+    return count
+
+
+def _sum_capped_progress(targets: list[UserTarget], metrics: dict[str, float]) -> float:
+    """Return the sum of per-target progress ratios, each capped at 1.0."""
+    total = 0.0
+    for target in targets:
+        value = metrics.get(target.metric)
+        if value is None:
+            continue
+        progress = abs(value / target.threshold) if target.threshold != 0 else (
+            1.0 if bool(_OPERATOR_MAP[target.operator](value, target.threshold)) else 0.0
+        )
+        total += min(progress, 1.0)
+    return total
+
+
+def _min_progress(targets: list[UserTarget], metrics: dict[str, float]) -> float:
+    """Return the minimum per-target capped progress ratio (worst-performing target)."""
+    minimum = float("inf")
+    has_any = False
+    for target in targets:
+        value = metrics.get(target.metric)
+        if value is None:
+            continue
+        has_any = True
+        progress = abs(value / target.threshold) if target.threshold != 0 else (
+            1.0 if bool(_OPERATOR_MAP[target.operator](value, target.threshold)) else 0.0
+        )
+        minimum = min(minimum, min(progress, 1.0))
+    return minimum if has_any else 0.0
+
+
 def compute_target_progress(
     targets: list[UserTarget],
     best_metrics: dict[str, float],
     oracle_metrics: OracleMetrics | None,
     full_dataset_oracle: dict[str, float] | None = None,
     dev_oracle: dict[str, float] | None = None,
+    source_version: str | None = None,
 ) -> list[UserTargetProgress]:
     """Compute progress toward each user target from the best candidate's metrics."""
     results: list[UserTargetProgress] = []
@@ -525,6 +569,7 @@ def compute_target_progress(
             target_above_oracle=target_above_oracle,
             translated_threshold=translated_threshold,
             capture_ratio=capture_ratio,
+            source_version=source_version,
         ))
 
     return results
@@ -1110,15 +1155,20 @@ def build_review_briefing(
         else:
             oracle_metrics = compute_oracle_metrics_from_report(metrics={})
 
-    # 6b. User target progress (with slack merged in) — globally-best-candidate semantics
+    # 6b. User target progress (with slack merged in) — single-version semantics
     target_progress_list: list[UserTargetProgress] = []
     if user_targets:
-        # Pick a single best version by primary metric, then read all target metrics off it
+        # Pick the single best version by holistic scoring tuple, then read all target
+        # metrics off it — avoids a phantom composite built from different versions.
         best_versions = candidate_versions or elite_versions
         if best_versions:
             best_version = max(
                 best_versions,
-                key=lambda v: _extract_metric(score_reports.get(v, {}), primary_metric) or 0.0,
+                key=lambda v: (
+                    _count_targets_met(user_targets, score_reports.get(v, {}).get("metrics", {})),
+                    _sum_capped_progress(user_targets, score_reports.get(v, {}).get("metrics", {})),
+                    _min_progress(user_targets, score_reports.get(v, {}).get("metrics", {})),
+                ),
             )
             best_metrics = score_reports.get(best_version, {}).get("metrics", {})
             target_progress_list = compute_target_progress(
@@ -1127,6 +1177,7 @@ def build_review_briefing(
                 oracle_metrics,
                 full_dataset_oracle=full_dataset_oracle,
                 dev_oracle=dev_oracle,
+                source_version=best_version,
             )
             # Merge target slack into target progress items
             slack_by_metric = {
@@ -1140,10 +1191,18 @@ def build_review_briefing(
                         "surplus": slack.surplus,
                         "regression_budget": slack.regression_budget,
                         "priority_weight": slack.priority_weight,
+                        "source_version": best_version,
                     }))
                 else:
-                    merged.append(tp)
+                    merged.append(tp.model_copy(update={
+                        "source_version": best_version,
+                    }))
             target_progress_list = merged
+        single_candidate_meets_all = bool(
+            target_progress_list and all(tp.met for tp in target_progress_list)
+        )
+    else:
+        single_candidate_meets_all = False
 
     # 7. Build batch outcomes — match child variants to candidates via variant_id
     beam_width = getattr(search_state, "beam_width", 2)
@@ -1275,6 +1334,7 @@ def build_review_briefing(
         beam_width=beam_width,
         batch_outcomes=batch_outcomes,
         target_progress=target_progress_list,
+        single_candidate_meets_all=single_candidate_meets_all,
         backtracking=backtracking,
         child_variants=child_variants or [],
         stagnation_signal=stagnation_signal,

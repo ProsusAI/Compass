@@ -53,6 +53,21 @@ When this variant targets a specific confusion cell, set `target_confusion_cell 
 
 To inspect the full text of a candidate, call `get_prompt_text_tool(run_id=run_id, version="<version>")`. Always pass `run_id` — the tool looks in the run-specific prompt directory first and falls back to the project-level directory. Omitting `run_id` is an error.
 
+## Target progress fields
+
+`target_progress` in the briefing is a list of `UserTargetProgress` entries, one per user-declared target. Key fields:
+
+| Field | Meaning |
+|-------|---------|
+| `target` | The declared target (`metric`, `operator`, `threshold`) |
+| `current_value` | Metric value from the best candidate this round |
+| `met` | Whether `current_value` satisfies the threshold |
+| `progress_ratio` | Normalised progress toward the threshold (0.0–1.0+; 1.0 = met) |
+| `source_version` | The single candidate version these metrics come from — all entries share the same `source_version` |
+| `surplus` / `regression_budget` | Slack relative to the threshold |
+
+`single_candidate_meets_all` is `true` when every entry in `target_progress` has `met == true` for the same `source_version`. This is the **only** safe condition for `LoopSignal{action="exit"}`. When `false`, prefer `LoopSignal{action="refine"}` and explain in `reason` which targets remain unmet.
+
 ## What the overlay tells you
 
 Before running this flow, your overlay specifies:

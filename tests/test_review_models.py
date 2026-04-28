@@ -240,6 +240,31 @@ class TestUserTargetProgress:
         assert utp.regression_budget == pytest.approx(0.2)
         assert utp.priority_weight == 0.0
 
+    def test_source_version_round_trip(self) -> None:
+        from odysseus.agents.review.models import UserTarget, UserTargetProgress
+
+        target = UserTarget(metric="quality_change", operator=">=", threshold=0.03)
+        utp = UserTargetProgress(
+            target=target,
+            current_value=0.04,
+            met=True,
+            progress_ratio=1.0,
+            oracle_ceiling=None,
+            target_above_oracle=False,
+            source_version="v7",
+        )
+        assert utp.source_version == "v7"
+        # Default is None
+        utp_no_version = UserTargetProgress(
+            target=target,
+            current_value=0.04,
+            met=True,
+            progress_ratio=1.0,
+            oracle_ceiling=None,
+            target_above_oracle=False,
+        )
+        assert utp_no_version.source_version is None
+
 
 # ---------------------------------------------------------------------------
 # ChildVariant
@@ -452,6 +477,12 @@ class TestReviewBriefing:
         assert len(briefing.candidates) == 1
         assert len(briefing.elite_set) == 1
         assert "route_a" in briefing.per_class_recall
+
+    def test_single_candidate_meets_all_default(self) -> None:
+        from odysseus.agents.review.models import ReviewBriefing
+
+        briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
+        assert briefing.single_candidate_meets_all is False
 
     def test_empty_collections(self) -> None:
         from odysseus.agents.review.models import (

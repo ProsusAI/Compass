@@ -25,6 +25,7 @@ Fields that are always present:
 | `candidate_analysis` | Per-elite metric deltas vs. parent, confusion deltas, token cost |
 | `confusion_analysis` | Ranked confusion cells with quality impact, cost impact, and example ids |
 | `threshold_targets` | User-declared goals grouped by axis (quality / cost / other) with capture ratios |
+| `target_progress` | Per-target progress entries; each carries `source_version` (the single candidate evaluated); `single_candidate_meets_all` is the loop-exit gate — see `review_agent_iterative_base_system.md` for the full rule |
 | `stagnation_signal` | Stagnation indicator; your overlay tells you how to read it |
 
 The briefing may contain additional fields. Read only the ones your overlay names; ignore anything it does not reference.
