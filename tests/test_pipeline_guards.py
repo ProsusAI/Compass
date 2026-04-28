@@ -1,9 +1,17 @@
+"""Tests for pipeline artifact guards and Stage-4 dispatch-marker guards."""
+
+from __future__ import annotations
+
+import json
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
+from odysseus.agents.pipeline.dispatch import record_build_dispatched
 from odysseus.agents.pipeline.guards import check_artifacts, require_artifacts
+from odysseus.agents.pipeline.status import _detect_stage_4_phase
 
 
 class TestRequireArtifacts:
@@ -94,3 +102,179 @@ class TestCheckArtifacts:
     def test_raises_when_missing(self, tmp_path: Path) -> None:
         with pytest.raises(ToolError, match="Pipeline precondition not met"):
             check_artifacts(tmp_path / "nope.json", stage=1, stage_name="Input", hint="Submit report.")
+
+
+# ---------------------------------------------------------------------------
+# Stage-4 dispatch-marker guards via complete_stage
+# ---------------------------------------------------------------------------
+
+_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
+_DISPATCH_PATCH = "odysseus.agents.pipeline.dispatch.get_project_dir"
+
+
+def _setup_stage_scope(stage_name: str) -> None:
+    """Set the active MCP stage so complete_stage is callable."""
+    from odysseus.mcp.server import set_active_stage
+    set_active_stage(stage_name)
+
+
+def _teardown_stage_scope() -> None:
+    """Reset MCP stage to orchestrator after a test."""
+    from odysseus.mcp.server import set_active_stage
+    set_active_stage("orchestrator")
+
+
+class TestCompleteStageBuildGuard:
+    """complete_stage('prompt_building') should reject while build marker present.
+
+    The dispatch module uses ``get_project_dir() / "outputs"`` as the base when
+    no explicit ``output_dir`` is passed.  Tests patch ``get_project_dir`` in the
+    dispatch module to ``tmp_path`` and create the marker under
+    ``tmp_path / "outputs" / run_id / "search"``.
+    """
+
+    async def test_raises_when_build_dispatched(self, tmp_path: Path) -> None:
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        # The dispatch module resolves: base = get_project_dir() / "outputs"
+        # So the marker lives at tmp_path/outputs/run1/search/build_dispatched.json
+        outputs_dir = tmp_path / "outputs"
+        record_build_dispatched("run1", round=1, output_dir=outputs_dir)
+        _setup_stage_scope("prompt_building")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with (
+                patch(_DISPATCH_PATCH, return_value=tmp_path),
+                pytest.raises(ToolError, match="Build sub-agent still dispatched"),
+            ):
+                await complete_stage(ctx, run_id="run1")
+        finally:
+            _teardown_stage_scope()
+
+    async def test_passes_when_marker_absent(self, tmp_path: Path) -> None:
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        _setup_stage_scope("prompt_building")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with patch(_DISPATCH_PATCH, return_value=tmp_path):
+                result = await complete_stage(ctx, run_id="run1")
+            assert "prompt_building" in result
+        finally:
+            _teardown_stage_scope()
+
+
+class TestCompleteStageReviewGuard:
+    """complete_stage('review') should reject while review fanout is incomplete.
+
+    Same path convention as build guard: ``tmp_path/outputs/run_id/search``.
+    """
+
+    async def test_raises_when_fanout_incomplete(self, tmp_path: Path) -> None:
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        # No child_variants.json and no review marker — fanout not_dispatched
+        _setup_stage_scope("review")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with (
+                patch(_DISPATCH_PATCH, return_value=tmp_path),
+                pytest.raises(ToolError, match="Review fanout incomplete"),
+            ):
+                await complete_stage(ctx, run_id="run1")
+        finally:
+            _teardown_stage_scope()
+
+    async def test_passes_when_child_variants_exist(self, tmp_path: Path) -> None:
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        # child_variants.json at the dispatch-module path
+        search_dir = tmp_path / "outputs" / "run1" / "search"
+        search_dir.mkdir(parents=True)
+        (search_dir / "child_variants.json").write_text("[]")
+
+        _setup_stage_scope("review")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with patch(_DISPATCH_PATCH, return_value=tmp_path):
+                result = await complete_stage(ctx, run_id="run1")
+            assert "review" in result
+        finally:
+            _teardown_stage_scope()
+
+
+# ---------------------------------------------------------------------------
+# Defense-in-depth phase flip in _detect_stage_4_phase
+# ---------------------------------------------------------------------------
+
+
+def _make_run_dir(tmp_path: Path, run_id: str = "run1") -> Path:
+    """Create minimal run dir with v1 prompt and directive_history so we reach phase 3."""
+    run_dir = tmp_path / run_id
+    search_dir = run_dir / "search"
+    search_dir.mkdir(parents=True)
+    prompts_dir = run_dir / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "v1.txt").write_text("prompt")
+    (search_dir / "directive_history.json").write_text("[]")
+    return run_dir
+
+
+class TestDefenseInDepthPhaseFlip:
+    def test_build_flips_to_review_when_no_artifacts(self, tmp_path: Path) -> None:
+        """If loop_phase='build' but no child_variants.json and no build marker → 'review'."""
+        run_dir = _make_run_dir(tmp_path)
+        state = {
+            "search_state_id": "abc",
+            "backend": "test",
+            "loop_phase": "build",
+        }
+        (run_dir / "search" / "search_state.json").write_text(json.dumps(state))
+
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "review"
+
+    def test_build_retained_when_build_marker_present(self, tmp_path: Path) -> None:
+        """If loop_phase='build' and build_dispatched.json exists → keep 'build'."""
+        run_dir = _make_run_dir(tmp_path)
+        state = {
+            "search_state_id": "abc",
+            "backend": "test",
+            "loop_phase": "build",
+        }
+        (run_dir / "search" / "search_state.json").write_text(json.dumps(state))
+        record_build_dispatched("run1", round=2, output_dir=tmp_path)
+
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "build"
+
+    def test_build_retained_when_child_variants_present(self, tmp_path: Path) -> None:
+        """If loop_phase='build' and child_variants.json exists → keep 'build'."""
+        run_dir = _make_run_dir(tmp_path)
+        state = {
+            "search_state_id": "abc",
+            "backend": "test",
+            "loop_phase": "build",
+        }
+        (run_dir / "search" / "search_state.json").write_text(json.dumps(state))
+        (run_dir / "search" / "child_variants.json").write_text("[]")
+
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "build"
+
+    def test_review_phase_unchanged(self, tmp_path: Path) -> None:
+        """If loop_phase='review', no re-flip should occur."""
+        run_dir = _make_run_dir(tmp_path)
+        state = {
+            "search_state_id": "abc",
+            "backend": "test",
+            "loop_phase": "review",
+        }
+        (run_dir / "search" / "search_state.json").write_text(json.dumps(state))
+
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "review"

@@ -281,6 +281,9 @@ class TestStage4ThreePhaseDetection:
         (search / "search_state.json").write_text(
             json.dumps({"round": 1, "converged": False, "loop_phase": "build"})
         )
+        # Defense-in-depth guard: build_dispatched.json must exist to confirm
+        # the Prompt Builder is in-flight (otherwise phase is re-flipped to review).
+        (search / "build_dispatched.json").write_text(json.dumps({"round": 1}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
         assert result["activate_prompt"] == "odysseus_prompt_builder"
@@ -311,6 +314,9 @@ class TestStage4ThreePhaseDetection:
         (search / "search_state.json").write_text(
             json.dumps({"round": 1, "converged": False, "loop_phase": "build"})
         )
+        # Defense-in-depth guard: build_dispatched.json must exist so the
+        # phase is not re-flipped to review.
+        (search / "build_dispatched.json").write_text(json.dumps({"round": 1}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
         assert "init_search_state_tool" in tools

@@ -678,15 +678,21 @@ class TestLoopPhase:
         )
         assert state.loop_phase == "review"
 
-    def test_loop_phase_rejects_invalid(self) -> None:
-        with pytest.raises(ValidationError):
-            SearchState(
-                search_state_id="s1",
-                backend="anthropic",
-                stagnation_limit=3,
-                convergence_limit=5,
-                loop_phase="invalid",
-            )
+    def test_loop_phase_remaps_unknown_to_review(self) -> None:
+        """Unknown loop_phase values are mapped to 'review' for back-compat.
+
+        The model_validator silently remaps unknown phase strings instead of
+        raising ValidationError.  This supports loading legacy state files
+        from feature branches that carry phases not yet in the shared enum.
+        """
+        state = SearchState(
+            search_state_id="s1",
+            backend="anthropic",
+            stagnation_limit=3,
+            convergence_limit=5,
+            loop_phase="invalid",  # type: ignore[arg-type]
+        )
+        assert state.loop_phase == "review"
 
 
 # ---------------------------------------------------------------------------

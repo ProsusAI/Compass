@@ -66,7 +66,7 @@ graph TD
 | `algorithm` | `Literal["hill_climb", "beam", "sms_emoa", "emosa"]` | Discriminator for which search strategy produced this state; defaults to `"hill_climb"` |
 | `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket (e.g. `beam_width` for beam, `AnnealingState` dict for EMOSA); defaults to `{}` |
 | `round`, `stagnation_count`, `mutation_mode` | — | Hill-climb bookkeeping fields |
-| `converged`, `loop_phase` | — | Convergence flag and current sub-phase (`"build"` or `"review"`) |
+| `converged`, `loop_phase` | — | Convergence flag and current sub-phase; widened enum: `"build"`, `"review"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`, `"calibration"`, `"build_recovering"` (hill-climb only uses `"build"` / `"review"`) |
 
 `RoundSummary` is the per-round progress record. Field names follow the unified cross-branch schema:
 
@@ -154,7 +154,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
@@ -170,6 +170,62 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | Exit | Orchestrator | `<HARD_STOP>` post-exit instruction | Soft (advisory) |
 
 Each stage system prompt (stages 1–5) includes mandatory `## Entry verification` and `## Exit verification` blocks. Sequencing knowledge lives exclusively in `pipeline/status.py`; stage prompts know only their own stage number.
+
+#### Pipeline guards (dispatch markers and fanout tracking)
+
+The shared guard layer lives in [`odysseus/agents/pipeline/dispatch.py`](../odysseus/agents/pipeline/dispatch.py) and is wired into `orchestrator_tools.py` and the Stage-4 tool bodies.
+
+**`loop_phase` enum — widened superset**
+
+`SearchState.loop_phase` accepts the following values:
+
+| Value | Used by |
+|---|---|
+| `"review"` | all strategies (default) |
+| `"build"` | all strategies |
+| `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"` | SMS-EMOA warmup phases |
+| `"calibration"` | EMOSA cold-start calibration phase |
+| `"build_recovering"` | EMOSA / SMS-EMOA recovery after failed eval |
+
+Hill-climb (main branch) only ever enters `"build"` and `"review"`. The other values exist so feature-branch state files load without error. Unknown values encountered in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
+
+**Dispatch markers**
+
+Two JSON sentinel files signal that a sub-agent is in-flight for the current round:
+
+| File | Written by | Cleared by | Guards |
+|---|---|---|---|
+| `search/build_dispatched.json` | `register_candidate_tool` (first builder action) | `advance_step_tool` (round complete) | `complete_stage("prompt_building")` rejects while present |
+| `search/review_dispatched.json` | `build_review_briefing_tool` (reviewer dispatch) | `record_directive_outcomes_tool` (directives saved) | `complete_stage("review")` checks fanout |
+
+Both files contain `{"round": N}` for diagnostics.
+
+**`DispatchFanout` and `review_fanout_status`**
+
+`complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` (degenerate single-slot for hill-climb / beam / SMS-EMOA). The function returns a `DispatchFanout` dataclass:
+
+| Attribute | Type | Meaning |
+|---|---|---|
+| `expected` | `int` | Number of Review Agent sub-agents expected this round |
+| `completed` | `list[int]` | Slot ids that finished (wrote `child_variants.json`) |
+| `in_flight` | `list[int]` | Dispatched but not yet finished |
+| `not_dispatched` | `list[int]` | Not yet dispatched |
+| `is_complete` | `bool` | `len(completed) >= expected` |
+| `missing` | `list[int]` | `in_flight + not_dispatched` |
+
+For `expected=1`, fanout is complete when `search/child_variants.json` exists.  `expected > 1` (EMOSA K-trajectory fanout) raises `NotImplementedError` — EMOSA overrides `review_fanout_status` on its branch.
+
+**`child_variants.json`**
+
+Written by `record_directive_outcomes_tool` alongside `edit_directives.json` whenever edit directives are saved.  Acts as the canonical review-completion sentinel checked by `review_fanout_status`.
+
+**Defense-in-depth phase flip**
+
+`_detect_stage_4_phase` in `status.py` adds a safety net: if `loop_phase == "build"` but neither `child_variants.json` nor `build_dispatched.json` exist on disk, the phase is re-interpreted as `"review"`. This prevents deadlock if markers are lost (e.g. mid-run server restart).
+
+**`signal_eval_complete_tool`**
+
+Retained as a back-compat shim for runs paused before automated marker clearing was deployed.  Clears `build_dispatched.json` and flips `loop_phase` to `"review"` if they have not already been cleared/flipped.  Calling it in normal operation is a no-op.
 
 ### Prompts
 
@@ -209,7 +265,7 @@ Each stage system prompt (stages 1–5) includes mandatory `## Entry verificatio
 | `odysseus/mcp/` | MCP server package: `server.py` (app + stage registry), `*_tools.py` (per-stage tools), `resources.py`, `prompts.py` |
 | `odysseus/agents/` | Root-level modules: `base.py`, `eval_runner.py`; stage subdirectories below |
 | `odysseus/agents/user_input/` | User input: input report contract (`report.py`), context/defaults/taxonomy/template resources |
-| `odysseus/agents/pipeline/` | Pipeline guards (`guards.py`) and status detection (`status.py`) |
+| `odysseus/agents/pipeline/` | Pipeline guards (`guards.py`), status detection (`status.py`), dispatch markers and fanout primitives (`dispatch.py`) |
 | `odysseus/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform, stratified split |
 | `odysseus/agents/prompt_builder/` | Prompt builder: search state, Pareto ops, holdout filter, best-practices docs |
 | `odysseus/agents/review/` | Review agent: models, preprocessor, ops |

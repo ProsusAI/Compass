@@ -23,6 +23,18 @@ from odysseus.agents.pipeline.instructions import (
 )
 from odysseus.project_dir import get_project_dir
 
+
+def _is_build_dispatched(run_id: str, search_dir: Path) -> bool:  # noqa: ARG001
+    """Return True iff the build-dispatch marker exists in search_dir.
+
+    Inline helper rather than importing from dispatch to avoid a circular
+    dependency (dispatch → project_dir; status → pipeline → dispatch).
+    The ``run_id`` parameter is accepted for API symmetry but the
+    search_dir path already encodes the run identity.
+    """
+    build_marker = search_dir / "build_dispatched.json"
+    return build_marker.exists()
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -485,7 +497,11 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
 # Stage 4 — three-phase detection
 # ---------------------------------------------------------------------------
 
-_VALID_LOOP_PHASES = {"review", "build"}
+_VALID_LOOP_PHASES = {
+    "build", "review",
+    "warmup_seed", "warmup_build", "warmup_reduce",
+    "calibration", "build_recovering",
+}
 
 
 def _detect_stage_4_phase(
@@ -495,7 +511,13 @@ def _detect_stage_4_phase(
     """Detect which phase Stage 4 is in.
 
     Returns one of: ``"rerun"``, ``"cold_start"``, ``"build_v1"``,
-    ``"review"``, ``"build"``.
+    ``"review"``, ``"build"``, or one of the extended phases
+    (``"warmup_seed"``, ``"warmup_build"``, ``"warmup_reduce"``,
+    ``"calibration"``, ``"build_recovering"``) for feature branches.
+
+    Defense-in-depth: if the persisted ``loop_phase`` is ``"build"`` but
+    neither ``child_variants.json`` nor ``build_dispatched.json`` exist on
+    disk, the phase is re-interpreted as ``"review"`` to prevent deadlock.
     """
     if rerun_config is not None:
         return "rerun"
@@ -535,6 +557,19 @@ def _detect_stage_4_phase(
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
 
+    # Defense-in-depth: if loop_phase is "build" but there are no child_variants
+    # on disk AND the build marker is also absent, the builder was never actually
+    # dispatched — flip back to "review" to prevent deadlock.
+    if loop_phase == "build":
+        child_variants = search_dir / "child_variants.json"
+        if not child_variants.exists() and not _is_build_dispatched(run_dir.name, search_dir):
+            logger.warning(
+                "loop_phase='build' but child_variants.json and build_dispatched.json absent "
+                "in %s/search/ — defense-in-depth re-flip to 'review'",
+                run_dir,
+            )
+            loop_phase = "review"
+
     return loop_phase
 
 
@@ -564,7 +599,27 @@ def _next_action_for_stage_4(
             rerun_instr,
         )
 
-    # All other phases use a static dispatch table
+    # All other phases use a static dispatch table.
+    # Extended phases (warmup_*, calibration, build_recovering) are used by
+    # feature branches; on main (hill-climb) they are never entered.  They are
+    # mapped to the nearest equivalent action so the orchestrator always has a
+    # valid next action even when reading state from a feature-branch run.
+    _review_entry = (
+        "Stage 4 — review phase: spawn the Review Agent to analyse "
+        "eval results and emit edit directives. "
+        "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
+        _REVIEW_TOOLS,
+        ["odysseus_review_agent"],
+        STAGE_4_REVIEW_INSTRUCTION,
+    )
+    _build_entry = (
+        "Stage 4 — build phase: spawn the Prompt Builder to generate "
+        "prompt variants and evaluate them. "
+        "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+        _BUILD_TOOLS,
+        ["odysseus_prompt_builder"],
+        STAGE_4_BUILD_INSTRUCTION,
+    )
     phase_config: dict[str, tuple[str, list[str], list[str], str]] = {
         "cold_start": (
             "Stage 4 — cold-start: spawn the Review Agent to select initial "
@@ -582,22 +637,14 @@ def _next_action_for_stage_4(
             ["odysseus_prompt_builder"],
             STAGE_4_BUILD_INSTRUCTION,
         ),
-        "review": (
-            "Stage 4 — review phase: spawn the Review Agent to analyse "
-            "eval results and emit edit directives. "
-            "REQUIRED: activate prompt 'odysseus_review_agent' before calling any review tools.",
-            _REVIEW_TOOLS,
-            ["odysseus_review_agent"],
-            STAGE_4_REVIEW_INSTRUCTION,
-        ),
-        "build": (
-            "Stage 4 — build phase: spawn the Prompt Builder to generate "
-            "prompt variants and evaluate them. "
-            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
-            _BUILD_TOOLS,
-            ["odysseus_prompt_builder"],
-            STAGE_4_BUILD_INSTRUCTION,
-        ),
+        "review": _review_entry,
+        "build": _build_entry,
+        # Extended phases — feature branches only; mapped to nearest equivalent
+        "warmup_seed": _review_entry,
+        "warmup_build": _build_entry,
+        "warmup_reduce": _build_entry,
+        "calibration": _review_entry,
+        "build_recovering": _build_entry,
     }
     return phase_config[phase]
 

@@ -6,6 +6,10 @@ from typing import Any
 
 from mcp.server.fastmcp import Context
 
+from odysseus.agents.pipeline.dispatch import (
+    clear_review_dispatched,
+    record_review_dispatched,
+)
 from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     _load_pending,
@@ -154,6 +158,9 @@ async def build_review_briefing_tool(
     current_round_reports = {v: score_reports[v] for v in candidate_versions if v in score_reports}
     save_round_report(run_id, state.round, current_round_reports, output_dir=out)
 
+    # Record that the Review Agent sub-agent is now in-flight for this round.
+    record_review_dispatched(run_id, round=state.round, output_dir=out)
+
     output_parts: list[str] = []
     if briefing.executive_summary:
         output_parts.append("# Executive Summary\n\n")
@@ -205,7 +212,9 @@ async def record_directive_outcomes_tool(
         "total": len(existing) + len(parsed),
     }
 
-    # Persist edit directives for Prompt Builder consumption
+    # Persist edit directives for Prompt Builder consumption.
+    # Also writes child_variants.json — the canonical fanout-completion sentinel
+    # checked by review_fanout_status / complete_stage("review").
     if edit_directives is not None:
         from odysseus.agents.review.models import EditDirective
         from odysseus.agents.review.ops import save_edit_directives
@@ -213,6 +222,15 @@ async def record_directive_outcomes_tool(
         parsed_directives = [EditDirective.model_validate(d) for d in edit_directives]
         save_edit_directives(run_id, parsed_directives, output_dir=out)
         result["edit_directives_saved"] = len(parsed_directives)
+
+        # Write the shared child_variants.json sentinel so review_fanout_status
+        # can confirm the fanout is complete without knowledge of directive format.
+        child_variants_path = out / run_id / "search" / "child_variants.json"
+        child_variants_path.parent.mkdir(parents=True, exist_ok=True)
+        child_variants_path.write_text(
+            json.dumps([d.model_dump(mode="json") for d in parsed_directives], indent=2),
+            encoding="utf-8",
+        )
 
     # Handle loop signal from Review Agent
     if loop_signal is not None:
@@ -245,7 +263,9 @@ async def record_directive_outcomes_tool(
         _save_loop_signal(run_id, parsed_signal, out)
         result["loop_signal_applied"] = "refine"
 
-    # Transition search loop to build phase so orchestrator spawns Prompt Builder next
+    # Transition search loop to build phase so orchestrator spawns Prompt Builder next.
+    # Also clear the review-dispatch marker so complete_stage("review") can proceed.
     with contextlib.suppress(FileNotFoundError):
         _set_loop_phase(run_id, "build", output_dir=out)
+    clear_review_dispatched(run_id, output_dir=out)
     return json.dumps(result)

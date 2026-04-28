@@ -7,6 +7,10 @@ from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
 
 import odysseus.project_dir as _project_dir_mod
+from odysseus.agents.pipeline.dispatch import (
+    is_build_dispatched,
+    review_fanout_status,
+)
 from odysseus.agents.pipeline.guards import check_artifacts  # noqa: F401
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status
 from odysseus.mcp.server import (
@@ -229,6 +233,21 @@ async def complete_stage(ctx: Context, run_id: str) -> str:  # noqa: ARG001
             "(current scope is already 'orchestrator'). "
             "Call start_stage first to enter a stage."
         )
+
+    # Dispatch-marker guards: reject completion while a sub-agent is still in-flight.
+    if previous == "prompt_building" and is_build_dispatched(run_id):
+        raise ToolError(
+            "Build sub-agent still dispatched; cannot complete stage. "
+            "Wait for the Prompt Builder to finish (eval completion clears this marker)."
+        )
+
+    if previous == "review":
+        status = review_fanout_status(run_id, expected=1)
+        if not status.is_complete:
+            raise ToolError(
+                f"Review fanout incomplete: missing={status.missing}. "
+                "Wait for all Review Agent sub-agents to finish before completing the stage."
+            )
 
     set_active_stage("orchestrator")
     try:

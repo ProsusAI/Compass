@@ -168,7 +168,12 @@ class SearchState(BaseModel):
     max_rounds: int = 50
     mutation_mode: Literal["targeted", "exploratory"] = "targeted"
     converged: bool = False
-    loop_phase: Literal["build", "review"] = "review"
+    loop_phase: Literal[
+        "build", "review",
+        "warmup_seed", "warmup_build", "warmup_reduce",
+        "calibration",
+        "build_recovering",
+    ] = "review"
     epsilon: float = 0.001
     total_routing_cost: float = 0.0
     # Cross-branch generalization fields
@@ -185,18 +190,33 @@ class SearchState(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _migrate_pareto_front(cls, data: Any) -> Any:
-        """Map old ``pareto_front`` key to ``elite_set``.
+        """Map old ``pareto_front`` key to ``elite_set`` and coerce unknown
+        ``loop_phase`` values to ``"review"``.
 
         State files written before the cross-branch rename carry
         ``"pareto_front": [...]`` instead of ``"elite_set": [...]``.
         This validator transparently promotes the old key so those files
         load without a migration step.
+
+        Unknown ``loop_phase`` strings (e.g. phases introduced on a feature
+        branch that are not yet part of the widened enum) are mapped to
+        ``"review"`` so that legacy state files do not cause a validation error.
+        ``extra="ignore"`` already drops unknown *keys*; this handles unknown
+        *values* on the Literal field.
         """
         if not isinstance(data, dict):
             return data
+        data = dict(data)
         if "pareto_front" in data and "elite_set" not in data:
-            data = dict(data)
             data["elite_set"] = data.pop("pareto_front")
+        _valid_phases = {
+            "build", "review",
+            "warmup_seed", "warmup_build", "warmup_reduce",
+            "calibration", "build_recovering",
+        }
+        raw_phase = data.get("loop_phase")
+        if raw_phase is not None and raw_phase not in _valid_phases:
+            data["loop_phase"] = "review"
         return data
 
     @model_validator(mode="after")

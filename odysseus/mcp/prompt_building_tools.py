@@ -9,6 +9,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.pipeline.dispatch import clear_build_dispatched, record_build_dispatched
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
@@ -122,6 +123,10 @@ async def register_candidate_tool(
 ) -> str:
     """[Stage 4: Refinement Loop] Register a new candidate prompt version for the current search round.
 
+    Also writes ``build_dispatched.json`` so that ``complete_stage(prompt_building)``
+    knows a Prompt Builder sub-agent is in-flight.  The marker is cleared by
+    ``advance_step_tool`` when the round is complete.
+
     Args:
         run_id: Pipeline run identifier.
         prompt_version: Unique version identifier for the new prompt candidate.
@@ -132,7 +137,7 @@ async def register_candidate_tool(
         JSON object confirming the registered prompt version.
     """
     try:
-        register_candidate(
+        state = register_candidate(
             run_id=run_id,
             prompt_version=prompt_version,
             parent_version=parent_version,
@@ -142,6 +147,8 @@ async def register_candidate_tool(
         raise ToolError(str(exc)) from exc
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
+    # Record that the Prompt Builder is now in-flight for this round.
+    record_build_dispatched(run_id, round=state.round)
     return json.dumps({"registered": prompt_version})
 
 
@@ -275,6 +282,9 @@ def _advance_hill_climb(run_id: str) -> str:
     Processes all pending candidates, updates the Pareto front, adjusts
     stagnation tracking, and checks for convergence.  Returns a
     JSON-serialized RoundSummary.
+
+    Also clears the build-dispatch marker so the orchestrator knows the
+    Prompt Builder sub-agent has finished.
     """
     try:
         summary = advance_round(run_id=run_id)
@@ -282,6 +292,8 @@ def _advance_hill_climb(run_id: str) -> str:
         raise ToolError(str(exc)) from exc
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
+    # Round is complete — clear the in-flight marker so complete_stage can proceed.
+    clear_build_dispatched(run_id)
     return summary.model_dump_json(indent=2)
 
 
@@ -388,3 +400,43 @@ async def get_edit_directives_tool(
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
     directives = load_edit_directives(run_id, output_dir=out)
     return json.dumps([d.model_dump(mode="json") for d in directives], indent=2)
+
+
+@mcp.tool()
+async def signal_eval_complete_tool(
+    ctx: Context,
+    run_id: str,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Refinement Loop] Deprecated back-compat shim.
+
+    Eval-complete is now signaled automatically when the Prompt Builder calls
+    ``advance_step_tool``, which clears the build-dispatch marker and flips
+    ``loop_phase`` to ``"review"``.
+
+    Retained for back-compat: calling this tool clears the build-dispatch
+    marker and flips ``loop_phase`` to ``"review"`` if they have not already
+    been cleared/flipped.  This prevents deadlock in pipelines that were
+    paused mid-run before the automated marker clearing was deployed.
+
+    Args:
+        run_id: Pipeline run identifier.
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON object with ``deprecated=true`` and the resulting ``loop_phase``.
+    """
+    from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    clear_build_dispatched(run_id, output_dir=out)
+    try:
+        state = _load_state(run_id, out)
+        if state.loop_phase == "build":
+            updated = state.model_copy(update={"loop_phase": "review"})
+            _save_state(run_id, updated, out)
+    except FileNotFoundError:
+        pass
+    return json.dumps({"deprecated": True, "loop_phase": "review"})

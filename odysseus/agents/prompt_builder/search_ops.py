@@ -438,13 +438,18 @@ def advance_round(
 
 def set_loop_phase(
     run_id: str,
-    phase: Literal["build", "review"],
+    phase: Literal[
+        "build", "review",
+        "warmup_seed", "warmup_build", "warmup_reduce",
+        "calibration", "build_recovering",
+    ],
     output_dir: Path | None = None,
 ) -> None:
     """Set the loop_phase on the search state.
 
     Called by record_directive_outcomes_tool to signal that the Review Agent
-    has finished and the Prompt Builder should be spawned next.
+    has finished and the Prompt Builder should be spawned next.  Accepts the
+    full widened enum so feature branches can drive additional phases.
     """
     if output_dir is None:
         output_dir = _default_output_dir()
