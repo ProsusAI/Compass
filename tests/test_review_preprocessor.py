@@ -373,7 +373,8 @@ class TestComputeOracleMetrics:
         assert result.oracle_cost_change == 0.50
         assert result.candidate_cost_captured == pytest.approx(0.70)
         assert result.candidate_cost_captured_with_overhead == pytest.approx(0.60)
-        assert result.candidate_quality_captured == pytest.approx(0.85)
+        # candidate quality_change=0.085, oracle=0.10 → ratio = (1 + 0.085)/(1 + 0.10) = 1.085/1.10
+        assert result.candidate_quality_captured == pytest.approx(1.085 / 1.10)
 
     def test_zero_oracle_returns_none(self) -> None:
         result = compute_oracle_metrics(

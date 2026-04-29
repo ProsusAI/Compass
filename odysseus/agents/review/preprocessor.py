@@ -594,7 +594,7 @@ def compute_oracle_metrics(
             candidate_cost_change_with_overhead / oracle_cost_change if oracle_cost_change != 0.0 else None
         ),
         candidate_quality_captured=(
-            candidate_quality_change / oracle_quality_change if oracle_quality_change != 0.0 else None
+            (1 + candidate_quality_change) / (1 + oracle_quality_change) if oracle_quality_change != 0.0 else None
         ),
     )
 
@@ -734,7 +734,7 @@ def generate_executive_summary(
     if om is not None:
         parts = []
         if om.candidate_quality_captured is not None:
-            parts.append(f"quality {om.candidate_quality_captured:.0%} captured")
+            parts.append(f"quality {om.candidate_quality_captured:.0%} of oracle")
         else:
             parts.append("quality: no headroom (oracle change is 0)")
         if om.candidate_cost_captured is not None:
