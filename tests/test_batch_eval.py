@@ -19,6 +19,8 @@ from odysseus.eval.batch_eval import (
     BatchEvalCandidate,
     BatchEvalResult,
     CandidateEvalOutcome,
+    _extract_quality_score,
+    _extract_quality_score_from_dict,
     _set_candidate_eval_status,
     run_batch_eval_impl,
 )
@@ -520,3 +522,43 @@ async def test_run_batch_eval_mcp_tool_roundtrip(tmp_run: tuple[str, Path]) -> N
     assert parsed_candidates[0].prompt_version == "v2"
     assert parsed_candidates[0].parent_version == "v1"
     assert parsed_candidates[0].example_ids == ["e1"]
+
+
+# ---------------------------------------------------------------------------
+# _extract_quality_score preference tests
+# ---------------------------------------------------------------------------
+
+
+class TestExtractQualityScorePreference:
+    """oracle_quality_captured should be preferred over accuracy."""
+
+    def _fake_report(self, metrics: dict) -> object:
+        """Build a minimal report-like object with a .metrics attribute."""
+        report = MagicMock()
+        report.metrics = metrics
+        return report
+
+    def test_prefers_oracle_quality_captured_over_accuracy(self):
+        """When both keys present, returns oracle_quality_captured."""
+        report = self._fake_report({"oracle_quality_captured": 0.92, "accuracy": 0.85})
+        assert _extract_quality_score(report, primary_metric_name=None) == pytest.approx(0.92)
+
+    def test_falls_back_to_accuracy_when_no_oracle_key(self):
+        """Without oracle_quality_captured, falls back to accuracy."""
+        report = self._fake_report({"accuracy": 0.85})
+        assert _extract_quality_score(report, primary_metric_name=None) == pytest.approx(0.85)
+
+    def test_primary_metric_name_takes_precedence(self):
+        """Explicit primary_metric_name overrides oracle_quality_captured."""
+        report = self._fake_report({"accuracy": 0.75, "oracle_quality_captured": 0.92})
+        assert _extract_quality_score(report, primary_metric_name="accuracy") == pytest.approx(0.75)
+
+    def test_extract_quality_score_from_dict_prefers_oracle(self):
+        """_extract_quality_score_from_dict mirrors the same preference."""
+        metrics = {"oracle_quality_captured": 0.92, "accuracy": 0.85}
+        assert _extract_quality_score_from_dict(metrics, primary_metric_name=None) == pytest.approx(0.92)
+
+    def test_extract_quality_score_from_dict_no_oracle(self):
+        """_extract_quality_score_from_dict falls back to accuracy when oracle key absent."""
+        metrics = {"accuracy": 0.85}
+        assert _extract_quality_score_from_dict(metrics, primary_metric_name=None) == pytest.approx(0.85)

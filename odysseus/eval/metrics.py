@@ -125,6 +125,7 @@ def compute_cost_quality_change(
         "quality_change": 0.0,
         "oracle_cost_change": 0.0,
         "oracle_quality_change": 0.0,
+        "oracle_quality_captured": 1.0,
     }
 
     if not results:
@@ -176,15 +177,21 @@ def compute_cost_quality_change(
         (predicted_cost + routing_overhead - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
     )
 
+    quality_change = (
+        (predicted_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
+    )
+    oracle_quality_change = (
+        (oracle_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
+    )
+
     return {
         "cost_change": cost_change,
         "cost_change_with_overhead": cost_change_with_overhead,
-        "quality_change": (
-            (predicted_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
-        ),
+        "quality_change": quality_change,
         "oracle_cost_change": ((oracle_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0),
-        "oracle_quality_change": (
-            (oracle_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
+        "oracle_quality_change": oracle_quality_change,
+        "oracle_quality_captured": (
+            (1 + quality_change) / (1 + oracle_quality_change) if oracle_quality_change != 0.0 else 1.0
         ),
     }
 

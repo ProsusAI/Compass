@@ -293,6 +293,9 @@ def test_cost_quality_default_baseline():
     assert out["quality_change"] == pytest.approx((1.76 - 1.90) / 1.90)
     assert out["oracle_cost_change"] == pytest.approx((0.012 - 0.06) / 0.06)
     assert out["oracle_quality_change"] == pytest.approx((1.60 - 1.90) / 1.90)
+    _qc = (1.76 - 1.90) / 1.90
+    _oqc = (1.60 - 1.90) / 1.90
+    assert out["oracle_quality_captured"] == pytest.approx((1 + _qc) / (1 + _oqc))
 
 
 def test_cost_quality_explicit_baseline():
@@ -309,6 +312,9 @@ def test_cost_quality_explicit_baseline():
     assert out["quality_change"] == pytest.approx((0.88 - 0.72) / 0.72)
     assert out["oracle_cost_change"] == pytest.approx((0.03 - 0.002) / 0.002)
     assert out["oracle_quality_change"] == pytest.approx((0.95 - 0.72) / 0.72)
+    _qc = (0.88 - 0.72) / 0.72
+    _oqc = (0.95 - 0.72) / 0.72
+    assert out["oracle_quality_captured"] == pytest.approx((1 + _qc) / (1 + _oqc))
 
 
 def test_cost_quality_all_match_baseline():
@@ -321,6 +327,8 @@ def test_cost_quality_all_match_baseline():
     assert out["cost_change"] == 0.0
     assert out["cost_change_with_overhead"] == 0.0
     assert out["quality_change"] == 0.0
+    # oracle_quality_change == 0, so oracle_quality_captured defaults to 1.0
+    assert out["oracle_quality_captured"] == 1.0
 
 
 def test_cost_quality_hallucinated_route_skipped(caplog):
@@ -368,6 +376,7 @@ def test_cost_quality_empty_results():
     assert out["quality_change"] == 0.0
     assert out["oracle_cost_change"] == 0.0
     assert out["oracle_quality_change"] == 0.0
+    assert out["oracle_quality_captured"] == 1.0
 
 
 def test_cost_quality_with_routing_overhead():
@@ -407,6 +416,56 @@ def test_cost_quality_with_routing_overhead():
     # Routing overhead: 0.005*2 = 0.01
     assert out["cost_change"] == pytest.approx((0.02 - 0.06) / 0.06)
     assert out["cost_change_with_overhead"] == pytest.approx((0.02 + 0.01 - 0.06) / 0.06)
+
+
+# --- oracle_quality_captured focused tests ---
+
+
+class TestOracleQualityCaptured:
+    """Focused regression tests for oracle_quality_captured key."""
+
+    def test_normal_positive_case(self):
+        """Candidate improves on baseline and tracks oracle — ratio in (0, 1]."""
+        # Baseline=haiku(0.72), predicted=claude-sonnet(0.88), oracle=gpt-4o(0.95)
+        examples = [_cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES)]
+        results = [_result("ex-0", route="claude-sonnet")]
+        out = compute_cost_quality_change(results, examples, baseline_class="haiku")
+        qc = (0.88 - 0.72) / 0.72
+        oqc = (0.95 - 0.72) / 0.72
+        assert out["oracle_quality_captured"] == pytest.approx((1 + qc) / (1 + oqc))
+        assert 0.0 <= out["oracle_quality_captured"] <= 1.0
+
+    def test_mixed_sign_stays_in_range(self):
+        """Candidate under-routes (quality_change < 0) while oracle improves — result in [0, 1]."""
+        routes = {
+            "gpt-4o": {"cost": 0.03, "quality_score": 0.95},
+            "haiku": {"cost": 0.002, "quality_score": 0.72},
+            "claude-sonnet": {"cost": 0.01, "quality_score": 0.88},
+        }
+        # Baseline=claude-sonnet, candidate always picks haiku (worse), oracle=gpt-4o (better)
+        examples = [_cost_quality_example("ex-0", route="gpt-4o", routes=routes)]
+        results = [_result("ex-0", route="haiku")]
+        out = compute_cost_quality_change(results, examples, baseline_class="claude-sonnet")
+        qc = (0.72 - 0.88) / 0.88
+        oqc = (0.95 - 0.88) / 0.88
+        assert out["quality_change"] < 0
+        assert out["oracle_quality_change"] > 0
+        assert out["oracle_quality_captured"] == pytest.approx((1 + qc) / (1 + oqc))
+        assert 0.0 <= out["oracle_quality_captured"] <= 1.0
+
+    def test_zero_oracle_change_returns_one(self):
+        """When oracle_quality_change == 0.0, oracle_quality_captured is 1.0."""
+        # Baseline == oracle class (gpt-4o), so oracle_quality_change = 0
+        examples = [_cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES)]
+        results = [_result("ex-0", route="claude-sonnet")]
+        out = compute_cost_quality_change(results, examples, baseline_class="gpt-4o")
+        assert out["oracle_quality_change"] == 0.0
+        assert out["oracle_quality_captured"] == 1.0
+
+    def test_empty_results_returns_one(self):
+        """zero_result path sets oracle_quality_captured = 1.0."""
+        out = compute_cost_quality_change([], [])
+        assert out["oracle_quality_captured"] == 1.0
 
 
 # --- create_default_engine tests ---
