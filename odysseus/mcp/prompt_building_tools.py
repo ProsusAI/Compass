@@ -243,6 +243,41 @@ async def run_eval(
 
 
 @mcp.tool()
+async def run_batch_eval(
+    ctx: Context,
+    run_id: str,
+    candidates: list[dict],
+) -> str:
+    """[Stage 4] Evaluate multiple prompt candidates concurrently.
+
+    Each entry in `candidates` is a dict with keys:
+      - prompt_version: str
+      - parent_version: str | None (default None)
+      - example_ids: list[str] (default [])
+
+    Returns a JSON-serialised BatchEvalResult with `succeeded` and
+    `failed` lists. Per-candidate failures land in `failed`; only
+    programming errors raise.
+
+    Recovery mode (calling with `candidates=[]`) is wired in commit 4.
+    """
+    # Lazy import to avoid circular dependency:
+    # batch_eval imports build_pipeline_config from this module.
+    from odysseus.eval.batch_eval import BatchEvalCandidate, run_batch_eval_impl
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    output_dir = project_dir / "outputs"
+    try:
+        parsed = [BatchEvalCandidate.model_validate(c) for c in candidates]
+        result = await run_batch_eval_impl(run_id, parsed, output_dir=output_dir)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    except Exception as exc:
+        raise ToolError(f"run_batch_eval failed: {type(exc).__name__}: {exc}") from exc
+    return result.model_dump_json()
+
+
+@mcp.tool()
 async def record_eval_result_tool(
     run_id: str,
     prompt_version: str,

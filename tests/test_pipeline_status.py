@@ -2,7 +2,12 @@ import json
 import time
 from pathlib import Path
 
-from odysseus.agents.pipeline.status import _read_rerun_config, discover_runs, get_pipeline_status
+from odysseus.agents.pipeline.status import (
+    _detect_stage_4_phase,
+    _read_rerun_config,
+    discover_runs,
+    get_pipeline_status,
+)
 
 
 class TestReadRerunConfig:
@@ -599,3 +604,58 @@ class TestDiscoveredRuns:
         result = get_pipeline_status(tmp_path, "r1")
         entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
         assert entry["current_stage"] == 2
+
+
+class TestDetectStage4PhaseRecovery:
+    """_detect_stage_4_phase returns 'build_recovering' when active_evals is non-empty."""
+
+    def test_detect_stage_4_phase_returns_build_recovering(self, tmp_path: Path) -> None:
+        """loop_phase='build' + active_evals non-empty → 'build_recovering'."""
+        run_id = "r1"
+        # Set up enough state for Phase 3 detection (past cold_start and build_v1)
+        search = tmp_path / run_id / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        prompts = tmp_path / run_id / "prompts"
+        prompts.mkdir(parents=True, exist_ok=True)
+        (prompts / "v1.txt").write_text("prompt: seed")
+        (search / "directive_history.json").write_text("[]")
+        (search / "search_state.json").write_text(
+            json.dumps(
+                {
+                    "round": 2,
+                    "converged": False,
+                    "loop_phase": "build",
+                    "active_evals": ["v4"],
+                }
+            )
+        )
+
+        phase = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
+
+        assert phase == "build_recovering"
+
+    def test_detect_stage_4_phase_normal_build_without_active_evals(self, tmp_path: Path) -> None:
+        """loop_phase='build' + empty active_evals + dispatched marker → 'build'."""
+        run_id = "r1"
+        search = tmp_path / run_id / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        prompts = tmp_path / run_id / "prompts"
+        prompts.mkdir(parents=True, exist_ok=True)
+        (prompts / "v1.txt").write_text("prompt: seed")
+        (search / "directive_history.json").write_text("[]")
+        (search / "search_state.json").write_text(
+            json.dumps(
+                {
+                    "round": 2,
+                    "converged": False,
+                    "loop_phase": "build",
+                    "active_evals": [],
+                }
+            )
+        )
+        # Need the dispatch marker or defense-in-depth will flip to review
+        (search / "build_dispatched.json").write_text(json.dumps({"round": 2}))
+
+        phase = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
+
+        assert phase == "build"

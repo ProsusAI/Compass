@@ -72,6 +72,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "init_search_state_tool",
         "register_candidate_tool",
         "run_eval",
+        "run_batch_eval",
         "record_eval_result_tool",
         "advance_step_tool",
         "get_search_state_tool",

@@ -67,6 +67,7 @@ graph TD
 | `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket (e.g. `beam_width` for beam, `AnnealingState` dict for EMOSA); defaults to `{}` |
 | `round`, `stagnation_count`, `mutation_mode` | — | Hill-climb bookkeeping fields |
 | `converged`, `loop_phase` | — | Convergence flag and current sub-phase; widened enum: `"build"`, `"review"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`, `"calibration"`, `"build_recovering"` (hill-climb only uses `"build"` / `"review"`) |
+| `active_evals` | `list[str]` | Prompt versions currently being evaluated (pending or running). Invariant: non-empty iff `loop_phase == "build"` and a concurrent batch eval was interrupted. `_detect_stage_4_phase` returns `"build_recovering"` when this field is non-empty. |
 
 `RoundSummary` is the per-round progress record. Field names follow the unified cross-branch schema:
 
@@ -120,6 +121,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 |---|---|---|---|
 | `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `run_eval` | Implemented | Run an evaluation of a prompt version against a dataset (dev split) | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py) |
+| `run_batch_eval` | Implemented | Evaluate multiple prompt candidates concurrently; `candidates=[]` triggers recovery mode (commit 4) | [`odysseus/eval/batch_eval.py`](../odysseus/eval/batch_eval.py) |
 | `run_holdout_eval` | Implemented | Run evaluation on the holdout split with a user-chosen prompt version (required, must be on the Pareto front; Final Report agent only). Also computes baseline comparisons. | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
 | `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) |
@@ -156,7 +158,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
@@ -187,7 +189,7 @@ The shared guard layer lives in [`odysseus/agents/pipeline/dispatch.py`](../odys
 | `"build"` | all strategies |
 | `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"` | SMS-EMOA warmup phases |
 | `"calibration"` | EMOSA cold-start calibration phase |
-| `"build_recovering"` | EMOSA / SMS-EMOA recovery after failed eval |
+| `"build_recovering"` | All strategies — entered when `active_evals` is non-empty (interrupted batch eval). Recovery sub-agent calls `run_batch_eval(candidates=[])` to resume. |
 
 Hill-climb (main branch) only ever enters `"build"` and `"review"`. The other values exist so feature-branch state files load without error. Unknown values encountered in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
 
@@ -197,7 +199,7 @@ Two JSON sentinel files signal that a sub-agent is in-flight for the current rou
 
 | File | Written by | Cleared by | Guards |
 |---|---|---|---|
-| `search/build_dispatched.json` | `register_candidate_tool` (first builder action) | `advance_step_tool` (round complete) | `complete_stage("prompt_building")` rejects while present |
+| `search/build_dispatched.json` | `register_candidate_tool` (first builder action) | `advance_step_tool` (round complete); `run_batch_eval_impl` (when `active_evals` drains after batch eval) | `complete_stage("prompt_building")` rejects while present |
 | `search/review_dispatched.json` | `build_review_briefing_tool` (reviewer dispatch) | `record_directive_outcomes_tool` (directives saved) | `complete_stage("review")` checks fanout |
 
 Both files contain `{"round": N}` for diagnostics.

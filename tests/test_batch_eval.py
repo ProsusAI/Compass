@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -314,3 +315,60 @@ class TestBatchEvalModels:
         r = BatchEvalResult(succeeded=[], failed=[])
         assert r.succeeded == []
         assert r.failed == []
+
+
+# ---------------------------------------------------------------------------
+# MCP tool roundtrip
+# ---------------------------------------------------------------------------
+
+RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
+_RUN_BATCH_EVAL_IMPL = "odysseus.eval.batch_eval.run_batch_eval_impl"
+
+
+@pytest.mark.asyncio
+async def test_run_batch_eval_mcp_tool_roundtrip(tmp_run: tuple[str, Path]) -> None:
+    """run_batch_eval MCP tool parses candidates and returns JSON-serialised BatchEvalResult."""
+    from odysseus.mcp.prompt_building_tools import run_batch_eval as run_batch_eval_tool
+
+    run_id, tmp_path = tmp_run
+    mock_result = BatchEvalResult(
+        succeeded=[
+            CandidateEvalOutcome(
+                prompt_version="v2",
+                eval_status="complete",
+                quality_score=0.75,
+                cost=-0.1,
+            )
+        ],
+        failed=[],
+    )
+
+    candidates_payload = [
+        {"prompt_version": "v2", "parent_version": "v1", "example_ids": ["e1"]}
+    ]
+
+    with (
+        patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+        patch(_RUN_BATCH_EVAL_IMPL, new_callable=AsyncMock, return_value=mock_result) as mock_impl,
+    ):
+        raw = await run_batch_eval_tool(ctx=None, run_id=run_id, candidates=candidates_payload)
+
+    # Verify the returned value is valid JSON with the expected shape
+    parsed = json.loads(raw)
+    assert "succeeded" in parsed
+    assert "failed" in parsed
+    assert len(parsed["succeeded"]) == 1
+    assert parsed["succeeded"][0]["prompt_version"] == "v2"
+    assert parsed["succeeded"][0]["eval_status"] == "complete"
+    assert len(parsed["failed"]) == 0
+
+    # Verify run_batch_eval_impl was called with parsed BatchEvalCandidate objects
+    mock_impl.assert_called_once()
+    call_args = mock_impl.call_args
+    assert call_args.args[0] == run_id
+    parsed_candidates = call_args.args[1]
+    assert len(parsed_candidates) == 1
+    assert isinstance(parsed_candidates[0], BatchEvalCandidate)
+    assert parsed_candidates[0].prompt_version == "v2"
+    assert parsed_candidates[0].parent_version == "v1"
+    assert parsed_candidates[0].example_ids == ["e1"]

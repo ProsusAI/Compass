@@ -33,6 +33,7 @@ from odysseus.mcp.prompt_building_tools import (
     init_search_state_tool,
     record_eval_result_tool,
     register_candidate_tool,
+    run_batch_eval,
     run_eval,
 )
 from odysseus.mcp.prompts import (
@@ -103,6 +104,7 @@ __all__ = [
     "record_directive_outcomes_tool",
     "record_eval_result_tool",
     "register_candidate_tool",
+    "run_batch_eval",
     "run_eval",
     "run_holdout_eval",
     "save_final_report",

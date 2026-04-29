@@ -156,6 +156,29 @@ STAGE_4_RERUN_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
+    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "advance_step_tool, run_eval, run_batch_eval\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "RECOVERY MODE: active_evals is non-empty. The sub-agent must call "
+    "run_batch_eval(run_id='{run_id}', candidates=[]) to resume in-flight evaluations. "
+    "Completed evals (eval_status='complete') are recovered from disk automatically; "
+    "only missing or incomplete evals (eval_status='pending' or 'running') are re-run.\n\n"
+    "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
+    "Do not call it from within the sub-agent.\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
 STAGE_4_REVIEW_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"

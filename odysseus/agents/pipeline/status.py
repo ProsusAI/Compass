@@ -16,6 +16,7 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_2_INSTRUCTION,
     STAGE_3_INSTRUCTION,
     STAGE_4_BUILD_INSTRUCTION,
+    STAGE_4_BUILD_RECOVERING_INSTRUCTION,
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
     STAGE_4_REVIEW_INSTRUCTION,
@@ -67,6 +68,7 @@ _BUILD_TOOLS: list[str] = [
     "record_eval_result_tool",
     "advance_step_tool",
     "run_eval",
+    "run_batch_eval",
 ]
 
 _RERUN_TOOLS: list[str] = [
@@ -544,10 +546,11 @@ def _detect_stage_4_phase(
 
     # Phase 3: Normal loop — read loop_phase from search state
     loop_phase = "review"
+    state_data: dict[str, Any] = {}
     if search_state_path.is_file():
         try:
-            data = json.loads(search_state_path.read_text())
-            raw_phase = data.get("loop_phase", "review")
+            state_data = json.loads(search_state_path.read_text())
+            raw_phase = state_data.get("loop_phase", "review")
             if raw_phase not in _VALID_LOOP_PHASES:
                 logger.warning(
                     "Unexpected loop_phase '%s' in %s/search/search_state.json, defaulting to 'review'",
@@ -558,6 +561,13 @@ def _detect_stage_4_phase(
                 loop_phase = raw_phase
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
+
+    # Recovery detection: if loop_phase is "build" and active_evals is non-empty,
+    # a previous build attempt was interrupted mid-eval — enter recovery mode.
+    if loop_phase == "build":
+        active_evals = state_data.get("active_evals", [])
+        if active_evals:
+            return "build_recovering"
 
     # Defense-in-depth: if loop_phase is "build" but there are no child_variants
     # on disk AND the build marker is also absent, the builder was never actually
@@ -651,6 +661,15 @@ def _next_action_for_stage_4(
         STAGE_4_BUILD_INSTRUCTION,
         algorithm,
     )
+    _build_recovering_entry = (
+        "Stage 4 — build-recovering phase: active_evals is non-empty from a prior interrupted run. "
+        "Spawn the Prompt Builder to resume in-flight evaluations via run_batch_eval(candidates=[]). "
+        "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+        _BUILD_TOOLS,
+        ["odysseus_prompt_builder"],
+        STAGE_4_BUILD_RECOVERING_INSTRUCTION,
+        algorithm,
+    )
     phase_config: dict[str, tuple[str, list[str], list[str], str, str]] = {
         "cold_start": (
             "Stage 4 — cold-start: spawn the Review Agent to seed the search "
@@ -691,7 +710,7 @@ def _next_action_for_stage_4(
             STAGE_4_COLD_START_INSTRUCTION,
             algorithm,
         ),
-        "build_recovering": _build_entry,
+        "build_recovering": _build_recovering_entry,
     }
     return phase_config[phase]
 

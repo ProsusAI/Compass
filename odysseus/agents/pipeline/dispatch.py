@@ -1,4 +1,11 @@
-"""Shared dispatch-marker and fanout primitives for Stage 4 sub-agent coordination."""
+"""Shared dispatch-marker and fanout primitives for Stage 4 sub-agent coordination.
+
+Note: ``build_recovering`` is exempt from the "fresh dispatch" check because the
+build-dispatch marker may already be present from the prior aborted attempt.  The
+recovery sub-agent runs with the marker held and clears it on completion (via the
+auto-transition in ``run_batch_eval_impl``).  Do not call ``record_build_dispatched``
+again in the recovery path.
+"""
 
 from __future__ import annotations
 
@@ -61,6 +68,25 @@ def clear_review_dispatched(run_id: str, output_dir: Path | None = None) -> None
 def is_review_dispatched(run_id: str, output_dir: Path | None = None) -> bool:
     """Return True iff the review-dispatch marker file exists on disk."""
     return _review_marker_path(run_id, output_dir).exists()
+
+
+def is_build_recovering(run_id: str, output_dir: str = "outputs") -> bool:
+    """Return True iff SearchState.active_evals is non-empty.
+
+    Used by the orchestrator to detect that a prior build attempt was interrupted
+    mid-eval and the recovery sub-agent should be dispatched.
+    """
+    base = Path(output_dir)
+    if not base.is_absolute():
+        base = get_project_dir() / output_dir
+    state_path = base / run_id / "search" / "search_state.json"
+    if not state_path.is_file():
+        return False
+    try:
+        data = json.loads(state_path.read_text())
+        return bool(data.get("active_evals", []))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return False
 
 
 @dataclass
