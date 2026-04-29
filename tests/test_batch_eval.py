@@ -11,12 +11,15 @@ import pytest
 from odysseus.agents.prompt_builder.search_ops import (
     _load_pending,
     _load_state,
+    _save_state,
     init_search_state,
+    register_candidate,
 )
 from odysseus.eval.batch_eval import (
     BatchEvalCandidate,
     BatchEvalResult,
     CandidateEvalOutcome,
+    _set_candidate_eval_status,
     run_batch_eval_impl,
 )
 
@@ -137,25 +140,170 @@ async def test_one_candidate_raises_others_succeed(tmp_run: tuple[str, Path]) ->
 
 
 # ---------------------------------------------------------------------------
-# Test 3: empty candidates raises ValueError
+# Test 3: recovery — smart-skip uses existing report
 # ---------------------------------------------------------------------------
 
 
-def test_empty_candidates_raises() -> None:
-    """Passing candidates=[] raises ValueError (recovery is commit 4)."""
-    with pytest.raises(ValueError, match="non-empty"):
-        import asyncio
-        asyncio.get_event_loop().run_until_complete(
-            run_batch_eval_impl("any-run", [], output_dir="/tmp/fake")
-        )
+@pytest.mark.asyncio
+async def test_recovery_smart_skip_uses_existing_report(tmp_run: tuple[str, Path]) -> None:
+    """Recovery mode smart-skips a candidate whose report.json already exists on disk."""
+    run_id, tmp_path = tmp_run
+
+    # Register candidate, then flip to "running" to simulate an interrupted eval
+    register_candidate(
+        run_id=run_id,
+        prompt_version="v9",
+        parent_version="v1",
+        example_ids=["e1"],
+        output_dir=tmp_path,
+        eval_status="pending",
+    )
+    _set_candidate_eval_status(run_id, "v9", "running", tmp_path)
+
+    # Add its prompt_version to active_evals
+    state = _load_state(run_id, tmp_path)
+    state = state.model_copy(update={"active_evals": ["v9"]})
+    _save_state(run_id, state, tmp_path)
+
+    # Pre-write a valid report.json at the expected path
+    report_dir = tmp_path / run_id / "eval" / "v9"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_data = {
+        "metrics": {"accuracy": 0.91, "cost_change_with_overhead": -0.2},
+        "summary": {"succeeded": 5, "total": 5},
+    }
+    (report_dir / "report.json").write_text(json.dumps(report_data), encoding="utf-8")
+
+    with patch(_SINGLE_EVAL, new=AsyncMock()) as mock_run:
+        result = await run_batch_eval_impl(run_id, [], output_dir=tmp_path)
+
+    # controller.run should NOT have been invoked
+    mock_run.assert_not_called()
+
+    assert len(result.succeeded) == 1
+    assert len(result.failed) == 0
+    assert result.succeeded[0].prompt_version == "v9"
+    assert result.succeeded[0].eval_status == "complete"
+    assert result.succeeded[0].quality_score == pytest.approx(0.91)
+
+    # Disk state
+    pending = _load_pending(run_id, tmp_path)
+    assert pending[0].eval_status == "complete"
+
+    final_state = _load_state(run_id, tmp_path)
+    assert final_state.active_evals == []
+    assert final_state.loop_phase == "review"
+
+
+# ---------------------------------------------------------------------------
+# Test 4: recovery — corrupt report triggers re-run
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_empty_candidates_raises_async(tmp_run: tuple[str, Path]) -> None:
-    """Passing candidates=[] raises ValueError asynchronously."""
+async def test_recovery_corrupt_report_reruns_eval(tmp_run: tuple[str, Path]) -> None:
+    """Recovery mode re-runs a candidate whose report.json is malformed JSON."""
     run_id, tmp_path = tmp_run
-    with pytest.raises(ValueError, match="non-empty"):
-        await run_batch_eval_impl(run_id, [], output_dir=tmp_path)
+
+    register_candidate(
+        run_id=run_id,
+        prompt_version="v9",
+        parent_version="v1",
+        example_ids=["e1"],
+        output_dir=tmp_path,
+        eval_status="pending",
+    )
+    _set_candidate_eval_status(run_id, "v9", "running", tmp_path)
+
+    state = _load_state(run_id, tmp_path)
+    state = state.model_copy(update={"active_evals": ["v9"]})
+    _save_state(run_id, state, tmp_path)
+
+    # Write malformed JSON to the report path
+    report_dir = tmp_path / run_id / "eval" / "v9"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "report.json").write_text("{corrupt json{{", encoding="utf-8")
+
+    mock_report = _make_mock_run_report(quality_score=0.75)
+
+    with patch(_SINGLE_EVAL, new=AsyncMock(return_value=mock_report)) as mock_run:
+        result = await run_batch_eval_impl(run_id, [], output_dir=tmp_path)
+
+    # controller.run should have been called once for the re-run
+    assert mock_run.call_count == 1
+
+    assert len(result.succeeded) == 1
+    assert result.succeeded[0].prompt_version == "v9"
+    assert result.succeeded[0].eval_status == "complete"
+
+    final_state = _load_state(run_id, tmp_path)
+    assert final_state.active_evals == []
+    assert final_state.loop_phase == "review"
+
+
+# ---------------------------------------------------------------------------
+# Test 5: recovery — empty pending returns empty result
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_recovery_empty_pending_returns_empty(tmp_run: tuple[str, Path]) -> None:
+    """Recovery with no pending candidates returns an empty BatchEvalResult."""
+    run_id, tmp_path = tmp_run
+
+    # active_evals is empty (default), pending is empty (no registered candidates)
+    result = await run_batch_eval_impl(run_id, [], output_dir=tmp_path)
+
+    assert result == BatchEvalResult(succeeded=[], failed=[])
+
+
+# ---------------------------------------------------------------------------
+# Test 11: recovery — drains active_evals and transitions to review
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_recovery_drains_active_evals_and_transitions_to_review(
+    tmp_run: tuple[str, Path],
+) -> None:
+    """After recovery, active_evals is empty, loop_phase is 'review', build_dispatched cleared."""
+    run_id, tmp_path = tmp_run
+
+    from odysseus.agents.pipeline.dispatch import record_build_dispatched
+
+    # Record a build-dispatched marker so we can assert it's cleared
+    record_build_dispatched(run_id, round=1, output_dir=tmp_path)
+    dispatched_marker = tmp_path / run_id / "search" / "build_dispatched.json"
+    assert dispatched_marker.exists(), "Precondition: marker must exist before recovery"
+
+    register_candidate(
+        run_id=run_id,
+        prompt_version="v9",
+        parent_version="v1",
+        example_ids=["e1"],
+        output_dir=tmp_path,
+        eval_status="pending",
+    )
+    _set_candidate_eval_status(run_id, "v9", "running", tmp_path)
+
+    state = _load_state(run_id, tmp_path)
+    state = state.model_copy(update={"active_evals": ["v9"]})
+    _save_state(run_id, state, tmp_path)
+
+    mock_report = _make_mock_run_report(quality_score=0.8)
+
+    with patch(_SINGLE_EVAL, new=AsyncMock(return_value=mock_report)):
+        result = await run_batch_eval_impl(run_id, [], output_dir=tmp_path)
+
+    assert len(result.succeeded) == 1
+    assert result.succeeded[0].prompt_version == "v9"
+
+    final_state = _load_state(run_id, tmp_path)
+    assert final_state.active_evals == []
+    assert final_state.loop_phase == "review"
+
+    # build_dispatched marker should have been cleared
+    assert not dispatched_marker.exists(), "build_dispatched marker must be removed after recovery"
 
 
 # ---------------------------------------------------------------------------
