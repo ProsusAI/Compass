@@ -33,6 +33,26 @@ All five collaborators (`Backend`, `PromptManager`, `DatasetManager`, `MetricsEn
 | [`docs/architecture.md`](docs/architecture.md) | System diagram, data-flow walkthrough, full field references for all models, metrics reference |
 | [`docs/backends.md`](docs/backends.md) | Backend registry design, YAML format, provider examples (Anthropic, OpenAI, Bedrock, Vertex AI), error reference |
 
+## Batch evaluation
+
+`odysseus/eval/batch_eval.py` — `run_batch_eval_impl(run_id, candidates, output_dir)`.
+
+Evaluates many `BatchEvalCandidate`s in a single round concurrently, sharing one rate limiter across all concurrent controller calls to avoid RPM/TPM budget multiplication.
+
+| Step | What happens |
+|------|-------------|
+| Register | Each candidate is written to `pending_candidates.json` with `eval_status="pending"` and added to `SearchState.active_evals`. |
+| Flip to running | `eval_status` set to `"running"` on every candidate before `asyncio.gather`. |
+| Concurrent dispatch | All `_run_single_eval` coroutines launch together; each receives the shared `TokenBucketRateLimiter`. |
+| Sequential result loop | Results processed one-by-one after `gather` completes — no concurrent writes to `pending_candidates.json`. |
+| Successes | `record_eval_result` (sets `eval_status="complete"`) + `_remove_from_active_evals`. |
+| Failures | `_set_candidate_eval_status("failed")` + `_remove_from_active_evals`. |
+| Auto-transition | When `active_evals` drains: `clear_build_dispatched` then `set_loop_phase("review")`. |
+
+**Rate-limiter sharing:** `RunDependencies.rate_limiter` (optional field, defaults to `None`) is injected into the controller. When non-`None`, the controller uses the injected instance instead of constructing its own. `run_batch_eval_impl` creates one `TokenBucketRateLimiter` and passes it to every `_run_single_eval` call, so all N concurrent candidates share a single RPM/TPM budget.
+
+Recovery mode (crash resume, `candidates=[]`) lands in commit 4.
+
 ## How EvalRunnerAgent wires it
 
 `odysseus/agents/eval_runner.py` — `EvalRunnerAgent.run(context)`:

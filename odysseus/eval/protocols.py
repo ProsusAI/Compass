@@ -16,6 +16,7 @@ from odysseus.eval.models import (  # noqa: TC001
     TokenUsage,
 )
 from odysseus.eval.pricing import ModelPricing  # noqa: TC001
+from odysseus.eval.rate_limiter import TokenBucketRateLimiter  # noqa: TC001
 
 
 @runtime_checkable
@@ -87,6 +88,7 @@ class RunDependencies:
     results_collector: ResultsCollector
     requests_per_minute: int
     tokens_per_minute: int
+    rate_limiter: TokenBucketRateLimiter | None = None
 
     def __post_init__(self) -> None:
         if self.requests_per_minute < 1:
