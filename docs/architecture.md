@@ -300,6 +300,7 @@ The Review Agent prompt is assembled at dispatch time from three layers: a share
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
+| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `outputs/<run_id>/search/child_variants.json` | `ChildVariant[]` — Review Agent output: grouped directives with parent preferences and hypotheses |
 | `outputs/<run_id>/search/edit_directives.json` | `EditDirective[]` — legacy flat directive list (still consumed by `get_edit_directives_tool`) |
 | `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |

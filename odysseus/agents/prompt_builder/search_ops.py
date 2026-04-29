@@ -27,6 +27,7 @@ from odysseus.agents.prompt_builder.search import (
     compute_front_improvement,
     update_pareto_front,
 )
+from odysseus.agents.prompt_builder.viz import _try_write_viz
 from odysseus.agents.review.models import LoopSignal
 from odysseus.project_dir import get_project_dir
 
@@ -152,6 +153,7 @@ def init_search_state(
         algorithm_state=algorithm_state or {},
     )
     _save_state(run_id, state, output_dir)
+    _try_write_viz(run_id, output_dir)
     return state
 
 
@@ -241,6 +243,7 @@ def register_candidate(
     )
     pending.append(candidate)
     _save_pending(run_id, pending, output_dir)
+    _try_write_viz(run_id, output_dir)
     return state
 
 
@@ -318,6 +321,7 @@ def record_eval_result(
     )
     pending[found_index] = updated
     _save_pending(run_id, pending, output_dir)
+    _try_write_viz(run_id, output_dir)
 
     return {
         "prompt_version": prompt_version,
@@ -468,6 +472,7 @@ def advance_round(
         }
     )
     _save_state(run_id, updated_state, output_dir)
+    _try_write_viz(run_id, output_dir)
 
     # Clear pending
     _save_pending(run_id, [], output_dir)
