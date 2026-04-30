@@ -47,6 +47,8 @@ Set `parent_version` (and `secondary_parent_version` if required) per your overl
 
 When this variant targets a specific confusion cell, set `target_confusion_cell = "true_route/predicted_route"` on the `ChildVariant`. This links the variant to the cell so attempt history is tracked across rounds. Leave `target_confusion_cell` as `null` when the hypothesis targets a threshold metric rather than a specific cell.
 
+**Per-parent cell diversity.** When this dispatch produces multiple children that share a `parent_version`, no two of those siblings may target the same `target_confusion_cell`. Two children of the same parent attacking the same cell are redundant variants of the same hypothesis from the same prompt baseline. Two children with **different** parents may target the same cell — the differing baselines yield genuinely different hypotheses, so cross-parent overlap is allowed and often informative.
+
 ### Then: self-check (grounding / distinctness / relevance), per the base.
 
 ## Fetching prompt text
