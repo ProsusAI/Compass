@@ -38,7 +38,7 @@ Most G work appears on multiple branches with parallel evolution. Pick one canon
 
 ## Per-branch unique G work
 
-- **parallel-beam unique**: cold-start elite floor (`5e8fc0e`), beam-specific test infra. ~1 session.
+- **parallel-beam unique**: none after 2026-04-30 reclassification — `5e8fc0e` and the associated post-coldstart prompt + tests moved to **C1** as beam-specific.
 - **sms-emoa unique**: warmup-specific test fixtures and helpers. ~0.5 session.
 - **emosa unique**: small preprocessor pieces that bleed into S (handle in Phase C). ~0 sessions.
 
@@ -109,12 +109,19 @@ When a session completes, update its row with: `[x]` instead of `[ ]`, the commi
 
 ### Phase B — Per-branch G residuals (sequential after Phase A)
 
-- [ ] **B1** — parallel-beam unique G (cold-start floor `5e8fc0e`, beam test infra). ~1 session.
+- [~] **B1** — Reclassified 2026-04-30. `5e8fc0e` (cold-start elite floor) and `a5473ea`'s `review_agent_post_coldstart_system.md` are beam-specific (the elite-floor mechanism only matters when round 1 produces K > 1 cold-start variants, and it's coupled to the post-coldstart review prompt that overrides parent selection to "exactly one child per protected parent" — neither half is useful alone). Folded into **C1**. No other generic infra unique to `feature/parallel-beam-search` was identified after Phase A. **Drop.**
 - [ ] **B2** — sms-emoa + emosa unique G (warmup test fixtures + minor emosa tweaks). ~0.5 session.
 
 ### Phase C — Strategy-only ports (sequential per branch, after Phase B)
 
-- [ ] **C1** — parallel-beam residual port. Branch `feat/generalize-beam` off main. Add `_advance_beam`, beam algorithm module, preprocessor field population, init_state helper. Verify scenario runs beam to convergence; cross-branch diff small.
+- [ ] **C1** — parallel-beam residual port. Branch `feat/generalize-beam` off main once Phase A/B is merged.
+  - Algorithm: `_advance_beam` arm in `advance_step_tool`; beam-specific Pareto + crowding + hypervolume + `prune_to_size` + `compute_pareto_front` + `update_elite_set`; `advance_round` body with epsilon tightening / stagnation / `backtrack_threshold`.
+  - Algorithm-state pocket: `beam_width`, `hypervolume`, `reference_point`, `epsilon_min`, `backtrack_threshold`.
+  - Preprocessor: populate `beam_rank`, `crowding_distance`, `hypervolume`, `reference_point`, `stagnation_signal = {"hypervolume_delta", "backtrack_threshold"}`.
+  - **Cold-start elite floor (folded from B1)**: `update_elite_set(is_cold_start_round=True)` round-1 bypass; `advance_round` skips `validate_elite_set` for round 1. Source SHA `5e8fc0e`.
+  - **Post-coldstart review tier (folded from B1)**: new `review_agent_post_coldstart_base_system.md` (algorithm-neutral) + register MCP prompt `odysseus_review_agent_post_coldstart`; `_detect_stage_4_phase` returns `"review_post_coldstart"` when `loop_phase == "review"` and `round == 1`; new `STAGE_4_REVIEW_POST_COLDSTART_INSTRUCTION` and dispatcher arm in `pipeline/instructions.py` + `pipeline/status.py`. Source SHA `a5473ea` for the prompt body. Per-strategy overlays deferred unless a strategy needs one.
+  - Tests (folded from B1): port `tests/test_search_ops_advance_round.py` and scenario `tests/scenarios/16_round1_cold_start_protection.md` (both from `5e8fc0e`).
+  - Verify: scenario runs beam to convergence; round-1 elite set retains all K cold-start variants; round-2 review emits exactly K children (one per protected parent); round 3+ resumes normal Pareto. Cross-branch diff small.
 - [ ] **C2** — sms-emoa residual port. Branch `feat/generalize-sms-emoa` off main. Add `_advance_sms_emoa` (warmup + steady-state), `reduce_population` etc., preprocessor population. Verify warmup → steady-state transitions; (μ+1) eviction sound.
 - [ ] **C3** — emosa residual port (first half). Branch `feat/generalize-emosa` off main. Land `annealing.py`, AnnealingState in pocket, `_advance_emosa` calibration arm, preprocessor `binding_axis`. Verify K=5 trajectories complete calibration round and write per-trajectory state.
 - [ ] **C4** — emosa residual port (second half). Per-trajectory `review_fanout_status` override; `trajectory_fanout_missing`; multi-child Metropolis acceptance; neighborhood replacement. Verify K-way review fanout, per-trajectory acceptance, scenario runs to convergence.
