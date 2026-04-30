@@ -1541,7 +1541,7 @@ def _make_emosa_pocket(
         distributed.append(t)
 
     return {
-        "t_initial": 1.0,
+        "t_initial": 0.2,
         "t_min": t_min,
         "num_trajectories": len(trajectories),
         "children_per_trajectory": 1,

@@ -86,11 +86,17 @@ else:
     accept with probability exp(−Δ_E / T)
 ```
 
-**Implementation:** `metropolis_accept(delta_e, temperature)` in `annealing.py`. Applied inside `advance_round` in `search_ops.py` for each trajectory independently. Each trajectory cools through the same geometric temperature schedule (`T ← T × α`) but accepts or rejects its children independently. When a trajectory generates M children (`children_per_trajectory > 1`), the acceptance rule is applied to each child separately and the accepted child with the lowest energy is kept ("Metropolis-then-best-of-accepted" semantics).
+**Implementation:** `metropolis_accept(delta_e, temperature)` in `annealing.py`. Applied inside `_advance_emosa_search` in `search_ops.py` for each trajectory independently against that trajectory's own `temperature`. When a trajectory generates M children (`children_per_trajectory > 1`), the acceptance rule is applied to each child separately and the accepted child with the lowest energy is kept ("Metropolis-then-best-of-accepted" semantics).
 
-**Cooling schedule:** geometric cooling `T ← T × α`, where `α` is computed by `compute_cooling_rate(t_initial, t_min, max_steps)` such that the temperature reaches `t_min` after `max_steps` steps.
+**Per-trajectory adaptive cooling:** each trajectory holds its own `temperature` and `alpha` on `TrajectoryState`. After Metropolis (and neighborhood replacement) each round, every trajectory that attempted a step adjusts its temperature via `adaptive_cool` based on its recent acceptance rate against a target band:
 
-**Simplification note:** EMOSA's original paper uses per-sub-problem adaptive temperature schedules. This codebase uses a single shared geometric schedule across all trajectories. This is a deliberate simplification with low ROI at K = 5; it is documented here so future contributors can add per-sub-problem adaptive cooling if empirical results warrant it.
+- if rate > `target_acceptance_high` (default 0.6) → `T ← T × α^cooling_exp_fast` (cool faster, default exp 1.5)
+- if rate < `target_acceptance_low` (default 0.4) → `T ← T × α^cooling_exp_slow` (cool slower, default exp 0.5)
+- otherwise → `T ← T × α` (default geometric step)
+
+`α` is fixed per trajectory at calibration via `compute_cooling_rate(t_initial, t_min, max_steps)`. The adaptive rule modifies the *exponent* applied each round, not `α` itself. This matches Li & Landa-Silva 2011 §3.4. Convergence on `temperature_floor` requires ALL trajectories to be below `t_min`.
+
+**Default `t_initial = 0.2`**: chosen so that for the empirically observed median worsening Δ_E ≈ 0.07 (across the run at `outputs/d92011e7/`), P(accept) at the start of search is ≈ 0.7 — exploration without random-walk. The previous default of 1.0 left SA in random-walk regime for the first 60% of the budget, with acceptance histories of 5/5 True confirming the gate did nothing useful.
 
 **Citations:**
 - Kirkpatrick, S., Gelatt, C. D. & Vecchi, M. P. (1983). *Optimization by simulated annealing*. Science, 220(4598):671–680.
@@ -131,7 +137,7 @@ The archive is shared across all trajectories: any trajectory can add a Pareto-i
 
 ## Ideal and nadir point updates
 
-The Tchebycheff normalization depends on `ideal_point` and `nadir_point`. These are updated incrementally in `advance_round`: after collecting scored candidates, the ideal and nadir are expanded to include any new extremes discovered this round. The ideal point never regresses (quality only increases, cost only decreases); the nadir can expand in either direction.
+The Tchebycheff normalization depends on `ideal_point` and `nadir_point`. These are updated incrementally in `_advance_emosa_search`: after collecting scored candidates, the ideal and nadir are expanded to include any new extremes discovered this round. The ideal point never regresses (quality only increases, cost only decreases); the nadir can expand in either direction.
 
 This incremental update means early rounds operate with a narrow reference interval (small difference between ideal and nadir), which compresses the energy values toward zero. As more of the tradeoff surface is explored, the normalization spreads out and energy differences become more informative.
 
@@ -183,10 +189,10 @@ All convergence checks happen inside `advance_round`. The round summary's `conve
 
 - **Changing the scalarization** (e.g., to PBI — Penalty-Boundary Intersection, per Zhang & Li 2007): edit `compute_tchebycheff_energy` in `odysseus/agents/prompt_builder/annealing.py` and update the "Tchebycheff decomposition" section above. PBI is a natural next extension; EMOSA's original paper discusses it as an alternative.
 - **Adding an axis** (e.g., latency): update `classify_user_target` in `preprocessor.py`, add weight-vector logic in `compute_weight_vectors`, extend `compute_tchebycheff_energy` to K-objective form, and extend this document's "Tchebycheff decomposition" and "Weight vectors and trajectories" sections.
-- **Changing neighborhood size B**: edit the `neighborhood_size` field in `AnnealingState` (default 4, initialized in `init_annealing_state`) and update the "Neighborhood replacement" section above.
+- **Changing neighborhood size B**: edit the `neighborhood_size` field in `AnnealingState` (default 4, set when constructing the `algorithm_state` pocket on `init_search_state`) and update the "Neighborhood replacement" section above.
 - **Changing archive behavior** (e.g., adding crowding-distance-based pruning if archive grows too large): edit `update_archive` in `annealing.py` and update the "External archive" section above.
-- **Changing convergence detection**: edit the convergence checks in `advance_round` in `search_ops.py` and update the "Convergence" section above.
-- **Adding per-sub-problem adaptive temperature** (EMOSA-faithful): add a per-trajectory temperature field to `TrajectoryState`, update `advance_round` to cool each trajectory independently, and update the "Per-sub-problem SA acceptance" section above.
+- **Changing convergence detection**: edit the convergence checks in `_advance_emosa_search` in `search_ops.py` and update the "Convergence" section above.
+- **Tuning the adaptive cooling band**: adjust `target_acceptance_low`/`target_acceptance_high`/`cooling_exp_fast`/`cooling_exp_slow` defaults on `AnnealingState` in `annealing.py`. The defaults (0.4 / 0.6 / 1.5 / 0.5) follow Li & Landa-Silva 2011 §3.4. Lower bands push trajectories to cool faster overall.
 
 ---
 

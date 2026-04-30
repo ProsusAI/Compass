@@ -73,8 +73,11 @@ class TrajectoryState(BaseModel):
 class AnnealingState(BaseModel):
     """Full mutable state for the simulated-annealing search loop."""
 
-    t_initial: float = 1.0
-    """Initial temperature — sensible default for [0, 1]-normalised objectives."""
+    t_initial: float = 0.2
+    """Initial temperature — chosen so P(accept) at start ≈ 0.7 for the typical
+    worsening Tchebycheff Δ_E observed empirically (median ≈ 0.07 across runs).
+    A higher value (the previous 1.0) leaves SA in random-walk mode for most of
+    the budget; a lower value front-loads exploration without changing t_min."""
     t_min: float = 0.01
     """Minimum temperature; annealing stops below this threshold."""
     num_trajectories: int = 5
