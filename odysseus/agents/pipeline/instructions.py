@@ -195,6 +195,24 @@ STAGE_4_REVIEW_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+STAGE_4_REVIEW_POST_COLDSTART_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "build_review_briefing_tool, record_directive_outcomes_tool\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "POST-COLDSTART MODE: this is round 2 — the elite set holds every round-1 strategy as a protected parent. "
+    "The sub-agent must emit exactly one ChildVariant per scored elite member; no two-parent merges this round.\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
 # ---------------------------------------------------------------------------
 # Stage 5 — Final Report
 # ---------------------------------------------------------------------------

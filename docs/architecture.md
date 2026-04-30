@@ -240,19 +240,21 @@ Retained as a back-compat shim for runs paused before automated marker clearing 
 | `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
 | `odysseus_review_agent_iterative(algorithm)` | Review Agent — iterative phase (round ≥ 2); assembled from three-tier prompt: base + iterative phase base + strategy overlay | see Review Agent prompt files below |
 | `odysseus_review_agent_cold_start(algorithm)` | Review Agent — cold-start / seeding phase; assembled from three-tier prompt: base + cold-start phase base + strategy overlay | see Review Agent prompt files below |
+| `odysseus_review_agent_post_coldstart(algorithm)` | Review Agent — round-2 post-cold-start phase (beam only); assembled from four-tier prompt: base + iterative phase base + post-coldstart override + strategy overlay | see Review Agent prompt files below |
 | `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
 | `odysseus_final_report` | Final Report agent — holdout eval + report generation | [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) |
 | `odysseus_prompt_builder_rerun` | Prompt Builder Rerun agent — format-only restructure for a different backend (single eval round) | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) |
 
-**Review Agent prompt files — three-tier structure**
+**Review Agent prompt files — three-tier and four-tier structure**
 
-The Review Agent prompt is assembled at dispatch time from three layers: a shared base, a phase-specific base, and a strategy overlay. The `algorithm` argument on the MCP prompt selects the overlay. Strategy branches contribute additional overlay files and keep only those diffs.
+The Review Agent prompt is assembled at dispatch time from three layers (iterative / cold-start) or four layers (post-coldstart): a shared base, phase-specific base(s), an optional post-coldstart override, and a strategy overlay. The `algorithm` argument on the MCP prompt selects the overlay. Strategy branches contribute additional overlay files and keep only those diffs.
 
 | File | Role |
 |---|---|
 | [`odysseus/agents/prompts/review_agent_base_system.md`](../odysseus/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
 | [`odysseus/agents/prompts/review_agent_iterative_base_system.md`](../odysseus/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
 | [`odysseus/agents/prompts/review_agent_cold_start_base_system.md`](../odysseus/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
+| [`odysseus/agents/prompts/review_agent_post_coldstart_base_system.md`](../odysseus/agents/prompts/review_agent_post_coldstart_base_system.md) | Post-cold-start override (beam round 2) — one child per protected parent, no two-parent merges, unconditional `continue_search` |
 | [`odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md) | Iterative overlay for `hill_climb` — mutation-mode toggle, single parent, 1 child |
 | [`odysseus/agents/prompts/review_agent_iterative_overlay_beam.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_beam.md) | Iterative overlay for `beam` — beam-rank / crowding-distance, HV-delta stagnation, 1 child |
 | [`odysseus/agents/prompts/review_agent_iterative_overlay_sms_emoa.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_sms_emoa.md) | Iterative overlay for `sms_emoa` — two-parent recombination, HV-plateau stagnation, 1 child |

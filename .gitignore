@@ -220,12 +220,14 @@ mcp.json
 .claude/settings.*
 
 # Pipeline runtime artifacts (created by `odysseus init` / MCP runs)
-backends/
-configs/
-data/
-outputs/
-prompts/
-scratch/
+# Anchored to repo root so they don't shadow nested source dirs
+# (e.g. odysseus/agents/prompts/, odysseus/eval/backends/).
+/backends/
+/configs/
+/data/
+/outputs/
+/prompts/
+/scratch/
 
 # Generated test artifacts
 tests/scenarios/data/holdout_filtered.jsonl

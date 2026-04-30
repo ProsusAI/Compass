@@ -32,7 +32,7 @@ _STAGE_PROMPT_MAP: dict[int | str, str] = {
 # Review Agent prompts that require strategy-aware assembly via assemble_review_prompt().
 # These are NOT in _STAGE_PROMPT_MAP — orchestrator_tools.py handles them separately.
 _REVIEW_AGENT_PROMPT_NAMES: frozenset[str] = frozenset(
-    {"odysseus_review_agent_iterative", "odysseus_review_agent_cold_start"}
+    {"odysseus_review_agent_iterative", "odysseus_review_agent_cold_start", "odysseus_review_agent_post_coldstart"}
 )
 
 # ---------------------------------------------------------------------------

@@ -12,8 +12,14 @@ def _load_prompt(name: str) -> str:
     return _load_text(f"odysseus/agents/prompts/{name}.md")
 
 
-def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start"]) -> str:
+def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start", "post_coldstart"]) -> str:
     """Return the overlay prompt filename stem for the given (algorithm, phase) pair.
+
+    | phase            | overlay used                              |
+    |------------------|-------------------------------------------|
+    | iterative        | algorithm-specific iterative overlay      |
+    | cold_start       | algorithm-specific cold-start overlay     |
+    | post_coldstart   | algorithm-specific iterative overlay      |
 
     Raises:
         ValueError: When the (algorithm, phase) combination is not recognised.
@@ -27,41 +33,57 @@ def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start"])
         ("sms_emoa", "cold_start"): "review_agent_warmup_overlay_sms_emoa",
         ("emosa", "iterative"): "review_agent_iterative_overlay_emosa",
         ("emosa", "cold_start"): "review_agent_cold_start_overlay_emosa",
+        ("hill_climb", "post_coldstart"): "review_agent_iterative_overlay_hillclimb",
+        ("beam", "post_coldstart"): "review_agent_iterative_overlay_beam",
+        ("sms_emoa", "post_coldstart"): "review_agent_iterative_overlay_sms_emoa",
+        ("emosa", "post_coldstart"): "review_agent_iterative_overlay_emosa",
     }
     key = (algorithm, phase)
     if key not in _overlay_map:
         raise ValueError(
             f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
             f"Valid algorithms: hill_climb, beam, sms_emoa, emosa. "
-            f"Valid phases: iterative, cold_start."
+            f"Valid phases: iterative, cold_start, post_coldstart."
         )
     return _overlay_map[key]
 
 
-def assemble_review_prompt(algorithm: str, phase: Literal["iterative", "cold_start"]) -> str:
+def assemble_review_prompt(
+    algorithm: str,
+    phase: Literal["iterative", "cold_start", "post_coldstart"],
+) -> str:
     """Compose the full Review Agent system prompt for the given strategy and phase.
 
-    The assembled prompt is: base + phase-base + strategy overlay, separated by
-    horizontal rules so the agent can read them as three layered sections.
+    For ``"iterative"`` and ``"cold_start"``, the assembled prompt is three layers:
+    base + phase-base + strategy overlay, separated by horizontal rules.
+
+    For ``"post_coldstart"``, the assembled prompt is four layers:
+    base + iterative-phase-base + post-coldstart override + strategy overlay.
+    The iterative base applies the standard diagnostic workflow; the post-coldstart
+    override mandates exactly one child per protected parent for round 2.
 
     Args:
         algorithm: Strategy discriminator — one of ``hill_climb``, ``beam``,
             ``sms_emoa``, ``emosa``.
         phase: ``"iterative"`` for rounds ≥ 2; ``"cold_start"`` for the seeding
-            round (including ``warmup_seed`` and ``calibration`` phases).
+            round (including ``warmup_seed`` and ``calibration`` phases);
+            ``"post_coldstart"`` for round 2 of beam search after cold-start.
 
     Returns:
         Assembled Markdown string ready to use as a system prompt.
 
     Raises:
         ValueError: When ``(algorithm, phase)`` is not a recognised combination.
-        FileNotFoundError: When any of the three component prompt files is missing.
+        FileNotFoundError: When any of the component prompt files is missing.
     """
-    # Validate the combination first — raises ValueError for unknown pairs.
     overlay_name = _overlay_filename(algorithm, phase)
     base = _load_prompt("review_agent_base_system")
-    phase_base = _load_prompt(f"review_agent_{phase}_base_system")
     overlay = _load_prompt(overlay_name)
+    if phase == "post_coldstart":
+        iterative_base = _load_prompt("review_agent_iterative_base_system")
+        post_override = _load_prompt("review_agent_post_coldstart_base_system")
+        return f"{base}\n\n---\n\n{iterative_base}\n\n---\n\n{post_override}\n\n---\n\n{overlay}"
+    phase_base = _load_prompt(f"review_agent_{phase}_base_system")
     return f"{base}\n\n---\n\n{phase_base}\n\n---\n\n{overlay}"
 
 
@@ -130,6 +152,21 @@ async def odysseus_review_agent_cold_start(algorithm: str = "hill_climb") -> lis
             ``sms_emoa``, ``emosa``.  Defaults to ``hill_climb``.
     """
     content = assemble_review_prompt(algorithm, "cold_start")
+    return [UserMessage(content=content)]
+
+
+@mcp.prompt()
+async def odysseus_review_agent_post_coldstart(algorithm: str = "hill_climb") -> list[Message]:
+    """System prompt for the Review Agent — round-2 post-cold-start phase.
+
+    Assembles a four-tier prompt: shared base + iterative phase base +
+    post-coldstart override + iterative strategy overlay for the given algorithm.
+
+    Args:
+        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``,
+            ``sms_emoa``, ``emosa``.  Defaults to ``hill_climb``.
+    """
+    content = assemble_review_prompt(algorithm, "post_coldstart")
     return [UserMessage(content=content)]
 
 

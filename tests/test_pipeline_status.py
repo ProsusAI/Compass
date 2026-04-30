@@ -4,6 +4,7 @@ from pathlib import Path
 
 from odysseus.agents.pipeline.status import (
     _detect_stage_4_phase,
+    _next_action_for_stage_4,
     _read_rerun_config,
     discover_runs,
     get_pipeline_status,
@@ -659,3 +660,90 @@ class TestDetectStage4PhaseRecovery:
         phase = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
 
         assert phase == "build"
+
+
+# ---------------------------------------------------------------------------
+# Helper for Phase 3 setup (past cold_start and build_v1 gates)
+# ---------------------------------------------------------------------------
+
+
+def _setup_phase3_run(
+    base: Path,
+    run_id: str,
+    loop_phase: str,
+    round_: int,
+    algorithm: str,
+    active_evals: list[str] | None = None,
+) -> Path:
+    """Create a run dir that passes cold_start and build_v1 checks."""
+    search = base / run_id / "search"
+    search.mkdir(parents=True, exist_ok=True)
+    prompts = base / run_id / "prompts"
+    prompts.mkdir(parents=True, exist_ok=True)
+    (prompts / "v1.txt").write_text("prompt: seed")
+    (search / "directive_history.json").write_text("[]")
+    state: dict = {
+        "round": round_,
+        "converged": False,
+        "loop_phase": loop_phase,
+        "algorithm": algorithm,
+    }
+    if active_evals is not None:
+        state["active_evals"] = active_evals
+    (search / "search_state.json").write_text(json.dumps(state))
+    return base / run_id
+
+
+class TestDetectStage4PhasePostColdstart:
+    """_detect_stage_4_phase returns 'review_post_coldstart' for beam round-1 review."""
+
+    def test_beam_round1_review_returns_post_coldstart(self, tmp_path: Path) -> None:
+        """loop_phase='review', round=1, algorithm='beam' → 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "review_post_coldstart"
+
+    def test_hill_climb_round1_review_returns_review(self, tmp_path: Path) -> None:
+        """Gate: algorithm != 'beam' → returns 'review', not 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="hill_climb")
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "review"
+
+    def test_beam_round2_review_returns_review(self, tmp_path: Path) -> None:
+        """Gate: round != 1 → returns 'review', not 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=2, algorithm="beam")
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "review"
+
+    def test_beam_round1_build_phase_returns_build(self, tmp_path: Path) -> None:
+        """Gate: loop_phase != 'review' → returns 'build', not 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(
+            tmp_path, "r1", "build", round_=1, algorithm="beam", active_evals=[]
+        )
+        # Need the dispatch marker so defense-in-depth doesn't flip to review
+        (run_dir / "search" / "build_dispatched.json").write_text(json.dumps({"round": 1}))
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "build"
+
+
+class TestNextActionForStage4PostColdstart:
+    """_next_action_for_stage_4 returns correct values for 'review_post_coldstart' phase."""
+
+    def test_post_coldstart_prompt_name(self, tmp_path: Path) -> None:
+        """review_post_coldstart phase returns 'odysseus_review_agent_post_coldstart' prompt."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        _action, _tools, prompts, _instr, _algo = _next_action_for_stage_4(run_dir)
+        assert "odysseus_review_agent_post_coldstart" in prompts
+
+    def test_post_coldstart_instruction_contains_hard_stop(self, tmp_path: Path) -> None:
+        """review_post_coldstart instruction contains HARD_STOP and POST-COLDSTART MODE."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        _action, _tools, _prompts, instr, _algo = _next_action_for_stage_4(run_dir)
+        assert "<HARD_STOP>" in instr
+        assert "POST-COLDSTART MODE" in instr
+
+    def test_post_coldstart_action_text(self, tmp_path: Path) -> None:
+        """review_post_coldstart action text mentions protected parent."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        action, _tools, _prompts, _instr, _algo = _next_action_for_stage_4(run_dir)
+        assert "protected parent" in action
