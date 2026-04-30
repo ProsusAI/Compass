@@ -31,10 +31,38 @@ def _algorithm_chips(state_data: dict) -> list[dict]:
     """Return strategy-specific stat chips for the header. Adapters per algorithm."""
     algo = state_data.get("algorithm")
     pocket = state_data.get("algorithm_state", {})
+    if algo == "beam":
+        chips = []
+        beam_width = pocket.get("beam_width")
+        if beam_width is not None:
+            chips.append({"label": "beam_width", "value": str(beam_width)})
+        hypervolume = pocket.get("hypervolume")
+        if hypervolume is not None:
+            chips.append({"label": "HV", "value": f"{hypervolume:.4f}"})
+        epsilon = state_data.get("epsilon")
+        if epsilon is not None:
+            chips.append({"label": "ε", "value": str(epsilon)})
+        return chips
     if algo == "sms_emoa":
         mu = pocket.get("mu") or state_data.get("mu")  # legacy fallback
-        return [{"label": "population (μ)", "value": mu}] if mu is not None else []
-    # beam / emosa adapters added in Phase C
+        # Legacy shape: only mu available — return single chip.
+        if not pocket or (not any(k in pocket for k in ("iteration", "evaluations_used", "hypervolume_history"))):
+            return [{"label": "population (μ)", "value": mu}] if mu is not None else []
+        chips = []
+        if mu is not None:
+            chips.append({"label": "μ", "value": str(mu)})
+        iteration = pocket.get("iteration")
+        if iteration is not None:
+            chips.append({"label": "iter", "value": str(iteration)})
+        used = pocket.get("evaluations_used")
+        budget = pocket.get("evaluation_budget")
+        if used is not None and budget is not None:
+            chips.append({"label": "evals", "value": f"{used}/{budget}"})
+        hv_hist = pocket.get("hypervolume_history") or []
+        if hv_hist:
+            chips.append({"label": "HV", "value": f"{hv_hist[-1]:.4f}"})
+        return chips
+    # emosa adapter added in Phase C3/C4
     return []
 
 

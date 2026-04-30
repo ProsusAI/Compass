@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 import operator as _operator_mod
+import random
 import re
 import statistics
 from collections import Counter
@@ -1060,6 +1061,58 @@ def enrich_confusion_with_history(
     return enriched
 
 
+def _populate_sms_emoa_review_fields(
+    search_state: Any,
+    elite_set: list[Candidate],
+) -> dict[str, Any]:
+    """Read SMS-EMOA-specific fields from algorithm_state pocket.
+
+    Returns dict to splat into ReviewBriefing constructor:
+    - parent_a_version: str | None
+    - parent_b_version: str | None
+    - stagnation_signal: dict with "hypervolume_history" (list[float])
+      and "stagnation_window" (int)
+    """
+    pocket = getattr(search_state, "algorithm_state", {}) or {}
+
+    # Sample two distinct parents from population pocket; fall back to elite_set.
+    raw_population = pocket.get("population") or []
+    if raw_population:
+        # population in pocket may be dicts (serialised) or Candidate objects.
+        population: list[Candidate] = []
+        for item in raw_population:
+            if isinstance(item, Candidate):
+                population.append(item)
+            elif isinstance(item, dict):
+                import contextlib
+                with contextlib.suppress(Exception):
+                    population.append(Candidate.model_validate(item))
+    else:
+        population = list(elite_set)
+
+    parent_a_version: str | None = None
+    parent_b_version: str | None = None
+
+    if len(population) >= 2:
+        sampled = random.sample(population, 2)
+        parent_a_version = sampled[0].prompt_version
+        parent_b_version = sampled[1].prompt_version
+    elif len(population) == 1:
+        parent_a_version = population[0].prompt_version
+        parent_b_version = population[0].prompt_version
+
+    stagnation_signal: dict[str, Any] = {
+        "hypervolume_history": list(pocket.get("hypervolume_history", [])),
+        "stagnation_window": int(pocket.get("stagnation_window", 5)),
+    }
+
+    return {
+        "parent_a_version": parent_a_version,
+        "parent_b_version": parent_b_version,
+        "stagnation_signal": stagnation_signal,
+    }
+
+
 def build_review_briefing(
     *,
     search_state: Any,
@@ -1321,6 +1374,11 @@ def build_review_briefing(
     if confusion_analysis and cell_attempt_history:
         confusion_analysis = enrich_confusion_with_history(confusion_analysis, cell_attempt_history)
 
+    algorithm = getattr(search_state, "algorithm", "hill_climb")
+    sms_emoa_overrides: dict[str, Any] = {}
+    if algorithm == "sms_emoa":
+        sms_emoa_overrides = _populate_sms_emoa_review_fields(search_state, elite_set)
+
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
@@ -1337,8 +1395,10 @@ def build_review_briefing(
         single_candidate_meets_all=single_candidate_meets_all,
         backtracking=backtracking,
         child_variants=child_variants or [],
-        stagnation_signal=stagnation_signal,
+        stagnation_signal=sms_emoa_overrides.get("stagnation_signal") or stagnation_signal,
         confusion_analysis=confusion_analysis,
+        parent_a_version=sms_emoa_overrides.get("parent_a_version"),
+        parent_b_version=sms_emoa_overrides.get("parent_b_version"),
     )
     return briefing.model_copy(
         update={
