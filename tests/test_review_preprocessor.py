@@ -1593,3 +1593,172 @@ class TestEmosaPreprocessorDispatch:
         ]
         briefing = self._make_emosa_briefing(trajectories=trajectories, step_count=0)
         assert briefing.binding_axis is None
+
+
+# ---------------------------------------------------------------------------
+# EMOSA preprocessor — explicit trajectory_id parameter (K-way fork support)
+# ---------------------------------------------------------------------------
+
+
+class TestEmosaExplicitTrajectoryId:
+    """Tests for _populate_emosa_review_fields with explicit trajectory_id override.
+
+    When trajectory_id is provided, the matching trajectory is selected directly
+    (not round-robin). Default (None) preserves the existing calibration / round-robin
+    behavior.
+    """
+
+    def _make_emosa_briefing_with_traj_id(
+        self,
+        trajectories: list[dict[str, Any]],
+        step_count: int = 1,
+        trajectory_id: int | None = None,
+        temperature: float = 0.95,
+        t_min: float = 0.01,
+        ideal_point: tuple[float, float] = (0.9, 0.001),
+        nadir_point: tuple[float, float] = (0.5, 0.01),
+    ) -> Any:
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        pocket = _make_emosa_pocket(
+            trajectories=trajectories,
+            step_count=step_count,
+            temperature=temperature,
+            t_min=t_min,
+            ideal_point=ideal_point,
+            nadir_point=nadir_point,
+        )
+        search_state = _make_search_state(
+            round=1,
+            algorithm="emosa",
+            algorithm_state=pocket,
+            elite_set=[],
+        )
+        return build_review_briefing(
+            search_state=search_state,
+            score_reports={},
+            historical_reports={},
+            prompt_texts={},
+            directive_history=[],
+            candidate_versions=[],
+            parent_versions={},
+            emosa_trajectory_id=trajectory_id,
+        )
+
+    def test_explicit_trajectory_id_selects_named_slot(self) -> None:
+        """trajectory_id=2 picks the third trajectory, not round-robin index."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
+            _make_emosa_trajectory(1, (0.7, 0.3), "v1", 0.75, 0.003, [True, True]),
+            _make_emosa_trajectory(2, (0.5, 0.5), "v2", 0.70, 0.004, [True, False, True]),
+            _make_emosa_trajectory(3, (0.3, 0.7), "v3", 0.65, 0.005, [False]),
+            _make_emosa_trajectory(4, (0.1, 0.9), "v4", 0.60, 0.006, [True]),
+        ]
+        # step_count=1, num_trajectories=5 → round-robin would pick index 1.
+        # explicit trajectory_id=2 must override and pick trajectory 2 instead.
+        briefing = self._make_emosa_briefing_with_traj_id(
+            trajectories=trajectories, step_count=1, trajectory_id=2
+        )
+
+        assert briefing.trajectory_id == 2
+        assert briefing.weight_vector == (0.5, 0.5)
+        assert briefing.acceptance_history == [True, False, True]
+
+    def test_explicit_trajectory_id_zero(self) -> None:
+        """trajectory_id=0 selects trajectory 0 even when round-robin would not."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.85, 0.001, [True, True, True]),
+            _make_emosa_trajectory(1, (0.5, 0.5), "v1", 0.70, 0.005, [False]),
+            _make_emosa_trajectory(2, (0.1, 0.9), "v2", 0.60, 0.008, [True, False]),
+        ]
+        # step_count=3, num_trajectories=3 → round-robin would pick index 0 by coincidence.
+        # Use step_count=1 to make round-robin pick index 1, but explicit override selects 0.
+        briefing = self._make_emosa_briefing_with_traj_id(
+            trajectories=trajectories, step_count=1, trajectory_id=0
+        )
+
+        assert briefing.trajectory_id == 0
+        assert briefing.weight_vector == (0.9, 0.1)
+        assert briefing.acceptance_history == [True, True, True]
+
+    def test_explicit_trajectory_id_last_slot(self) -> None:
+        """trajectory_id=4 (last) works for K=5."""
+        trajectories = [
+            _make_emosa_trajectory(
+                i, (0.1 * (5 - i), 0.1 * (i + 5)), f"v{i}",
+                0.5 + i * 0.05, 0.001 * (i + 1), [True] * i,
+            )
+            for i in range(5)
+        ]
+        briefing = self._make_emosa_briefing_with_traj_id(
+            trajectories=trajectories, step_count=2, trajectory_id=4
+        )
+
+        assert briefing.trajectory_id == 4
+        assert briefing.weight_vector == (0.1, 0.9)
+        assert briefing.acceptance_history == [True, True, True, True]
+
+    def test_explicit_id_absent_from_trajectories_returns_empty_traj(self) -> None:
+        """trajectory_id not in trajectories list returns safe empty defaults."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
+        ]
+        briefing = self._make_emosa_briefing_with_traj_id(
+            trajectories=trajectories, step_count=1, trajectory_id=99
+        )
+        # Safe fallback: trajectory_id=0 (default from empty dict), empty history, no binding_axis
+        assert briefing.trajectory_id == 0
+        assert briefing.acceptance_history == []
+        assert briefing.binding_axis is None
+
+    def test_none_trajectory_id_uses_round_robin(self) -> None:
+        """Default (trajectory_id=None) preserves round-robin behavior."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
+            _make_emosa_trajectory(1, (0.5, 0.5), "v1", 0.75, 0.003, [False]),
+            _make_emosa_trajectory(2, (0.1, 0.9), "v2", 0.70, 0.004, [True, False]),
+        ]
+        # step_count=2, K=3 → round-robin index = 2 % 3 = 2
+        briefing = self._make_emosa_briefing_with_traj_id(
+            trajectories=trajectories, step_count=2, trajectory_id=None
+        )
+
+        assert briefing.trajectory_id == 2
+        assert briefing.weight_vector == (0.1, 0.9)
+        assert briefing.acceptance_history == [True, False]
+
+    def test_build_review_briefing_threads_trajectory_id(self) -> None:
+        """build_review_briefing(emosa_trajectory_id=3) routes to trajectory 3."""
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        trajectories = [
+            _make_emosa_trajectory(
+                t, ((9 - t) * 0.1, (t + 1) * 0.1), f"sol{t}",
+                0.6 + t * 0.05, 0.001 * (t + 1), [True] * (t % 3 + 1),
+            )
+            for t in range(5)
+        ]
+        pocket = _make_emosa_pocket(trajectories=trajectories, step_count=1)
+        search_state = _make_search_state(
+            round=2,
+            algorithm="emosa",
+            algorithm_state=pocket,
+            elite_set=[],
+        )
+
+        briefing = build_review_briefing(
+            search_state=search_state,
+            score_reports={},
+            historical_reports={},
+            prompt_texts={},
+            directive_history=[],
+            candidate_versions=[],
+            parent_versions={},
+            emosa_trajectory_id=3,
+        )
+
+        assert briefing.trajectory_id == 3
+        assert briefing.weight_vector is not None
+        assert briefing.weight_vector[0] == pytest.approx(0.6)  # (9-3)*0.1=0.6
+        assert briefing.weight_vector[1] == pytest.approx(0.4)  # (3+1)*0.1=0.4
+        assert briefing.acceptance_history == [True]  # 3 % 3 + 1 = 1 → [True]

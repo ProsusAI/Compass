@@ -41,6 +41,7 @@ async def build_review_briefing_tool(
     parent_versions: dict[str, str | None] | None = None,
     report_paths: dict[str, str] | None = None,
     output_dir: str = "outputs",
+    trajectory_id: int | None = None,
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Build a ReviewBriefing for the Review Agent.
 
@@ -63,6 +64,10 @@ async def build_review_briefing_tool(
             Auto-discovered from disk (outputs/<run_id>/eval/<version>/report.json)
             if omitted.
         output_dir: Output directory (default "outputs").
+        trajectory_id: EMOSA only. When provided, populate EMOSA-specific briefing
+            fields (weight_vector, binding_axis, acceptance_history) from this
+            specific trajectory rather than using the default round-robin pick.
+            Pass the trajectory's integer ID (0-indexed). Ignored for non-EMOSA runs.
 
     Returns:
         JSON-serialized ReviewBriefing.
@@ -240,6 +245,7 @@ async def build_review_briefing_tool(
         examples=examples_for_confusion,
         run_dir=out / run_id,
         cell_attempt_history=cell_attempt_history or None,
+        emosa_trajectory_id=trajectory_id,
     )
 
     # Save current round's reports for future historical access

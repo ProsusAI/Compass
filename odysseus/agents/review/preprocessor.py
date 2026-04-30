@@ -1063,6 +1063,7 @@ def enrich_confusion_with_history(
 def _populate_emosa_review_fields(
     search_state: Any,
     elite_set: list[Candidate],
+    trajectory_id: int | None = None,
 ) -> dict[str, Any]:
     """Read EMOSA-specific fields from algorithm_state pocket.
 
@@ -1073,12 +1074,17 @@ def _populate_emosa_review_fields(
     - acceptance_history: list[bool]
     - stagnation_signal: dict with "temperature", "t_min", "review_exit"
 
-    Active trajectory selection rule (round-robin by step_count % K):
+    Active trajectory selection rule:
+    When trajectory_id is provided (per-fork K-way steady-state dispatch),
+    the named trajectory's fields are populated directly.  When trajectory_id
+    is None (default), the legacy round-robin / calibration path is used:
+    - step_count == 0 (calibration): first unseeded trajectory.
+    - step_count > 0 (steady-state fallback): round-robin by step_count % K.
+
     Round-robin pacing matches the typical MOEA/D-style loop where each
-    sub-problem gets equal compute. During calibration (step_count == 0),
-    we must hand the agent a trajectory that's still unseeded; after
-    calibration, round-robin distributes review attention evenly across
-    trajectories regardless of their individual acceptance rates.
+    sub-problem gets equal compute. The explicit trajectory_id override lets
+    K parallel forks each pre-populate their own sub-problem slot without
+    interfering with one another.
     """
     pocket = getattr(search_state, "algorithm_state", {}) or {}
 
@@ -1089,8 +1095,12 @@ def _populate_emosa_review_fields(
     # Pick the active trajectory.
     active_traj: dict[str, Any] = {}
     if num_trajectories > 0:
-        if step_count > 0:
-            # Steady-state: round-robin across K sub-problems.
+        if trajectory_id is not None:
+            # Explicit per-fork override: look up by trajectory_id field.
+            matched = [t for t in trajectories if int(t.get("trajectory_id", -1)) == trajectory_id]
+            active_traj = matched[0] if matched else {}
+        elif step_count > 0:
+            # Steady-state fallback: round-robin across K sub-problems.
             idx = step_count % num_trajectories
             active_traj = trajectories[idx]
         else:
@@ -1098,7 +1108,7 @@ def _populate_emosa_review_fields(
             unseeded = [t for t in trajectories if t.get("current_solution") is None]
             active_traj = unseeded[0] if unseeded else trajectories[0]
 
-    trajectory_id: int = int(active_traj.get("trajectory_id", 0))
+    active_trajectory_id: int = int(active_traj.get("trajectory_id", 0))
     raw_wv = active_traj.get("weight_vector", (0.5, 0.5))
     weight_vector: tuple[float, float] = (float(raw_wv[0]), float(raw_wv[1]))
     acceptance_history: list[bool] = list(active_traj.get("acceptance_history", []))
@@ -1141,7 +1151,7 @@ def _populate_emosa_review_fields(
     }
 
     return {
-        "trajectory_id": trajectory_id,
+        "trajectory_id": active_trajectory_id,
         "weight_vector": weight_vector,
         "binding_axis": binding_axis,
         "acceptance_history": acceptance_history,
@@ -1168,6 +1178,7 @@ def build_review_briefing(
     examples: list[Example] | None = None,
     run_dir: Path | None = None,
     cell_attempt_history: dict[str, list[dict[str, Any]]] | None = None,
+    emosa_trajectory_id: int | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 
@@ -1413,7 +1424,9 @@ def build_review_briefing(
     algorithm = getattr(search_state, "algorithm", "hill_climb")
     emosa_overrides: dict[str, Any] = {}
     if algorithm == "emosa":
-        emosa_overrides = _populate_emosa_review_fields(search_state, elite_set)
+        emosa_overrides = _populate_emosa_review_fields(
+            search_state, elite_set, trajectory_id=emosa_trajectory_id
+        )
 
     briefing = ReviewBriefing(
         round=current_round,
