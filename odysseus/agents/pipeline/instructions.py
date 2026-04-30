@@ -105,7 +105,7 @@ STAGE_4_COLD_START_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review_cold') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
     "build_review_briefing_tool, record_directive_outcomes_tool\n"
     "Your tools: get_pipeline_status only\n\n"

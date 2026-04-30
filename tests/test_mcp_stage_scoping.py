@@ -17,6 +17,7 @@ def mock_ctx() -> Context:
     ctx.session.send_tool_list_changed = AsyncMock()
     return ctx
 
+
 # ---------------------------------------------------------------------------
 # Stage registry structure tests
 # ---------------------------------------------------------------------------
@@ -30,10 +31,25 @@ def test_stage_registry_has_all_stages():
         "data_validation",
         "backend_setup",
         "prompt_building",
+        "review_cold",
         "review",
         "final_report",
     }
     assert set(STAGE_REGISTRY) == expected
+
+
+def test_review_cold_excludes_prompt_and_holdout_tools():
+    """review_cold toolbelt must not include get_prompt_text_tool or query_holdout_examples_tool."""
+    cold_tools = set(STAGE_REGISTRY["review_cold"])
+    assert "get_prompt_text_tool" not in cold_tools
+    assert "query_holdout_examples_tool" not in cold_tools
+
+
+def test_review_steady_includes_prompt_and_holdout_tools():
+    """Steady review toolbelt must include get_prompt_text_tool and query_holdout_examples_tool."""
+    review_tools = set(STAGE_REGISTRY["review"])
+    assert "get_prompt_text_tool" in review_tools
+    assert "query_holdout_examples_tool" in review_tools
 
 
 def test_every_stage_includes_get_pipeline_status():

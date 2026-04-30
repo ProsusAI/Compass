@@ -81,6 +81,12 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "signal_eval_complete_tool",
         "get_pipeline_status",
     ],
+    "review_cold": [
+        "build_review_briefing_tool",
+        "record_directive_outcomes_tool",
+        "get_search_state_tool",
+        "get_pipeline_status",
+    ],
     "review": [
         "build_review_briefing_tool",
         "record_directive_outcomes_tool",

@@ -36,6 +36,7 @@ def _is_build_dispatched(run_id: str, search_dir: Path) -> bool:  # noqa: ARG001
     build_marker = search_dir / "build_dispatched.json"
     return build_marker.exists()
 
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -54,10 +55,18 @@ _STAGES: list[dict[str, Any]] = [
 # Deduplicated tool lists for Stage 4 phases
 # ---------------------------------------------------------------------------
 
+_COLD_REVIEW_TOOLS: list[str] = [
+    "get_search_state_tool",
+    "build_review_briefing_tool",
+    "record_directive_outcomes_tool",
+]
+
 _REVIEW_TOOLS: list[str] = [
     "get_search_state_tool",
     "build_review_briefing_tool",
     "record_directive_outcomes_tool",
+    "get_prompt_text_tool",
+    "query_holdout_examples_tool",
 ]
 
 _BUILD_TOOLS: list[str] = [
@@ -502,9 +511,13 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
 # ---------------------------------------------------------------------------
 
 _VALID_LOOP_PHASES = {
-    "build", "review",
-    "warmup_seed", "warmup_build", "warmup_reduce",
-    "calibration", "build_recovering",
+    "build",
+    "review",
+    "warmup_seed",
+    "warmup_build",
+    "warmup_reduce",
+    "calibration",
+    "build_recovering",
 }
 
 
@@ -531,9 +544,7 @@ def _detect_stage_4_phase(
     search_state_path = search_dir / "search_state.json"
     prompts_dir = run_dir / "prompts"
     has_v1 = prompts_dir.is_dir() and (
-        any(prompts_dir.glob("v1.yaml"))
-        or any(prompts_dir.glob("v1.json"))
-        or any(prompts_dir.glob("v1.txt"))
+        any(prompts_dir.glob("v1.yaml")) or any(prompts_dir.glob("v1.json")) or any(prompts_dir.glob("v1.txt"))
     )
 
     # Phase 1: Cold-start — no directives and no search state
@@ -675,7 +686,7 @@ def _next_action_for_stage_4(
             "Stage 4 — cold-start: spawn the Review Agent to seed the search "
             "with diverse initial hypotheses. "
             "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _REVIEW_TOOLS,
+            _COLD_REVIEW_TOOLS,
             ["odysseus_review_agent_cold_start"],
             STAGE_4_COLD_START_INSTRUCTION,
             algorithm,
@@ -695,7 +706,7 @@ def _next_action_for_stage_4(
         "warmup_seed": (
             "Stage 4 — warmup-seed phase: spawn the Review Agent to seed the population. "
             "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _REVIEW_TOOLS,
+            _COLD_REVIEW_TOOLS,
             ["odysseus_review_agent_cold_start"],
             STAGE_4_COLD_START_INSTRUCTION,
             algorithm,
@@ -705,7 +716,7 @@ def _next_action_for_stage_4(
         "calibration": (
             "Stage 4 — calibration phase: spawn the Review Agent to seed trajectories. "
             "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _REVIEW_TOOLS,
+            _COLD_REVIEW_TOOLS,
             ["odysseus_review_agent_cold_start"],
             STAGE_4_COLD_START_INSTRUCTION,
             algorithm,
