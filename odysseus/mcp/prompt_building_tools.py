@@ -14,6 +14,7 @@ from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
+    advance_round_emosa,
     get_search_state,
     init_search_state,
     record_eval_result,
@@ -330,14 +331,49 @@ def _advance_hill_climb(run_id: str) -> str:
     return summary.model_dump_json(indent=2)
 
 
+def _advance_emosa(run_id: str) -> str:
+    """EMOSA arm of advance_step_tool.
+
+    Dispatches to ``advance_round_emosa`` when ``loop_phase == "calibration"``.
+    Raises :exc:`NotImplementedError` for ``"review"`` and ``"build"`` phases
+    (steady-state advance lands in C4).
+
+    Returns a JSON-serialized RoundSummary and clears the build-dispatch marker.
+    """
+    from odysseus.agents.prompt_builder.search_ops import _default_output_dir, _load_state
+
+    output_dir = _default_output_dir()
+    try:
+        state = _load_state(run_id, output_dir)
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+
+    loop_phase = state.loop_phase
+    try:
+        if loop_phase == "calibration":
+            summary = advance_round_emosa(run_id=run_id)
+        elif loop_phase in ("review", "build"):
+            raise NotImplementedError("EMOSA steady-state lands in C4")
+        else:
+            raise ValueError(f"unsupported loop_phase '{loop_phase}' for emosa")
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise ToolError(str(exc)) from exc
+
+    clear_build_dispatched(run_id)
+    return summary.model_dump_json(indent=2)
+
+
 @mcp.tool()
 async def advance_step_tool(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Advance the search loop by one step.
 
     Dispatches to the strategy-specific advance logic determined by the
-    ``algorithm`` field of the current SearchState.  On this branch only
-    ``"hill_climb"`` is implemented; other algorithms raise NotImplementedError
-    and will be wired in when their feature branches rebase onto main.
+    ``algorithm`` field of the current SearchState.  Both ``"hill_climb"``
+    and ``"emosa"`` are implemented on this branch; ``"beam"`` and
+    ``"sms_emoa"`` still raise NotImplementedError and will be wired when their
+    feature branches land.
 
     Args:
         run_id: Pipeline run identifier.
@@ -353,6 +389,8 @@ async def advance_step_tool(run_id: str) -> str:
     algorithm = state.algorithm
     if algorithm == "hill_climb":
         return _advance_hill_climb(run_id)
+    elif algorithm == "emosa":
+        return _advance_emosa(run_id)
 
     raise NotImplementedError(
         f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch"

@@ -115,6 +115,12 @@ class RoundSummary(BaseModel):
     reduce_case: Literal["singleton", "dominated", "delta_s_argmin"] | None = None
     evicted_version: str | None = None
     temperature: float | None = None
+    # EMOSA-specific optional fields (defaults None — backward-compatible with
+    # hill_climb / beam / sms_emoa consumers that never set these)
+    ideal_point: tuple[float, float] | None = None
+    nadir_point: tuple[float, float] | None = None
+    step_count: int | None = None
+    phase: str | None = None
 
     @model_validator(mode="before")
     @classmethod

@@ -20,6 +20,12 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
+from odysseus.agents.prompt_builder.annealing import (
+    AnnealingState,
+    TrajectoryState,
+    compute_tchebycheff_energy,
+    update_archive,
+)
 from odysseus.agents.prompt_builder.search import (
     Candidate,
     RoundSummary,
@@ -478,6 +484,179 @@ def advance_round(
     _save_pending(run_id, [], output_dir)
 
     return summary
+
+
+# ---------------------------------------------------------------------------
+# EMOSA: advance_round_emosa + _calibration_complete
+# ---------------------------------------------------------------------------
+
+
+def _calibration_complete(
+    run_id: str,
+    state: SearchState,
+    output_dir: Path,
+) -> RoundSummary:
+    """Seed K trajectories from K cold-start scored candidates.
+
+    Called when ``algorithm_state.phase == "calibration"``.  Reads the K
+    scored pending candidates (one per trajectory), computes round-1 ideal /
+    nadir from their quality/cost values, seeds each trajectory's
+    ``current_solution``, ``current_quality``, ``current_cost``, and
+    ``current_energy`` via Tchebycheff scalarization, then:
+
+    - Flips pocket ``phase`` → ``"search"`` and increments ``step_count``.
+    - Adds ``total_evals += K``.
+    - Updates ``ideal_point`` / ``nadir_point`` in the pocket.
+    - Adds scored candidates to the elite set (if not already present).
+    - Sets top-level ``loop_phase`` → ``"review"``.
+    - Persists updated state and clears pending.
+
+    Args:
+        run_id: Run identifier used to locate the state on disk.
+        state: Currently-loaded SearchState (caller has already read it).
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        A :class:`RoundSummary` with EMOSA optional fields populated.
+
+    Raises:
+        ValueError: If pending contains fewer scored candidates than ``num_trajectories``.
+    """
+    pocket = state.algorithm_state
+    annealing = AnnealingState.model_validate(pocket)
+    num_traj = annealing.num_trajectories
+
+    pending = _load_pending(run_id, output_dir)
+    scored = [c for c in pending if c.eval_status in ("complete", None)]
+
+    if len(scored) < num_traj:
+        raise ValueError(
+            f"EMOSA calibration requires {num_traj} scored candidates "
+            f"(num_trajectories={num_traj}), but only {len(scored)} are scored. "
+            f"Ensure all {num_traj} cold-start candidates are evaluated before "
+            f"calling advance_round_emosa."
+        )
+
+    # Use exactly num_traj — the first num_traj scored candidates
+    calibration_scored = scored[:num_traj]
+
+    # Compute round-1 ideal/nadir from the K scored candidates.
+    # ideal = (best_quality, lowest_cost); nadir = (worst_quality, highest_cost)
+    ideal_q = max(c.quality_score for c in calibration_scored)
+    ideal_c = min(c.cost for c in calibration_scored)
+    nadir_q = min(c.quality_score for c in calibration_scored)
+    nadir_c = max(c.cost for c in calibration_scored)
+    new_ideal: tuple[float, float] = (ideal_q, ideal_c)
+    new_nadir: tuple[float, float] = (nadir_q, nadir_c)
+
+    # Seed each trajectory: trajectory i gets calibration_scored[i]
+    updated_trajectories: list[TrajectoryState] = []
+    for traj in annealing.trajectories:
+        idx = traj.trajectory_id
+        cand = calibration_scored[idx]
+        energy = compute_tchebycheff_energy(
+            cand.quality_score,
+            cand.cost,
+            traj.weight_vector,
+            new_ideal,
+            new_nadir,
+        )
+        updated_traj = traj.model_copy(
+            update={
+                "current_solution": cand.prompt_version,
+                "current_quality": cand.quality_score,
+                "current_cost": cand.cost,
+                "current_energy": energy,
+                "acceptance_history": [True],
+            }
+        )
+        updated_trajectories.append(updated_traj)
+
+    # Update elite set: add scored candidates not already present
+    new_elite = list(state.elite_set)
+    for cand in calibration_scored:
+        new_elite, _ = update_archive(new_elite, cand)
+
+    # Update annealing pocket: flip phase, bump step_count and total_evals
+    new_annealing = annealing.model_copy(
+        update={
+            "trajectories": updated_trajectories,
+            "ideal_point": new_ideal,
+            "nadir_point": new_nadir,
+            "phase": "search",
+            "step_count": annealing.step_count + 1,
+            "total_evals": annealing.total_evals + num_traj,
+        }
+    )
+
+    new_round = state.round + 1
+    summary = RoundSummary(
+        round=new_round,
+        candidates_evaluated=[c.prompt_version for c in calibration_scored],
+        new_elite_entries=len(new_elite) - len(state.elite_set),
+        elite_size=len(new_elite),
+        temperature=annealing.temperature,
+        ideal_point=new_ideal,
+        nadir_point=new_nadir,
+        step_count=new_annealing.step_count,
+        phase="search",
+    )
+
+    updated_state = state.model_copy(
+        update={
+            "round": new_round,
+            "elite_set": new_elite,
+            "round_history": [*state.round_history, summary],
+            "algorithm_state": new_annealing.model_dump(),
+            "loop_phase": "review",
+        }
+    )
+    _save_state(run_id, updated_state, output_dir)
+    _try_write_viz(run_id, output_dir)
+
+    # Clear pending candidates
+    _save_pending(run_id, [], output_dir)
+
+    return summary
+
+
+def advance_round_emosa(
+    run_id: str,
+    output_dir: Path | None = None,
+) -> RoundSummary:
+    """Advance the EMOSA search loop by one step.
+
+    Dispatches on the current ``algorithm_state.phase``:
+
+    - ``"calibration"``: seed K trajectories from cold-start scored candidates
+      via :func:`_calibration_complete`.
+    - ``"search"``: raises :exc:`NotImplementedError` (lands in C4).
+
+    Args:
+        run_id: Run identifier used to locate the state on disk.
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        A :class:`RoundSummary` with EMOSA optional fields populated.
+
+    Raises:
+        FileNotFoundError: If the search state does not exist.
+        ValueError: If the phase is unrecognised or preconditions are not met.
+        NotImplementedError: If called with ``phase == "search"`` (C4 work).
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    state = _load_state(run_id, output_dir)
+
+    pocket = state.algorithm_state
+    phase = pocket.get("phase", "calibration")
+
+    if phase == "calibration":
+        return _calibration_complete(run_id, state, output_dir)
+    elif phase == "search":
+        raise NotImplementedError("EMOSA steady-state lands in C4")
+    else:
+        raise ValueError(f"unsupported emosa phase '{phase}'")
 
 
 def _clear_active_evals(run_id: str, output_dir: Path) -> None:
