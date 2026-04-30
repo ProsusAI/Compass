@@ -372,9 +372,7 @@ def advance_round(
 
     # Guard: do not advance while batch evals are still in flight.
     if state.active_evals:
-        raise ValueError(
-            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
-        )
+        raise ValueError(f"Cannot advance round while active_evals is non-empty: {state.active_evals}")
 
     pending = _load_pending(run_id, output_dir)
 
@@ -405,9 +403,7 @@ def advance_round(
         improvement = 0.0
         new_stagnation_count = state.stagnation_count + 1
         round_routing_cost = 0.0
-        new_mutation_mode = (
-            "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
-        )
+        new_mutation_mode = "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
     else:
         # Normal path — use only scored candidates.
         new_front, new_elite_entries = update_pareto_front(state.elite_set, scored)
@@ -683,9 +679,7 @@ def _advance_emosa_search(
         ValueError: If active_evals is non-empty or no pending candidates.
     """
     if state.active_evals:
-        raise ValueError(
-            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
-        )
+        raise ValueError(f"Cannot advance round while active_evals is non-empty: {state.active_evals}")
 
     sa_state = AnnealingState.model_validate(state.algorithm_state)
 
@@ -807,40 +801,51 @@ def _advance_emosa_search(
 
         updated_trajectories.append(updated_traj)
 
-    # EMOSA neighborhood replacement: for each accepted child, replace neighbor
-    # trajectories if the child scalarizes better under the neighbor's weight vector.
+    # EMOSA neighborhood replacement: every generated child is offered to its
+    # originating trajectory's neighborhood, regardless of whether the originator's
+    # Metropolis accepted it. Originators are excluded from the replacement target
+    # set so the SA decision is not overridden on the trajectory that made the
+    # child. Reference: Li & Landa-Silva 2011 (canonical EMOSA / MOEA/D-SA).
     weight_vectors = [t.weight_vector for t in refreshed_trajectories]
     traj_by_id = {
         t.trajectory_id: updated_traj
         for t, updated_traj in zip(refreshed_trajectories, updated_trajectories, strict=True)
     }
 
-    for orig_traj, updated_traj in zip(refreshed_trajectories, list(updated_trajectories), strict=True):
-        accepted_solution = updated_traj.current_solution
-        if accepted_solution is None or accepted_solution == orig_traj.current_solution:
+    # Map parent_version -> list of trajectory IDs whose pre-update current is
+    # that parent. List, not single value, because multiple trajectories may
+    # share a current_solution (e.g. T0/T1/T2 converged on the same v).
+    parent_to_origins: dict[str, list[int]] = {}
+    for traj in refreshed_trajectories:
+        if traj.current_solution is not None:
+            parent_to_origins.setdefault(traj.current_solution, []).append(traj.trajectory_id)
+
+    for cand in scored_pending:
+        if cand.parent_version is None:
             continue
-        # Find the accepted candidate object
-        accepted_cand = next((c for c in scored_pending if c.prompt_version == accepted_solution), None)
-        if accepted_cand is None:
-            continue
-        neighbors = compute_neighborhood(orig_traj.trajectory_id, sa_state.neighborhood_size, weight_vectors)
-        for nbr_id in neighbors:
-            nbr_traj = traj_by_id[nbr_id]
-            child_energy_under_nbr = compute_tchebycheff_energy(
-                accepted_cand.quality_score,
-                accepted_cand.cost,
-                nbr_traj.weight_vector,
+        origins = parent_to_origins.get(cand.parent_version, [])
+        if not origins:
+            continue  # unmatched (calibration leftover) — skip
+        nbr_ids: set[int] = set()
+        for orig_id in origins:
+            nbr_ids.update(compute_neighborhood(orig_id, sa_state.neighborhood_size, weight_vectors))
+        nbr_ids -= set(origins)  # don't override Metropolis on the originators
+        for nbr_id in nbr_ids:
+            nbr = traj_by_id[nbr_id]
+            e_nbr = compute_tchebycheff_energy(
+                cand.quality_score,
+                cand.cost,
+                nbr.weight_vector,
                 new_ideal,
                 new_nadir,
             )
-            updated_nbr = replace_if_better(
-                nbr_traj,
-                child_energy_under_nbr,
-                accepted_solution,
-                accepted_cand.quality_score,
-                accepted_cand.cost,
+            traj_by_id[nbr_id] = replace_if_better(
+                nbr,
+                e_nbr,
+                cand.prompt_version,
+                cand.quality_score,
+                cand.cost,
             )
-            traj_by_id[nbr_id] = updated_nbr
 
     updated_trajectories = [traj_by_id[t.trajectory_id] for t in refreshed_trajectories]
 
@@ -1003,9 +1008,13 @@ def _clear_active_evals(run_id: str, output_dir: Path) -> None:
 def set_loop_phase(
     run_id: str,
     phase: Literal[
-        "build", "review",
-        "warmup_seed", "warmup_build", "warmup_reduce",
-        "calibration", "build_recovering",
+        "build",
+        "review",
+        "warmup_seed",
+        "warmup_build",
+        "warmup_reduce",
+        "calibration",
+        "build_recovering",
     ],
     output_dir: Path | None = None,
 ) -> None:

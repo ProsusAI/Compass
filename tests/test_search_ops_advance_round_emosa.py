@@ -287,7 +287,7 @@ class TestAdvanceRoundEmosaSearch:
                 prompt_version="child_v2",
                 parent_version="seed_v0",
                 quality_score=0.88,  # Best quality
-                cost=0.02,           # Best cost
+                cost=0.02,  # Best cost
                 round_introduced=2,
                 eval_status="complete",
             ),
@@ -320,9 +320,7 @@ class TestAdvanceRoundEmosaSearch:
         new_nadir_point = (new_nadir_q, new_nadir_c)
 
         energies = {
-            c.prompt_version: compute_tchebycheff_energy(
-                c.quality_score, c.cost, wv, new_ideal_point, new_nadir_point
-            )
+            c.prompt_version: compute_tchebycheff_energy(c.quality_score, c.cost, wv, new_ideal_point, new_nadir_point)
             for c in children
         }
         best_version = min(energies, key=lambda k: energies[k])
@@ -373,7 +371,7 @@ class TestAdvanceRoundEmosaSearch:
             prompt_version="child_v1",
             parent_version="seed_v0",
             quality_score=0.90,  # Much better quality
-            cost=0.02,           # Much lower cost
+            cost=0.02,  # Much lower cost
             round_introduced=2,
             eval_status="complete",
         )
@@ -406,15 +404,17 @@ class TestAdvanceRoundEmosaSearch:
             q = 0.7 - i * 0.03
             c = 0.05 + i * 0.01
             e = compute_tchebycheff_energy(q, c, weight_vectors[i], ideal, nadir)
-            trajectories.append(TrajectoryState(
-                trajectory_id=i,
-                weight_vector=weight_vectors[i],
-                current_solution=f"seed_v{i}",
-                current_quality=q,
-                current_cost=c,
-                current_energy=e,
-                acceptance_history=[True],
-            ))
+            trajectories.append(
+                TrajectoryState(
+                    trajectory_id=i,
+                    weight_vector=weight_vectors[i],
+                    current_solution=f"seed_v{i}",
+                    current_quality=q,
+                    current_cost=c,
+                    current_energy=e,
+                    acceptance_history=[True],
+                )
+            )
 
         annealing = AnnealingState(
             temperature=100.0,  # Very high T -> near-always accept
@@ -465,10 +465,236 @@ class TestAdvanceRoundEmosaSearch:
         # child_v1 (0.92, 0.01) is highly dominant — should replace all neighbors
         neighbor_ids = {1, 2, 3, 4}
         replaced = [
-            t for t in pocket.trajectories
-            if t.trajectory_id in neighbor_ids and t.current_solution == "child_v1"
+            t for t in pocket.trajectories if t.trajectory_id in neighbor_ids and t.current_solution == "child_v1"
         ]
         assert len(replaced) > 0, "Expected at least one neighbor to be replaced"
+
+    def test_neighborhood_replacement_propagates_rejected_child(self, tmp_path: Path) -> None:
+        """Neighborhood replacement fires even when the originator's Metropolis rejected the child.
+
+        T0 weight (0.9, 0.1) — quality-heavy.
+        T1 weight (0.1, 0.9) — cost-heavy.
+        ideal=(1.0, 0.0), nadir=(0.0, 1.0) — full unit range for simple energy arithmetic.
+
+        Child generated from T0's current (q=0.95, c=0.5):
+          - energy under T0: max(0.9*0.05, 0.1*0.5) = 0.05  (T0 current is already 0.05 — same; child
+            at q=0.6,c=0.05: energy = max(0.9*0.4, 0.1*0.05) = max(0.36, 0.005) = 0.36 — WORSE)
+          - energy under T1: max(0.1*0.4, 0.9*0.05) = max(0.04, 0.045) = 0.045 — BETTER than T1 current
+
+        Temperature = 0.001 -> Metropolis rejects Δ=0.31 on T0 deterministically.
+        neighborhood_size=1: T1 is in T0's neighborhood (only 2 trajectories).
+
+        Expected: T0 unchanged (Metropolis rejected), T1 == child (neighborhood replacement fired).
+        """
+        import random
+
+        random.seed(0)
+
+        run_id = "emosa-nbr-rejected-child"
+        ideal: tuple[float, float] = (1.0, 0.0)
+        nadir: tuple[float, float] = (0.0, 1.0)
+
+        # T0: quality-heavy weight
+        # T0 current: q=0.95, c=0.5  -> energy = max(0.9*(1-0.95), 0.1*0.5) = max(0.045, 0.05) = 0.05
+        e_t0 = compute_tchebycheff_energy(0.95, 0.5, (0.9, 0.1), ideal, nadir)
+        # T1: cost-heavy weight
+        # T1 current: q=0.6, c=0.1   -> energy = max(0.1*(1-0.6), 0.9*0.1) = max(0.04, 0.09) = 0.09
+        e_t1 = compute_tchebycheff_energy(0.6, 0.1, (0.1, 0.9), ideal, nadir)
+
+        trajectories = [
+            TrajectoryState(
+                trajectory_id=0,
+                weight_vector=(0.9, 0.1),
+                current_solution="seed_t0",
+                current_quality=0.95,
+                current_cost=0.5,
+                current_energy=e_t0,
+                acceptance_history=[True],
+            ),
+            TrajectoryState(
+                trajectory_id=1,
+                weight_vector=(0.1, 0.9),
+                current_solution="seed_t1",
+                current_quality=0.6,
+                current_cost=0.1,
+                current_energy=e_t1,
+                acceptance_history=[True],
+            ),
+        ]
+
+        annealing = AnnealingState(
+            temperature=0.001,  # Very low T -> Metropolis deterministically rejects worsening moves
+            alpha=0.95,
+            t_min=0.0001,
+            num_trajectories=2,
+            trajectories=trajectories,
+            phase="search",
+            step_count=1,
+            total_evals=2,
+            ideal_point=ideal,
+            nadir_point=nadir,
+            neighborhood_size=1,
+        )
+        init_search_state(
+            backend="test",
+            run_id=run_id,
+            output_dir=tmp_path,
+            algorithm="emosa",
+            algorithm_state=json.loads(annealing.model_dump_json()),
+        )
+
+        # Child from T0's seed:
+        # q=0.6, c=0.05
+        # energy under T0 = max(0.9*0.4, 0.1*0.05) = max(0.36, 0.005) = 0.36 >> T0 current 0.05 -> REJECTED
+        # energy under T1 = max(0.1*0.4, 0.9*0.05) = max(0.04, 0.045) = 0.045 < T1 current 0.09 -> BETTER
+        child = Candidate(
+            prompt_version="child_cost_lean",
+            parent_version="seed_t0",
+            quality_score=0.6,
+            cost=0.05,
+            round_introduced=2,
+            eval_status="complete",
+        )
+        _save_pending(run_id, [child], tmp_path)
+
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        updated = get_search_state(run_id, output_dir=tmp_path)
+        pocket = AnnealingState.model_validate(updated.algorithm_state)
+
+        traj0 = next(t for t in pocket.trajectories if t.trajectory_id == 0)
+        traj1 = next(t for t in pocket.trajectories if t.trajectory_id == 1)
+
+        # T0 Metropolis rejected the worsening child — current unchanged
+        assert traj0.current_solution == "seed_t0", (
+            f"T0 should stay at seed_t0 (Metropolis rejected), got {traj0.current_solution}"
+        )
+        # T1 received the child via neighborhood replacement despite T0's rejection
+        assert traj1.current_solution == "child_cost_lean", (
+            f"T1 should adopt child_cost_lean via neighborhood replacement, got {traj1.current_solution}"
+        )
+
+    def test_neighborhood_replacement_shared_current(self, tmp_path: Path) -> None:
+        """Neighborhood replacement propagates via union of all co-originating trajectories.
+
+        T0 weight (0.9, 0.1), T1 weight (0.7, 0.3), T2 weight (0.1, 0.9).
+        T0 and T1 share the same current_solution ("shared_v"), T2 has "t2_v".
+        neighborhood_size=2: each trajectory's neighborhood includes both others.
+
+        Child generated from "shared_v":
+          - Worse under T0's weight -> Metropolis rejects (low T)
+          - Worse under T1's weight -> Metropolis rejects (low T)
+          - Better under T2's weight -> neighborhood replacement fires
+
+        After advance_round_emosa:
+          - T0 unchanged (in origins, excluded from nbr_ids)
+          - T1 unchanged (in origins, excluded from nbr_ids)
+          - T2 == child (received via neighborhood replacement)
+        """
+        import random
+
+        random.seed(0)
+
+        run_id = "emosa-nbr-shared-current"
+        ideal: tuple[float, float] = (1.0, 0.0)
+        nadir: tuple[float, float] = (0.0, 1.0)
+
+        # Shared current: q=0.85, c=0.3
+        # Energy under T0 (0.9, 0.1): max(0.9*0.15, 0.1*0.3) = max(0.135, 0.03) = 0.135
+        # Energy under T1 (0.7, 0.3): max(0.7*0.15, 0.3*0.3) = max(0.105, 0.09) = 0.105
+        e_shared_t0 = compute_tchebycheff_energy(0.85, 0.3, (0.9, 0.1), ideal, nadir)
+        e_shared_t1 = compute_tchebycheff_energy(0.85, 0.3, (0.7, 0.3), ideal, nadir)
+
+        # T2 current: q=0.4, c=0.8
+        # Energy under T2 (0.1, 0.9): max(0.1*0.6, 0.9*0.8) = max(0.06, 0.72) = 0.72
+        e_t2 = compute_tchebycheff_energy(0.4, 0.8, (0.1, 0.9), ideal, nadir)
+
+        trajectories = [
+            TrajectoryState(
+                trajectory_id=0,
+                weight_vector=(0.9, 0.1),
+                current_solution="shared_v",
+                current_quality=0.85,
+                current_cost=0.3,
+                current_energy=e_shared_t0,
+                acceptance_history=[True],
+            ),
+            TrajectoryState(
+                trajectory_id=1,
+                weight_vector=(0.7, 0.3),
+                current_solution="shared_v",
+                current_quality=0.85,
+                current_cost=0.3,
+                current_energy=e_shared_t1,
+                acceptance_history=[True],
+            ),
+            TrajectoryState(
+                trajectory_id=2,
+                weight_vector=(0.1, 0.9),
+                current_solution="t2_v",
+                current_quality=0.4,
+                current_cost=0.8,
+                current_energy=e_t2,
+                acceptance_history=[True],
+            ),
+        ]
+
+        annealing = AnnealingState(
+            temperature=0.001,  # Very low T -> Metropolis deterministically rejects worsening moves
+            alpha=0.95,
+            t_min=0.0001,
+            num_trajectories=3,
+            trajectories=trajectories,
+            phase="search",
+            step_count=1,
+            total_evals=3,
+            ideal_point=ideal,
+            nadir_point=nadir,
+            neighborhood_size=2,  # Each trajectory's neighborhood = both others
+        )
+        init_search_state(
+            backend="test",
+            run_id=run_id,
+            output_dir=tmp_path,
+            algorithm="emosa",
+            algorithm_state=json.loads(annealing.model_dump_json()),
+        )
+
+        # Child from shared_v:
+        # q=0.3, c=0.05  (strongly cost-leaning)
+        # Energy under T0 (0.9, 0.1): max(0.9*0.7, 0.1*0.05) = max(0.63, 0.005) = 0.63 >> 0.135 -> WORSE
+        # Energy under T1 (0.7, 0.3): max(0.7*0.7, 0.3*0.05) = max(0.49, 0.015) = 0.49 >> 0.105 -> WORSE
+        # Energy under T2 (0.1, 0.9): max(0.1*0.7, 0.9*0.05) = max(0.07, 0.045) = 0.07 << 0.72 -> BETTER
+        child = Candidate(
+            prompt_version="child_ultra_cheap",
+            parent_version="shared_v",
+            quality_score=0.3,
+            cost=0.05,
+            round_introduced=2,
+            eval_status="complete",
+        )
+        _save_pending(run_id, [child], tmp_path)
+
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        updated = get_search_state(run_id, output_dir=tmp_path)
+        pocket = AnnealingState.model_validate(updated.algorithm_state)
+
+        traj0 = next(t for t in pocket.trajectories if t.trajectory_id == 0)
+        traj1 = next(t for t in pocket.trajectories if t.trajectory_id == 1)
+        traj2 = next(t for t in pocket.trajectories if t.trajectory_id == 2)
+
+        # T0 and T1 are originators — Metropolis rejected and they are excluded from nbr_ids
+        assert traj0.current_solution == "shared_v", (
+            f"T0 should remain at shared_v (originator, excluded), got {traj0.current_solution}"
+        )
+        assert traj1.current_solution == "shared_v", (
+            f"T1 should remain at shared_v (originator, excluded), got {traj1.current_solution}"
+        )
+        # T2 is in both T0's and T1's neighborhoods; child is better under T2's weight
+        assert traj2.current_solution == "child_ultra_cheap", (
+            f"T2 should adopt child_ultra_cheap via neighborhood replacement, got {traj2.current_solution}"
+        )
 
     def test_convergence_temperature_floor(self, tmp_path: Path) -> None:
         """Convergence via temperature_floor when T * alpha < t_min."""
@@ -478,7 +704,8 @@ class TestAdvanceRoundEmosaSearch:
         temperature = 0.19  # After one step: 0.19 * 0.5 = 0.095 < t_min=0.1
 
         _make_emosa_search_state(
-            tmp_path, run_id,
+            tmp_path,
+            run_id,
             num_trajectories=1,
             temperature=temperature,
             alpha=alpha,
@@ -501,9 +728,7 @@ class TestAdvanceRoundEmosaSearch:
         assert summary.convergence_reason == "temperature_floor"
         assert summary.phase == "converged"
 
-        pocket = AnnealingState.model_validate(
-            get_search_state(run_id, output_dir=tmp_path).algorithm_state
-        )
+        pocket = AnnealingState.model_validate(get_search_state(run_id, output_dir=tmp_path).algorithm_state)
         assert pocket.phase == "converged"
 
     def test_convergence_eval_budget(self, tmp_path: Path) -> None:
@@ -512,7 +737,8 @@ class TestAdvanceRoundEmosaSearch:
         max_evals = 6
 
         _make_emosa_search_state(
-            tmp_path, run_id,
+            tmp_path,
+            run_id,
             num_trajectories=1,
             max_evals=max_evals,
             total_evals=5,  # After adding 1 scored child: 5+1=6 >= max_evals
@@ -538,7 +764,8 @@ class TestAdvanceRoundEmosaSearch:
         run_id = "emosa-ss-conv-exit"
 
         _make_emosa_search_state(
-            tmp_path, run_id,
+            tmp_path,
+            run_id,
             num_trajectories=1,
         )
 
@@ -628,7 +855,8 @@ class TestAdvanceRoundEmosaSearch:
         run_id = "emosa-ss-counters"
 
         _make_emosa_search_state(
-            tmp_path, run_id,
+            tmp_path,
+            run_id,
             num_trajectories=2,
             step_count=3,
             total_evals=10,
@@ -656,9 +884,7 @@ class TestAdvanceRoundEmosaSearch:
 
         advance_round_emosa(run_id=run_id, output_dir=tmp_path)
 
-        pocket = AnnealingState.model_validate(
-            get_search_state(run_id, output_dir=tmp_path).algorithm_state
-        )
+        pocket = AnnealingState.model_validate(get_search_state(run_id, output_dir=tmp_path).algorithm_state)
         assert pocket.step_count == 4
         assert pocket.total_evals == 12  # 10 + 2 scored children
 
@@ -669,7 +895,8 @@ class TestAdvanceRoundEmosaSearch:
         alpha = 0.9
 
         _make_emosa_search_state(
-            tmp_path, run_id,
+            tmp_path,
+            run_id,
             num_trajectories=1,
             temperature=initial_temp,
             alpha=alpha,
@@ -689,9 +916,7 @@ class TestAdvanceRoundEmosaSearch:
 
         assert summary.temperature == pytest.approx(initial_temp * alpha)
 
-        pocket = AnnealingState.model_validate(
-            get_search_state(run_id, output_dir=tmp_path).algorithm_state
-        )
+        pocket = AnnealingState.model_validate(get_search_state(run_id, output_dir=tmp_path).algorithm_state)
         assert pocket.temperature == pytest.approx(initial_temp * alpha)
 
     def test_acceptance_rates_populated(self, tmp_path: Path) -> None:
@@ -699,7 +924,8 @@ class TestAdvanceRoundEmosaSearch:
         run_id = "emosa-ss-acc-rates"
 
         _make_emosa_search_state(
-            tmp_path, run_id,
+            tmp_path,
+            run_id,
             num_trajectories=2,
         )
 
@@ -735,7 +961,8 @@ class TestAdvanceRoundEmosaSearch:
         run_id = "emosa-ss-archive"
 
         state = _make_emosa_search_state(
-            tmp_path, run_id,
+            tmp_path,
+            run_id,
             num_trajectories=1,
         )
         # Elite set starts empty
