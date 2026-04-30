@@ -11,7 +11,7 @@ MCP server package. Thin adapter layer — each tool delegates to an agent modul
 | [`input_report_tools.py`](input_report_tools.py) | `submit_input_report` |
 | [`data_validation_tools.py`](data_validation_tools.py) | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context` |
 | [`backend_setup_tools.py`](backend_setup_tools.py) | `get_default_pricing` |
-| [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool` |
+| [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_child_variants_tool`, `get_edit_directives_tool` |
 | [`review_tools.py`](review_tools.py) | `build_review_briefing_tool`, `record_directive_outcomes_tool` |
 | [`final_report_tools.py`](final_report_tools.py) | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report` |
 | [`resources.py`](resources.py) | MCP resource definitions (`odysseus://agents/...`, `odysseus://backends/...`) |
@@ -34,7 +34,7 @@ The orchestrator controls scoping via two tools:
 | `input_report` | `submit_input_report`, `get_pipeline_status` | |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_pipeline_status` | |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` | |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_pipeline_status` | |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `get_child_variants_tool`, `save_prompt_tool`, `get_pipeline_status` | |
 | `review_cold` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `get_pipeline_status` | No `get_prompt_text_tool` / `query_holdout_examples_tool` — cold sub-agents have no candidate to inspect |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` | Steady-review toolbelt; sub-agents call `record_directive_outcomes_tool` (single-slot for hill-climb/beam/SMS-EMOA; pass `trajectory_id=<N>` for EMOSA K-way fanout) |
 | `calibration` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `init_search_state_tool`, `register_candidate_tool`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `save_prompt_tool`, `get_edit_directives_tool`, `signal_eval_complete_tool`, `get_pipeline_status` | EMOSA-only — K-seed calibration phase; no `get_prompt_text_tool` / `query_holdout_examples_tool` |
