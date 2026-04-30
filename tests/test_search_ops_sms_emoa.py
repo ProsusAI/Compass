@@ -71,24 +71,35 @@ def _init_sms_emoa_state(
     stagnation_window: int = 5,
     reference_delta: float = 0.05,
 ) -> SearchState:
-    """Init a SearchState with algorithm=sms_emoa and minimal pocket."""
-    return init_search_state(
+    """Init a SearchState with algorithm=sms_emoa and a fully specified pocket.
+
+    init_search_state now uses branch constants (_BRANCH_ALGORITHM="sms_emoa",
+    _BRANCH_ALGORITHM_STATE={"mu": 8}). We overwrite algorithm_state here with
+    full test-controlled pocket values (custom mu, evaluation_budget, etc.).
+    """
+    state = init_search_state(
         backend="anthropic",
         run_id=run_id,
         output_dir=tmp_path,
-        algorithm="sms_emoa",
-        algorithm_state={
-            "mu": mu,
-            "evaluation_budget": evaluation_budget,
-            "evaluations_used": 0,
-            "stagnation_window": stagnation_window,
-            "reference_delta": reference_delta,
-            "warm_up_complete": False,
-            "population": [],
-            "hypervolume_history": [],
-            "iteration": 0,
-        },
     )
+    # Overwrite algorithm_state with test-controlled values
+    updated = state.model_copy(
+        update={
+            "algorithm_state": {
+                "mu": mu,
+                "evaluation_budget": evaluation_budget,
+                "evaluations_used": 0,
+                "stagnation_window": stagnation_window,
+                "reference_delta": reference_delta,
+                "warm_up_complete": False,
+                "population": [],
+                "hypervolume_history": [],
+                "iteration": 0,
+            }
+        }
+    )
+    _save_state(run_id, updated, tmp_path)
+    return updated
 
 
 def _seed_warmup_population(
@@ -125,11 +136,15 @@ class TestAdvanceWarmupBatch:
         run_id = "wb_popsize"
         mu = 3
         _init_sms_emoa_state(run_id, tmp_path, mu=mu)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.90, 0.10),
-            ("v2", 0.70, 0.20),
-            ("v3", 0.60, 0.30),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.90, 0.10),
+                ("v2", 0.70, 0.20),
+                ("v3", 0.60, 0.30),
+            ],
+        )
         state, summary = _complete_warmup(run_id, tmp_path, mu=mu)
         population = [Candidate.model_validate(c) for c in state.algorithm_state["population"]]
         assert len(population) == mu
@@ -138,10 +153,14 @@ class TestAdvanceWarmupBatch:
         """algorithm_state['warm_up_complete'] must be True after warmup."""
         run_id = "wb_flag"
         _init_sms_emoa_state(run_id, tmp_path, mu=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.15),
-            ("v2", 0.65, 0.25),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.15),
+                ("v2", 0.65, 0.25),
+            ],
+        )
         state, _ = _complete_warmup(run_id, tmp_path)
         assert state.algorithm_state["warm_up_complete"] is True
 
@@ -149,10 +168,14 @@ class TestAdvanceWarmupBatch:
         """hypervolume_history must have exactly one entry after warmup."""
         run_id = "wb_hv"
         _init_sms_emoa_state(run_id, tmp_path, mu=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.10),
-            ("v2", 0.65, 0.20),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.10),
+                ("v2", 0.65, 0.20),
+            ],
+        )
         state, summary = _complete_warmup(run_id, tmp_path)
         hv_history = state.algorithm_state["hypervolume_history"]
         assert len(hv_history) == 1
@@ -162,10 +185,14 @@ class TestAdvanceWarmupBatch:
         """iteration counter must remain 0 after warmup (no iterations consumed)."""
         run_id = "wb_iter"
         _init_sms_emoa_state(run_id, tmp_path, mu=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.10),
-            ("v2", 0.65, 0.20),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.10),
+                ("v2", 0.65, 0.20),
+            ],
+        )
         state, _ = _complete_warmup(run_id, tmp_path)
         assert state.algorithm_state["iteration"] == 0
 
@@ -174,11 +201,15 @@ class TestAdvanceWarmupBatch:
         run_id = "wb_evals"
         mu = 3
         _init_sms_emoa_state(run_id, tmp_path, mu=mu)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.10),
-            ("v2", 0.65, 0.20),
-            ("v3", 0.50, 0.30),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.10),
+                ("v2", 0.65, 0.20),
+                ("v3", 0.50, 0.30),
+            ],
+        )
         state, _ = _complete_warmup(run_id, tmp_path)
         assert state.algorithm_state["evaluations_used"] == 3
 
@@ -186,10 +217,14 @@ class TestAdvanceWarmupBatch:
         """pending_candidates.json must be empty after warmup."""
         run_id = "wb_pending"
         _init_sms_emoa_state(run_id, tmp_path, mu=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.10),
-            ("v2", 0.65, 0.20),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.10),
+                ("v2", 0.65, 0.20),
+            ],
+        )
         advance_warmup_batch(run_id, output_dir=tmp_path)
         pending = _load_pending(run_id, tmp_path)
         assert pending == []
@@ -198,10 +233,14 @@ class TestAdvanceWarmupBatch:
         """RoundSummary.reduce_case must be 'warmup'."""
         run_id = "wb_rc"
         _init_sms_emoa_state(run_id, tmp_path, mu=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.10),
-            ("v2", 0.65, 0.20),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.10),
+                ("v2", 0.65, 0.20),
+            ],
+        )
         _, summary = _complete_warmup(run_id, tmp_path)
         assert summary.reduce_case == "warmup"
         assert summary.terminated is False
@@ -210,10 +249,14 @@ class TestAdvanceWarmupBatch:
         """RoundSummary.round must increment by 1."""
         run_id = "wb_round"
         _init_sms_emoa_state(run_id, tmp_path, mu=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.10),
-            ("v2", 0.65, 0.20),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.10),
+                ("v2", 0.65, 0.20),
+            ],
+        )
         _, summary = _complete_warmup(run_id, tmp_path)
         assert summary.round == 1
 
@@ -221,10 +264,14 @@ class TestAdvanceWarmupBatch:
         """advance_warmup_batch raises ValueError if warm_up_complete is True."""
         run_id = "wb_dup"
         _init_sms_emoa_state(run_id, tmp_path, mu=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.10),
-            ("v2", 0.65, 0.20),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.10),
+                ("v2", 0.65, 0.20),
+            ],
+        )
         advance_warmup_batch(run_id, output_dir=tmp_path)
         with pytest.raises(ValueError, match="warm_up_complete"):
             advance_warmup_batch(run_id, output_dir=tmp_path)
@@ -259,7 +306,8 @@ def _setup_post_warmup_state(
         ("v3", 0.50, 0.30),
     ]
     _init_sms_emoa_state(
-        run_id, tmp_path,
+        run_id,
+        tmp_path,
         mu=mu,
         evaluation_budget=evaluation_budget,
         stagnation_window=stagnation_window,
@@ -368,16 +416,21 @@ class TestAdvanceRoundSmsBudgetTermination:
         run_id = "budget_term"
         # Set budget very low so first iteration hits it
         _init_sms_emoa_state(
-            run_id, tmp_path,
+            run_id,
+            tmp_path,
             mu=3,
             evaluation_budget=5,  # budget = 5
         )
         # Warmup uses 3 evals, leaving budget=5 with evaluations_used=3
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.90, 0.10),
-            ("v2", 0.70, 0.20),
-            ("v3", 0.50, 0.30),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.90, 0.10),
+                ("v2", 0.70, 0.20),
+                ("v3", 0.50, 0.30),
+            ],
+        )
         advance_warmup_batch(run_id, output_dir=tmp_path)
 
         # Now inject evaluations_used = 5 (= budget) into the pocket
@@ -398,10 +451,14 @@ class TestAdvanceRoundSmsBudgetTermination:
         """loop_phase must be 'build' when terminated (mirrors hill_climb converged logic)."""
         run_id = "budget_phase"
         _init_sms_emoa_state(run_id, tmp_path, mu=2, evaluation_budget=2)
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.90, 0.10),
-            ("v2", 0.70, 0.20),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.90, 0.10),
+                ("v2", 0.70, 0.20),
+            ],
+        )
         advance_warmup_batch(run_id, output_dir=tmp_path)
 
         # Force budget exhausted
@@ -460,16 +517,21 @@ class TestAdvanceRoundSmsPlateau:
         run_id = "plateau_int"
         # stagnation_window=1 means the window is [new_hv] — max-min=0 < any epsilon
         _init_sms_emoa_state(
-            run_id, tmp_path,
+            run_id,
+            tmp_path,
             mu=2,
             evaluation_budget=100,
             stagnation_window=1,
             reference_delta=0.05,
         )
-        _seed_warmup_population(run_id, tmp_path, [
-            ("v1", 0.80, 0.15),
-            ("v2", 0.65, 0.25),
-        ])
+        _seed_warmup_population(
+            run_id,
+            tmp_path,
+            [
+                ("v1", 0.80, 0.15),
+                ("v2", 0.65, 0.25),
+            ],
+        )
         advance_warmup_batch(run_id, output_dir=tmp_path)
 
         register_candidate(run_id, "c1", parent_version="v1", output_dir=tmp_path)
@@ -504,10 +566,14 @@ class TestAdvanceSmsEmoaDispatch:
         out = self._out(tmp_path)
         with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
             _init_sms_emoa_state(run_id, out, mu=2)
-            _seed_warmup_population(run_id, out, [
-                ("v1", 0.80, 0.10),
-                ("v2", 0.65, 0.20),
-            ])
+            _seed_warmup_population(
+                run_id,
+                out,
+                [
+                    ("v1", 0.80, 0.10),
+                    ("v2", 0.65, 0.20),
+                ],
+            )
             # Set loop_phase to warmup_reduce
             state = get_search_state(run_id, output_dir=out)
             updated = state.model_copy(update={"loop_phase": "warmup_reduce"})
@@ -607,37 +673,50 @@ class TestAdvanceStepToolSmsEmoa:
             analysis_dir.mkdir(parents=True, exist_ok=True)
             (analysis_dir / "dev.jsonl").write_text("")
 
+            # init_search_state_tool now uses branch constants (sms_emoa, {"mu": 8}).
+            # Overwrite algorithm_state with test-controlled values afterwards.
             await init_search_state_tool(
                 ctx=None,
                 run_id=run_id,
                 backend="test",
-                algorithm="sms_emoa",
-                algorithm_state={
-                    "mu": 2,
-                    "evaluation_budget": 50,
-                    "warm_up_complete": False,
-                    "population": [],
-                    "hypervolume_history": [],
-                    "iteration": 0,
-                    "evaluations_used": 0,
-                    "stagnation_window": 5,
-                    "reference_delta": 0.05,
-                },
             )
 
             # init_search_state_tool writes to project_dir / "outputs" = tmp_path / "outputs"
             out = tmp_path / "outputs"
 
+            # Overwrite algorithm_state with test-specific values (mu=2)
+            state = get_search_state(run_id, output_dir=out)
+            updated = state.model_copy(
+                update={
+                    "algorithm_state": {
+                        "mu": 2,
+                        "evaluation_budget": 50,
+                        "warm_up_complete": False,
+                        "population": [],
+                        "hypervolume_history": [],
+                        "iteration": 0,
+                        "evaluations_used": 0,
+                        "stagnation_window": 5,
+                        "reference_delta": 0.05,
+                    }
+                }
+            )
+            _save_state(run_id, updated, out)
+
             # Seed the warmup pending
-            _seed_warmup_population(run_id, out, [
-                ("v1", 0.80, 0.10),
-                ("v2", 0.65, 0.20),
-            ])
+            _seed_warmup_population(
+                run_id,
+                out,
+                [
+                    ("v1", 0.80, 0.10),
+                    ("v2", 0.65, 0.20),
+                ],
+            )
 
             # Set loop_phase to warmup_reduce
             state = get_search_state(run_id, output_dir=out)
-            updated = state.model_copy(update={"loop_phase": "warmup_reduce"})
-            _save_state(run_id, updated, out)
+            updated2 = state.model_copy(update={"loop_phase": "warmup_reduce"})
+            _save_state(run_id, updated2, out)
 
             result_json = await advance_step_tool(run_id)
             result = json.loads(result_json)
@@ -662,33 +741,46 @@ class TestAdvanceStepToolSmsEmoa:
             analysis_dir.mkdir(parents=True, exist_ok=True)
             (analysis_dir / "dev.jsonl").write_text("")
 
+            # init_search_state_tool now uses branch constants (sms_emoa, {"mu": 8}).
             await init_search_state_tool(
                 ctx=None,
                 run_id=run_id,
                 backend="test",
-                algorithm="sms_emoa",
-                algorithm_state={
-                    "mu": 2,
-                    "evaluation_budget": 50,
-                    "warm_up_complete": False,
-                    "population": [],
-                    "hypervolume_history": [],
-                    "iteration": 0,
-                    "evaluations_used": 0,
-                    "stagnation_window": 5,
-                    "reference_delta": 0.05,
-                },
             )
 
             out = tmp_path / "outputs"
-            _seed_warmup_population(run_id, out, [
-                ("v1", 0.80, 0.10),
-                ("v2", 0.65, 0.20),
-            ])
+
+            # Overwrite algorithm_state with test-specific values (mu=2)
+            state = get_search_state(run_id, output_dir=out)
+            updated = state.model_copy(
+                update={
+                    "algorithm_state": {
+                        "mu": 2,
+                        "evaluation_budget": 50,
+                        "warm_up_complete": False,
+                        "population": [],
+                        "hypervolume_history": [],
+                        "iteration": 0,
+                        "evaluations_used": 0,
+                        "stagnation_window": 5,
+                        "reference_delta": 0.05,
+                    }
+                }
+            )
+            _save_state(run_id, updated, out)
+
+            _seed_warmup_population(
+                run_id,
+                out,
+                [
+                    ("v1", 0.80, 0.10),
+                    ("v2", 0.65, 0.20),
+                ],
+            )
 
             state = get_search_state(run_id, output_dir=out)
-            updated = state.model_copy(update={"loop_phase": "warmup_reduce"})
-            _save_state(run_id, updated, out)
+            updated2 = state.model_copy(update={"loop_phase": "warmup_reduce"})
+            _save_state(run_id, updated2, out)
 
             await advance_step_tool(run_id)
             mock_clear.assert_called_once_with(run_id)

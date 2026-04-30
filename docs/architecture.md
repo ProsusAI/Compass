@@ -63,8 +63,8 @@ graph TD
 | Field | Type | Description |
 |---|---|---|
 | `elite_set` | `list[Candidate]` | Current non-dominated candidate set (formerly `pareto_front`; old files with `pareto_front` key are migrated on load) |
-| `algorithm` | `Literal["hill_climb", "beam", "sms_emoa", "emosa"]` | Discriminator for which search strategy produced this state; defaults to `"hill_climb"` |
-| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket (e.g. `beam_width` for beam, `AnnealingState` dict for EMOSA); defaults to `{}` |
+| `algorithm` | `Literal["hill_climb", "beam", "sms_emoa", "emosa"]` | Discriminator hardcoded per branch via `_BRANCH_ALGORITHM` in `search_ops.py`; written at `init_search_state` time |
+| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket (e.g. `beam_width` for beam, `AnnealingState` dict for EMOSA); hardcoded per branch via `_BRANCH_ALGORITHM_STATE` in `search_ops.py` |
 | `round`, `stagnation_count`, `mutation_mode` | — | Hill-climb bookkeeping fields |
 | `converged`, `loop_phase` | — | Convergence flag and current sub-phase; widened enum: `"build"`, `"review"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`, `"calibration"`, `"build_recovering"` (hill-climb only uses `"build"` / `"review"`) |
 | `active_evals` | `list[str]` | Prompt versions currently being evaluated (pending or running). Invariant: non-empty iff `loop_phase == "build"` and a concurrent batch eval was interrupted. `_detect_stage_4_phase` returns `"build_recovering"` when this field is non-empty. |
@@ -150,7 +150,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `save_final_report` | Implemented | Save the final report markdown to disk | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
 | `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–5, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
 | `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
-| `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
+| `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run; algorithm is hardcoded per branch — no `algorithm`/`algorithm_state` params | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `record_eval_result_tool` | Implemented | Record evaluation results for Pareto tracking | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `advance_step_tool` | Implemented | Strategy-dispatched step advance: `"hill_climb"` closes round + checks convergence; `"sms_emoa"` handles warmup consolidation and steady-state μ+1→μ selection with budget termination | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
@@ -299,6 +299,8 @@ The Review Agent prompt is assembled at dispatch time from three layers: a share
 ## 6. Cross-Branch Strategy Matrix
 
 The `feat/generalize-pipeline` branch is the integration branch carrying everything strategy-neutral plus the `hill_climb` default. Each non-default search strategy lives on a dedicated branch cut from `feat/generalize-pipeline`. By design, a strategy branch's diff against `feat/generalize-pipeline` collapses to: one algorithm module, one dispatcher arm, preprocessor enrichment, optional phase/prompt extensions, plus (for EMOSA only) a `review_fanout_status` override.
+
+**Algorithm is hardcoded per branch.** `search_ops.py` exposes two module-level constants (`_BRANCH_ALGORITHM`, `_BRANCH_ALGORITHM_STATE`) that strategy branches flip. `init_search_state` always uses these constants — agents do not pass `algorithm` or `algorithm_state`. `search_state.json` is **auto-created at Stage 4 entry** by `_ensure_stage4_search_state` (called from `_next_action_for_stage_4` in `status.py`) before `_detect_stage_4_phase` runs, so cold-start sub-agents always find a real `SearchState` on disk.
 
 | Strategy | Branch | Algorithm module | Dispatcher arm | Preprocessor populate fn | Prompt overlays | Special seams |
 |---|---|---|---|---|---|---|

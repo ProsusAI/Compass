@@ -59,6 +59,50 @@ def _setup_guard_artifacts(tmp_path: Path, run_id: str = _RUN_ID, stage: str = "
         (analysis_dir / "holdout.jsonl").write_text("")
 
 
+def _inject_sms_emoa_warmup_complete(tmp_path: Path, run_id: str = _RUN_ID) -> None:
+    """Patch the search state file so sms_emoa warm-up is already complete.
+
+    advance_step_tool dispatches to advance_round_sms_emoa which requires
+    warm_up_complete=True.  This helper injects a minimal 2-member population
+    so tests can exercise the post-warmup steady-state path without running
+    advance_warmup_batch first.
+    """
+    state_path = tmp_path / "outputs" / run_id / "search" / "search_state.json"
+    raw = json.loads(state_path.read_text())
+    seed_a = {
+        "prompt_version": "seed-a",
+        "quality_score": 0.8,
+        "cost": 0.1,
+        "round_introduced": 0,
+        "eval_status": "complete",
+        "parent_version": None,
+        "example_ids": [],
+    }
+    seed_b = {
+        "prompt_version": "seed-b",
+        "quality_score": 0.7,
+        "cost": 0.05,
+        "round_introduced": 0,
+        "eval_status": "complete",
+        "parent_version": None,
+        "example_ids": [],
+    }
+    raw["algorithm_state"] = {
+        "mu": 2,
+        "warm_up_complete": True,
+        "population": [seed_a, seed_b],
+        "hypervolume_history": [0.1],
+        "iteration": 0,
+        "evaluations_used": 2,
+        "evaluation_budget": 50,
+        "reference_delta": 0.05,
+        "stagnation_window": 5,
+    }
+    raw["loop_phase"] = "review"
+    raw["round"] = 1
+    state_path.write_text(json.dumps(raw))
+
+
 class TestSearchStateTools:
     async def test_init_returns_valid_json(self, tmp_path: Path) -> None:
         _setup_guard_artifacts(tmp_path, stage="search")
@@ -82,19 +126,20 @@ class TestSearchStateTools:
     async def test_full_round_lifecycle(self, tmp_path: Path) -> None:
         _setup_guard_artifacts(tmp_path, stage="search")
         with _patch_project_dir(tmp_path):
-            # Init -> Register -> Record -> Advance -> Get
+            # Init -> inject warmup -> Register -> Record -> Advance -> Get
             init_result = json.loads(await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test"))
             assert "search_state_id" in init_result
+            # sms_emoa requires warm_up_complete before advance_round_sms_emoa
+            _inject_sms_emoa_warmup_complete(tmp_path)
 
             await register_candidate_tool(_RUN_ID, "v1")
             await record_eval_result_tool(_RUN_ID, "v1", 0.85, 0.12)
 
             adv = json.loads(await advance_step_tool(_RUN_ID))
-            assert adv["round"] == 1
-            assert adv["new_elite_entries"] == 1
+            assert adv["round"] == 2  # starts at round=1 after warmup injection
 
             state = json.loads(await get_search_state_tool(_RUN_ID))
-            assert state["round"] == 1
+            assert state["round"] == 2
 
     async def test_register_candidate_returns_confirmation(self, tmp_path: Path) -> None:
         _setup_guard_artifacts(tmp_path, stage="search")
@@ -152,25 +197,25 @@ class TestSearchStateTools:
         with _patch_project_dir(tmp_path), pytest.raises(ToolError):
             await get_search_state_tool("nonexistent-id")
 
-    async def test_multiple_rounds_stagnation(self, tmp_path: Path) -> None:
-        """Two rounds with same-quality candidates accumulates stagnation."""
+    async def test_multiple_rounds_sms_emoa(self, tmp_path: Path) -> None:
+        """Two sms-emoa rounds: child enters population or is dominated."""
         _setup_guard_artifacts(tmp_path, stage="search")
         with _patch_project_dir(tmp_path):
-            await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test", stagnation_limit=2)
+            await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test")
+            _inject_sms_emoa_warmup_complete(tmp_path)
 
-            # Round 1: new candidate improves front
+            # Round 1: incomparable child enters population
             await register_candidate_tool(_RUN_ID, "v1")
-            await record_eval_result_tool(_RUN_ID, "v1", 0.8, 0.1)
+            await record_eval_result_tool(_RUN_ID, "v1", 0.95, 0.05)
             r1 = json.loads(await advance_step_tool(_RUN_ID))
             assert r1["new_elite_entries"] == 1
-            assert r1["stagnation_count"] == 0
 
-            # Round 2: dominated candidate - no improvement
+            # Round 2: dominated candidate is evicted instead
             await register_candidate_tool(_RUN_ID, "v2")
-            await record_eval_result_tool(_RUN_ID, "v2", 0.5, 0.5)
+            await record_eval_result_tool(_RUN_ID, "v2", 0.3, 0.9)
             r2 = json.loads(await advance_step_tool(_RUN_ID))
-            assert r2["new_elite_entries"] == 0
-            assert r2["stagnation_count"] == 1
+            # v2 enters population (mu+1→mu reduce evicts worst) — population stays at mu=2
+            assert r2["population_size"] == 2
 
 
 class TestFilterHoldoutTool:
@@ -294,18 +339,22 @@ class TestEditDirectivesPersistence:
                 ctx=None,
                 run_id=_RUN_ID,
                 outcomes=[],
-                child_variants=[{
-                    "hypothesis": "Add a clearer boundary example",
-                    "directives": [{
-                        "directive_id": "d1",
-                        "target_version": "v1",
-                        "block_type": "example",
-                        "block_identifier": "Example 1",
-                        "granularity": "macro",
-                        "directive": "Add example",
-                        "priority": "high",
-                    }],
-                }],
+                child_variants=[
+                    {
+                        "hypothesis": "Add a clearer boundary example",
+                        "directives": [
+                            {
+                                "directive_id": "d1",
+                                "target_version": "v1",
+                                "block_type": "example",
+                                "block_identifier": "Example 1",
+                                "granularity": "macro",
+                                "directive": "Add example",
+                                "priority": "high",
+                            }
+                        ],
+                    }
+                ],
                 output_dir=str(tmp_path / "outputs"),
             )
 
