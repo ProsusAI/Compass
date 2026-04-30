@@ -58,8 +58,6 @@ class TestAdvanceRoundColdStartFloor:
             backend="anthropic",
             run_id=run_id,
             output_dir=tmp_path,
-            algorithm="beam",
-            algorithm_state={"beam_width": 3},
         )
 
         # v1 strictly dominates v2 and v3 on both quality and cost.
@@ -83,8 +81,6 @@ class TestAdvanceRoundColdStartFloor:
             backend="anthropic",
             run_id=run_id,
             output_dir=tmp_path,
-            algorithm="beam",
-            algorithm_state={"beam_width": 3},
         )
 
         _register_and_score(run_id, "v1", quality_score=0.90, cost=0.10, tmp_path=tmp_path)
@@ -111,8 +107,6 @@ class TestAdvanceRoundNormalParetoResumesInRound2:
             backend="anthropic",
             run_id=run_id,
             output_dir=tmp_path,
-            algorithm="beam",
-            algorithm_state={"beam_width": 3},
         )
 
         # Round 1: three cold-start candidates — v1 dominates v2 and v3.
@@ -149,8 +143,6 @@ class TestAdvanceRoundNormalParetoResumesInRound2:
             backend="anthropic",
             run_id=run_id,
             output_dir=tmp_path,
-            algorithm="beam",
-            algorithm_state={"beam_width": 3},
         )
 
         # Round 1: v1 dominates v2 and v3 — all survive due to cold-start floor.
@@ -185,8 +177,6 @@ class TestAdvanceRoundNormalParetoResumesInRound2:
             backend="anthropic",
             run_id=run_id,
             output_dir=tmp_path,
-            algorithm="beam",
-            algorithm_state={"beam_width": 3},
         )
 
         _register_and_score(run_id, "v1", quality_score=0.90, cost=0.10, tmp_path=tmp_path)
