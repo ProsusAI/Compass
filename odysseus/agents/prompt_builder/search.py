@@ -112,6 +112,7 @@ class RoundSummary(BaseModel):
     round_routing_cost: float = 0.0
     convergence_reason: str | None = None
     # Strategy-specific optional fields
+    backtracking: bool = False
     hypervolume: float | None = None
     reference_point: tuple[float, float] | None = None
     acceptance_rates: dict[int, float] | None = None

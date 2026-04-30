@@ -25,10 +25,13 @@ from odysseus.agents.prompt_builder.search import (
     RoundSummary,
     SearchState,
     compute_front_improvement,
+    compute_hypervolume,
+    update_elite_set,
     update_pareto_front,
+    validate_elite_set,
 )
 from odysseus.agents.prompt_builder.viz import _try_write_viz
-from odysseus.agents.review.models import LoopSignal
+from odysseus.agents.review.models import LoopSignal, UserTarget
 from odysseus.project_dir import get_project_dir
 
 logger = logging.getLogger(__name__)
@@ -105,6 +108,75 @@ def _load_pending(run_id: str, output_dir: Path) -> list[Candidate]:
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
     return [Candidate.model_validate(item) for item in data]
+
+
+# ---------------------------------------------------------------------------
+# Beam strategy helpers
+# ---------------------------------------------------------------------------
+
+
+def _load_user_targets(run_id: str, output_dir: Path) -> list[UserTarget]:
+    """Load user targets from the input report."""
+    from odysseus.agents.review.preprocessor import parse_user_targets
+
+    input_report_path = output_dir / run_id / "input" / "input_report.md"
+    if not input_report_path.exists():
+        return []
+    return parse_user_targets(input_report_path.read_text(encoding="utf-8"))
+
+
+def _load_candidate_metrics(
+    candidates: list[Candidate], run_id: str, output_dir: Path
+) -> dict[str, dict[str, float]]:
+    """Read each candidate's eval report.json and extract the metrics dict."""
+    metrics: dict[str, dict[str, float]] = {}
+    for c in candidates:
+        report_path = output_dir / run_id / "eval" / c.prompt_version / "report.json"
+        if report_path.exists():
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            metrics[c.prompt_version] = report.get("metrics", {})
+    return metrics
+
+
+def _reshape_route_metrics(metrics: dict[str, float]) -> dict[str, dict[str, float]]:
+    """Split ``recall/route_X`` style flat keys into nested ``{route_X: {recall: …}}``."""
+    route_data: dict[str, dict[str, float]] = {}
+    for key, value in metrics.items():
+        if "/" in key:
+            metric_type, route = key.split("/", 1)
+            if metric_type in ("recall", "precision", "f1"):
+                route_data.setdefault(route, {})[metric_type] = value
+    return route_data
+
+
+def _check_all_targets_met(
+    elite: list[Candidate],
+    user_targets: list[UserTarget],
+    candidate_metrics: dict[str, dict[str, float]],
+) -> bool:
+    """Return True if at least one elite candidate satisfies every user target."""
+    _ops: dict[str, Any] = {
+        ">=": lambda v, t: v >= t,
+        ">": lambda v, t: v > t,
+        "<=": lambda v, t: v <= t,
+        "<": lambda v, t: v < t,
+        "==": lambda v, t: v == t,
+    }
+    for c in elite:
+        metrics = candidate_metrics.get(c.prompt_version, {})
+        met_all = True
+        for target in user_targets:
+            value = metrics.get(target.metric)
+            if value is None:
+                met_all = False
+                break
+            op_fn = _ops.get(target.operator)
+            if op_fn is None or not op_fn(value, target.threshold):
+                met_all = False
+                break
+        if met_all:
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -476,6 +548,240 @@ def advance_round(
 
     # Clear pending
     _save_pending(run_id, [], output_dir)
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Beam advance_round
+# ---------------------------------------------------------------------------
+
+
+def advance_round_beam(
+    run_id: str,
+    output_dir: Path | None = None,
+) -> RoundSummary:
+    """Advance the beam search loop by one round.
+
+    Processes all pending candidates using multi-objective (hypervolume-based)
+    elite-set management.  Key behaviour:
+
+    - Round 1 (cold-start): all scored candidates are retained regardless of
+      Pareto dominance so every initial strategy gets a second data point.
+    - Round 2+: standard Pareto + crowding-distance pruning applies.
+    - Stagnation is measured by relative hypervolume improvement.
+    - Epsilon is tightened once when all user targets are first met.
+    - Backtracking flag is set when stagnation_count >= backtrack_threshold.
+
+    Algorithm-specific sub-state (beam_width, epsilon_min,
+    backtrack_threshold, hypervolume, reference_point,
+    targets_met_epsilon_tightened) is stored in the
+    ``state.algorithm_state`` pocket.
+
+    Args:
+        run_id: Run identifier used to locate the state on disk.
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        A :class:`RoundSummary` for the completed round.
+
+    Raises:
+        FileNotFoundError: If the search state does not exist.
+        ValueError: If there are no pending candidates or active evals exist.
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    state = _load_state(run_id, output_dir)
+
+    # Guard: do not advance while batch evals are still in flight.
+    if state.active_evals:
+        raise ValueError(
+            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
+        )
+
+    pending = _load_pending(run_id, output_dir)
+
+    if not pending:
+        raise ValueError("No pending candidates to advance round with")
+
+    new_round = state.round + 1
+
+    # Read beam-specific config from algorithm_state pocket (read-only; not written back)
+    ast = state.algorithm_state
+    beam_width = int(ast.get("beam_width", 3))
+    epsilon_min = float(ast.get("epsilon_min", 0.0005))
+    backtrack_threshold = int(ast.get("backtrack_threshold", 2))
+    hypervolume_prev = float(ast.get("hypervolume", 0.0))
+    reference_point_prev_raw = ast.get("reference_point", [0.0, 0.0])
+    reference_point_prev: tuple[float, float] = (
+        float(reference_point_prev_raw[0]),
+        float(reference_point_prev_raw[1]),
+    )
+    targets_met_epsilon_tightened = bool(ast.get("targets_met_epsilon_tightened", False))
+
+    # Split pending into scored and failed
+    scored_pending = [c for c in pending if c.eval_status in ("complete", None)]
+    failed_pending = [c for c in pending if c.eval_status == "failed"]
+
+    for c in failed_pending:
+        logger.warning(
+            "advance_round_beam: candidate %s has eval_status='failed' and will be excluded",
+            c.prompt_version,
+        )
+
+    candidates_evaluated = [c.prompt_version for c in pending]
+
+    if not scored_pending:
+        # All-fail stagnation: carry elite set forward unchanged
+        new_elite: list[Candidate] = list(state.elite_set)
+        new_elite_entries = 0
+        new_stagnation_count = state.stagnation_count + 1
+        new_hypervolume = hypervolume_prev
+        new_reference_point = reference_point_prev
+        new_epsilon = state.epsilon
+    else:
+        user_targets = _load_user_targets(run_id, output_dir)
+        all_for_metrics: list[Candidate] = list(state.elite_set) + list(scored_pending)
+        candidate_metrics = _load_candidate_metrics(all_for_metrics, run_id, output_dir)
+
+        new_elite, new_elite_entries = update_elite_set(
+            state.elite_set,
+            scored_pending,
+            max_size=2 * beam_width + 1,
+            is_cold_start_round=(new_round == 1),
+        )
+
+        # Annotate route_metrics on elite candidates from their score reports
+        new_elite_annotated: list[Candidate] = []
+        for c in new_elite:
+            metrics = candidate_metrics.get(c.prompt_version, {})
+            route_m = _reshape_route_metrics(metrics)
+            if route_m and not c.route_metrics:
+                c = c.model_copy(update={"route_metrics": route_m})
+            new_elite_annotated.append(c)
+        new_elite = new_elite_annotated
+
+        # Compute hypervolume using worst-seen reference point
+        all_ever: list[Candidate] = list(state.elite_set) + list(scored_pending)
+        if all_ever:
+            worst_quality = min(c.quality_score for c in all_ever)
+            worst_cost = max(c.cost for c in all_ever)
+            new_reference_point = (
+                worst_quality * 0.9 if worst_quality > 0 else -0.1,
+                worst_cost * 1.1 if worst_cost > 0 else 0.1,
+            )
+        else:
+            new_reference_point = reference_point_prev
+
+        new_hypervolume = compute_hypervolume(new_elite, new_reference_point)
+
+        # Stagnation detection (skip on round 1 — front still forming)
+        if new_round == 1:
+            new_stagnation_count = 0
+        else:
+            if hypervolume_prev > 0:
+                relative_improvement = (new_hypervolume - hypervolume_prev) / hypervolume_prev
+            else:
+                relative_improvement = new_hypervolume
+            new_stagnation_count = (
+                0 if relative_improvement > state.epsilon else state.stagnation_count + 1
+            )
+
+        # Epsilon tightening: one-time when all user targets first met
+        new_epsilon = state.epsilon
+        if user_targets and not targets_met_epsilon_tightened:
+            all_met = _check_all_targets_met(new_elite, user_targets, candidate_metrics)
+            if all_met:
+                new_epsilon = max(state.epsilon / 2.0, epsilon_min)
+                new_stagnation_count = 0  # fresh runway
+                targets_met_epsilon_tightened = True
+                logger.info(
+                    "advance_round_beam: all user targets met — tightening epsilon %.4f -> %.4f",
+                    state.epsilon,
+                    new_epsilon,
+                )
+
+    # Backtracking flag
+    backtracking = new_stagnation_count >= backtrack_threshold
+
+    # Check convergence
+    converged = (
+        new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
+    )
+
+    qualities = [c.quality_score for c in new_elite]
+    front_quality_spread = max(qualities) - min(qualities) if len(new_elite) > 1 else 0.0
+    round_routing_cost = sum(c.cost for c in scored_pending)
+    improvement = max(0.0, new_hypervolume - hypervolume_prev)
+
+    convergence_reason: str | None = None
+    if converged:
+        if new_round >= state.max_rounds:
+            convergence_reason = "max_rounds"
+        elif new_stagnation_count >= state.convergence_limit:
+            convergence_reason = "stagnation"
+
+    summary = RoundSummary(
+        round=new_round,
+        candidates_evaluated=candidates_evaluated,
+        new_elite_entries=new_elite_entries,
+        elite_size=len(new_elite),
+        stagnation_count=new_stagnation_count,
+        converged=converged,
+        target_improvement=improvement,
+        front_quality_spread=front_quality_spread,
+        round_routing_cost=round_routing_cost,
+        convergence_reason=convergence_reason,
+        backtracking=backtracking,
+        hypervolume=new_hypervolume,
+        reference_point=new_reference_point,
+    )
+
+    # Skip Pareto validation in round 1 — cold-start candidates are retained
+    # regardless of dominance so each strategy gets a second data point.
+    if new_round != 1:
+        new_elite = validate_elite_set(new_elite)
+
+    # Persist updated state
+    new_ast = {**state.algorithm_state}
+    new_ast["hypervolume"] = new_hypervolume
+    new_ast["prev_hypervolume"] = hypervolume_prev
+    new_ast["reference_point"] = list(new_reference_point)  # JSON serializable
+    new_ast["targets_met_epsilon_tightened"] = targets_met_epsilon_tightened
+
+    updated_state = state.model_copy(
+        update={
+            "round": new_round,
+            "elite_set": new_elite,
+            "round_history": [*state.round_history, summary],
+            "stagnation_count": new_stagnation_count,
+            "converged": converged,
+            "loop_phase": "build" if converged else "review",
+            "total_routing_cost": state.total_routing_cost + round_routing_cost,
+            "epsilon": new_epsilon,
+            "algorithm_state": new_ast,
+        }
+    )
+    _save_state(run_id, updated_state, output_dir)
+
+    # Save round report from each pending candidate's eval report on disk
+    from odysseus.agents.review.ops import save_round_report
+
+    round_reports: dict[str, dict] = {}
+    eval_dir = output_dir / run_id / "eval"
+    for candidate in pending:
+        report_path = eval_dir / candidate.prompt_version / "report.json"
+        if report_path.exists():
+            round_reports[candidate.prompt_version] = json.loads(
+                report_path.read_text(encoding="utf-8")
+            )
+    if round_reports:
+        save_round_report(run_id, state.round, round_reports, output_dir=output_dir)
+
+    # Clear pending
+    _save_pending(run_id, [], output_dir)
+
+    _try_write_viz(run_id, output_dir)
 
     return summary
 

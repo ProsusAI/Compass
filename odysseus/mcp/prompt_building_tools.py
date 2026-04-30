@@ -14,6 +14,7 @@ from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
+    advance_round_beam,
     get_search_state,
     init_search_state,
     record_eval_result,
@@ -83,9 +84,9 @@ async def init_search_state_tool(
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
         convergence_limit: Stagnation rounds that trigger convergence.
         primary_metric_name: Optional name of the primary quality metric.
-        algorithm: Search algorithm to use. Defaults to "hill_climb" (main branch
-            behaviour). Other values ("beam", "sms_emoa", "emosa") are implemented
-            on their respective feature branches.
+        algorithm: Search algorithm to use. Defaults to "hill_climb".  "beam" is
+            also implemented on this branch; "sms_emoa" and "emosa" still raise
+            NotImplementedError and will be wired when their feature branches land.
         algorithm_state: Optional initial strategy-specific sub-state dict.
 
     Returns:
@@ -330,14 +331,34 @@ def _advance_hill_climb(run_id: str) -> str:
     return summary.model_dump_json(indent=2)
 
 
+def _advance_beam(run_id: str) -> str:
+    """Beam arm of advance_step_tool.
+
+    Runs hypervolume-based elite-set management (with cold-start floor on
+    round 1) and returns a JSON-serialized RoundSummary.
+
+    Also clears the build-dispatch marker so the orchestrator knows the
+    Prompt Builder sub-agent has finished.
+    """
+    try:
+        summary = advance_round_beam(run_id=run_id)
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+    clear_build_dispatched(run_id)
+    return summary.model_dump_json(indent=2)
+
+
 @mcp.tool()
 async def advance_step_tool(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Advance the search loop by one step.
 
     Dispatches to the strategy-specific advance logic determined by the
-    ``algorithm`` field of the current SearchState.  On this branch only
-    ``"hill_climb"`` is implemented; other algorithms raise NotImplementedError
-    and will be wired in when their feature branches rebase onto main.
+    ``algorithm`` field of the current SearchState.  Both ``"hill_climb"``
+    and ``"beam"`` are implemented on this branch; ``"sms_emoa"`` and
+    ``"emosa"`` still raise NotImplementedError and will be wired when their
+    feature branches land.
 
     Args:
         run_id: Pipeline run identifier.
@@ -353,6 +374,8 @@ async def advance_step_tool(run_id: str) -> str:
     algorithm = state.algorithm
     if algorithm == "hill_climb":
         return _advance_hill_climb(run_id)
+    elif algorithm == "beam":
+        return _advance_beam(run_id)
 
     raise NotImplementedError(
         f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch"
