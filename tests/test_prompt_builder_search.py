@@ -10,9 +10,16 @@ from odysseus.agents.prompt_builder.search import (
     RoundSummary,
     SearchState,
     compute_front_improvement,
+    compute_hypervolume,
+    compute_pareto_front,
+    crowding_distance,
     dominates,
+    find_knee_point,
+    prune_to_size,
     select_best,
+    update_elite_set,
     update_pareto_front,
+    validate_elite_set,
 )
 
 # ---------------------------------------------------------------------------
@@ -617,6 +624,210 @@ class TestUpdateParetoFront:
 
 
 # ---------------------------------------------------------------------------
+# Pareto algorithms: compute_pareto_front, crowding_distance,
+# compute_hypervolume, find_knee_point, prune_to_size
+# ---------------------------------------------------------------------------
+
+
+class TestParetoAlgorithms:
+    # --- compute_pareto_front ---
+
+    def test_single_candidate_is_non_dominated(self) -> None:
+        c = _candidate("v1", quality_score=0.8, cost=0.1)
+        result = compute_pareto_front([c])
+        assert len(result) == 1
+        assert result[0].prompt_version == "v1"
+
+    def test_dominated_candidate_excluded(self) -> None:
+        good = _candidate("good", quality_score=0.9, cost=0.1)
+        bad = _candidate("bad", quality_score=0.8, cost=0.2)
+        result = compute_pareto_front([good, bad])
+        versions = {c.prompt_version for c in result}
+        assert "good" in versions
+        assert "bad" not in versions
+
+    def test_trade_off_candidates_both_on_front(self) -> None:
+        high_q = _candidate("high_q", quality_score=0.95, cost=0.3)
+        low_c = _candidate("low_c", quality_score=0.7, cost=0.05)
+        result = compute_pareto_front([high_q, low_c])
+        versions = {c.prompt_version for c in result}
+        assert "high_q" in versions
+        assert "low_c" in versions
+
+    def test_equal_quality_equal_cost_both_on_front(self) -> None:
+        c1 = _candidate("v1", quality_score=0.8, cost=0.1)
+        c2 = _candidate("v2", quality_score=0.8, cost=0.1)
+        result = compute_pareto_front([c1, c2])
+        assert len(result) == 2
+
+    def test_strictly_dominated_on_both_axes_excluded(self) -> None:
+        best = _candidate("best", quality_score=0.95, cost=0.05)
+        mid1 = _candidate("mid1", quality_score=0.8, cost=0.2)
+        mid2 = _candidate("mid2", quality_score=0.7, cost=0.3)
+        result = compute_pareto_front([best, mid1, mid2])
+        versions = {c.prompt_version for c in result}
+        assert "best" in versions
+        assert "mid1" not in versions
+        assert "mid2" not in versions
+
+    def test_three_way_trade_off(self) -> None:
+        c1 = _candidate("v1", quality_score=0.95, cost=0.3)
+        c2 = _candidate("v2", quality_score=0.8, cost=0.15)
+        c3 = _candidate("v3", quality_score=0.6, cost=0.05)
+        result = compute_pareto_front([c1, c2, c3])
+        versions = {c.prompt_version for c in result}
+        assert versions == {"v1", "v2", "v3"}
+
+    # --- crowding_distance ---
+
+    def test_two_candidates_get_infinite_distance(self) -> None:
+        c1 = _candidate("v1", quality_score=0.9, cost=0.1)
+        c2 = _candidate("v2", quality_score=0.7, cost=0.3)
+        result = crowding_distance([c1, c2])
+        assert result["v1"] == float("inf")
+        assert result["v2"] == float("inf")
+
+    def test_endpoints_always_infinite(self) -> None:
+        c1 = _candidate("v1", quality_score=0.9, cost=0.1)
+        c2 = _candidate("v2", quality_score=0.75, cost=0.2)
+        c3 = _candidate("v3", quality_score=0.6, cost=0.4)
+        result = crowding_distance([c1, c2, c3])
+        # Endpoints on quality axis: v1 (highest), v3 (lowest) → inf
+        assert result["v1"] == float("inf")
+        assert result["v3"] == float("inf")
+        assert result["v2"] != float("inf")
+
+    def test_single_candidate_infinite_distance(self) -> None:
+        c = _candidate("v1", quality_score=0.8, cost=0.1)
+        result = crowding_distance([c])
+        assert result["v1"] == float("inf")
+
+    def test_crowding_distance_returns_all_versions(self) -> None:
+        candidates = [_candidate(f"v{i}", quality_score=0.5 + i * 0.1, cost=0.4 - i * 0.07) for i in range(5)]
+        result = crowding_distance(candidates)
+        assert set(result.keys()) == {f"v{i}" for i in range(5)}
+
+    def test_crowding_distance_is_non_negative(self) -> None:
+        front = [
+            _candidate("v1", quality_score=0.90, cost=0.05),
+            _candidate("v2", quality_score=0.75, cost=0.12),
+            _candidate("v3", quality_score=0.60, cost=0.20),
+            _candidate("v4", quality_score=0.45, cost=0.30),
+            _candidate("v5", quality_score=0.30, cost=0.45),
+        ]
+        result = crowding_distance(front)
+        for version, dist in result.items():
+            assert dist == float("inf") or dist >= 0.0, f"{version} has negative distance {dist}"
+
+    # --- compute_hypervolume ---
+
+    def test_single_point_hypervolume(self) -> None:
+        c = _candidate("v1", quality_score=0.8, cost=0.1)
+        # width = 0.8 - 0.5 = 0.3, height = 0.5 - 0.1 = 0.4 → 0.12
+        result = compute_hypervolume([c], reference_point=(0.5, 0.5))
+        assert result == pytest.approx(0.12)
+
+    def test_two_point_hypervolume(self) -> None:
+        c1 = _candidate("v1", quality_score=0.8, cost=0.1)
+        c2 = _candidate("v2", quality_score=0.6, cost=0.3)
+        # Sorted by quality ascending: v2 (0.6, 0.3), v1 (0.8, 0.1)
+        # rect1: width = 0.6 - 0.5 = 0.1, height = 0.5 - 0.3 = 0.2 → 0.02
+        # rect2: width = 0.8 - 0.6 = 0.2, height = 0.5 - 0.1 = 0.4 → 0.08
+        # But implementation uses ref_cost - cost_i for each i, with sweepline:
+        # Actually: sum of (q_i - q_{i-1}) * (ref_cost - cost_i)
+        # rect1 (i=0): (0.6 - 0.5) * (0.5 - 0.3) = 0.1 * 0.2 = 0.02
+        # rect2 (i=1): (0.8 - 0.6) * (0.5 - 0.1) = 0.2 * 0.4 = 0.08
+        # Total = 0.10
+        # But front must be sorted by quality with decreasing cost; if not monotone, only Pareto-valid
+        # Let's just check a known value:
+        result = compute_hypervolume([c1, c2], reference_point=(0.5, 0.5))
+        assert result == pytest.approx(0.10)
+
+    def test_hypervolume_empty_front_is_zero(self) -> None:
+        result = compute_hypervolume([], reference_point=(0.5, 0.5))
+        assert result == 0.0
+
+    # --- find_knee_point ---
+
+    def test_knee_point_interior_candidate(self) -> None:
+        v1 = _candidate("v1", quality_score=0.9, cost=0.1)
+        v2 = _candidate("v2", quality_score=0.75, cost=0.2)
+        v3 = _candidate("v3", quality_score=0.6, cost=0.4)
+        # v1 is highest quality (best), v3 is lowest quality (cheapest cost)
+        # v2 is the interior point — should be knee
+        result = find_knee_point([v1, v2, v3])
+        assert result == "v2"
+
+    def test_knee_point_single_candidate_returns_it(self) -> None:
+        c = _candidate("v1", quality_score=0.8, cost=0.1)
+        assert find_knee_point([c]) == "v1"
+
+    def test_knee_point_two_candidates_returns_highest_quality(self) -> None:
+        c1 = _candidate("v1", quality_score=0.9, cost=0.1)
+        c2 = _candidate("v2", quality_score=0.7, cost=0.3)
+        result = find_knee_point([c1, c2])
+        assert result == "v1"
+
+    def test_knee_point_empty_raises(self) -> None:
+        with pytest.raises(ValueError):
+            find_knee_point([])
+
+    # --- prune_to_size ---
+
+    def test_prune_removes_clustered_candidate(self) -> None:
+        # v1=highest quality endpoint, v4=lowest cost endpoint
+        # v2 and v3 are clustered together; v3 should be removed (smallest crowding distance)
+        v1 = _candidate("v1", quality_score=0.95, cost=0.05)
+        v2 = _candidate("v2", quality_score=0.80, cost=0.15)
+        v3 = _candidate("v3", quality_score=0.78, cost=0.17)  # very close to v2
+        v4 = _candidate("v4", quality_score=0.60, cost=0.40)
+        result = prune_to_size([v1, v2, v3, v4], max_size=3)
+        assert len(result) == 3
+        versions = {c.prompt_version for c in result}
+        # Endpoints v1 and v4 must be protected
+        assert "v1" in versions
+        assert "v4" in versions
+        # One of v2/v3 removed — the clustered one
+        assert "v2" in versions or "v3" in versions
+
+    def test_prune_at_max_size_no_change(self) -> None:
+        candidates = [
+            _candidate("v1", quality_score=0.9, cost=0.1),
+            _candidate("v2", quality_score=0.7, cost=0.3),
+            _candidate("v3", quality_score=0.5, cost=0.5),
+        ]
+        result = prune_to_size(candidates, max_size=3)
+        assert len(result) == 3
+
+    def test_prune_below_max_size_no_change(self) -> None:
+        candidates = [
+            _candidate("v1", quality_score=0.9, cost=0.1),
+            _candidate("v2", quality_score=0.7, cost=0.3),
+        ]
+        result = prune_to_size(candidates, max_size=5)
+        assert len(result) == 2
+
+    def test_prune_keeps_spread_over_cluster(self) -> None:
+        # Endpoints
+        v1 = _candidate("v1", quality_score=0.95, cost=0.05)
+        v7 = _candidate("v7", quality_score=0.30, cost=0.50)
+        # Well-spread interior points
+        spread_a = _candidate("spread_a", quality_score=0.80, cost=0.15)
+        spread_b = _candidate("spread_b", quality_score=0.55, cost=0.35)
+        # Tight cluster near the high-quality end
+        cluster_a = _candidate("cluster_a", quality_score=0.921, cost=0.081)
+        cluster_b = _candidate("cluster_b", quality_score=0.928, cost=0.074)
+        cluster_c = _candidate("cluster_c", quality_score=0.915, cost=0.088)
+        front = [v1, v7, spread_a, spread_b, cluster_a, cluster_b, cluster_c]
+        result = prune_to_size(front, max_size=5)
+        versions = {c.prompt_version for c in result}
+        assert "spread_a" in versions
+        assert "spread_b" in versions
+        clustered_kept = sum(1 for v in ("cluster_a", "cluster_b", "cluster_c") if v in versions)
+        assert clustered_kept < 3
+
+
+# ---------------------------------------------------------------------------
 # Task 5: select_best helper
 # ---------------------------------------------------------------------------
 
@@ -771,3 +982,189 @@ class TestComputeFrontImprovement:
         new_front = [_candidate(prompt_version="v2", quality_score=0.9, cost=0.01)]
         result = compute_front_improvement(old_front, new_front)
         assert result == 0.0
+
+
+# ---------------------------------------------------------------------------
+# update_elite_set (Pareto version)
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateEliteSetPareto:
+    def test_new_dominating_candidate_enters_front(self) -> None:
+        """A candidate that dominates existing elite members should enter the front."""
+        existing = [_candidate("v1", quality_score=0.80, cost=0.10)]
+        new = [_candidate("v2", quality_score=0.90, cost=0.08)]  # dominates v1
+        front, new_entries = update_elite_set(existing, new)
+        versions = {c.prompt_version for c in front}
+        assert "v2" in versions
+        assert new_entries == 1
+
+    def test_dominated_candidate_not_added(self) -> None:
+        """A candidate dominated by an existing elite member should not enter the front."""
+        existing = [_candidate("v1", quality_score=0.90, cost=0.05)]
+        new = [_candidate("v2", quality_score=0.70, cost=0.20)]  # dominated by v1
+        front, new_entries = update_elite_set(existing, new)
+        versions = {c.prompt_version for c in front}
+        assert "v2" not in versions
+        assert new_entries == 0
+
+    def test_trade_off_candidate_joins_front(self) -> None:
+        """A non-dominated trade-off candidate should join the front."""
+        existing = [_candidate("v1", quality_score=0.90, cost=0.20)]
+        new = [_candidate("v2", quality_score=0.70, cost=0.05)]  # lower quality but cheaper
+        front, new_entries = update_elite_set(existing, new)
+        versions = {c.prompt_version for c in front}
+        assert "v1" in versions
+        assert "v2" in versions
+        assert new_entries == 1
+
+    def test_max_size_enforced(self) -> None:
+        """Front should be pruned to max_size."""
+        existing = [_candidate(f"v{i}", quality_score=0.5 + i * 0.05, cost=0.5 - i * 0.05) for i in range(5)]
+        new = [_candidate("v_new", quality_score=0.30, cost=0.01)]  # non-dominated (cheapest)
+        front, _ = update_elite_set(existing, new, max_size=4)
+        assert len(front) <= 4
+
+    def test_degenerate_candidates_skipped(self) -> None:
+        """Candidates with quality_score=0.0 and cost=0.0 should be skipped."""
+        existing = [_candidate("v1", quality_score=0.80, cost=0.10)]
+        new = [_candidate("v_degen", quality_score=0.0, cost=0.0)]
+        front, new_entries = update_elite_set(existing, new)
+        versions = {c.prompt_version for c in front}
+        assert "v_degen" not in versions
+        assert new_entries == 0
+
+    def test_new_entries_count_excludes_reinserted(self) -> None:
+        """Candidates already in current_elite should not count as new entries."""
+        existing = [_candidate("v1", quality_score=0.80, cost=0.10)]
+        new = [_candidate("v1", quality_score=0.80, cost=0.10)]  # same version re-submitted
+        front, new_entries = update_elite_set(existing, new)
+        assert new_entries == 0
+
+
+# ---------------------------------------------------------------------------
+# validate_elite_set
+# ---------------------------------------------------------------------------
+
+
+class TestValidateEliteSet:
+    def test_removes_dominated_candidates(self) -> None:
+        """Candidates dominated by another elite member should be removed."""
+        v_high = _candidate("v_high", quality_score=0.95, cost=0.5)
+        v_low = _candidate("v_low", quality_score=0.7, cost=0.1)
+        # v_dominated is strictly worse than v_high on quality (0.8 < 0.95)
+        # and strictly worse on cost (0.6 > 0.5), so it is dominated by v_high
+        v_dominated = _candidate("v_dominated", quality_score=0.8, cost=0.6)
+
+        result = validate_elite_set([v_high, v_low, v_dominated])
+
+        versions = {c.prompt_version for c in result}
+        assert "v_dominated" not in versions
+        assert "v_high" in versions
+        assert "v_low" in versions
+        assert len(result) == 2
+
+    def test_valid_front_unchanged(self) -> None:
+        """A set of mutually non-dominated candidates should be returned unchanged."""
+        high_q = _candidate("high_q", quality_score=0.95, cost=0.5)
+        low_c = _candidate("low_c", quality_score=0.7, cost=0.1)
+
+        result = validate_elite_set([high_q, low_c])
+
+        versions = {c.prompt_version for c in result}
+        assert "high_q" in versions
+        assert "low_c" in versions
+        assert len(result) == 2
+
+    def test_empty_returns_empty(self) -> None:
+        assert validate_elite_set([]) == []
+
+    def test_update_elite_set_with_dominating_newcomer(self) -> None:
+        """When a new candidate dominates existing elite members, those members are removed.
+
+        This is the core scenario from the Pareto front bug: v12 dominates both v6 and v7
+        (higher quality *and* lower cost), so they should be evicted when v12 joins.
+        """
+        # cost stored as negative overhead delta — more negative means cheaper
+        v6 = _candidate("v6", quality_score=0.908, cost=-0.333)
+        v7 = _candidate("v7", quality_score=0.901, cost=-0.370)
+        # v12: higher quality AND lower cost (more negative) than both v6 and v7
+        v12 = _candidate("v12", quality_score=0.914, cost=-0.425)
+
+        current_elite = [v6, v7]
+        new_candidates = [v12]
+
+        front, new_entries = update_elite_set(current_elite, new_candidates)
+
+        versions = {c.prompt_version for c in front}
+        assert "v12" in versions
+        assert "v6" not in versions
+        assert "v7" not in versions
+        assert new_entries == 1
+
+
+# ---------------------------------------------------------------------------
+# Cold-start elite floor
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateEliteSetColdStart:
+    def test_cold_start_retains_dominated_candidates(self) -> None:
+        """In cold-start mode, strictly-dominated candidates must be kept."""
+        dominator = _candidate("v1", quality_score=0.95, cost=0.05)
+        dominated_a = _candidate("v2", quality_score=0.70, cost=0.20)
+        dominated_b = _candidate("v3", quality_score=0.60, cost=0.30)
+
+        front, new_entries = update_elite_set(
+            [],
+            [dominator, dominated_a, dominated_b],
+            is_cold_start_round=True,
+        )
+
+        versions = {c.prompt_version for c in front}
+        assert "v1" in versions
+        assert "v2" in versions
+        assert "v3" in versions
+
+    def test_cold_start_new_entries_count_equals_len_new_candidates(self) -> None:
+        """new_entries should equal the number of scored new candidates in cold-start mode."""
+        existing = [_candidate("v0", quality_score=0.50, cost=0.50)]
+        new = [
+            _candidate("v1", quality_score=0.90, cost=0.10),
+            _candidate("v2", quality_score=0.70, cost=0.20),
+            _candidate("v3", quality_score=0.60, cost=0.30),
+        ]
+
+        front, new_entries = update_elite_set(existing, new, is_cold_start_round=True)
+
+        assert new_entries == 3
+
+    def test_cold_start_max_size_not_applied(self) -> None:
+        """max_size constraint must not prune the cold-start elite."""
+        new = [_candidate(f"v{i}", quality_score=0.9 - i * 0.1, cost=0.05 + i * 0.1) for i in range(5)]
+
+        front, _ = update_elite_set([], new, max_size=2, is_cold_start_round=True)
+
+        assert len(front) == 5
+
+    def test_cold_start_degenerate_candidates_still_skipped(self) -> None:
+        """Degenerate (0, 0) candidates must be excluded even in cold-start mode."""
+        scored = _candidate("v1", quality_score=0.80, cost=0.10)
+        degen = _candidate("v_degen", quality_score=0.0, cost=0.0)
+
+        front, _ = update_elite_set([], [scored, degen], is_cold_start_round=True)
+
+        versions = {c.prompt_version for c in front}
+        assert "v1" in versions
+        assert "v_degen" not in versions
+
+    def test_normal_mode_still_applies_pareto(self) -> None:
+        """Without is_cold_start_round, dominated candidates are excluded as before."""
+        dominator = _candidate("v1", quality_score=0.95, cost=0.05)
+        dominated = _candidate("v2", quality_score=0.70, cost=0.20)
+
+        front, _ = update_elite_set([], [dominator, dominated], is_cold_start_round=False)
+
+        versions = {c.prompt_version for c in front}
+        assert "v1" in versions
+        assert "v2" not in versions

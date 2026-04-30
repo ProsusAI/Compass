@@ -9,9 +9,12 @@ See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Type alias for algorithm discriminator
@@ -332,3 +335,254 @@ def select_best(front: list[Candidate]) -> str:
         raise ValueError("Cannot select best from an empty Pareto front")
     best = max(front, key=lambda c: (c.quality_score, -c.cost))
     return best.prompt_version
+
+
+# ---------------------------------------------------------------------------
+# Beam search / SMS-EMOA elite set primitives
+# ---------------------------------------------------------------------------
+
+
+def compute_pareto_front(candidates: list[Candidate]) -> list[Candidate]:
+    """Return the non-dominated subset of candidates (Pareto front).
+
+    Quality is maximized, cost is minimized. Candidate A dominates B when
+    A has >= quality AND <= cost, with at least one strict inequality.
+    """
+    front: list[Candidate] = []
+    for candidate in candidates:
+        dominated = False
+        for other in candidates:
+            if other is candidate:
+                continue
+            if dominates(other, candidate):
+                dominated = True
+                break
+        if not dominated:
+            front.append(candidate)
+    return front
+
+
+def crowding_distance(front: list[Candidate]) -> dict[str, float]:
+    """Compute NSGA-II crowding distance for each candidate on the front.
+
+    Endpoints (best quality, lowest cost) always receive infinite distance.
+    Interior points receive the normalized sum of neighbor distances on each axis.
+
+    Returns:
+        Mapping from prompt_version to crowding distance.
+    """
+    if not front:
+        return {}
+    if len(front) <= 2:
+        return {c.prompt_version: float("inf") for c in front}
+
+    distances: dict[str, float] = {c.prompt_version: 0.0 for c in front}
+
+    for key, reverse in [("quality_score", True), ("cost", False)]:
+        sorted_front = sorted(front, key=lambda c: getattr(c, key), reverse=reverse)
+        values = [getattr(c, key) for c in sorted_front]
+        span = max(values) - min(values)
+
+        # Endpoints always get infinite distance
+        distances[sorted_front[0].prompt_version] = float("inf")
+        distances[sorted_front[-1].prompt_version] = float("inf")
+
+        if span == 0.0:
+            continue
+
+        for i in range(1, len(sorted_front) - 1):
+            prev_val = getattr(sorted_front[i - 1], key)
+            next_val = getattr(sorted_front[i + 1], key)
+            normalized = abs(prev_val - next_val) / span
+            if distances[sorted_front[i].prompt_version] != float("inf"):
+                distances[sorted_front[i].prompt_version] += normalized
+
+    return distances
+
+
+def compute_hypervolume(front: list[Candidate], reference_point: tuple[float, float]) -> float:
+    """Compute the 2D hypervolume indicator for the front relative to a reference point.
+
+    Quality is maximized (x-axis), cost is minimized (y-axis). The reference point
+    is (min_quality_bound, max_cost_bound). Uses a sweepline over quality.
+
+    Args:
+        front: Non-dominated candidates.
+        reference_point: (min_quality, max_cost) lower-left reference corner.
+
+    Returns:
+        Hypervolume as a float (0.0 for empty front).
+    """
+    if not front:
+        return 0.0
+
+    ref_quality, ref_cost = reference_point
+    # Sort by quality ascending for left-to-right sweep
+    sorted_front = sorted(front, key=lambda c: c.quality_score)
+
+    hypervolume = 0.0
+    prev_quality = ref_quality
+    for candidate in sorted_front:
+        width = candidate.quality_score - prev_quality
+        height = ref_cost - candidate.cost
+        if width > 0 and height > 0:
+            hypervolume += width * height
+        prev_quality = candidate.quality_score
+
+    return hypervolume
+
+
+def find_knee_point(front: list[Candidate]) -> str:
+    """Return the prompt_version of the knee point on the Pareto front.
+
+    The knee point is the candidate with the maximum perpendicular distance
+    to the line connecting the two endpoints of the front (highest quality
+    and lowest cost). For fronts with <=2 candidates, returns the highest
+    quality candidate.
+
+    Raises:
+        ValueError: If front is empty.
+    """
+    if not front:
+        raise ValueError("Cannot find knee point of an empty front")
+
+    if len(front) == 1:
+        return front[0].prompt_version
+
+    # Sort by quality ascending so index 0 is lowest quality
+    sorted_front = sorted(front, key=lambda c: c.quality_score)
+
+    if len(front) == 2:
+        # Return highest quality
+        return sorted_front[-1].prompt_version
+
+    # Endpoints of the front diagonal: lowest quality (index 0) and highest quality (index -1)
+    low_end = sorted_front[0]  # low quality, high cost end
+    high_end = sorted_front[-1]  # high quality, low cost end
+
+    q_min = low_end.quality_score
+    q_max = high_end.quality_score
+    c_min = high_end.cost
+    c_max = low_end.cost
+
+    q_range = q_max - q_min if q_max != q_min else 1.0
+    c_range = c_max - c_min if c_max != c_min else 1.0
+
+    # Normalize to [0, 1]: x = (quality - q_min) / q_range, y = (cost - c_min) / c_range
+    # High-quality end maps to (1, 0), low-quality end maps to (0, 1)
+    # Line from (0, 1) to (1, 0) has equation x + y = 1, or x + y - 1 = 0
+    # Perpendicular distance = |x + y - 1| / sqrt(2)
+    best_version = high_end.prompt_version
+    best_dist = -1.0
+
+    for candidate in front:
+        x = (candidate.quality_score - q_min) / q_range
+        y = (candidate.cost - c_min) / c_range
+        dist = abs(x + y - 1.0)
+        if dist > best_dist:
+            best_dist = dist
+            best_version = candidate.prompt_version
+
+    return best_version
+
+
+def prune_to_size(front: list[Candidate], max_size: int) -> list[Candidate]:
+    """Reduce front to at most max_size candidates by removing least-diverse members.
+
+    Iteratively removes the candidate with the smallest crowding distance,
+    protecting the endpoints (highest quality and lowest cost) each iteration.
+
+    Args:
+        front: List of candidates on the Pareto front.
+        max_size: Maximum number of candidates to retain.
+
+    Returns:
+        Pruned list with at most max_size candidates.
+    """
+    result = list(front)
+
+    while len(result) > max_size:
+        distances = crowding_distance(result)
+
+        # Identify endpoints to protect
+        best_quality = max(result, key=lambda c: c.quality_score).prompt_version
+        best_cost = min(result, key=lambda c: c.cost).prompt_version
+        protected = {best_quality, best_cost}
+
+        # Find non-endpoint candidate with smallest crowding distance
+        candidates_to_consider = [c for c in result if c.prompt_version not in protected]
+        if not candidates_to_consider:
+            # All remaining are endpoints; can't prune further
+            break
+
+        to_remove = min(candidates_to_consider, key=lambda c: distances.get(c.prompt_version, 0.0))
+        result = [c for c in result if c.prompt_version != to_remove.prompt_version]
+
+    return result
+
+
+def update_elite_set(
+    current_elite: list[Candidate],
+    new_candidates: list[Candidate],
+    max_size: int = 10,  # callers should pass 2*beam_width+1; this is a safe fallback
+    is_cold_start_round: bool = False,
+) -> tuple[list[Candidate], int]:
+    """Update the elite set using Pareto dominance on (quality, cost).
+
+    Combines existing front with new scored candidates, computes the
+    non-dominated set, and prunes to max_size using crowding distance.
+
+    When is_cold_start_round is True (round 1 only), Pareto filtering and
+    crowding-distance pruning are bypassed: all new_candidates are retained
+    as-is so every initial strategy survives to produce at least one child
+    in round 2.
+    """
+    if is_cold_start_round:
+        scored = [c for c in new_candidates if c.quality_score > 0.0 or c.cost > 0.0]
+        by_version: dict[str, Candidate] = {}
+        for c in list(current_elite) + scored:
+            by_version[c.prompt_version] = c
+        result = list(by_version.values())
+        old_versions = {c.prompt_version for c in current_elite}
+        new_entries = sum(1 for c in result if c.prompt_version not in old_versions)
+        return result, new_entries
+
+    all_candidates = list(current_elite) + [
+        c
+        for c in new_candidates
+        if c.quality_score > 0.0 or c.cost > 0.0  # skip degenerate
+    ]
+    if not all_candidates:
+        return [], 0
+
+    by_version_pareto: dict[str, Candidate] = {}
+    for c in all_candidates:
+        by_version_pareto[c.prompt_version] = c
+    all_candidates = list(by_version_pareto.values())
+
+    new_front = compute_pareto_front(all_candidates)
+    new_front = prune_to_size(new_front, max_size)
+
+    old_versions = {c.prompt_version for c in current_elite}
+    new_entries = sum(1 for c in new_front if c.prompt_version not in old_versions)
+
+    return new_front, new_entries
+
+
+def validate_elite_set(elite_set: list[Candidate]) -> list[Candidate]:
+    """Recompute Pareto front from the elite set, removing any dominated members.
+
+    Defensive check: if the elite is correctly maintained, this is a no-op.
+    Logs a warning if dominated candidates are found and removed.
+    """
+    if not elite_set:
+        return []
+    recomputed = compute_pareto_front(elite_set)
+    if len(recomputed) < len(elite_set):
+        removed = {c.prompt_version for c in elite_set} - {c.prompt_version for c in recomputed}
+        logger.warning(
+            "validate_elite_set: removed %d dominated candidate(s): %s",
+            len(removed),
+            removed,
+        )
+    return recomputed
