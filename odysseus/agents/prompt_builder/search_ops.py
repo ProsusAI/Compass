@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from odysseus.agents.prompt_builder.search import (
+    AlgorithmType,
     Candidate,
     RoundSummary,
     SearchState,
@@ -43,6 +44,13 @@ logger = logging.getLogger(__name__)
 
 def _default_output_dir() -> Path:
     return get_project_dir() / "outputs"
+
+
+# Branch-level algorithm constants.  On feat/generalize-pipeline (and main)
+# these default to hill_climb / {}.  Search-specific branches (Wave 2) flip
+# exactly these two lines and nothing else.
+_BRANCH_ALGORITHM: AlgorithmType = "beam"
+_BRANCH_ALGORITHM_STATE: dict[str, Any] = {"beam_width": 3}
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +133,7 @@ def _load_user_targets(run_id: str, output_dir: Path) -> list[UserTarget]:
     return parse_user_targets(input_report_path.read_text(encoding="utf-8"))
 
 
-def _load_candidate_metrics(
-    candidates: list[Candidate], run_id: str, output_dir: Path
-) -> dict[str, dict[str, float]]:
+def _load_candidate_metrics(candidates: list[Candidate], run_id: str, output_dir: Path) -> dict[str, dict[str, float]]:
     """Read each candidate's eval report.json and extract the metrics dict."""
     metrics: dict[str, dict[str, float]] = {}
     for c in candidates:
@@ -192,10 +198,11 @@ def init_search_state(
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
-    algorithm: Literal["hill_climb", "beam", "sms_emoa", "emosa"] = "hill_climb",
-    algorithm_state: dict[str, Any] | None = None,
 ) -> SearchState:
     """Create and persist a new SearchState.
+
+    The search algorithm is hardcoded per-branch via ``_BRANCH_ALGORITHM`` /
+    ``_BRANCH_ALGORITHM_STATE``; callers do not choose it.
 
     Args:
         backend: Backend identifier (e.g. ``"anthropic"``).
@@ -205,8 +212,6 @@ def init_search_state(
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
         convergence_limit: Stagnation rounds that trigger convergence.
         primary_metric_name: Optional name of the primary quality metric.
-        algorithm: Search algorithm discriminator.  Defaults to ``"hill_climb"``.
-        algorithm_state: Optional free-form pocket for strategy-specific sub-state.
 
     Returns:
         The newly created :class:`SearchState`.
@@ -221,8 +226,8 @@ def init_search_state(
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
         primary_metric_name=primary_metric_name,
-        algorithm=algorithm,
-        algorithm_state=algorithm_state or {},
+        algorithm=_BRANCH_ALGORITHM,
+        algorithm_state=_BRANCH_ALGORITHM_STATE,
     )
     _save_state(run_id, state, output_dir)
     _try_write_viz(run_id, output_dir)
@@ -433,9 +438,7 @@ def advance_round(
 
     # Guard: do not advance while batch evals are still in flight.
     if state.active_evals:
-        raise ValueError(
-            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
-        )
+        raise ValueError(f"Cannot advance round while active_evals is non-empty: {state.active_evals}")
 
     pending = _load_pending(run_id, output_dir)
 
@@ -466,9 +469,7 @@ def advance_round(
         improvement = 0.0
         new_stagnation_count = state.stagnation_count + 1
         round_routing_cost = 0.0
-        new_mutation_mode = (
-            "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
-        )
+        new_mutation_mode = "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
     else:
         # Normal path — use only scored candidates.
         new_front, new_elite_entries = update_pareto_front(state.elite_set, scored)
@@ -595,9 +596,7 @@ def advance_round_beam(
 
     # Guard: do not advance while batch evals are still in flight.
     if state.active_evals:
-        raise ValueError(
-            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
-        )
+        raise ValueError(f"Cannot advance round while active_evals is non-empty: {state.active_evals}")
 
     pending = _load_pending(run_id, output_dir)
 
@@ -683,9 +682,7 @@ def advance_round_beam(
                 relative_improvement = (new_hypervolume - hypervolume_prev) / hypervolume_prev
             else:
                 relative_improvement = new_hypervolume
-            new_stagnation_count = (
-                0 if relative_improvement > state.epsilon else state.stagnation_count + 1
-            )
+            new_stagnation_count = 0 if relative_improvement > state.epsilon else state.stagnation_count + 1
 
         # Epsilon tightening: one-time when all user targets first met
         new_epsilon = state.epsilon
@@ -705,9 +702,7 @@ def advance_round_beam(
     backtracking = new_stagnation_count >= backtrack_threshold
 
     # Check convergence
-    converged = (
-        new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
-    )
+    converged = new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
 
     qualities = [c.quality_score for c in new_elite]
     front_quality_spread = max(qualities) - min(qualities) if len(new_elite) > 1 else 0.0
@@ -772,9 +767,7 @@ def advance_round_beam(
     for candidate in pending:
         report_path = eval_dir / candidate.prompt_version / "report.json"
         if report_path.exists():
-            round_reports[candidate.prompt_version] = json.loads(
-                report_path.read_text(encoding="utf-8")
-            )
+            round_reports[candidate.prompt_version] = json.loads(report_path.read_text(encoding="utf-8"))
     if round_reports:
         save_round_report(run_id, state.round, round_reports, output_dir=output_dir)
 
@@ -801,9 +794,13 @@ def _clear_active_evals(run_id: str, output_dir: Path) -> None:
 def set_loop_phase(
     run_id: str,
     phase: Literal[
-        "build", "review",
-        "warmup_seed", "warmup_build", "warmup_reduce",
-        "calibration", "build_recovering",
+        "build",
+        "review",
+        "warmup_seed",
+        "warmup_build",
+        "warmup_reduce",
+        "calibration",
+        "build_recovering",
     ],
     output_dir: Path | None = None,
 ) -> None:

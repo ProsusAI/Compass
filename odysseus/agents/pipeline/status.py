@@ -309,6 +309,7 @@ def get_pipeline_status(
         action, tools, prompts, subagent_instruction, algorithm = _next_action_for_stage_4(
             run_dir,
             rerun_config=rerun_config,
+            project_dir=project_dir,
         )
     else:
         action, tools, prompts, subagent_instruction = _next_action_for_stage(current_stage)
@@ -553,8 +554,9 @@ def _detect_stage_4_phase(
         any(prompts_dir.glob("v1.yaml")) or any(prompts_dir.glob("v1.json")) or any(prompts_dir.glob("v1.txt"))
     )
 
-    # Phase 1: Cold-start — no directives and no search state
-    if not directive_history.is_file() and not search_state_path.is_file():
+    # Phase 1: Cold-start — no directives yet (search_state.json may exist due to
+    # pre-initialisation by _ensure_stage4_search_state).
+    if not directive_history.is_file():
         return "cold_start"
 
     # Phase 2: Build v1 — directives exist but no compiled prompt yet
@@ -626,9 +628,77 @@ def _read_algorithm_from_state(run_dir: Path) -> str:
         return "hill_climb"
 
 
+def _ensure_stage4_search_state(run_dir: Path, project_dir: Path | None = None) -> None:
+    """Auto-create ``search_state.json`` at Stage 4 entry if it does not exist.
+
+    This runs once on first Stage-4 dispatch so that ``_detect_stage_4_phase``
+    and the cold-start Review Agent see a real ``SearchState`` with the branch
+    algorithm already persisted — ``get_search_state_tool`` no longer raises
+    ``FileNotFoundError`` during the cold-start sub-agent.
+
+    When the file already exists this function is a no-op.
+
+    Args:
+        run_dir: Run-level output directory (``outputs/<run_id>``).
+        project_dir: Project root used to locate ``backends/``. Defaults to
+            :func:`get_project_dir` when ``None``.
+    """
+    search_state_path = run_dir / "search" / "search_state.json"
+    if search_state_path.is_file():
+        return
+
+    if project_dir is None:
+        project_dir = get_project_dir()
+
+    from odysseus.agents.prompt_builder.search_ops import init_search_state
+
+    # Resolve backend from Stage 3 outputs (backends/*.yaml stem), falling back
+    # to the first priced backend found, then empty string.
+    backend: str = ""
+    backends_dir = project_dir / "backends"
+    if backends_dir.is_dir():
+        from odysseus.eval.backends.profile import BackendProfile
+
+        for yf in sorted(backends_dir.glob("*.yaml")):
+            try:
+                profile = BackendProfile.from_yaml(yf)
+                if profile.pricing is not None:
+                    backend = yf.stem
+                    break
+            except Exception:
+                continue
+
+    # Read primary_metric_name from routing_context.json if available.
+    primary_metric_name: str | None = None
+    routing_context_path = run_dir / "validation" / "routing_context.json"
+    if routing_context_path.is_file():
+        try:
+            rc_data = json.loads(routing_context_path.read_text())
+            raw = rc_data.get("primary_metric_name")
+            if isinstance(raw, str) and raw:
+                primary_metric_name = raw
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("Failed to read primary_metric_name from %s: %s", routing_context_path, exc)
+
+    # output_dir is run_dir's parent (e.g. <project>/outputs)
+    output_dir = run_dir.parent
+    run_id = run_dir.name
+    try:
+        init_search_state(
+            run_id=run_id,
+            backend=backend,
+            primary_metric_name=primary_metric_name,
+            output_dir=output_dir,
+        )
+        logger.info("Pre-initialised search_state.json for run %s (backend=%r)", run_id, backend)
+    except Exception as exc:
+        logger.warning("Failed to pre-initialise search_state.json for run %s: %s", run_id, exc)
+
+
 def _next_action_for_stage_4(
     run_dir: Path,
     rerun_config: dict[str, Any] | None = None,
+    project_dir: Path | None = None,
 ) -> tuple[str, list[str], list[str], str, str]:
     """Return (action, tools, prompts, subagent_instruction, algorithm) for Stage 4.
 
@@ -636,6 +706,10 @@ def _next_action_for_stage_4(
     ``search_state.json`` (defaults to ``"hill_climb"`` when absent).  It is
     used by the orchestrator to compose the strategy-aware Review Agent prompt.
     """
+    # Pre-init search_state.json on first Stage-4 dispatch so cold-start
+    # sub-agents can call get_search_state_tool without FileNotFoundError.
+    _ensure_stage4_search_state(run_dir, project_dir=project_dir)
+
     phase = _detect_stage_4_phase(run_dir, rerun_config)
     algorithm = _read_algorithm_from_state(run_dir)
 

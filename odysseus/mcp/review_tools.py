@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import Context
+from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.agents.pipeline.dispatch import (
     clear_review_dispatched,
@@ -82,11 +83,12 @@ async def build_review_briefing_tool(
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
 
-    # Load search state; cold start (no loop initialised yet) gets a bare default
+    # Load search state — must exist (pre-initialised by _ensure_stage4_search_state
+    # at Stage 4 entry).  Missing state is a hard error so regressions surface immediately.
     try:
         state = get_search_state(run_id=run_id, output_dir=out)
-    except FileNotFoundError:
-        state = SearchState(search_state_id=run_id, backend="")
+    except FileNotFoundError as exc:
+        raise ToolError("search_state.json missing — Stage 4 not initialised") from exc
 
     # Auto-discover pending candidates
     pending_candidates_list = _load_pending(run_id, out)
@@ -152,9 +154,8 @@ async def build_review_briefing_tool(
     routing_context_path = out / run_id / "validation" / "routing_context.json"
     if routing_context_path.exists():
         from odysseus.agents.routing_context import RoutingContext
-        routing_context = RoutingContext.model_validate_json(
-            routing_context_path.read_text(encoding="utf-8")
-        )
+
+        routing_context = RoutingContext.model_validate_json(routing_context_path.read_text(encoding="utf-8"))
 
     # Load user targets from validated input report
     user_targets = None
@@ -346,6 +347,7 @@ async def record_directive_outcomes_tool(
         save_review_result(run_id, reconstructed, output_dir=out)
     elif review_result is not None:
         from odysseus.agents.review.ops import save_review_result
+
         save_review_result(run_id, review_result, output_dir=out)
 
     result: dict[str, Any] = {
@@ -366,15 +368,12 @@ async def record_directive_outcomes_tool(
             current_round = _load_state(run_id, out).round
         for i, v in enumerate(parsed_variants):
             if v.variant_id is None:
-                parsed_variants[i] = v.model_copy(
-                    update={"variant_id": f"cv-{current_round}-{i}"}
-                )
+                parsed_variants[i] = v.model_copy(update={"variant_id": f"cv-{current_round}-{i}"})
 
         save_child_variants(run_id, parsed_variants, output_dir=out)
         result["child_variants_saved"] = len(parsed_variants)
         result["variants_summary"] = [
-            {"variant_id": v.variant_id, "hypothesis": v.hypothesis[:80]}
-            for v in parsed_variants
+            {"variant_id": v.variant_id, "hypothesis": v.hypothesis[:80]} for v in parsed_variants
         ]
 
         # Write the shared child_variants.json sentinel so review_fanout_status
@@ -405,10 +404,12 @@ async def record_directive_outcomes_tool(
                     converged=True,
                     convergence_reason="review_exit",
                 )
-                updated = state.model_copy(update={
-                    "converged": True,
-                    "round_history": [*state.round_history, summary],
-                })
+                updated = state.model_copy(
+                    update={
+                        "converged": True,
+                        "round_history": [*state.round_history, summary],
+                    }
+                )
                 _save_state(run_id, updated, out)
             result["loop_signal_applied"] = "exit"
             return json.dumps(result)
