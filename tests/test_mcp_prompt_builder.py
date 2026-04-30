@@ -12,6 +12,7 @@ import pytest
 from odysseus.mcp import (
     advance_step_tool,
     filter_holdout_dataset_tool,
+    get_child_variants_tool,
     get_edit_directives_tool,
     get_search_state_tool,
     init_search_state_tool,
@@ -317,23 +318,26 @@ class TestEditDirectivesPersistence:
 
     @pytest.mark.asyncio
     async def test_get_edit_directives_tool(self, tmp_path: Path) -> None:
-        from odysseus.agents.review.models import EditDirective
-        from odysseus.agents.review.ops import save_edit_directives
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants
 
         with _patch_project_dir(tmp_path):
             _setup_guard_artifacts(tmp_path, stage="search")
-            directives = [
-                EditDirective(
-                    directive_id="d1",
-                    target_version="v1",
-                    block_type="rule",
-                    block_identifier="Rule 1",
-                    granularity="micro",
-                    directive="Tighten wording",
-                    priority="medium",
-                ),
-            ]
-            save_edit_directives(_RUN_ID, directives, output_dir=tmp_path / "outputs")
+            variant = ChildVariant(
+                hypothesis="Test hypothesis",
+                directives=[
+                    EditDirective(
+                        directive_id="d1",
+                        target_version="v1",
+                        block_type="rule",
+                        block_identifier="Rule 1",
+                        granularity="micro",
+                        directive="Tighten wording",
+                        priority="medium",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [variant], output_dir=tmp_path / "outputs")
 
             result = await get_edit_directives_tool(
                 ctx=None,
@@ -355,3 +359,93 @@ class TestEditDirectivesPersistence:
             )
             data = json.loads(result)
             assert data == []
+
+    @pytest.mark.asyncio
+    async def test_get_edit_directives_tool_flattens_multiple_variants(self, tmp_path: Path) -> None:
+        """get_edit_directives_tool must flatten directives across all child variants in file order."""
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+            variant_a = ChildVariant(
+                hypothesis="First variant",
+                directives=[
+                    EditDirective(
+                        directive_id="d1",
+                        target_version="v1",
+                        block_type="rule",
+                        block_identifier="Rule 1",
+                        granularity="micro",
+                        directive="Edit A",
+                        priority="high",
+                    ),
+                ],
+            )
+            variant_b = ChildVariant(
+                hypothesis="Second variant",
+                directives=[
+                    EditDirective(
+                        directive_id="d2",
+                        target_version="v1",
+                        block_type="example",
+                        block_identifier="Example 1",
+                        granularity="macro",
+                        directive="Edit B",
+                        priority="medium",
+                    ),
+                    EditDirective(
+                        directive_id="d3",
+                        target_version="v1",
+                        block_type="rule",
+                        block_identifier="Rule 2",
+                        granularity="micro",
+                        directive="Edit C",
+                        priority="low",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [variant_a, variant_b], output_dir=tmp_path / "outputs")
+
+            result = await get_edit_directives_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+            assert len(data) == 3
+            assert [d["directive_id"] for d in data] == ["d1", "d2", "d3"]
+
+    @pytest.mark.asyncio
+    async def test_get_child_variants_tool(self, tmp_path: Path) -> None:
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+            variant = ChildVariant(
+                hypothesis="Add a clearer boundary example",
+                directives=[
+                    EditDirective(
+                        directive_id="d1",
+                        target_version="v1",
+                        block_type="example",
+                        block_identifier="Example 1",
+                        granularity="macro",
+                        directive="Add example",
+                        priority="high",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [variant], output_dir=tmp_path / "outputs")
+
+            result = await get_child_variants_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+            assert len(data) == 1
+            assert data[0]["hypothesis"] == "Add a clearer boundary example"
+            assert len(data[0]["directives"]) == 1
+            assert data[0]["directives"][0]["directive_id"] == "d1"

@@ -28,6 +28,7 @@ from odysseus.mcp.orchestrator_tools import (
 )
 from odysseus.mcp.prompt_building_tools import (
     advance_step_tool,
+    get_child_variants_tool,
     get_edit_directives_tool,
     get_search_state_tool,
     init_search_state_tool,
@@ -94,6 +95,7 @@ __all__ = [
     "detect_and_parse_dataset",
     "filter_holdout_dataset_tool",
     "get_default_pricing",
+    "get_child_variants_tool",
     "get_edit_directives_tool",
     "get_pipeline_status",
     "get_prompt_text_tool",
