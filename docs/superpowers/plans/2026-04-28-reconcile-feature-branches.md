@@ -39,7 +39,7 @@ Most G work appears on multiple branches with parallel evolution. Pick one canon
 ## Per-branch unique G work
 
 - **parallel-beam unique**: none after 2026-04-30 reclassification — `5e8fc0e` and the associated post-coldstart prompt + tests moved to **C1** as beam-specific.
-- **sms-emoa unique**: warmup-specific test fixtures and helpers. ~0.5 session.
+- **sms-emoa unique**: none after 2026-04-30 reclassification — warmup test fixtures + scenarios moved to **C2** (sms-emoa-coupled state shape and tool names).
 - **emosa unique**: small preprocessor pieces that bleed into S (handle in Phase C). ~0 sessions.
 
 ## Strategy-only residuals (Phase C)
@@ -110,7 +110,7 @@ When a session completes, update its row with: `[x]` instead of `[ ]`, the commi
 ### Phase B — Per-branch G residuals (sequential after Phase A)
 
 - [~] **B1** — Reclassified 2026-04-30. `5e8fc0e` (cold-start elite floor) and `a5473ea`'s `review_agent_post_coldstart_system.md` are beam-specific (the elite-floor mechanism only matters when round 1 produces K > 1 cold-start variants, and it's coupled to the post-coldstart review prompt that overrides parent selection to "exactly one child per protected parent" — neither half is useful alone). Folded into **C1**. No other generic infra unique to `feature/parallel-beam-search` was identified after Phase A. **Drop.**
-- [ ] **B2** — sms-emoa + emosa unique G (warmup test fixtures + minor emosa tweaks). ~0.5 session.
+- [~] **B2** — Reclassified 2026-04-30. The four sms-emoa "warmup fixture" artefacts (`tests/scenarios/16_sms_emoa_warmup_then_iterations.md`, `tests/scenarios/17_stage4_build_dispatch_guard.md`, `tests/scenarios/data/sms_emoa_toy_dataset.jsonl`, and the `tests/scenarios/data/review/generate_fixtures.py` rewrite) hardcode sms-emoa-only top-level state fields (`mu`, `population`, `warm_up_complete`, `hypervolume_history`, `iteration`) and call sms-emoa-only tools (`advance_warmup_batch_tool`, `reduce_iteration_tool`). The generalized branch carries those inside the `algorithm_state` pocket (`odysseus/agents/prompt_builder/search.py:181`); the fixtures fail to load against the canonical schema and the scenarios can't execute without the `_advance_sms_emoa` dispatcher arm. Folded into **C2**. emosa-unique was already ~0 sessions per the per-branch table. **Drop.**
 
 ### Phase C — Strategy-only ports (sequential per branch, after Phase B)
 
@@ -123,6 +123,7 @@ When a session completes, update its row with: `[x]` instead of `[ ]`, the commi
   - Tests (folded from B1): port `tests/test_search_ops_advance_round.py` and scenario `tests/scenarios/16_round1_cold_start_protection.md` (both from `5e8fc0e`).
   - Verify: scenario runs beam to convergence; round-1 elite set retains all K cold-start variants; round-2 review emits exactly K children (one per protected parent); round 3+ resumes normal Pareto. Cross-branch diff small.
 - [ ] **C2** — sms-emoa residual port. Branch `feat/generalize-sms-emoa` off main. Add `_advance_sms_emoa` (warmup + steady-state), `reduce_population` etc., preprocessor population. Verify warmup → steady-state transitions; (μ+1) eviction sound.
+  - **Test fixtures + scenarios (folded from B2)**: port `tests/scenarios/16_sms_emoa_warmup_then_iterations.md`, `tests/scenarios/17_stage4_build_dispatch_guard.md`, `tests/scenarios/data/sms_emoa_toy_dataset.jsonl`, and the `tests/scenarios/data/review/generate_fixtures.py` rewrite. Adapt fixture state shape to canonical (sms-emoa fields go inside `algorithm_state`, not top-level), and update scenario tool names if the dispatcher consolidates `advance_warmup_batch_tool` / `reduce_iteration_tool` behind `advance_step_tool`.
 - [ ] **C3** — emosa residual port (first half). Branch `feat/generalize-emosa` off main. Land `annealing.py`, AnnealingState in pocket, `_advance_emosa` calibration arm, preprocessor `binding_axis`. Verify K=5 trajectories complete calibration round and write per-trajectory state.
 - [ ] **C4** — emosa residual port (second half). Per-trajectory `review_fanout_status` override; `trajectory_fanout_missing`; multi-child Metropolis acceptance; neighborhood replacement. Verify K-way review fanout, per-trajectory acceptance, scenario runs to convergence.
 
