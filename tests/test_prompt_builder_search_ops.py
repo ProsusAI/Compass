@@ -36,6 +36,7 @@ def _patch_project_dir(tmp_path: Path):
     with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
         yield
 
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -668,12 +669,11 @@ class TestAdvanceStepTool:
             analysis_dir.mkdir(parents=True, exist_ok=True)
             (analysis_dir / "dev.jsonl").write_text("")
 
-            # Init with default algorithm="hill_climb"
+            # Algorithm is hardcoded per branch (hill_climb on this branch)
             state_json = await init_search_state_tool(
                 ctx=None,
                 run_id="run-st1",
                 backend="test",
-                algorithm="hill_climb",
             )
             state_data = json.loads(state_json)
             assert state_data["algorithm"] == "hill_climb"
@@ -688,23 +688,20 @@ class TestAdvanceStepTool:
 
     async def test_non_hill_climb_raises_not_implemented(self, tmp_path: Path) -> None:
         """advance_step_tool raises NotImplementedError for algorithms not yet implemented."""
-        from odysseus.mcp import advance_step_tool, init_search_state_tool
+        from odysseus.agents.prompt_builder.search_ops import _state_path, init_search_state
+        from odysseus.mcp import advance_step_tool
 
-        with (
-            patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            patch(_SEARCH_OPS_PATCH, return_value=tmp_path),
-        ):
-            analysis_dir = tmp_path / "outputs" / "run-st2" / "analysis"
-            analysis_dir.mkdir(parents=True, exist_ok=True)
-            (analysis_dir / "dev.jsonl").write_text("")
-
-            await init_search_state_tool(
-                ctx=None,
-                run_id="run-st2",
-                backend="test",
-                # Force a non-hill-climb algorithm into the state
-                algorithm="beam",
-            )
+        output_dir = tmp_path / "outputs"
+        with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
+            # Write a search state with algorithm="beam" directly to simulate a
+            # feature-branch state (the MCP tool no longer accepts an algorithm param).
+            # Use the same output_dir that advance_step_tool will resolve via
+            # get_project_dir() (patched to tmp_path) → tmp_path/outputs.
+            init_search_state(backend="test", run_id="run-st2", output_dir=output_dir)
+            path = _state_path("run-st2", output_dir)
+            patched = json.loads(path.read_text())
+            patched["algorithm"] = "beam"
+            path.write_text(json.dumps(patched))
 
             with pytest.raises(NotImplementedError, match="beam"):
                 await advance_step_tool("run-st2")

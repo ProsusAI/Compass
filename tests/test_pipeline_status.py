@@ -4,6 +4,7 @@ from pathlib import Path
 
 from odysseus.agents.pipeline.status import (
     _detect_stage_4_phase,
+    _ensure_stage4_search_state,
     _read_rerun_config,
     discover_runs,
     get_pipeline_status,
@@ -164,18 +165,14 @@ def _setup_stage4_v1_done(base: Path, run_id: str) -> None:
     (base / run_id / "prompts").mkdir(parents=True, exist_ok=True)
     (base / run_id / "prompts" / "v1.txt").write_text("prompt: test")
     search = base / run_id / "search"
-    (search / "search_state.json").write_text(
-        json.dumps({"round": 1, "converged": False, "loop_phase": "review"})
-    )
+    (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
 
 
 def _setup_stage4_converged(base: Path, run_id: str) -> None:
     """Stage 4 complete: converged=True."""
     _setup_stage4_v1_done(base, run_id)
     search = base / run_id / "search"
-    (search / "search_state.json").write_text(
-        json.dumps({"round": 5, "converged": True, "loop_phase": "build"})
-    )
+    (search / "search_state.json").write_text(json.dumps({"round": 5, "converged": True, "loop_phase": "build"}))
 
 
 class TestSubagentInstruction:
@@ -283,9 +280,7 @@ class TestStage4ThreePhaseDetection:
     def test_normal_loop_build_phase(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 1, "converged": False, "loop_phase": "build"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
         # Defense-in-depth guard: build_dispatched.json must exist to confirm
         # the Prompt Builder is in-flight (otherwise phase is re-flipped to review).
         (search / "build_dispatched.json").write_text(json.dumps({"round": 1}))
@@ -316,9 +311,7 @@ class TestStage4ThreePhaseDetection:
     def test_build_phase_available_tools(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
         search = tmp_path / "r1" / "search"
-        (search / "search_state.json").write_text(
-            json.dumps({"round": 1, "converged": False, "loop_phase": "build"})
-        )
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "build"}))
         # Defense-in-depth guard: build_dispatched.json must exist so the
         # phase is not re-flipped to review.
         (search / "build_dispatched.json").write_text(json.dumps({"round": 1}))
@@ -433,8 +426,7 @@ class TestStage3RerunMode:
         _setup_through_stage2(tmp_path, "r1")
         (tmp_path / "backends").mkdir(parents=True, exist_ok=True)
         (tmp_path / "backends" / "openai.yaml").write_text(
-            "model: gpt-4o\nprovider: openai\n"
-            "requests_per_minute: 100\ntokens_per_minute: 100000\n"
+            "model: gpt-4o\nprovider: openai\nrequests_per_minute: 100\ntokens_per_minute: 100000\n"
         )
         self._write_rerun_config(tmp_path / "r1", new_backend="openai")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
@@ -458,7 +450,7 @@ class TestStage4RerunMode:
         _setup_through_stage2(base, run_id)
         (base / "backends").mkdir(parents=True, exist_ok=True)
         (base / "backends" / f"{new_backend}.yaml").write_text(
-            f"model: gpt-4o\nprovider: openai\n"
+            "model: gpt-4o\nprovider: openai\n"
             "requests_per_minute: 100\ntokens_per_minute: 100000\n"
             "pricing:\n"
             "  input_cost_per_million_tokens: 2.50\n"
@@ -583,17 +575,13 @@ class TestDiscoveredRuns:
         assert "run_a" in run_ids
         assert "run_b" in run_ids
 
-    def test_discovered_runs_has_converged_prompt_false_for_incomplete_stage4(
-        self, tmp_path: Path
-    ) -> None:
+    def test_discovered_runs_has_converged_prompt_false_for_incomplete_stage4(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
         assert entry["has_converged_prompt"] is False
 
-    def test_discovered_runs_has_converged_prompt_true_for_converged(
-        self, tmp_path: Path
-    ) -> None:
+    def test_discovered_runs_has_converged_prompt_true_for_converged(self, tmp_path: Path) -> None:
         _setup_stage4_converged(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
@@ -659,3 +647,121 @@ class TestDetectStage4PhaseRecovery:
         phase = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
 
         assert phase == "build"
+
+
+# ---------------------------------------------------------------------------
+# _ensure_stage4_search_state tests
+# ---------------------------------------------------------------------------
+
+_MOCK_BACKEND_YAML = (
+    "model: mock-model\n"
+    "provider: mock_echo\n"
+    "requests_per_minute: 100\n"
+    "tokens_per_minute: 100000\n"
+    "pricing:\n"
+    "  input_cost_per_million_tokens: 0.0\n"
+    "  cached_cost_per_million_tokens: 0.0\n"
+    "  output_cost_per_million_tokens: 0.0\n"
+)
+
+
+class TestEnsureStage4SearchState:
+    """_ensure_stage4_search_state creates search_state.json when absent, is a no-op otherwise."""
+
+    def _make_run_dir(self, base: Path, run_id: str = "r1") -> Path:
+        run_dir = base / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return run_dir
+
+    def _make_project_dir_with_backend(self, base: Path) -> Path:
+        """Create a minimal project dir with a priced mock backend."""
+        (base / "backends").mkdir(parents=True, exist_ok=True)
+        (base / "backends" / "mock.yaml").write_text(_MOCK_BACKEND_YAML)
+        return base
+
+    def test_noop_when_search_state_exists(self, tmp_path: Path) -> None:
+        """If search_state.json already exists, the function must not overwrite it."""
+        run_dir = self._make_run_dir(tmp_path)
+        search = run_dir / "search"
+        search.mkdir(parents=True, exist_ok=True)
+        existing = {"algorithm": "emosa", "backend": "custom", "round": 3}
+        (search / "search_state.json").write_text(json.dumps(existing))
+
+        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
+
+        data = json.loads((search / "search_state.json").read_text())
+        assert data["algorithm"] == "emosa"
+        assert data["backend"] == "custom"
+        assert data["round"] == 3
+
+    def test_creates_search_state_when_absent(self, tmp_path: Path) -> None:
+        """First call should write search_state.json with hill_climb algorithm."""
+        run_dir = self._make_run_dir(tmp_path)
+        self._make_project_dir_with_backend(tmp_path)
+
+        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
+
+        search_state_path = run_dir / "search" / "search_state.json"
+        assert search_state_path.is_file()
+        data = json.loads(search_state_path.read_text())
+        assert data["algorithm"] == "hill_climb"
+        assert data["algorithm_state"] == {}
+
+    def test_created_state_uses_priced_backend(self, tmp_path: Path) -> None:
+        """Backend is resolved from backends/*.yaml (first priced one)."""
+        run_dir = self._make_run_dir(tmp_path)
+        self._make_project_dir_with_backend(tmp_path)
+
+        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
+
+        data = json.loads((run_dir / "search" / "search_state.json").read_text())
+        assert data["backend"] == "mock"
+
+    def test_created_state_backend_empty_when_no_backends(self, tmp_path: Path) -> None:
+        """When backends/ dir is absent, backend falls back to empty string."""
+        run_dir = self._make_run_dir(tmp_path)
+        # No backends dir created
+
+        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
+
+        data = json.loads((run_dir / "search" / "search_state.json").read_text())
+        assert data["backend"] == ""
+
+    def test_reads_primary_metric_name_from_routing_context(self, tmp_path: Path) -> None:
+        """primary_metric_name is read from routing_context.json when available."""
+        run_dir = self._make_run_dir(tmp_path)
+        validation = run_dir / "validation"
+        validation.mkdir(parents=True, exist_ok=True)
+        (validation / "routing_context.json").write_text(json.dumps({"primary_metric_name": "f1_macro"}))
+
+        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
+
+        data = json.loads((run_dir / "search" / "search_state.json").read_text())
+        assert data["primary_metric_name"] == "f1_macro"
+
+    def test_primary_metric_name_none_when_not_in_routing_context(self, tmp_path: Path) -> None:
+        """primary_metric_name is None when routing_context.json lacks the field."""
+        run_dir = self._make_run_dir(tmp_path)
+        validation = run_dir / "validation"
+        validation.mkdir(parents=True, exist_ok=True)
+        # routing_context.json exists but has no primary_metric_name
+        (validation / "routing_context.json").write_text(json.dumps({"domain": "routing"}))
+
+        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
+
+        data = json.loads((run_dir / "search" / "search_state.json").read_text())
+        assert data["primary_metric_name"] is None
+
+    def test_detect_stage_4_phase_returns_cold_start_after_pre_init(self, tmp_path: Path) -> None:
+        """After pre-init, _detect_stage_4_phase returns 'cold_start' when neither
+        directive_history nor a v1 prompt exist."""
+        run_dir = self._make_run_dir(tmp_path)
+        self._make_project_dir_with_backend(tmp_path)
+
+        # Pre-init creates search_state.json
+        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
+        assert (run_dir / "search" / "search_state.json").is_file()
+
+        # No directive_history, no v1 → should still be cold_start
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "cold_start"

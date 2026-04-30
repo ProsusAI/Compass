@@ -11,7 +11,7 @@ MCP server package. Thin adapter layer — each tool delegates to an agent modul
 | [`input_report_tools.py`](input_report_tools.py) | `submit_input_report` |
 | [`data_validation_tools.py`](data_validation_tools.py) | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context` |
 | [`backend_setup_tools.py`](backend_setup_tools.py) | `get_default_pricing` |
-| [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_child_variants_tool`, `get_edit_directives_tool` |
+| [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state_tool` (no `algorithm`/`algorithm_state` — hardcoded per branch), `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_child_variants_tool`, `get_edit_directives_tool` |
 | [`review_tools.py`](review_tools.py) | `build_review_briefing_tool`, `record_directive_outcomes_tool` |
 | [`final_report_tools.py`](final_report_tools.py) | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report` |
 | [`resources.py`](resources.py) | MCP resource definitions (`odysseus://agents/...`, `odysseus://backends/...`) |
