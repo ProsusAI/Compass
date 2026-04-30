@@ -409,29 +409,68 @@ async def save_prompt_tool(
 
 
 @mcp.tool()
-async def get_edit_directives_tool(
+async def get_child_variants_tool(
     ctx: Context,
     run_id: str,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Refinement Loop] Retrieve the Review Agent's edit directives for the current round.
+    """[Stage 4: Refinement Loop] Retrieve the Review Agent's child variants for the current round.
 
-    Returns the list of EditDirective objects persisted by the Review Agent
-    via record_directive_outcomes_tool. These contain block-level edit
-    instructions and example content for prompt compilation.
+    Returns the list of ChildVariant objects persisted by the Review Agent
+    via record_directive_outcomes_tool. Each variant specifies a parent version
+    and the directives to apply together as one child prompt.
 
     Args:
         run_id: Pipeline run identifier.
         output_dir: Output directory (default "outputs").
 
     Returns:
-        JSON-serialized list of EditDirective objects.
+        JSON-serialized list of ChildVariant objects.
     """
-    from odysseus.agents.review.ops import load_edit_directives
+    from odysseus.agents.review.ops import load_child_variants
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    directives = load_edit_directives(run_id, output_dir=out)
+    variants = load_child_variants(run_id, output_dir=out)
+
+    # Dedup: if secondary version matches primary, set to None
+    variants = [
+        v.model_copy(update={"secondary_parent_version": None})
+        if v.secondary_parent_version is not None and v.secondary_parent_version == v.parent_version
+        else v
+        for v in variants
+    ]
+
+    return json.dumps([v.model_dump(mode="json") for v in variants], indent=2)
+
+
+@mcp.tool()
+async def get_edit_directives_tool(
+    ctx: Context,
+    run_id: str,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Refinement Loop] Retrieve flattened edit directives across all child variants.
+
+    Flattens directives from all ChildVariant objects persisted by the Review
+    Agent via record_directive_outcomes_tool. This is a back-compat helper for
+    callers that need a flat directive list. Callers that need per-variant
+    grouping (e.g. the Prompt Builder compiling one prompt per variant) should
+    use get_child_variants_tool instead.
+
+    Args:
+        run_id: Pipeline run identifier.
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON-serialized flat list of EditDirective objects across all child variants.
+    """
+    from odysseus.agents.review.ops import load_child_variants
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+    variants = load_child_variants(run_id, output_dir=out)
+    directives = [d for v in variants for d in v.directives]
     return json.dumps([d.model_dump(mode="json") for d in directives], indent=2)
 
 
