@@ -174,6 +174,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
 | `review_cold` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
+| `calibration` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `init_search_state_tool`, `register_candidate_tool`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `save_prompt_tool`, `get_edit_directives_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
 #### Sub-Agent Guard Pattern
@@ -220,7 +221,7 @@ Two JSON sentinel files signal that a sub-agent is in-flight for the current rou
 
 **EMOSA review instruction — K-way fanout**
 
-When `phase == "review"` and `algorithm == "emosa"`, `_next_action_for_stage_4` formats `STAGE_4_REVIEW_INSTRUCTION_EMOSA` (in [`odysseus/agents/pipeline/instructions.py`](../odysseus/agents/pipeline/instructions.py)) with `{num_trajectories}` and `{max_trajectory_id}`.  The instruction directs the orchestrator to spawn N independent Review Agent sub-agents in a single parallel batch (one per trajectory ID 0..N-1), each told its `trajectory_id` and required to call `save_trajectory_child_variants` rather than the single-slot `record_directive_outcomes_tool`.  The orchestrator must wait for all N completions before calling `complete_stage`.
+When `phase == "review"` and `algorithm == "emosa"`, `_next_action_for_stage_4` formats `STAGE_4_REVIEW_INSTRUCTION_EMOSA` (in [`odysseus/agents/pipeline/instructions.py`](../odysseus/agents/pipeline/instructions.py)) with `{num_trajectories}` and `{max_trajectory_id}`.  The instruction directs the orchestrator to spawn N independent Review Agent sub-agents in a single parallel batch (one per trajectory ID 0..N-1), each told its `trajectory_id` and required to call `record_directive_outcomes_tool(run_id='{run_id}', trajectory_id=<N>, child_variants=[...])`.  The tool routes per-trajectory writes through `save_trajectory_child_variants` + `record_trajectory_dispatched`, writing `child_variants_t<N>.json` for each slot.  The orchestrator must wait for all N completions before calling `complete_stage`.
 
 **`DispatchFanout` and `review_fanout_status`**
 
@@ -239,7 +240,7 @@ For `expected=1` (hill-climb / beam / SMS-EMOA), fanout is complete when `search
 
 **`child_variants.json` / `child_variants_t<N>.json`**
 
-Written by `record_directive_outcomes_tool` for single-slot algorithms (hill-climb / beam / SMS-EMOA); acts as the canonical review-completion sentinel.  For EMOSA, each trajectory's Review Agent sub-agent calls `save_trajectory_child_variants(run_id, trajectory_id, variants)` (in [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py)) which writes `child_variants_t<N>.json` for slot N.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
+Written by `record_directive_outcomes_tool` for single-slot algorithms (hill-climb / beam / SMS-EMOA); acts as the canonical review-completion sentinel.  For EMOSA, each trajectory's Review Agent sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, which internally calls `save_trajectory_child_variants` (in [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py)) to write `child_variants_t<N>.json` for slot N, and `record_trajectory_dispatched` to mark the slot complete.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
 
 **Defense-in-depth phase flip**
 

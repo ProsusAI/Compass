@@ -179,13 +179,21 @@ STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+# Shared steady-review sub-agent toolbelt — used by both STAGE_4_REVIEW_INSTRUCTION
+# and STAGE_4_REVIEW_INSTRUCTION_EMOSA so the two instructions stay in sync.
+_STEADY_REVIEW_TOOLS_LINE: str = (
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "build_review_briefing_tool, record_directive_outcomes_tool, "
+    "get_prompt_text_tool, query_holdout_examples_tool"
+)
+
 STAGE_4_REVIEW_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "build_review_briefing_tool, record_directive_outcomes_tool\n"
+    + _STEADY_REVIEW_TOOLS_LINE
+    + "\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call get_pipeline_status.\n"
@@ -208,11 +216,9 @@ STAGE_4_REVIEW_INSTRUCTION_EMOSA: str = (
     "Each sub-agent must be told its trajectory_id (0 through {max_trajectory_id}).\n"
     "Include in each sub-agent's conversation context:\n"
     '"Your trajectory_id is <N>. Your run_id is {run_id}."\n\n'
-    "Each sub-agent must call save_trajectory_child_variants(run_id='{run_id}', trajectory_id=<N>, variants=[...])\n"
-    "to write its child variants to child_variants_t<N>.json instead of the single-slot child_variants.json.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "build_review_briefing_tool, record_directive_outcomes_tool, "
-    "query_holdout_examples_tool, query_misrouted_examples_tool, get_prompt_text_tool\n"
+    "Each sub-agent must call record_directive_outcomes_tool(run_id='{run_id}', "
+    "trajectory_id=<N>, child_variants=[...]) — server writes "
+    "child_variants_t<N>.json instead of single-slot child_variants.json.\n\n" + _STEADY_REVIEW_TOOLS_LINE + "\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: Wait for ALL {num_trajectories} sub-agents (including any still running in "
     "background) to complete BEFORE calling complete_stage. A single sub-agent finishing "
@@ -231,7 +237,7 @@ STAGE_4_CALIBRATION_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='calibration') BEFORE spawning the sub-agent.\n\n"
     "PRE-DISPATCH CHECK: Before spawning, verify that "
     "outputs/{run_id}/search/build_dispatched.json does not exist. "
     "If it does, a build sub-agent is already in-flight — wait for it to complete.\n\n"
