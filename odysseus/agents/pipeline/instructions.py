@@ -195,6 +195,59 @@ STAGE_4_REVIEW_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+STAGE_4_WARMUP_SEED_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
+    "WARM-UP MODE: The population is empty. The sub-agent must emit μ diverse seed prompts.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "build_review_briefing_tool, record_directive_outcomes_tool\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
+STAGE_4_WARMUP_BUILD_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
+    "WARM-UP BUILD MODE: Seed directives exist. The sub-agent must compile the μ initial candidates.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_child_variants_tool, "
+    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "advance_step_tool, run_batch_eval\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
+STAGE_4_WARMUP_REDUCE_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
+    "WARM-UP CONSOLIDATE MODE: All μ seed candidates are scored. "
+    "The sub-agent must call advance_step_tool to consolidate them into the initial population.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "advance_step_tool\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
 # ---------------------------------------------------------------------------
 # Stage 5 — Final Report
 # ---------------------------------------------------------------------------

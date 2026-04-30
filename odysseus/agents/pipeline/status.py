@@ -20,6 +20,9 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
     STAGE_4_REVIEW_INSTRUCTION,
+    STAGE_4_WARMUP_BUILD_INSTRUCTION,
+    STAGE_4_WARMUP_REDUCE_INSTRUCTION,
+    STAGE_4_WARMUP_SEED_INSTRUCTION,
     STAGE_5_INSTRUCTION,
 )
 from odysseus.project_dir import get_project_dir
@@ -532,6 +535,9 @@ def _detect_stage_4_phase(
     (``"warmup_seed"``, ``"warmup_build"``, ``"warmup_reduce"``,
     ``"calibration"``, ``"build_recovering"``) for feature branches.
 
+    For ``algorithm == "sms_emoa"`` the function uses the warm-up-aware
+    detection path (no cold_start/build_v1 phases).
+
     Defense-in-depth: if the persisted ``loop_phase`` is ``"build"`` but
     neither ``child_variants.json`` nor ``build_dispatched.json`` exist on
     disk, the phase is re-interpreted as ``"review"`` to prevent deadlock.
@@ -540,8 +546,19 @@ def _detect_stage_4_phase(
         return "rerun"
 
     search_dir = run_dir / "search"
-    directive_history = search_dir / "directive_history.json"
     search_state_path = search_dir / "search_state.json"
+
+    # -----------------------------------------------------------------------
+    # SMS-EMOA warm-up-aware path
+    # -----------------------------------------------------------------------
+    algorithm = _read_algorithm_from_state(run_dir)
+    if algorithm == "sms_emoa":
+        return _detect_stage_4_phase_sms_emoa(run_dir, search_dir, search_state_path)
+
+    # -----------------------------------------------------------------------
+    # Hill-climb / default path (cold_start → build_v1 → normal loop)
+    # -----------------------------------------------------------------------
+    directive_history = search_dir / "directive_history.json"
     prompts_dir = run_dir / "prompts"
     has_v1 = prompts_dir.is_dir() and (
         any(prompts_dir.glob("v1.yaml")) or any(prompts_dir.glob("v1.json")) or any(prompts_dir.glob("v1.txt"))
@@ -594,6 +611,70 @@ def _detect_stage_4_phase(
             loop_phase = "review"
 
     return loop_phase
+
+
+def _detect_stage_4_phase_sms_emoa(
+    run_dir: Path,
+    search_dir: Path,
+    search_state_path: Path,
+) -> str:
+    """SMS-EMOA warm-up phase detection sub-routine.
+
+    Returns one of: ``"warmup_seed"``, ``"warmup_build"``, ``"warmup_reduce"``,
+    ``"review"``, ``"build"``, ``"build_recovering"``.
+    """
+    # No search state at all — warm-up not yet started.
+    if not search_state_path.is_file():
+        return "warmup_seed"
+
+    # Parse search state.
+    loop_phase = "review"
+    warm_up_complete = False
+    state_data: dict[str, Any] = {}
+    try:
+        state_data = json.loads(search_state_path.read_text())
+        raw_phase = state_data.get("loop_phase", "review")
+        if raw_phase not in _VALID_LOOP_PHASES:
+            logger.warning(
+                "Unexpected loop_phase '%s' in %s/search/search_state.json, defaulting to 'review'",
+                raw_phase,
+                run_dir,
+            )
+        else:
+            loop_phase = raw_phase
+        warm_up_complete = bool(state_data.get("warm_up_complete", False))
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
+
+    # Recovery detection: active_evals non-empty signals mid-build crash.
+    if loop_phase == "build":
+        active_evals = state_data.get("active_evals", [])
+        if active_evals:
+            return "build_recovering"
+
+    # Steady-state (warm-up complete): trust loop_phase directly.
+    if warm_up_complete:
+        return loop_phase
+
+    # Warm-up path: read pending_candidates.json to distinguish sub-phases.
+    pending_path = search_dir / "pending_candidates.json"
+    pending: list[dict[str, Any]] = []
+    if pending_path.is_file():
+        try:
+            pending = json.loads(pending_path.read_text())
+        except (json.JSONDecodeError, ValueError, TypeError):
+            pending = []
+
+    has_scored = any(c.get("eval_status") == "scored" for c in pending)
+    if has_scored:
+        return "warmup_reduce"
+    if pending:
+        return "warmup_build"
+    # No pending yet — distinguish "review warm-up not started" (seed)
+    # from "review warm-up done, builder hasn't registered yet" (build).
+    if _child_variants_present(search_dir / "child_variants.json"):
+        return "warmup_build"
+    return "warmup_seed"
 
 
 def _read_algorithm_from_state(run_dir: Path) -> str:
@@ -702,17 +783,32 @@ def _next_action_for_stage_4(
         ),
         "review": _review_entry,
         "build": _build_entry,
-        # Extended phases — feature branches only; mapped to nearest equivalent
+        # SMS-EMOA warm-up phases
         "warmup_seed": (
-            "Stage 4 — warmup-seed phase: spawn the Review Agent to seed the population. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _COLD_REVIEW_TOOLS,
-            ["odysseus_review_agent_cold_start"],
-            STAGE_4_COLD_START_INSTRUCTION,
+            "Stage 4 — warm-up seed: spawn the Review Agent to emit μ diverse seed prompts. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_warmup' before calling any review tools.",
+            _REVIEW_TOOLS,
+            ["odysseus_review_agent_warmup"],
+            STAGE_4_WARMUP_SEED_INSTRUCTION,
             algorithm,
         ),
-        "warmup_build": _build_entry,
-        "warmup_reduce": _build_entry,
+        "warmup_build": (
+            "Stage 4 — warm-up build: spawn the Prompt Builder to compile the μ initial candidates. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+            _BUILD_TOOLS,
+            ["odysseus_prompt_builder"],
+            STAGE_4_WARMUP_BUILD_INSTRUCTION,
+            algorithm,
+        ),
+        "warmup_reduce": (
+            "Stage 4 — warm-up consolidate: spawn the Prompt Builder to call advance_step_tool "
+            "and consolidate scored seeds into the initial population. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+            _BUILD_TOOLS,
+            ["odysseus_prompt_builder"],
+            STAGE_4_WARMUP_REDUCE_INSTRUCTION,
+            algorithm,
+        ),
         "calibration": (
             "Stage 4 — calibration phase: spawn the Review Agent to seed trajectories. "
             "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
@@ -732,6 +828,22 @@ def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str |
         stage,
         ("Pipeline complete.", [], [], None),
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _child_variants_present(path: Path) -> bool:
+    """True iff child_variants.json parses as a non-empty JSON list."""
+    if not path.is_file():
+        return False
+    try:
+        data = json.loads(path.read_text())
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return False
+    return isinstance(data, list) and len(data) > 0
 
 
 # ---------------------------------------------------------------------------
