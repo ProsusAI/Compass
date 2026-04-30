@@ -449,3 +449,164 @@ class TestEditDirectivesPersistence:
             assert data[0]["hypothesis"] == "Add a clearer boundary example"
             assert len(data[0]["directives"]) == 1
             assert data[0]["directives"][0]["directive_id"] == "d1"
+
+
+class TestTrajectoryChildVariantsFallback:
+    """Tests for EMOSA per-trajectory child variant source-resolution precedence."""
+
+    @pytest.mark.asyncio
+    async def test_get_child_variants_prefers_trajectory_files(self, tmp_path: Path) -> None:
+        """When per-trajectory files exist, get_child_variants_tool returns them in trajectory_id order."""
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants, save_trajectory_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+
+            # Write three per-trajectory files (t0, t1, t2)
+            for tid, hyp, did in [
+                (0, "Trajectory 0 variant", "t0_d1"),
+                (1, "Trajectory 1 variant", "t1_d1"),
+                (2, "Trajectory 2 variant", "t2_d1"),
+            ]:
+                variant = ChildVariant(
+                    hypothesis=hyp,
+                    directives=[
+                        EditDirective(
+                            directive_id=did,
+                            target_version="v1",
+                            block_type="example",
+                            block_identifier="Example 1",
+                            granularity="macro",
+                            directive="Add example",
+                            priority="high",
+                        ),
+                    ],
+                )
+                save_trajectory_child_variants(_RUN_ID, tid, [variant], output_dir=tmp_path / "outputs")
+
+            # Write a stale single-slot file with a clearly different variant
+            stale_variant = ChildVariant(
+                hypothesis="STALE single-slot variant — should be ignored",
+                directives=[
+                    EditDirective(
+                        directive_id="stale_d1",
+                        target_version="v1",
+                        block_type="rule",
+                        block_identifier="Rule 99",
+                        granularity="micro",
+                        directive="Stale edit",
+                        priority="low",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [stale_variant], output_dir=tmp_path / "outputs")
+
+            result = await get_child_variants_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+
+            # Should return the three per-trajectory variants, not the stale one
+            assert len(data) == 3
+            hypotheses = [d["hypothesis"] for d in data]
+            assert "Trajectory 0 variant" in hypotheses
+            assert "Trajectory 1 variant" in hypotheses
+            assert "Trajectory 2 variant" in hypotheses
+            assert "STALE single-slot variant — should be ignored" not in hypotheses
+
+            # Returned in trajectory_id order (t0, t1, t2)
+            assert hypotheses == ["Trajectory 0 variant", "Trajectory 1 variant", "Trajectory 2 variant"]
+
+            directive_ids = [d["directives"][0]["directive_id"] for d in data]
+            assert directive_ids == ["t0_d1", "t1_d1", "t2_d1"]
+
+    @pytest.mark.asyncio
+    async def test_get_edit_directives_prefers_trajectory_files(self, tmp_path: Path) -> None:
+        """get_edit_directives_tool must also use per-trajectory files when present."""
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants, save_trajectory_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+
+            for tid, did in [(0, "t0_d1"), (1, "t1_d1")]:
+                variant = ChildVariant(
+                    hypothesis=f"Trajectory {tid}",
+                    directives=[
+                        EditDirective(
+                            directive_id=did,
+                            target_version="v1",
+                            block_type="example",
+                            block_identifier="Example 1",
+                            granularity="macro",
+                            directive="Add example",
+                            priority="high",
+                        ),
+                    ],
+                )
+                save_trajectory_child_variants(_RUN_ID, tid, [variant], output_dir=tmp_path / "outputs")
+
+            # Write stale single-slot file
+            stale_variant = ChildVariant(
+                hypothesis="STALE",
+                directives=[
+                    EditDirective(
+                        directive_id="stale_d1",
+                        target_version="v1",
+                        block_type="rule",
+                        block_identifier="Rule 1",
+                        granularity="micro",
+                        directive="Stale",
+                        priority="low",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [stale_variant], output_dir=tmp_path / "outputs")
+
+            result = await get_edit_directives_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+
+            directive_ids = [d["directive_id"] for d in data]
+            assert "stale_d1" not in directive_ids
+            assert directive_ids == ["t0_d1", "t1_d1"]
+
+    @pytest.mark.asyncio
+    async def test_get_child_variants_falls_back_to_single_slot(self, tmp_path: Path) -> None:
+        """When no per-trajectory files exist, get_child_variants_tool returns single-slot variants."""
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+            variant = ChildVariant(
+                hypothesis="Single-slot variant",
+                directives=[
+                    EditDirective(
+                        directive_id="single_d1",
+                        target_version="v1",
+                        block_type="example",
+                        block_identifier="Example 1",
+                        granularity="macro",
+                        directive="Edit",
+                        priority="medium",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [variant], output_dir=tmp_path / "outputs")
+
+            result = await get_child_variants_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+            assert len(data) == 1
+            assert data[0]["hypothesis"] == "Single-slot variant"
+            assert data[0]["directives"][0]["directive_id"] == "single_d1"
