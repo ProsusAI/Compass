@@ -226,19 +226,19 @@ class TestAdvanceRoundEmosaCalibration:
         with pytest.raises(ValueError, match="num_trajectories"):
             advance_round_emosa(run_id=run_id, output_dir=tmp_path)
 
-    def test_search_phase_raises_not_implemented(self, tmp_path: Path) -> None:
-        """phase == 'search' raises NotImplementedError with the C4 sentinel message."""
-        run_id = "emosa-search-ni"
+    def test_search_phase_with_no_pending_raises_value_error(self, tmp_path: Path) -> None:
+        """phase == 'search' with no pending candidates raises ValueError (C4 implemented)."""
+        run_id = "emosa-search-no-pending"
         _make_emosa_state(tmp_path, run_id, num_trajectories=5)
 
-        # Manually flip phase to "search" in pocket
+        # Manually flip phase to "search" in pocket (no pending saved)
         state = _load_state(run_id, tmp_path)
         pocket = dict(state.algorithm_state)
         pocket["phase"] = "search"
         updated = state.model_copy(update={"algorithm_state": pocket})
         _save_state(run_id, updated, tmp_path)
 
-        with pytest.raises(NotImplementedError, match="EMOSA steady-state lands in C4"):
+        with pytest.raises(ValueError, match="No pending candidates"):
             advance_round_emosa(run_id=run_id, output_dir=tmp_path)
 
     def test_invalid_phase_raises_value_error(self, tmp_path: Path) -> None:

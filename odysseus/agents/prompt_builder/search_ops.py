@@ -23,7 +23,10 @@ from typing import Any, Literal
 from odysseus.agents.prompt_builder.annealing import (
     AnnealingState,
     TrajectoryState,
+    compute_neighborhood,
     compute_tchebycheff_energy,
+    metropolis_accept,
+    replace_if_better,
     update_archive,
 )
 from odysseus.agents.prompt_builder.search import (
@@ -31,7 +34,9 @@ from odysseus.agents.prompt_builder.search import (
     RoundSummary,
     SearchState,
     compute_front_improvement,
+    compute_hypervolume,
     update_pareto_front,
+    validate_elite_set,
 )
 from odysseus.agents.prompt_builder.viz import _try_write_viz
 from odysseus.agents.review.models import LoopSignal
@@ -487,6 +492,27 @@ def advance_round(
 
 
 # ---------------------------------------------------------------------------
+# EMOSA helpers
+# ---------------------------------------------------------------------------
+
+
+def _compute_reference_point(
+    elite_set: list[Candidate],
+    scored_pending: list[Candidate],
+) -> tuple[float, float]:
+    """Compute a hypervolume reference point from all-ever seen candidates."""
+    all_ever = list(elite_set) + list(scored_pending)
+    if not all_ever:
+        return (0.0, 0.0)
+    worst_quality = min(c.quality_score for c in all_ever)
+    worst_cost = max(c.cost for c in all_ever)
+    return (
+        worst_quality * 0.9 if worst_quality > 0 else -0.1,
+        worst_cost * 1.1 if worst_cost > 0 else 0.1,
+    )
+
+
+# ---------------------------------------------------------------------------
 # EMOSA: advance_round_emosa + _calibration_complete
 # ---------------------------------------------------------------------------
 
@@ -620,6 +646,309 @@ def _calibration_complete(
     return summary
 
 
+def _advance_emosa_search(
+    run_id: str,
+    state: SearchState,
+    output_dir: Path,
+) -> RoundSummary:
+    """Execute one EMOSA steady-state advance step (phase == 'search').
+
+    Implements per-trajectory Metropolis-then-best-of-accepted acceptance,
+    EMOSA neighborhood replacement (B=4 nearest weight-vector neighbors),
+    archive update, geometric cooling, and three-way convergence detection.
+
+    Steps:
+        a. Load AnnealingState from algorithm_state pocket; assert active_evals empty.
+        b. Load pending; split scored / failed.
+        c. Update ideal/nadir from scored candidates.
+        d. Drift-cache refresh: recompute trajectory current_energy under new ideal/nadir.
+        e. Per-trajectory Metropolis-then-best-of-accepted.
+        f. EMOSA neighborhood replacement for each accepted child.
+        g. Update archive (elite_set) with all scored candidates.
+        h. Compute hypervolume.
+        i. Cool temperature; increment step_count and total_evals.
+        j. Check convergence: temperature_floor, eval_budget, review_exit.
+        k. Build RoundSummary.
+        l. Save state (AnnealingState back into algorithm_state pocket).
+
+    Args:
+        run_id: Run identifier.
+        state: Currently-loaded SearchState.
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        A :class:`RoundSummary` with EMOSA optional fields populated.
+
+    Raises:
+        ValueError: If active_evals is non-empty or no pending candidates.
+    """
+    if state.active_evals:
+        raise ValueError(
+            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
+        )
+
+    sa_state = AnnealingState.model_validate(state.algorithm_state)
+
+    pending = _load_pending(run_id, output_dir)
+    if not pending:
+        raise ValueError("No pending candidates to advance round with")
+
+    # Split into scored and failed
+    scored_pending = [c for c in pending if c.eval_status in ("complete", None)]
+    failed_pending = [c for c in pending if c.eval_status == "failed"]
+
+    if failed_pending:
+        logger.warning(
+            "_advance_emosa_search: %d candidate(s) failed evaluation: %s",
+            len(failed_pending),
+            [c.prompt_version for c in failed_pending],
+        )
+
+    new_round = state.round + 1
+
+    # Update ideal/nadir from scored candidates
+    new_ideal = sa_state.ideal_point
+    new_nadir = sa_state.nadir_point
+
+    if scored_pending:
+        ideal_q, ideal_c = new_ideal
+        nadir_q, nadir_c = new_nadir
+
+        for c in scored_pending:
+            ideal_q = max(ideal_q, c.quality_score)
+            ideal_c = min(ideal_c, c.cost)
+            nadir_q = min(nadir_q, c.quality_score)
+            nadir_c = max(nadir_c, c.cost)
+
+        new_ideal = (ideal_q, ideal_c)
+        new_nadir = (nadir_q, nadir_c)
+
+    # Drift-cache refresh (a15b608): recompute trajectory current_energy under new
+    # ideal/nadir before Metropolis. Without this, trajectories holding solutions
+    # from rounds with narrower normalization have stale-low energies that make
+    # Metropolis systematically reject genuine improvements.
+    refreshed_trajectories: list[TrajectoryState] = []
+    for traj in sa_state.trajectories:
+        if traj.current_solution is not None and traj.current_quality is not None and traj.current_cost is not None:
+            refreshed_energy = compute_tchebycheff_energy(
+                traj.current_quality,
+                traj.current_cost,
+                traj.weight_vector,
+                new_ideal,
+                new_nadir,
+            )
+            refreshed_trajectories.append(traj.model_copy(update={"current_energy": refreshed_energy}))
+        else:
+            refreshed_trajectories.append(traj)
+
+    # Per-trajectory Metropolis acceptance (Metropolis-then-best-of-accepted)
+    updated_trajectories: list[TrajectoryState] = []
+
+    # Separate candidates that match a live trajectory from unmatched ones
+    # (unmatched arise when current_solution is None, calibration→search edge).
+    matched_versions: set[str | None] = {
+        traj.current_solution for traj in refreshed_trajectories if traj.current_solution is not None
+    }
+    unmatched_pending = [c for c in scored_pending if c.parent_version not in matched_versions]
+    unmatched_iter = iter(unmatched_pending)
+
+    for traj in refreshed_trajectories:
+        if traj.current_solution is not None:
+            traj_candidates = [c for c in scored_pending if c.parent_version == traj.current_solution]
+        else:
+            # Calibration→search edge: assign unmatched candidates round-robin
+            cand = next(unmatched_iter, None)
+            traj_candidates = [cand] if cand is not None else []
+
+        if not traj_candidates:
+            updated_trajectories.append(traj)
+            continue
+
+        calibration = traj.current_solution is None or traj.current_energy is None
+
+        best_accepted_cand = None
+        best_accepted_energy: float | None = None
+
+        for cand in traj_candidates:
+            energy = compute_tchebycheff_energy(
+                cand.quality_score,
+                cand.cost,
+                traj.weight_vector,
+                new_ideal,
+                new_nadir,
+            )
+
+            if calibration:
+                # First step after calibration: always accept
+                accepted = True
+            else:
+                delta_e = energy - traj.current_energy  # type: ignore[operator]
+                accepted = metropolis_accept(delta_e, sa_state.temperature)
+
+            if accepted and (best_accepted_energy is None or energy < best_accepted_energy):
+                best_accepted_cand = cand
+                best_accepted_energy = energy
+
+        any_accepted = best_accepted_cand is not None
+        new_history = (traj.acceptance_history + [any_accepted])[-5:]
+
+        if any_accepted:
+            updated_traj = traj.model_copy(
+                update={
+                    "current_solution": best_accepted_cand.prompt_version,  # type: ignore[union-attr]
+                    "current_energy": best_accepted_energy,
+                    "current_quality": best_accepted_cand.quality_score,  # type: ignore[union-attr]
+                    "current_cost": best_accepted_cand.cost,  # type: ignore[union-attr]
+                    "acceptance_history": new_history,
+                }
+            )
+        else:
+            updated_traj = traj.model_copy(update={"acceptance_history": new_history})
+
+        updated_trajectories.append(updated_traj)
+
+    # EMOSA neighborhood replacement: for each accepted child, replace neighbor
+    # trajectories if the child scalarizes better under the neighbor's weight vector.
+    weight_vectors = [t.weight_vector for t in refreshed_trajectories]
+    traj_by_id = {
+        t.trajectory_id: updated_traj
+        for t, updated_traj in zip(refreshed_trajectories, updated_trajectories, strict=True)
+    }
+
+    for orig_traj, updated_traj in zip(refreshed_trajectories, list(updated_trajectories), strict=True):
+        accepted_solution = updated_traj.current_solution
+        if accepted_solution is None or accepted_solution == orig_traj.current_solution:
+            continue
+        # Find the accepted candidate object
+        accepted_cand = next((c for c in scored_pending if c.prompt_version == accepted_solution), None)
+        if accepted_cand is None:
+            continue
+        neighbors = compute_neighborhood(orig_traj.trajectory_id, sa_state.neighborhood_size, weight_vectors)
+        for nbr_id in neighbors:
+            nbr_traj = traj_by_id[nbr_id]
+            child_energy_under_nbr = compute_tchebycheff_energy(
+                accepted_cand.quality_score,
+                accepted_cand.cost,
+                nbr_traj.weight_vector,
+                new_ideal,
+                new_nadir,
+            )
+            updated_nbr = replace_if_better(
+                nbr_traj,
+                child_energy_under_nbr,
+                accepted_solution,
+                accepted_cand.quality_score,
+                accepted_cand.cost,
+            )
+            traj_by_id[nbr_id] = updated_nbr
+
+    updated_trajectories = [traj_by_id[t.trajectory_id] for t in refreshed_trajectories]
+
+    # Update archive (elite_set) with all non-dominated new candidates
+    new_elite = list(state.elite_set)
+    for cand in scored_pending:
+        new_elite, _ = update_archive(new_elite, cand)
+
+    new_elite = validate_elite_set(new_elite)
+
+    # Compute hypervolume
+    ref_point = _compute_reference_point(new_elite, scored_pending)
+    new_hv = compute_hypervolume(new_elite, ref_point)
+
+    # Cool temperature
+    new_temperature = sa_state.temperature * sa_state.alpha
+
+    # Update counters
+    new_step_count = sa_state.step_count + 1
+    new_total_evals = sa_state.total_evals + len(scored_pending)
+
+    # Check convergence
+    converged = False
+    convergence_reason: str | None = None
+
+    if new_temperature < sa_state.t_min:
+        converged = True
+        convergence_reason = "temperature_floor"
+    elif new_total_evals >= sa_state.max_evals:
+        converged = True
+        convergence_reason = "eval_budget"
+
+    # Consume loop signal (Review Agent exit)
+    signal = _consume_loop_signal(run_id, output_dir)
+    if signal is not None and signal.action == "exit":
+        converged = True
+        convergence_reason = "review_exit"
+
+    # Build RoundSummary
+    candidates_evaluated = [c.prompt_version for c in pending]
+    qualities = [c.quality_score for c in new_elite] if new_elite else [0.0]
+    quality_spread = max(qualities) - min(qualities) if len(new_elite) > 1 else 0.0
+    round_routing_cost = sum(c.cost for c in scored_pending)
+
+    old_versions = {c.prompt_version for c in state.elite_set}
+    new_elite_entries = sum(1 for c in new_elite if c.prompt_version not in old_versions)
+
+    # Per-trajectory acceptance rates (last-5 ring)
+    acceptance_rates_dict: dict[int, float] = {}
+    for traj in updated_trajectories:
+        if traj.acceptance_history:
+            acceptance_rates_dict[traj.trajectory_id] = sum(traj.acceptance_history) / len(traj.acceptance_history)
+
+    summary = RoundSummary(
+        round=new_round,
+        candidates_evaluated=candidates_evaluated,
+        new_elite_entries=new_elite_entries,
+        elite_size=len(new_elite),
+        stagnation_count=0,
+        converged=converged,
+        target_improvement=0.0,
+        front_quality_spread=quality_spread,
+        round_routing_cost=round_routing_cost,
+        convergence_reason=convergence_reason,
+        temperature=new_temperature,
+        hypervolume=new_hv,
+        reference_point=ref_point,
+        acceptance_rates=acceptance_rates_dict if acceptance_rates_dict else None,
+        ideal_point=new_ideal,
+        nadir_point=new_nadir,
+        step_count=new_step_count,
+        phase="converged" if converged else "search",
+    )
+
+    # Save updated AnnealingState back into algorithm_state pocket
+    updated_sa = sa_state.model_copy(
+        update={
+            "trajectories": updated_trajectories,
+            "ideal_point": new_ideal,
+            "nadir_point": new_nadir,
+            "temperature": new_temperature,
+            "step_count": new_step_count,
+            "total_evals": new_total_evals,
+            "phase": "converged" if converged else sa_state.phase,
+        }
+    )
+
+    updated_state = state.model_copy(
+        update={
+            "round": new_round,
+            "elite_set": new_elite,
+            "round_history": [*state.round_history, summary],
+            "converged": converged,
+            "total_routing_cost": state.total_routing_cost + round_routing_cost,
+            "algorithm_state": updated_sa.model_dump(),
+            "loop_phase": "review",
+        }
+    )
+
+    _save_state(run_id, updated_state, output_dir)
+    _try_write_viz(run_id, output_dir)
+
+    # Archive pending, clear
+    _save_pending(run_id, [], output_dir)
+
+    return summary
+
+
 def advance_round_emosa(
     run_id: str,
     output_dir: Path | None = None,
@@ -630,7 +959,8 @@ def advance_round_emosa(
 
     - ``"calibration"``: seed K trajectories from cold-start scored candidates
       via :func:`_calibration_complete`.
-    - ``"search"``: raises :exc:`NotImplementedError` (lands in C4).
+    - ``"search"``: run per-trajectory Metropolis acceptance, neighborhood
+      replacement, archive update, cooling, and convergence detection.
 
     Args:
         run_id: Run identifier used to locate the state on disk.
@@ -642,7 +972,6 @@ def advance_round_emosa(
     Raises:
         FileNotFoundError: If the search state does not exist.
         ValueError: If the phase is unrecognised or preconditions are not met.
-        NotImplementedError: If called with ``phase == "search"`` (C4 work).
     """
     if output_dir is None:
         output_dir = _default_output_dir()
@@ -654,7 +983,7 @@ def advance_round_emosa(
     if phase == "calibration":
         return _calibration_complete(run_id, state, output_dir)
     elif phase == "search":
-        raise NotImplementedError("EMOSA steady-state lands in C4")
+        return _advance_emosa_search(run_id, state, output_dir)
     else:
         raise ValueError(f"unsupported emosa phase '{phase}'")
 
