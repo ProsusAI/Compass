@@ -51,16 +51,31 @@ def _make_annealing_state(num_trajectories: int = 5) -> AnnealingState:
 
 
 def _make_emosa_state(tmp_path: Path, run_id: str, num_trajectories: int = 5) -> SearchState:
-    """Init an emosa SearchState with a calibration-phase AnnealingState pocket."""
-    annealing = _make_annealing_state(num_trajectories)
+    """Init an emosa SearchState with a calibration-phase AnnealingState pocket.
+
+    Since Wave 2, init_search_state uses _BRANCH_ALGORITHM / _BRANCH_ALGORITHM_STATE
+    and no longer accepts algorithm / algorithm_state params.  We init, then patch the
+    persisted state to overwrite algorithm_state with the full AnnealingState (including
+    trajectories and phase='calibration') required by the calibration arm tests.
+    """
+    from odysseus.agents.prompt_builder.search_ops import _save_state
+
     state = init_search_state(
         backend="test",
         run_id=run_id,
         output_dir=tmp_path,
-        algorithm="emosa",
-        algorithm_state=json.loads(annealing.model_dump_json()),
     )
-    return state
+    # Overwrite algorithm_state with a proper calibration-phase AnnealingState so
+    # advance_round_emosa sees the expected pocket structure.
+    annealing = _make_annealing_state(num_trajectories)
+    patched = state.model_copy(
+        update={
+            "algorithm_state": json.loads(annealing.model_dump_json()),
+            "loop_phase": "calibration",
+        }
+    )
+    _save_state(run_id, patched, tmp_path)
+    return patched
 
 
 def _build_scored_pending(num: int) -> list[Candidate]:
@@ -304,7 +319,7 @@ class TestAdvanceRoundEmosaCalibration:
         assert pending == []
 
     async def test_advance_step_tool_emosa_calibration_arm(self, tmp_path: Path) -> None:
-        """advance_step_tool dispatches to _advance_emosa for algorithm='emosa'."""
+        """advance_step_tool dispatches to _advance_emosa for algorithm='emosa' (branch default)."""
         from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
         from odysseus.mcp import advance_step_tool, init_search_state_tool
 
@@ -319,20 +334,23 @@ class TestAdvanceRoundEmosaCalibration:
             analysis_dir.mkdir(parents=True, exist_ok=True)
             (analysis_dir / "dev.jsonl").write_text("")
 
+            # init_search_state_tool no longer accepts algorithm/algorithm_state params;
+            # algorithm is hardcoded via _BRANCH_ALGORITHM (='emosa' on this branch).
             await init_search_state_tool(
                 ctx=None,
                 run_id="emosa-tool",
                 backend="test",
-                algorithm="emosa",
-                algorithm_state=annealing_dict,
             )
 
             # The tool writes state to outputs/<run_id>/search/ under project_dir
             outputs_dir = tmp_path / "outputs"
 
-            # Flip loop_phase to "calibration" (init defaults to "review")
+            # Overwrite algorithm_state with a proper K=3 calibration AnnealingState,
+            # and flip loop_phase to "calibration" (init defaults to "review").
             state = _load_state("emosa-tool", outputs_dir)
-            updated = state.model_copy(update={"loop_phase": "calibration"})
+            updated = state.model_copy(
+                update={"algorithm_state": annealing_dict, "loop_phase": "calibration"}
+            )
             _save_state("emosa-tool", updated, outputs_dir)
 
             # Populate pending in the outputs sub-path used by the tool

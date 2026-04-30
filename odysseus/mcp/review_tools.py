@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import Context
+from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.agents.pipeline.dispatch import (
     clear_review_dispatched,
@@ -87,11 +88,12 @@ async def build_review_briefing_tool(
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
 
-    # Load search state; cold start (no loop initialised yet) gets a bare default
+    # Load search state — must exist (pre-initialised by _ensure_stage4_search_state
+    # at Stage 4 entry).  Missing state is a hard error so regressions surface immediately.
     try:
         state = get_search_state(run_id=run_id, output_dir=out)
-    except FileNotFoundError:
-        state = SearchState(search_state_id=run_id, backend="")
+    except FileNotFoundError as exc:
+        raise ToolError("search_state.json missing — Stage 4 not initialised") from exc
 
     # Auto-discover pending candidates
     pending_candidates_list = _load_pending(run_id, out)

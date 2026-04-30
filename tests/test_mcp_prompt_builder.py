@@ -80,21 +80,53 @@ class TestSearchStateTools:
             assert data["converged"] is False
 
     async def test_full_round_lifecycle(self, tmp_path: Path) -> None:
+        """EMOSA calibration lifecycle: init K=5 state, register+score K candidates, advance."""
+        import json as _json
+
+        from odysseus.agents.prompt_builder.annealing import (
+            AnnealingState,
+            TrajectoryState,
+            compute_weight_vectors,
+        )
+        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
+
         _setup_guard_artifacts(tmp_path, stage="search")
+        output_dir = tmp_path / "outputs"
         with _patch_project_dir(tmp_path):
-            # Init -> Register -> Record -> Advance -> Get
-            init_result = json.loads(await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test"))
+            # Init -> patch to calibration phase -> Register K=5 candidates -> Record -> Advance -> Get
+            init_result = _json.loads(await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test"))
             assert "search_state_id" in init_result
 
-            await register_candidate_tool(_RUN_ID, "v1")
-            await record_eval_result_tool(_RUN_ID, "v1", 0.85, 0.12)
+            # Patch persisted state to calibration phase with full AnnealingState pocket
+            num_traj = 5
+            wvs = compute_weight_vectors(num_traj)
+            trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
+            annealing = AnnealingState(
+                num_trajectories=num_traj, trajectories=trajs, phase="calibration", total_evals=0
+            )
+            state = _load_state(_RUN_ID, output_dir)
+            patched = state.model_copy(
+                update={
+                    "algorithm_state": _json.loads(annealing.model_dump_json()),
+                    "loop_phase": "calibration",
+                }
+            )
+            _save_state(_RUN_ID, patched, output_dir)
 
-            adv = json.loads(await advance_step_tool(_RUN_ID))
+            for i in range(num_traj):
+                await register_candidate_tool(_RUN_ID, f"v{i + 1}")
+                # Use scores where each candidate trades off on a different objective,
+                # so all K are mutually non-dominated (Pareto front has K entries).
+                # v_i: quality = 0.5 + 0.1*i (increasing), cost = 0.1 + 0.1*i (increasing).
+                # No candidate dominates another: higher quality always comes with higher cost.
+                await record_eval_result_tool(_RUN_ID, f"v{i + 1}", 0.5 + i * 0.1, 0.1 + i * 0.1)
+
+            adv = _json.loads(await advance_step_tool(_RUN_ID))
             assert adv["round"] == 1
-            assert adv["new_elite_entries"] == 1
+            assert adv["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
 
-            state = json.loads(await get_search_state_tool(_RUN_ID))
-            assert state["round"] == 1
+            state_after = _json.loads(await get_search_state_tool(_RUN_ID))
+            assert state_after["round"] == 1
 
     async def test_register_candidate_returns_confirmation(self, tmp_path: Path) -> None:
         _setup_guard_artifacts(tmp_path, stage="search")
@@ -152,25 +184,51 @@ class TestSearchStateTools:
         with _patch_project_dir(tmp_path), pytest.raises(ToolError):
             await get_search_state_tool("nonexistent-id")
 
-    async def test_multiple_rounds_stagnation(self, tmp_path: Path) -> None:
-        """Two rounds with same-quality candidates accumulates stagnation."""
+    async def test_calibration_advance_flips_to_review(self, tmp_path: Path) -> None:
+        """EMOSA calibration: after K=5 candidates are scored and advance_step runs,
+        loop_phase flips from 'calibration' to 'review'."""
+        import json as _json
+
+        from odysseus.agents.prompt_builder.annealing import (
+            AnnealingState,
+            TrajectoryState,
+            compute_weight_vectors,
+        )
+        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
+
         _setup_guard_artifacts(tmp_path, stage="search")
+        output_dir = tmp_path / "outputs"
         with _patch_project_dir(tmp_path):
             await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test", stagnation_limit=2)
 
-            # Round 1: new candidate improves front
-            await register_candidate_tool(_RUN_ID, "v1")
-            await record_eval_result_tool(_RUN_ID, "v1", 0.8, 0.1)
-            r1 = json.loads(await advance_step_tool(_RUN_ID))
-            assert r1["new_elite_entries"] == 1
-            assert r1["stagnation_count"] == 0
+            # Patch to calibration phase with full AnnealingState pocket
+            num_traj = 5
+            wvs = compute_weight_vectors(num_traj)
+            trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
+            annealing = AnnealingState(
+                num_trajectories=num_traj, trajectories=trajs, phase="calibration", total_evals=0
+            )
+            state = _load_state(_RUN_ID, output_dir)
+            patched = state.model_copy(
+                update={
+                    "algorithm_state": _json.loads(annealing.model_dump_json()),
+                    "loop_phase": "calibration",
+                }
+            )
+            _save_state(_RUN_ID, patched, output_dir)
 
-            # Round 2: dominated candidate - no improvement
-            await register_candidate_tool(_RUN_ID, "v2")
-            await record_eval_result_tool(_RUN_ID, "v2", 0.5, 0.5)
-            r2 = json.loads(await advance_step_tool(_RUN_ID))
-            assert r2["new_elite_entries"] == 0
-            assert r2["stagnation_count"] == 1
+            # Register and score K=5 candidates with mutually non-dominated scores
+            for i in range(num_traj):
+                await register_candidate_tool(_RUN_ID, f"v{i + 1}")
+                # Trade-off: higher quality = higher cost; no candidate dominates another.
+                await record_eval_result_tool(_RUN_ID, f"v{i + 1}", 0.5 + i * 0.1, 0.1 + i * 0.1)
+
+            r1 = json.loads(await advance_step_tool(_RUN_ID))
+            assert r1["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
+
+            # After calibration completes, loop_phase should flip to 'review'
+            state_after = _json.loads(await get_search_state_tool(_RUN_ID))
+            assert state_after["loop_phase"] == "review"
 
 
 class TestFilterHoldoutTool:
@@ -294,18 +352,22 @@ class TestEditDirectivesPersistence:
                 ctx=None,
                 run_id=_RUN_ID,
                 outcomes=[],
-                child_variants=[{
-                    "hypothesis": "Add a clearer boundary example",
-                    "directives": [{
-                        "directive_id": "d1",
-                        "target_version": "v1",
-                        "block_type": "example",
-                        "block_identifier": "Example 1",
-                        "granularity": "macro",
-                        "directive": "Add example",
-                        "priority": "high",
-                    }],
-                }],
+                child_variants=[
+                    {
+                        "hypothesis": "Add a clearer boundary example",
+                        "directives": [
+                            {
+                                "directive_id": "d1",
+                                "target_version": "v1",
+                                "block_type": "example",
+                                "block_identifier": "Example 1",
+                                "granularity": "macro",
+                                "directive": "Add example",
+                                "priority": "high",
+                            }
+                        ],
+                    }
+                ],
                 output_dir=str(tmp_path / "outputs"),
             )
 
