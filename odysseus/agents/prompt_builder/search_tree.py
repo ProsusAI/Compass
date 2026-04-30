@@ -20,7 +20,7 @@ def load_json(path: Path, default: dict | list | None = None) -> dict | list | N
         return default
 
 _STRATEGY_LABELS: dict[str | None, str] = {
-    "parallel_beam": "Parallel Beam Search",
+    "beam": "Parallel Beam Search",
     "sms_emoa": "SMS-EMOA",
     "emosa": "EMOSA",
     # extended in Phase C as overlays land
@@ -31,10 +31,22 @@ def _algorithm_chips(state_data: dict) -> list[dict]:
     """Return strategy-specific stat chips for the header. Adapters per algorithm."""
     algo = state_data.get("algorithm")
     pocket = state_data.get("algorithm_state", {})
+    if algo == "beam":
+        chips: list[dict] = []
+        beam_width = pocket.get("beam_width")
+        if beam_width is not None:
+            chips.append({"label": "beam_width", "value": beam_width})
+        hypervolume = pocket.get("hypervolume")
+        if hypervolume is not None:
+            chips.append({"label": "hypervolume", "value": round(float(hypervolume), 4)})
+        epsilon = state_data.get("epsilon")
+        if epsilon is not None:
+            chips.append({"label": "epsilon", "value": round(float(epsilon), 4)})
+        return chips
     if algo == "sms_emoa":
         mu = pocket.get("mu") or state_data.get("mu")  # legacy fallback
         return [{"label": "population (μ)", "value": mu}] if mu is not None else []
-    # beam / emosa adapters added in Phase C
+    # emosa adapter added in Phase C
     return []
 
 

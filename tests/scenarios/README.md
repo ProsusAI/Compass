@@ -49,6 +49,12 @@ Full-pipeline integration test scenarios for Project Odysseus. Each `.md` file i
 |---|----------|---------|-------|
 | 15 | Full End-to-End with Final Report | `full_pipeline_dataset.jsonl` | All 6 stages verified in detail: holdout filtering, holdout eval, briefing, report content |
 
+### Cold-Start Protection (16)
+
+| # | Scenario | Fixtures | Focus |
+|---|----------|----------|-------|
+| 16 | Round-1 Cold-Start Protection | `full_pipeline_dataset.jsonl` (mock-echo, beam_width=3) | Beam round-1 elite floor protects all K cold-start strategies; round-2 review emits one child per protected parent |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.

@@ -901,6 +901,84 @@ class TestBuildReviewBriefingStagnationSignal:
         assert briefing.reference_point is None
 
 
+class TestBeamReviewBriefingFields:
+    """beam algorithm populates beam-specific ReviewBriefing fields."""
+
+    def _make_beam_briefing(self, elite_versions: list[str], **state_overrides: Any) -> Any:
+        elite_set = [
+            Candidate(
+                prompt_version=v,
+                parent_version=None,
+                quality_score=0.80 + i * 0.05,
+                cost=1.50 - i * 0.1,
+                round_introduced=1,
+            )
+            for i, v in enumerate(elite_versions)
+        ]
+        kwargs: dict[str, Any] = {"round": 2, "algorithm": "beam", "elite_set": elite_set}
+        kwargs.update(state_overrides)
+        search_state = _make_search_state(**kwargs)
+        score_reports = {
+            v: _make_report_dict(accuracy=0.80 + i * 0.05, cost=1.50 - i * 0.1)
+            for i, v in enumerate(elite_versions)
+        }
+        return build_review_briefing(
+            search_state=search_state,
+            score_reports=score_reports,
+            historical_reports={1: {v: score_reports[v] for v in elite_versions}},
+            prompt_texts={v: f"prompt {v}" for v in elite_versions},
+            directive_history=[],
+            candidate_versions=list(elite_versions),
+            parent_versions={v: None for v in elite_versions},
+        )
+
+    def test_beam_run_populates_beam_rank_and_crowding(self) -> None:
+        """Beam run fills beam_rank, crowding_distance, hypervolume, reference_point, stagnation_signal."""
+        briefing = self._make_beam_briefing(
+            ["v1", "v2", "v3"],
+            algorithm_state={
+                "hypervolume": 0.42,
+                "prev_hypervolume": 0.40,
+                "backtrack_threshold": 2,
+                "reference_point": [0.0, 1.0],
+            },
+        )
+        assert briefing.beam_rank is not None
+        assert set(briefing.beam_rank.keys()) == {"v1", "v2", "v3"}
+        assert all(r == 0 for r in briefing.beam_rank.values())
+
+        assert briefing.crowding_distance is not None
+        assert set(briefing.crowding_distance.keys()) == {"v1", "v2", "v3"}
+
+        assert briefing.hypervolume == pytest.approx(0.42)
+        assert briefing.reference_point == (0.0, 1.0)
+
+        sig = briefing.stagnation_signal
+        assert sig is not None
+        assert sig["hypervolume_delta"] == pytest.approx(0.02, abs=1e-9)
+        assert sig["backtrack_threshold"] == 2
+
+    def test_hill_climb_run_leaves_beam_fields_none(self) -> None:
+        """Non-beam run leaves beam_rank, crowding_distance, hypervolume, reference_point as None."""
+        briefing = self._make_beam_briefing(
+            ["v1"],
+            algorithm="hill_climb",
+            stagnation_count=1,
+            stagnation_limit=3,
+            mutation_mode="targeted",
+        )
+        assert briefing.beam_rank is None
+        assert briefing.crowding_distance is None
+        assert briefing.hypervolume is None
+        assert briefing.reference_point is None
+        # Hill-climb stagnation signal still present with its three keys
+        sig = briefing.stagnation_signal
+        assert sig is not None
+        assert "count" in sig
+        assert "limit" in sig
+        assert "mutation_mode" in sig
+
+
 class TestBuildConfusionAnalysis:
     def _make_example(self, eid: str, route: str, routes: dict[str, tuple[float, float]]) -> Any:
         """Helper: routes dict is {route_name: (cost, quality_score)}."""

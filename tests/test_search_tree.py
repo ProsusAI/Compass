@@ -431,8 +431,8 @@ class TestLegacyStateCompat:
 class TestStrategySeams:
     """Strategy label and algorithm_chips injection seams work correctly."""
 
-    def test_strategy_seams_for_non_smsemoa(self, tmp_path: Path) -> None:
-        """A parallel_beam state yields correct strategy_label and empty algorithm_chips."""
+    def test_strategy_seams_for_beam(self, tmp_path: Path) -> None:
+        """A beam state yields correct strategy_label and beam-specific algorithm_chips."""
         search_dir = tmp_path / "search"
 
         archive = [_make_candidate("cv-0-0", None, 0)]
@@ -440,7 +440,7 @@ class TestStrategySeams:
             "search_state_id": "beam-test",
             "backend": "anthropic",
             "iteration": 0,
-            "algorithm": "parallel_beam",
+            "algorithm": "beam",
             "elite_set": archive,
             "warm_up_complete": True,
             "evaluation_budget": 20,
@@ -457,4 +457,39 @@ class TestStrategySeams:
         data = collect_data(search_dir, run_dir=tmp_path)
 
         assert data["strategy_label"] == "Parallel Beam Search"
-        assert data["algorithm_chips"] == []
+        # No population (μ) chip — beam adapter is active, not sms_emoa
+        assert not any(c["label"] == "population (μ)" for c in data["algorithm_chips"])
+
+    def test_beam_state_yields_beam_chips(self, tmp_path: Path) -> None:
+        """Beam state with algorithm_state and epsilon produces correct chips."""
+        search_dir = tmp_path / "search"
+
+        archive = [_make_candidate("cv-0-0", None, 0)]
+        state = {
+            "search_state_id": "beam-chips-test",
+            "backend": "anthropic",
+            "iteration": 0,
+            "algorithm": "beam",
+            "algorithm_state": {"beam_width": 3, "hypervolume": 0.234567},
+            "epsilon": 0.001,
+            "elite_set": archive,
+            "warm_up_complete": True,
+            "evaluation_budget": 20,
+            "evaluations_used": 1,
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", archive)
+        _write_json(search_dir / "pending_candidates.json", [])
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        assert data["strategy_label"] == "Parallel Beam Search"
+        chips = data["algorithm_chips"]
+        chip_map = {c["label"]: c["value"] for c in chips}
+        assert chip_map["beam_width"] == 3
+        assert chip_map["hypervolume"] == 0.2346
+        assert chip_map["epsilon"] == 0.001
