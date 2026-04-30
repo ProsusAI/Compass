@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from odysseus.agents.prompt_builder.search import (
+    AlgorithmType,
     Candidate,
     RoundSummary,
     SearchState,
@@ -47,6 +48,13 @@ _MAX_ITERATIONS = 500
 
 def _default_output_dir() -> Path:
     return get_project_dir() / "outputs"
+
+
+# Branch-level algorithm constants.  On feat/generalize-pipeline (and main)
+# these default to hill_climb / {}.  Search-specific branches (Wave 2) flip
+# exactly these two lines and nothing else.
+_BRANCH_ALGORITHM: AlgorithmType = "sms_emoa"
+_BRANCH_ALGORITHM_STATE: dict[str, Any] = {"mu": 8}
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +135,11 @@ def init_search_state(
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
-    algorithm: Literal["hill_climb", "beam", "sms_emoa", "emosa"] = "hill_climb",
-    algorithm_state: dict[str, Any] | None = None,
 ) -> SearchState:
     """Create and persist a new SearchState.
+
+    The search algorithm is hardcoded per-branch via ``_BRANCH_ALGORITHM`` /
+    ``_BRANCH_ALGORITHM_STATE``; callers do not choose it.
 
     Args:
         backend: Backend identifier (e.g. ``"anthropic"``).
@@ -140,8 +149,6 @@ def init_search_state(
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
         convergence_limit: Stagnation rounds that trigger convergence.
         primary_metric_name: Optional name of the primary quality metric.
-        algorithm: Search algorithm discriminator.  Defaults to ``"hill_climb"``.
-        algorithm_state: Optional free-form pocket for strategy-specific sub-state.
 
     Returns:
         The newly created :class:`SearchState`.
@@ -156,8 +163,8 @@ def init_search_state(
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
         primary_metric_name=primary_metric_name,
-        algorithm=algorithm,
-        algorithm_state=algorithm_state or {},
+        algorithm=_BRANCH_ALGORITHM,
+        algorithm_state=_BRANCH_ALGORITHM_STATE,
     )
     _save_state(run_id, state, output_dir)
     _try_write_viz(run_id, output_dir)
@@ -368,9 +375,7 @@ def advance_round(
 
     # Guard: do not advance while batch evals are still in flight.
     if state.active_evals:
-        raise ValueError(
-            f"Cannot advance round while active_evals is non-empty: {state.active_evals}"
-        )
+        raise ValueError(f"Cannot advance round while active_evals is non-empty: {state.active_evals}")
 
     pending = _load_pending(run_id, output_dir)
 
@@ -401,9 +406,7 @@ def advance_round(
         improvement = 0.0
         new_stagnation_count = state.stagnation_count + 1
         round_routing_cost = 0.0
-        new_mutation_mode = (
-            "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
-        )
+        new_mutation_mode = "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
     else:
         # Normal path — use only scored candidates.
         new_front, new_elite_entries = update_pareto_front(state.elite_set, scored)
@@ -565,9 +568,7 @@ def advance_warmup_batch(
         raise ValueError("No pending candidates to advance_warmup_batch with")
 
     if state.active_evals:
-        raise ValueError(
-            f"Cannot advance_warmup_batch while active_evals is non-empty: {state.active_evals}"
-        )
+        raise ValueError(f"Cannot advance_warmup_batch while active_evals is non-empty: {state.active_evals}")
 
     scored_pending = [c for c in pending if c.eval_status in ("complete", None)]
     failed_pending = [c for c in pending if c.eval_status == "failed"]
@@ -672,9 +673,7 @@ def advance_round_sms_emoa(
         raise ValueError("No pending candidates to advance_round_sms_emoa with")
 
     if state.active_evals:
-        raise ValueError(
-            f"Cannot advance_round_sms_emoa while active_evals is non-empty: {state.active_evals}"
-        )
+        raise ValueError(f"Cannot advance_round_sms_emoa while active_evals is non-empty: {state.active_evals}")
 
     # --- Read algorithm_state pocket with safe defaults ---
     ast = state.algorithm_state
@@ -690,9 +689,7 @@ def advance_round_sms_emoa(
     stagnation_window = int(ast.get("stagnation_window", 5))
 
     if not warm_up_complete:
-        raise RuntimeError(
-            "advance_round_sms_emoa called before warm-up complete — use advance_warmup_batch"
-        )
+        raise RuntimeError("advance_round_sms_emoa called before warm-up complete — use advance_warmup_batch")
 
     scored_pending = [c for c in pending if c.eval_status in ("complete", None)]
     failed_pending = [c for c in pending if c.eval_status == "failed"]
@@ -864,9 +861,13 @@ def _clear_active_evals(run_id: str, output_dir: Path) -> None:
 def set_loop_phase(
     run_id: str,
     phase: Literal[
-        "build", "review",
-        "warmup_seed", "warmup_build", "warmup_reduce",
-        "calibration", "build_recovering",
+        "build",
+        "review",
+        "warmup_seed",
+        "warmup_build",
+        "warmup_reduce",
+        "calibration",
+        "build_recovering",
     ],
     output_dir: Path | None = None,
 ) -> None:

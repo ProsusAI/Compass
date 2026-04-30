@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
@@ -73,10 +73,12 @@ async def init_search_state_tool(
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
-    algorithm: Literal["hill_climb", "beam", "sms_emoa", "emosa"] = "hill_climb",
-    algorithm_state: dict[str, Any] | None = None,
 ) -> str:
     """[Stage 4: Refinement Loop] Initialise a new prompt-builder search state.
+
+    The search algorithm is hardcoded per branch via ``_BRANCH_ALGORITHM`` in
+    ``search_ops.py``; callers pass only ``run_id``, ``backend``, and optional
+    max-rounds knobs.
 
     Args:
         run_id: Pipeline run identifier.
@@ -85,10 +87,6 @@ async def init_search_state_tool(
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
         convergence_limit: Stagnation rounds that trigger convergence.
         primary_metric_name: Optional name of the primary quality metric.
-        algorithm: Search algorithm to use. Defaults to "hill_climb" (main branch
-            behaviour). Other values ("beam", "sms_emoa", "emosa") are implemented
-            on their respective feature branches.
-        algorithm_state: Optional initial strategy-specific sub-state dict.
 
     Returns:
         JSON-serialized SearchState for the new search run.
@@ -108,8 +106,6 @@ async def init_search_state_tool(
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
         primary_metric_name=primary_metric_name,
-        algorithm=algorithm,
-        algorithm_state=algorithm_state,
     )
     return state.model_dump_json(indent=2)
 
@@ -399,9 +395,7 @@ async def advance_step_tool(run_id: str) -> str:
     elif algorithm == "sms_emoa":
         return _advance_sms_emoa(run_id)
 
-    raise NotImplementedError(
-        f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch"
-    )
+    raise NotImplementedError(f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch")
 
 
 @mcp.tool()
