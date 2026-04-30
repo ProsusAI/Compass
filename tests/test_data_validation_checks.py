@@ -282,6 +282,44 @@ class TestCheckSchemaConformance:
         assert null_finding.row_indices == []
 
 
+class TestCanonicalRouteFields:
+    def test_canonical_fields_pass(self) -> None:
+        """Route objects with only cost and quality_score pass."""
+        rows = [_valid_row(id="ex-1"), _valid_row(id="ex-2")]
+        findings = check_schema_conformance(rows)
+        finding = next(f for f in findings if f.field == "canonical_route_fields")
+        assert finding.status == "pass"
+        assert finding.row_indices == []
+
+    def test_unrecognized_fields_fail(self) -> None:
+        """Route objects with wrong field names are flagged."""
+        row = _valid_row()
+        row["expected"]["routes"]["opus"] = {"score": 0.87, "cost_usd": 0.02}
+        findings = check_schema_conformance([row])
+        finding = next(f for f in findings if f.field == "canonical_route_fields")
+        assert finding.status == "fail"
+        assert finding.severity == "critical"
+        assert 0 in finding.row_indices
+
+    def test_extra_fields_alongside_canonical_fail(self) -> None:
+        """Extra fields alongside canonical ones are still flagged."""
+        row = _valid_row()
+        row["expected"]["routes"]["opus"] = {"cost": 0.05, "quality_score": 0.98, "latency": 200}
+        findings = check_schema_conformance([row])
+        finding = next(f for f in findings if f.field == "canonical_route_fields")
+        assert finding.status == "fail"
+        assert 0 in finding.row_indices
+
+    def test_empty_route_objects_pass(self) -> None:
+        """Empty route dicts are acceptable (no unrecognized fields)."""
+        row = _valid_row()
+        row["expected"]["routes"]["opus"] = {}
+        row["expected"]["routes"]["haiku"] = {}
+        findings = check_schema_conformance([row])
+        finding = next(f for f in findings if f.field == "canonical_route_fields")
+        assert finding.status == "pass"
+
+
 # ---------------------------------------------------------------------------
 # check_label_distribution tests
 # ---------------------------------------------------------------------------

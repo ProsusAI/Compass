@@ -68,6 +68,52 @@ def _get_nested(obj: dict, dot_path: str) -> Any:
     return current
 
 
+def _get_nested_wildcard(obj: dict, dot_path: str) -> list[tuple[list[str], Any]]:
+    """Get values from a nested dict, expanding ``*`` segments over all keys.
+
+    Returns a list of ``(key_sequence, leaf_value)`` pairs where
+    *key_sequence* records which concrete keys replaced each ``*``.
+    """
+    parts = dot_path.split(".")
+    results: list[tuple[list[str], Any]] = []
+
+    def _recurse(current: Any, depth: int, keys: list[str]) -> None:
+        if depth == len(parts):
+            results.append((list(keys), current))
+            return
+        segment = parts[depth]
+        if segment == "*":
+            if not isinstance(current, dict):
+                return
+            for key in current:
+                keys.append(key)
+                _recurse(current[key], depth + 1, keys)
+                keys.pop()
+        else:
+            if not isinstance(current, dict) or segment not in current:
+                return
+            _recurse(current[segment], depth + 1, keys)
+
+    _recurse(obj, 0, [])
+    return results
+
+
+def _set_nested_wildcard(
+    obj: dict, dot_path: str, key_sequence: list[str], value: Any
+) -> None:
+    """Set a value in a nested dict, substituting ``*`` with keys from *key_sequence*."""
+    parts = dot_path.split(".")
+    ki = 0
+    resolved: list[str] = []
+    for part in parts:
+        if part == "*":
+            resolved.append(key_sequence[ki])
+            ki += 1
+        else:
+            resolved.append(part)
+    _set_nested(obj, ".".join(resolved), value)
+
+
 def _check_required_targets(mapping: dict[str, str]) -> None:
     """Verify that all required target fields are covered by the mapping.
 
@@ -144,15 +190,26 @@ def transform_dataset(
             target_row: dict[str, Any] = {}
 
             for src_field, tgt_field in mapping.items():
-                value = _get_nested(source_row, src_field)
-                if value is not None:
-                    _set_nested(target_row, tgt_field, value)
-                elif idx == 0:
-                    logger.warning(
-                        "Mapping key %r not found in source row (target: %r)",
-                        src_field,
-                        tgt_field,
-                    )
+                if "*" in src_field or "*" in tgt_field:
+                    matches = _get_nested_wildcard(source_row, src_field)
+                    for key_seq, val in matches:
+                        _set_nested_wildcard(target_row, tgt_field, key_seq, val)
+                    if not matches and idx == 0:
+                        logger.warning(
+                            "Wildcard mapping key %r matched nothing in source row (target: %r)",
+                            src_field,
+                            tgt_field,
+                        )
+                else:
+                    value = _get_nested(source_row, src_field)
+                    if value is not None:
+                        _set_nested(target_row, tgt_field, value)
+                    elif idx == 0:
+                        logger.warning(
+                            "Mapping key %r not found in source row (target: %r)",
+                            src_field,
+                            tgt_field,
+                        )
 
             if "id" not in target_row:
                 target_row["id"] = f"row-{idx}"

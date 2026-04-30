@@ -105,6 +105,8 @@ def _extract_route(row: dict) -> str | None:
 # Check functions
 # ---------------------------------------------------------------------------
 
+_CANONICAL_ROUTE_FIELDS = frozenset({"cost", "quality_score"})
+
 
 def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
     """Check all rows against the THP-80 schema.
@@ -118,6 +120,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
     non_empty_routes_fail_indices: list[int] = []
     duplicate_id_indices: list[int] = []
     null_field_indices: list[int] = []
+    unrecognized_route_field_indices: list[int] = []
 
     # For consistent model set: collect (original_index, frozenset of route keys)
     route_key_sets: list[tuple[int, frozenset[str]]] = []
@@ -174,6 +177,12 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
                             type_ok = False
                         if quality is not None and not isinstance(quality, (int, float)):
                             type_ok = False
+
+            if isinstance(routes_val, dict):
+                for _mn, md in routes_val.items():
+                    if isinstance(md, dict) and not md.keys() <= _CANONICAL_ROUTE_FIELDS:
+                        unrecognized_route_field_indices.append(idx)
+                        break
 
         if not type_ok:
             type_fail_indices.append(idx)
@@ -300,6 +309,20 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
             severity="warning",
             violation="Null values detected in non-required fields" if null_field_indices else None,
             row_indices=null_field_indices,
+        )
+    )
+    findings.append(
+        SchemaFinding(
+            field="canonical_route_fields",
+            status="fail" if unrecognized_route_field_indices else "pass",
+            severity="critical",
+            violation=(
+                "Route objects contain unrecognized field names; "
+                "expected only 'cost' and 'quality_score'"
+            )
+            if unrecognized_route_field_indices
+            else None,
+            row_indices=unrecognized_route_field_indices,
         )
     )
 

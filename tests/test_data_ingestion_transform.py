@@ -11,8 +11,10 @@ from odysseus.agents.data_validation.transform import (
     TransformResult,
     _check_required_targets,
     _get_nested,
+    _get_nested_wildcard,
     _maybe_coerce_numeric,
     _set_nested,
+    _set_nested_wildcard,
     transform_dataset,
 )
 
@@ -285,3 +287,74 @@ class TestNestedMapping:
         mapping = {"text": "input", "tier": "expected.route", "routes": "expected.routes"}
         transform_dataset(str(src), json.dumps(mapping), str(out))
         assert "old content" not in out.read_text()
+
+
+class TestGetNestedWildcard:
+    def test_single_wildcard(self) -> None:
+        obj = {"tier_details": {"simple": {"score": 0.87}, "complex": {"score": 0.94}}}
+        results = _get_nested_wildcard(obj, "tier_details.*.score")
+        keys_and_vals = {tuple(ks): v for ks, v in results}
+        assert keys_and_vals[("simple",)] == 0.87
+        assert keys_and_vals[("complex",)] == 0.94
+
+    def test_no_wildcard_delegates(self) -> None:
+        obj = {"a": {"b": 42}}
+        results = _get_nested_wildcard(obj, "a.b")
+        assert len(results) == 1
+        assert results[0] == ([], 42)
+
+    def test_missing_path_returns_empty(self) -> None:
+        obj = {"a": 1}
+        results = _get_nested_wildcard(obj, "b.*.c")
+        assert results == []
+
+    def test_multiple_wildcards(self) -> None:
+        obj = {"a": {"x": {"p": 1, "q": 2}, "y": {"p": 3}}}
+        results = _get_nested_wildcard(obj, "a.*.*")
+        keys_and_vals = {tuple(ks): v for ks, v in results}
+        assert keys_and_vals[("x", "p")] == 1
+        assert keys_and_vals[("x", "q")] == 2
+        assert keys_and_vals[("y", "p")] == 3
+
+
+class TestSetNestedWildcard:
+    def test_single_wildcard(self) -> None:
+        obj: dict = {"routes": {"simple": {}, "complex": {}}}
+        _set_nested_wildcard(obj, "routes.*.quality_score", ["simple"], 0.87)
+        assert obj["routes"]["simple"]["quality_score"] == 0.87
+
+    def test_creates_intermediates(self) -> None:
+        obj: dict = {}
+        _set_nested_wildcard(obj, "expected.routes.*.cost", ["opus"], 0.05)
+        assert obj["expected"]["routes"]["opus"]["cost"] == 0.05
+
+
+class TestWildcardTransform:
+    def test_wildcard_mapping_resolves_fields(self, tmp_path: Path) -> None:
+        """Wildcard mapping renames nested fields across all keys."""
+        src = tmp_path / "source.jsonl"
+        src.write_text(
+            json.dumps({
+                "text": "hello",
+                "tier": "simple",
+                "routes": {
+                    "simple": {"score": 0.87, "cost_usd": 0.02},
+                    "complex": {"score": 0.94, "cost_usd": 0.11},
+                },
+            })
+            + "\n"
+        )
+        out = tmp_path / "transformed.jsonl"
+        mapping = {
+            "text": "input",
+            "tier": "expected.route",
+            "routes": "expected.routes",
+            "routes.*.score": "expected.routes.*.quality_score",
+            "routes.*.cost_usd": "expected.routes.*.cost",
+        }
+        transform_dataset(str(src), json.dumps(mapping), str(out))
+        row = json.loads(out.read_text().strip().splitlines()[0])
+        assert row["expected"]["routes"]["simple"]["quality_score"] == 0.87
+        assert row["expected"]["routes"]["simple"]["cost"] == 0.02
+        assert row["expected"]["routes"]["complex"]["quality_score"] == 0.94
+        assert row["expected"]["routes"]["complex"]["cost"] == 0.11
