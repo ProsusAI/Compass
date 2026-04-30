@@ -231,7 +231,7 @@ Both files contain `{"round": N}` for diagnostics.
 | `is_complete` | `bool` | `len(completed) >= expected` |
 | `missing` | `list[int]` | `in_flight + not_dispatched` |
 
-For `expected=1`, fanout is complete when `search/child_variants.json` exists.  `expected > 1` (EMOSA K-trajectory fanout) raises `NotImplementedError` on the integration branch — EMOSA overrides `review_fanout_status` on `feat/generalize-emosa` by adding an `algorithm` kwarg and delegating to `trajectory_fanout_missing` in [`review/ops.py`](../odysseus/agents/review/ops.py) when `algorithm == "emosa"`. See section 6 for the cross-branch strategy matrix.
+For `expected=1` (hill-climb / beam / SMS-EMOA), fanout is complete when `search/child_variants.json` exists.  For `algorithm="emosa"`, `review_fanout_status` delegates to `trajectory_fanout_missing` (see `odysseus/agents/review/ops.py`) which checks per-slot `child_variants_t<N>.json` files; each slot maps to one EMOSA trajectory.  Dispatch state for EMOSA is tracked in `review_dispatched.json` as a round-keyed list of trajectory_ids rather than the simple `{"round": N}` marker used by other algorithms.
 
 **`child_variants.json`**
 

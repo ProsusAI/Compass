@@ -21,6 +21,7 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
     STAGE_4_REVIEW_INSTRUCTION,
+    STAGE_4_REVIEW_INSTRUCTION_EMOSA,
     STAGE_5_INSTRUCTION,
 )
 from odysseus.project_dir import get_project_dir
@@ -676,6 +677,29 @@ def _read_algorithm_from_state(run_dir: Path) -> str:
         return "hill_climb"
 
 
+def _read_trajectory_count(run_dir: Path) -> int:
+    """Read the number of EMOSA trajectories from search_state.json algorithm_state pocket.
+
+    Returns 3 (a safe default) when the state is absent or contains no trajectory data.
+    """
+    search_state_path = run_dir / "search" / "search_state.json"
+    if not search_state_path.is_file():
+        return 3
+    try:
+        data = json.loads(search_state_path.read_text())
+        pocket = data.get("algorithm_state") or {}
+        num = pocket.get("num_trajectories")
+        if num is not None:
+            return int(num)
+        # Fallback: count trajectories list length if present
+        trajectories = pocket.get("trajectories", [])
+        if trajectories:
+            return len(trajectories)
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        logger.warning("Failed to read trajectory count from %s: %s", search_state_path, exc)
+    return 3
+
+
 def _next_action_for_stage_4(
     run_dir: Path,
     rerun_config: dict[str, Any] | None = None,
@@ -706,6 +730,72 @@ def _next_action_for_stage_4(
             _RERUN_TOOLS,
             ["odysseus_prompt_builder_rerun"],
             rerun_instr,
+            algorithm,
+        )
+
+    # EMOSA review phase: K-way parallel fanout — one sub-agent per trajectory.
+    # Format the instruction with trajectory count so the orchestrator knows how
+    # many sub-agents to spawn and can wait for all K completions.
+    if phase == "review" and algorithm == "emosa":
+        from odysseus.agents.review.ops import trajectory_fanout_missing
+
+        num_trajectories = _read_trajectory_count(run_dir)
+        review_instr = STAGE_4_REVIEW_INSTRUCTION_EMOSA.format(
+            run_id=run_dir.name,
+            num_trajectories=num_trajectories,
+            max_trajectory_id=num_trajectories - 1,
+        )
+
+        fanout = trajectory_fanout_missing(run_dir.name, output_dir=run_dir.parent)
+
+        if fanout is not None:
+            num_completed = len(fanout.completed)
+            num_in_flight = len(fanout.in_flight)
+            num_not_dispatched = len(fanout.not_dispatched)
+            num_trajectories_total = fanout.num_trajectories
+
+            if num_not_dispatched == num_trajectories_total and num_completed == 0 and num_in_flight == 0:
+                status_text = (
+                    f"Stage 4 — review phase: spawn {num_trajectories_total} Review Agent sub-agents "
+                    "in parallel (one per trajectory) to analyse eval results and emit child variants. "
+                    "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools."
+                )
+            elif num_not_dispatched > 0 and num_in_flight == 0:
+                status_text = (
+                    f"Stage 4 — review phase (partial, {num_completed}/{num_trajectories_total} completed): "
+                    f"dispatch Review Agent sub-agents for trajectory_id(s) {sorted(fanout.not_dispatched)}."
+                )
+                review_instr = review_instr + f"\nMISSING_TRAJECTORIES: {sorted(fanout.not_dispatched)}"
+            elif num_not_dispatched > 0 and num_in_flight > 0:
+                status_text = (
+                    f"Stage 4 — review phase (partial, {num_completed}/{num_trajectories_total} completed, "
+                    f"{num_in_flight} in flight): "
+                    f"dispatch missing trajectory_id(s) {sorted(fanout.not_dispatched)} in parallel; "
+                    f"do NOT respawn trajectory_id(s) {sorted(fanout.in_flight)} which are already dispatched."
+                )
+                review_instr = review_instr + f"\nMISSING_TRAJECTORIES: {sorted(fanout.not_dispatched)}"
+            else:
+                # All dispatched, some still in flight
+                status_text = (
+                    f"Stage 4 — review phase: all {num_trajectories_total} trajectories dispatched "
+                    f"({num_completed} completed, {num_in_flight} still running). "
+                    f"WAIT for in-flight agents to finish; "
+                    f"do NOT respawn trajectory_id(s) {sorted(fanout.in_flight)}. "
+                    f"Re-poll get_pipeline_status in 30-60s."
+                )
+        else:
+            # No algorithm_state yet (pre-calibration fallback)
+            status_text = (
+                f"Stage 4 — review phase: spawn {num_trajectories} Review Agent sub-agents "
+                "in parallel (one per trajectory) to analyse eval results and emit child variants. "
+                "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools."
+            )
+
+        return (
+            status_text,
+            _REVIEW_TOOLS,
+            ["odysseus_review_agent_iterative"],
+            review_instr,
             algorithm,
         )
 
