@@ -51,7 +51,7 @@ Read all inputs from the context dict at startup. If any required input is missi
 
 > Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 4 sub-agent tool. Do not call it from this context.
 
-> Note: `init_search_state_tool` accepts an optional `algorithm` parameter (default `"hill_climb"`). On this branch only `"hill_climb"` is active; `"beam"`, `"sms_emoa"`, and `"emosa"` are implemented on their respective strategy branches.
+> Note: `init_search_state_tool` uses the branch's hardcoded algorithm; pass only `run_id`, `backend`, and optional max-rounds knobs (`max_rounds`, `stagnation_limit`, `convergence_limit`, `primary_metric_name`).
 
 ## Resources
 

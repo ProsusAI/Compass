@@ -32,6 +32,7 @@ from odysseus.agents.prompt_builder.annealing import (
     update_archive,
 )
 from odysseus.agents.prompt_builder.search import (
+    AlgorithmType,
     Candidate,
     RoundSummary,
     SearchState,
@@ -53,6 +54,13 @@ logger = logging.getLogger(__name__)
 
 def _default_output_dir() -> Path:
     return get_project_dir() / "outputs"
+
+
+# Branch-level algorithm constants.  On feat/generalize-pipeline (and main)
+# these default to hill_climb / {}.  Search-specific branches (Wave 2) flip
+# exactly these two lines and nothing else.
+_BRANCH_ALGORITHM: AlgorithmType = "emosa"
+_BRANCH_ALGORITHM_STATE: dict[str, Any] = {"num_trajectories": 5}
 
 
 # ---------------------------------------------------------------------------
@@ -133,10 +141,11 @@ def init_search_state(
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
-    algorithm: Literal["hill_climb", "beam", "sms_emoa", "emosa"] = "hill_climb",
-    algorithm_state: dict[str, Any] | None = None,
 ) -> SearchState:
     """Create and persist a new SearchState.
+
+    The search algorithm is hardcoded per-branch via ``_BRANCH_ALGORITHM`` /
+    ``_BRANCH_ALGORITHM_STATE``; callers do not choose it.
 
     Args:
         backend: Backend identifier (e.g. ``"anthropic"``).
@@ -146,8 +155,6 @@ def init_search_state(
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
         convergence_limit: Stagnation rounds that trigger convergence.
         primary_metric_name: Optional name of the primary quality metric.
-        algorithm: Search algorithm discriminator.  Defaults to ``"hill_climb"``.
-        algorithm_state: Optional free-form pocket for strategy-specific sub-state.
 
     Returns:
         The newly created :class:`SearchState`.
@@ -162,8 +169,8 @@ def init_search_state(
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
         primary_metric_name=primary_metric_name,
-        algorithm=algorithm,
-        algorithm_state=algorithm_state or {},
+        algorithm=_BRANCH_ALGORITHM,
+        algorithm_state=_BRANCH_ALGORITHM_STATE,
     )
     _save_state(run_id, state, output_dir)
     _try_write_viz(run_id, output_dir)

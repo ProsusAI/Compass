@@ -135,7 +135,15 @@ def _make_emosa_search_state(
     with_seeded_trajectories: bool = True,
     seeded_candidates: list[Candidate] | None = None,
 ) -> SearchState:
-    """Init an emosa SearchState already in search phase with seeded trajectories."""
+    """Init an emosa SearchState already in search phase with seeded trajectories.
+
+    Since Wave 2, init_search_state uses _BRANCH_ALGORITHM / _BRANCH_ALGORITHM_STATE
+    and no longer accepts algorithm / algorithm_state params.  We init, then patch the
+    persisted state to overwrite algorithm_state with the full AnnealingState required
+    by the steady-state search arm tests.
+    """
+    from odysseus.agents.prompt_builder.search_ops import _save_state
+
     annealing = _make_annealing_state(
         num_trajectories=num_trajectories,
         phase="search",
@@ -154,10 +162,44 @@ def _make_emosa_search_state(
         backend="test",
         run_id=run_id,
         output_dir=tmp_path,
-        algorithm="emosa",
-        algorithm_state=json.loads(annealing.model_dump_json()),
     )
-    return state
+    # Overwrite algorithm_state with the fully populated search-phase AnnealingState
+    # and set loop_phase='review' to match steady-state EMOSA operation.
+    patched = state.model_copy(
+        update={
+            "algorithm_state": json.loads(annealing.model_dump_json()),
+            "loop_phase": "review",
+        }
+    )
+    _save_state(run_id, patched, tmp_path)
+    return patched
+
+
+def _init_emosa_with_annealing(
+    run_id: str,
+    output_dir: Path,
+    annealing: AnnealingState,
+    loop_phase: str = "review",
+) -> SearchState:
+    """Init a SearchState and overwrite algorithm_state with a full AnnealingState pocket.
+
+    Since Wave 2, init_search_state uses _BRANCH_ALGORITHM / _BRANCH_ALGORITHM_STATE
+    and no longer accepts algorithm / algorithm_state params.  This helper creates the
+    state and patches it to match the annealing pocket required by each individual test.
+    """
+    state = init_search_state(
+        backend="test",
+        run_id=run_id,
+        output_dir=output_dir,
+    )
+    patched = state.model_copy(
+        update={
+            "algorithm_state": json.loads(annealing.model_dump_json()),
+            "loop_phase": loop_phase,
+        }
+    )
+    _save_state(run_id, patched, output_dir)
+    return patched
 
 
 def _build_child_candidates(
@@ -219,13 +261,7 @@ class TestAdvanceRoundEmosaSearch:
             ideal_point=ideal,
             nadir_point=nadir,
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
         # Child improves on seed
         child = Candidate(
             prompt_version="child_v1",
@@ -278,13 +314,7 @@ class TestAdvanceRoundEmosaSearch:
             ideal_point=ideal,
             nadir_point=nadir,
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
 
         # 3 children with different quality/cost; best = lowest Tchebycheff energy
         children = [
@@ -371,13 +401,7 @@ class TestAdvanceRoundEmosaSearch:
             ideal_point=narrow_ideal,
             nadir_point=narrow_nadir,
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
 
         # New child with significantly better quality — expands ideal/nadir
         child = Candidate(
@@ -442,13 +466,7 @@ class TestAdvanceRoundEmosaSearch:
             nadir_point=nadir,
             neighborhood_size=4,
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
 
         # Only trajectory 0 gets a child (very good quality/cost)
         children = [
@@ -551,13 +569,7 @@ class TestAdvanceRoundEmosaSearch:
             nadir_point=nadir,
             neighborhood_size=1,
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
 
         # Child from T0's seed:
         # q=0.6, c=0.05
@@ -674,13 +686,7 @@ class TestAdvanceRoundEmosaSearch:
             nadir_point=nadir,
             neighborhood_size=2,  # Each trajectory's neighborhood = both others
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
 
         # Child from shared_v:
         # q=0.3, c=0.05  (strongly cost-leaning)
@@ -843,13 +849,7 @@ class TestAdvanceRoundEmosaSearch:
             ideal_point=ideal,
             nadir_point=nadir,
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
 
         # Candidate has no parent_version (unmatched -> round-robin assignment)
         child = Candidate(
@@ -1115,13 +1115,7 @@ class TestAdvanceRoundEmosaSearch:
             ideal_point=ideal,
             nadir_point=nadir,
         )
-        init_search_state(
-            backend="test",
-            run_id=run_id,
-            output_dir=tmp_path,
-            algorithm="emosa",
-            algorithm_state=json.loads(annealing.model_dump_json()),
-        )
+        _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
 
         # Give each trajectory one child so both participate in Metropolis
         children = [
