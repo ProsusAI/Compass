@@ -125,8 +125,8 @@ Omit `route_ordering` if routes have no natural ordering.
 
 Use the `severity` field on each schema finding to determine how to present it:
 
-- **Critical** (`severity: "critical"`, checks: `required_keys`, `types`, `unique_ids`, `consistent_model_set`): the dataset is **blocked**. These must be fixed before evaluation can proceed.
-- **Warning** (`severity: "warning"`, checks: `route_in_routes`, `non_empty_routes`, `null_fields`): flag in the report but do not block. The dataset can proceed with noted warnings.
+- **Critical** (`severity: "critical"`, checks: `required_keys`, `types`, `unique_ids`, `consistent_model_set`, `route_in_routes`): the dataset is **blocked**. These must be fixed before evaluation can proceed.
+- **Warning** (`severity: "warning"`, checks: `non_empty_routes`, `null_fields`): flag in the report but do not block. The dataset can proceed with noted warnings.
 - If volume adequacy overall verdict is `"fail"`: flag as a **warning** — the dataset can proceed but results may be unreliable for under-covered tiers.
 - If label distribution has imbalanced tiers: flag as **informational** — note which tiers are underrepresented.
 - If all checks pass and volume is adequate: the dataset is **ready** for downstream processing.

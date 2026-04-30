@@ -261,7 +261,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
         SchemaFinding(
             field="route_in_routes",
             status="fail" if route_in_routes_fail_indices else "pass",
-            severity="warning",
+            severity="critical",
             violation="expected.route not found in expected.routes keys" if route_in_routes_fail_indices else None,
             row_indices=route_in_routes_fail_indices,
         )

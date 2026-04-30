@@ -262,7 +262,7 @@ class TestExpected:
         assert e.routes["opus"].cost == 0.05
 
     def test_route_not_in_routes_is_accepted(self):
-        """route_in_routes mismatch is a validation warning, not a model error."""
+        """route_in_routes mismatch is caught by data-validation checks, not the Pydantic model."""
         from odysseus.eval.models import Expected
 
         e = Expected(
