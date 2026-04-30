@@ -659,3 +659,76 @@ class TestDetectStage4PhaseRecovery:
         phase = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
 
         assert phase == "build"
+
+
+# ---------------------------------------------------------------------------
+# EMOSA phase detection
+# ---------------------------------------------------------------------------
+
+
+def _make_emosa_search_dir(tmp_path: Path, run_id: str = "r1") -> Path:
+    """Create search dir for an EMOSA run and return it."""
+    search = tmp_path / run_id / "search"
+    search.mkdir(parents=True, exist_ok=True)
+    return search
+
+
+def _write_emosa_state(search_dir: Path, loop_phase: str, active_evals: list | None = None) -> None:
+    state = {
+        "algorithm": "emosa",
+        "loop_phase": loop_phase,
+        "active_evals": active_evals or [],
+    }
+    (search_dir / "search_state.json").write_text(json.dumps(state))
+
+
+class TestDetectStage4PhaseEmosa:
+    """_detect_stage_4_phase routes algorithm='emosa' to the calibration-aware sub-routine."""
+
+    def test_calibration_phase_no_active_evals(self, tmp_path: Path) -> None:
+        """algorithm='emosa', loop_phase='calibration', no active_evals → 'calibration'."""
+        search = _make_emosa_search_dir(tmp_path)
+        _write_emosa_state(search, loop_phase="calibration")
+
+        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
+
+        assert phase == "calibration"
+
+    def test_review_phase_no_active_evals(self, tmp_path: Path) -> None:
+        """algorithm='emosa', loop_phase='review', no active_evals → 'review'."""
+        search = _make_emosa_search_dir(tmp_path)
+        _write_emosa_state(search, loop_phase="review")
+
+        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
+
+        assert phase == "review"
+
+    def test_build_phase_no_active_evals(self, tmp_path: Path) -> None:
+        """algorithm='emosa', loop_phase='build', no active_evals → 'build'."""
+        search = _make_emosa_search_dir(tmp_path)
+        _write_emosa_state(search, loop_phase="build")
+
+        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
+
+        assert phase == "build"
+
+    def test_build_recovering_when_active_evals_non_empty(self, tmp_path: Path) -> None:
+        """algorithm='emosa', active_evals non-empty → 'build_recovering' regardless of loop_phase."""
+        search = _make_emosa_search_dir(tmp_path)
+        _write_emosa_state(search, loop_phase="build", active_evals=["v2"])
+
+        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
+
+        assert phase == "build_recovering"
+
+    def test_dispatcher_routes_emosa_to_emosa_sub_routine(self, tmp_path: Path) -> None:
+        """algorithm='emosa' in search_state.json causes the emosa branch to be taken."""
+        search = _make_emosa_search_dir(tmp_path)
+        # Use 'review' loop_phase to distinguish from default 'cold_start' (hill-climb)
+        _write_emosa_state(search, loop_phase="review")
+
+        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
+
+        # Under hill-climb this would be 'cold_start' (no directive_history.json),
+        # but under emosa the sub-routine trusts loop_phase directly.
+        assert phase == "review"

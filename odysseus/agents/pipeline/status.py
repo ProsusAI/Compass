@@ -17,6 +17,7 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_3_INSTRUCTION,
     STAGE_4_BUILD_INSTRUCTION,
     STAGE_4_BUILD_RECOVERING_INSTRUCTION,
+    STAGE_4_CALIBRATION_INSTRUCTION,
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
     STAGE_4_REVIEW_INSTRUCTION,
@@ -532,6 +533,9 @@ def _detect_stage_4_phase(
     (``"warmup_seed"``, ``"warmup_build"``, ``"warmup_reduce"``,
     ``"calibration"``, ``"build_recovering"``) for feature branches.
 
+    For ``algorithm == "emosa"`` the function uses the calibration-aware
+    detection path (no cold_start/build_v1 phases).
+
     Defense-in-depth: if the persisted ``loop_phase`` is ``"build"`` but
     neither ``child_variants.json`` nor ``build_dispatched.json`` exist on
     disk, the phase is re-interpreted as ``"review"`` to prevent deadlock.
@@ -540,8 +544,19 @@ def _detect_stage_4_phase(
         return "rerun"
 
     search_dir = run_dir / "search"
-    directive_history = search_dir / "directive_history.json"
     search_state_path = search_dir / "search_state.json"
+
+    # -----------------------------------------------------------------------
+    # EMOSA calibration-aware path
+    # -----------------------------------------------------------------------
+    algorithm = _read_algorithm_from_state(run_dir)
+    if algorithm == "emosa":
+        return _detect_stage_4_phase_emosa(run_dir, search_dir, search_state_path)
+
+    # -----------------------------------------------------------------------
+    # Hill-climb / default path (cold_start → build_v1 → normal loop)
+    # -----------------------------------------------------------------------
+    directive_history = search_dir / "directive_history.json"
     prompts_dir = run_dir / "prompts"
     has_v1 = prompts_dir.is_dir() and (
         any(prompts_dir.glob("v1.yaml")) or any(prompts_dir.glob("v1.json")) or any(prompts_dir.glob("v1.txt"))
@@ -594,6 +609,54 @@ def _detect_stage_4_phase(
             loop_phase = "review"
 
     return loop_phase
+
+
+def _detect_stage_4_phase_emosa(
+    run_dir: Path,
+    search_dir: Path,
+    search_state_path: Path,
+) -> str:
+    """EMOSA calibration-aware phase detection sub-routine.
+
+    Returns one of: ``"calibration"``, ``"review"``, ``"build"``,
+    ``"build_recovering"``.
+    """
+    # No search state at all — calibration not yet started.
+    if not search_state_path.is_file():
+        return "calibration"
+
+    # Parse search state.
+    loop_phase = "calibration"
+    state_data: dict[str, Any] = {}
+    try:
+        state_data = json.loads(search_state_path.read_text())
+        raw_phase = state_data.get("loop_phase", "calibration")
+        if raw_phase not in _VALID_LOOP_PHASES:
+            logger.warning(
+                "Unexpected loop_phase '%s' in %s/search/search_state.json, defaulting to 'calibration'",
+                raw_phase,
+                run_dir,
+            )
+        else:
+            loop_phase = raw_phase
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
+
+    # Recovery detection: active_evals non-empty signals mid-build crash.
+    active_evals = state_data.get("active_evals", [])
+    if active_evals:
+        return "build_recovering"
+
+    # Calibration phase: trajectories not yet seeded.
+    if loop_phase == "calibration":
+        return "calibration"
+
+    # Steady-state: trust loop_phase directly for review/build.
+    if loop_phase in {"review", "build"}:
+        return loop_phase
+
+    # Fallback: default to "build" (mirrors sms_emoa default for round 0).
+    return "build"
 
 
 def _read_algorithm_from_state(run_dir: Path) -> str:
@@ -713,12 +776,14 @@ def _next_action_for_stage_4(
         ),
         "warmup_build": _build_entry,
         "warmup_reduce": _build_entry,
+        # EMOSA calibration phase
         "calibration": (
-            "Stage 4 — calibration phase: spawn the Review Agent to seed trajectories. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _COLD_REVIEW_TOOLS,
-            ["odysseus_review_agent_cold_start"],
-            STAGE_4_COLD_START_INSTRUCTION,
+            "Stage 4 — calibration phase: spawn the Prompt Builder to emit K diverse seed prompts, "
+            "score them, and seed K EMOSA trajectories. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+            _BUILD_TOOLS,
+            ["odysseus_prompt_builder"],
+            STAGE_4_CALIBRATION_INSTRUCTION,
             algorithm,
         ),
         "build_recovering": _build_recovering_entry,
