@@ -110,11 +110,23 @@ class RoundSummary(BaseModel):
     convergence_reason: str | None = None
     # Strategy-specific optional fields
     hypervolume: float | None = None
+    hypervolume_delta: float | None = None
     reference_point: tuple[float, float] | None = None
     acceptance_rates: dict[int, float] | None = None
-    reduce_case: Literal["singleton", "dominated", "delta_s_argmin"] | None = None
+    # reduce_case covers both beam ("singleton"/"dominated"/"delta_s_argmin") and
+    # SMS-EMOA ("A_singleton"/"B_dominated"/"C_delta_s"/"warmup") case labels.
+    reduce_case: Literal[
+        "singleton", "dominated", "delta_s_argmin",
+        "A_singleton", "B_dominated", "C_delta_s", "warmup",
+    ] | None = None
     evicted_version: str | None = None
     temperature: float | None = None
+    # SMS-EMOA specific
+    parent_a_version: str | None = None
+    parent_b_version: str | None = None
+    population_size: int | None = None
+    terminated: bool = False
+    termination_reason: Literal["budget", "plateau", "max_iterations"] | None = None
 
     @model_validator(mode="before")
     @classmethod

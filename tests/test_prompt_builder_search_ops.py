@@ -702,11 +702,11 @@ class TestAdvanceStepTool:
                 ctx=None,
                 run_id="run-st2",
                 backend="test",
-                # Force a non-hill-climb algorithm into the state
-                algorithm="beam",
+                # Force an unimplemented algorithm into the state
+                algorithm="emosa",
             )
 
-            with pytest.raises(NotImplementedError, match="beam"):
+            with pytest.raises(NotImplementedError, match="emosa"):
                 await advance_step_tool("run-st2")
 
 
