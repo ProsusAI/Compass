@@ -32,7 +32,7 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `routing_context` | RoutingContext | Data Validation Agent | Domain, routes, dimensions |
 | `holdout_jsonl_path` | str | Data Validation Agent | Holdout examples (used by filter tool before final eval) |
 | `backend` | str | MCP tool param | Backend label for evaluation |
-| `review_directives` | list[EditDirective] | `get_edit_directives_tool` | Block-level edit directives with `example_content`; retrieved via tool call (round 1+) |
+| `child_variants` | list[ChildVariant] | `get_child_variants_tool` | Grouped directives per child prompt — each variant has a `parent_version` and a `directives` list; retrieved via tool call (round 1+) |
 | `eval_score_report` | ScoreReport | Eval Runner Agent | Eval results (round 2+ only) |
 
 ## Tools
@@ -45,7 +45,8 @@ Read all inputs from the context dict at startup. If any required input is missi
 | `advance_step_tool` | Close round, update front, check convergence |
 | `get_search_state_tool` | Read current search state |
 | `save_prompt_tool` | Save compiled prompt text to disk |
-| `get_edit_directives_tool` | Retrieve Review Agent's edit directives (block-level edits, example content) |
+| `get_child_variants_tool` | Retrieve Review Agent's child variants (grouped directives per child prompt) |
+| `get_edit_directives_tool` | Flattened back-compat helper — returns all directives across variants as a flat list; use `get_child_variants_tool` when per-variant grouping matters |
 | `run_eval` | Evaluate a prompt version against the dev set |
 
 > Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. It is not a stage 4 sub-agent tool. Do not call it from this context.
@@ -83,62 +84,71 @@ Also extract the `model` field from the backend profile YAML. Pass this value as
 
 Execute these steps exactly in order on round 1.
 
-1. **Read all inputs.** Load every key from the inputs table. For `review_directives`, call `get_edit_directives_tool(run_id=run_id)` to retrieve them. Fail immediately if any required key is missing. On round 1, `review_directives` is required and must contain at least one directive with `block_type == 'example'`.
+1. **Read all inputs.** Load every key from the inputs table. For `child_variants`, call `get_child_variants_tool(run_id=run_id)` to retrieve them. Fail immediately if any required key is missing. On round 1, `child_variants` is required and every variant must have at least one directive with `block_type == 'example'`.
 2. **Detect provider.** Read the `odysseus://backends/{backend}` resource (substituting the backend label) and extract the `provider` field from the returned YAML.
 3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
 4. **Initialize search state.** Call `init_search_state_tool(run_id=run_id, backend=backend)`. The tool applies default search parameters. If the routing context or input report specifies custom search budget parameters, pass them as overrides. Store the returned `search_state_id`.
-5. **Extract examples and vocabulary from Review Agent directives.**
-   - Call `get_edit_directives_tool(run_id=run_id)` to retrieve `review_directives`.
-   - Filter to directives where `block_type == 'example'`.
-   - Extract `example_content` from each matching directive. These are the examples to include in the prompt.
-   - Collect the `example_id` from each directive's `example_content`. These IDs are for backend tracking only — do **not** include them in the compiled prompt text.
-   - Filter to directives where `block_type == 'vocabulary'`. Each vocabulary directive has a `block_identifier` (format: `"route:<name>"` or `"dimension:<name>"`) and a refined description. When compiling the Categories and Decision Logic sections (step 6), use the refined description from matching vocabulary directives instead of the original `routing_context` description. If a vocabulary directive references a route or dimension name not present in the current routing context, ignore it.
-6. **Compile the prompt.** Follow this section convention:
+5. **Retrieve child variants.** Call `get_child_variants_tool(run_id=run_id)`. On round 1, expect one or more variants, each with `parent_version: "base"`. Each variant contains a complete directive set — examples, rules, and optionally vocabulary. Validate that every variant has at least one directive with `block_type == 'example'`.
+6. **Compile one prompt per variant.** For each ChildVariant, compile a separate prompt using `v_<variant_id>` as the prompt version handle (e.g., `v_<uuid-fragment>`):
+
+   **Extract directives from the variant:**
+   - Filter to `block_type == 'example'`: extract `example_content` for few-shot examples. Collect `example_id` from each for backend tracking — do **not** include in prompt text.
+   - Filter to `block_type == 'rule'`: use these to inform the Decision Logic section. Each rule directive's `directive` string describes a classification rule or disambiguation policy to encode.
+   - Filter to `block_type == 'vocabulary'`: each has a `block_identifier` (format: `"route:<name>"` or `"dimension:<name>"`) and a refined description. Use the refined description instead of the original `routing_context` description when compiling Categories and Decision Logic. Ignore directives referencing unrecognized route or dimension names.
+   - Filter to `block_type == 'contrast_pair'`: extract `contrast_pair_content` for boundary case examples.
+
+   **Compile the prompt following this section convention:**
 
    - **Objective** — state the classification/routing task derived from `routing_context.domain`.
-   - **Categories** — enumerate every route from `routing_context.routes` with its description and distinguishing criteria. Use the vocabulary from `routing_context` — these may be called "routes," "categories," "tiers," or other domain-appropriate terms.
-   - **Decision logic** — encode the decision logic, edge cases, and disambiguation rules. If `routing_context.route_ordering` is present, reflect the ordering relationship. If `routing_context.routing_dimensions` specify directional preferences (e.g., `lower_is_better`), encode those as prioritization rules.
+   - **Categories** — enumerate every route from `routing_context.routes` with its description and distinguishing criteria. Apply vocabulary directive refinements where available. Use the vocabulary from `routing_context` — these may be called "routes," "categories," "tiers," or other domain-appropriate terms.
+   - **Decision logic** — encode the decision logic, edge cases, and disambiguation rules. Incorporate rule directives from this variant. If `routing_context.route_ordering` is present, reflect the ordering relationship. If `routing_context.routing_dimensions` specify directional preferences (e.g., `lower_is_better`), encode those as prioritization rules.
    - **Examples** — render few-shot examples and boundary cases in this section.
      - **Few-shot examples** (`block_type == 'example'`): each `example_content` contains `input`, `route`, `reasoning`, and `exclusions`. Render only `input` and `route` — the target model's output is a route only, so example outputs must model that format. `reasoning` and `exclusions` are internal metadata for evaluation and review; `example_id` is for backend tracking. None of these three fields appear in prompt text.
      - **Boundary cases** (`block_type == 'contrast_pair'`): render as a "Boundary Cases" subsection after the few-shot examples following the provider-specific convention template. Include both examples, `distinguishing_signal`, and `contrast_reasoning` as the template specifies — this is pedagogical system-message content that teaches boundary discrimination, not output-format demonstration.
    - **Output format** — specify the exact response schema the model must produce.
+
    This section order is mandatory. Output format must always be the final section of the compiled prompt. Placing it before examples or decision logic degrades the target model's compliance with the response schema.
 
    Use section header names that match the domain vocabulary in `routing_context.domain`. Do not assume the problem is any specific domain — it could be LLM model routing, ticket triage, content moderation, support escalation, or any classification task.
 
-7. **Apply model-specific formatting.** Apply the formatting conventions from the provider-specific resource read in step 3. The resource prescribes structural patterns (tag styles, section markers, emphasis conventions, few-shot formatting) appropriate for the target model.
+7. **Apply model-specific formatting.** For each compiled prompt, apply the formatting conventions from the provider-specific resource read in step 3. The resource prescribes structural patterns (tag styles, section markers, emphasis conventions, few-shot formatting) appropriate for the target model.
 
    When a model-specific addendum was read in step 3, its formatting guidance overrides or refines the provider base conventions on any conflicting points.
 
-8. **Write prompt.** Call `save_prompt_tool(run_id=run_id, prompt_version="v1", content=<compiled prompt text>)`.
-9. **Register candidate.** Call `register_candidate_tool(run_id=run_id, prompt_version="v1", example_ids=[<list of example_ids collected in step 5>])`.
-10. **Evaluate.** Call `run_eval(prompt_version="v1", data_source=dev_jsonl_path, backend=backend)`.
-11. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
-12. **Record result.** Call `record_eval_result_tool(search_state_id, "v1", quality_score, cost)`.
-13. **Advance round.** Call `advance_step_tool(search_state_id)`.
-14. **Set output.** Set `prompt_version = "v1"` in context. This triggers the Review Agent.
+8. **Write all prompts.** Call `save_prompt_tool` for each variant's compiled prompt using version handles derived from `variant_id` (e.g., `v_<variant_id>`).
+9. **Register candidates.** For each compiled prompt, call `register_candidate_tool(run_id=run_id, prompt_version="v_<variant_id>", example_ids=[<complete list of example_ids for this variant>])`.
+10. **Evaluate each candidate.** For each candidate, call `run_eval(prompt_version="v_<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
+11. **Extract scores.** From each ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
+12. **Record results.** Call `record_eval_result_tool(run_id, "v_<variant_id>", quality_score, cost)` for each candidate.
+13. **Advance round.** Call `advance_step_tool(run_id)`.
+14. **Set output.** Set `prompt_version` to the best candidate from this round (highest quality, break ties by lowest cost) in context. This triggers the Review Agent.
 
 ## Phase 2 — Optimization loop
 
 Execute on round 2 and every subsequent round.
 
-1. **Receive feedback.** Call `get_edit_directives_tool(run_id=run_id)` to retrieve the Review Agent's block-level edit directives. Read the latest ScoreReport from `eval_score_report`. Apply vocabulary directives (`block_type == 'vocabulary'`) as in Phase 1 step 5: use refined descriptions when compiling Categories and Decision Logic; ignore directives referencing unrecognized route or dimension names.
-2. **Read search state.** Call `get_search_state_tool(search_state_id)`. Note the `mutation_mode` (set by the Review Agent's loop signal) and `pareto_front`.
-3. **Select parents.** Pick 1-2 parents from the Pareto front. If the front has only one member, use it as the sole parent with two different mutation strategies.
-4. **Generate child variants.** Create 1-2 child prompts per parent.
+1. **Receive feedback.** Call `get_child_variants_tool(run_id=run_id)` to retrieve the Review Agent's child variants. Each variant specifies a `parent_version` and the `directives` to apply together as one child prompt. Read the latest ScoreReport from `eval_score_report`. Apply vocabulary directives (`block_type == 'vocabulary'`) from all variants as in Phase 1 step 5: use refined descriptions when compiling Categories and Decision Logic; ignore directives referencing unrecognized route or dimension names.
+2. **Read search state.** Call `get_search_state_tool(run_id)`. Note the `mutation_mode` (set by the Review Agent's loop signal) and `pareto_front`.
+3. **Read parent versions.** Each variant specifies `parent_version` — the Review Agent has already selected the parent. Do not re-select parents from the Pareto front.
+4. **Generate children from variants.** Create one child prompt per `ChildVariant`. Each variant already specifies which parent to mutate and which directives to apply — do not merge or redistribute directives across variants.
+
+   For each variant:
+   - Read the parent prompt (`parent_version`).
+   - Apply all directives in the variant's `directives` list to produce the child.
+   - Apply vocabulary directives from all variants (these set shared terminology).
 
    | Mutation mode | Strategy |
    |---------------|----------|
-   | `targeted` | Apply Review Agent directives: paraphrase sections, reorder rules, tighten precision, swap or reorder few-shot examples |
-   | `exploratory` | Make larger structural changes: add/delete sections, completely different example sets, different prompting style |
+   | `targeted` | Apply the variant's directives faithfully: paraphrase sections, reorder rules, tighten precision, swap or reorder few-shot examples |
+   | `exploratory` | Use the variant's directives as a starting point, but make larger structural changes: add/delete sections, completely different example sets, different prompting style |
 
-5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="vN", content=<child prompt text>)` for each child (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
+5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="v_<variant_id>", content=<child prompt text>)` for each child. Search state is persisted under `outputs/<run_id>/search/`.
 6. **Evaluate each child.** For each child prompt:
-   - Call `register_candidate_tool(run_id=run_id, prompt_version="vN", parent_version="vP", example_ids=[<complete list of holdout example IDs used in this child prompt>])`. The `example_ids` list must contain every holdout example ID in the child — the full set, not just changed examples.
-   - Call `run_eval(prompt_version="vN", data_source=dev_jsonl_path, backend=backend)`.
+   - Call `register_candidate_tool(run_id=run_id, prompt_version="v_<variant_id>", parent_version=variant.parent_version, example_ids=[<complete list of example IDs in this child>])`. The `example_ids` list must contain every example ID in the child — the full set, not just changed examples.
+   - Call `run_eval(prompt_version="v_<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
    - Extract `quality_score` and `cost` from the ScoreReport.
-   - Call `record_eval_result_tool(search_state_id, "vN", quality_score, cost)`.
-7. **Advance round.** Call `advance_step_tool(search_state_id)`. Read the returned RoundSummary.
+   - Call `record_eval_result_tool(run_id, "v_<variant_id>", quality_score, cost)`.
+7. **Advance round.** Call `advance_step_tool(run_id)`. Read the returned RoundSummary.
 8. **Read round result.**
    - If `converged` is true: select the best candidate from the Pareto front (highest quality, break ties by lowest cost). Set `prompt_version` to that candidate. Done.
    - If not converged: set `prompt_version` to the best new candidate from this round. This triggers the Review Agent for the next iteration.
