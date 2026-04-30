@@ -217,7 +217,7 @@ Both files contain `{"round": N}` for diagnostics.
 | `is_complete` | `bool` | `len(completed) >= expected` |
 | `missing` | `list[int]` | `in_flight + not_dispatched` |
 
-For `expected=1`, fanout is complete when `search/child_variants.json` exists.  `expected > 1` (EMOSA K-trajectory fanout) raises `NotImplementedError` — EMOSA overrides `review_fanout_status` on its branch.
+For `expected=1`, fanout is complete when `search/child_variants.json` exists.  `expected > 1` (EMOSA K-trajectory fanout) raises `NotImplementedError` on the integration branch — EMOSA overrides `review_fanout_status` on `feat/generalize-emosa` by adding an `algorithm` kwarg and delegating to `trajectory_fanout_missing` in [`review/ops.py`](../odysseus/agents/review/ops.py) when `algorithm == "emosa"`. See section 6 for the cross-branch strategy matrix.
 
 **`child_variants.json`**
 
@@ -280,7 +280,22 @@ The Review Agent prompt is assembled at dispatch time from three layers: a share
 | `odysseus://agents/backend-setup/defaults` | Backend defaults and pricing resolution | [`odysseus/agents/backend_setup_defaults.md`](../odysseus/agents/backend_setup_defaults.md) |
 | `odysseus://agents/final-report/template` | Markdown skeleton for the final report — section order and placeholders | [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) |
 
-## 6. Directory Guide
+## 6. Cross-Branch Strategy Matrix
+
+The `feat/generalize-pipeline` branch is the integration branch carrying everything strategy-neutral plus the `hill_climb` default. Each non-default search strategy lives on a dedicated branch cut from `feat/generalize-pipeline`. By design, a strategy branch's diff against `feat/generalize-pipeline` collapses to: one algorithm module, one dispatcher arm, preprocessor enrichment, optional phase/prompt extensions, plus (for EMOSA only) a `review_fanout_status` override.
+
+| Strategy | Branch | Algorithm module | Dispatcher arm | Preprocessor populate fn | Prompt overlays | Special seams |
+|---|---|---|---|---|---|---|
+| `hill_climb` | `feat/generalize-pipeline` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py), [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) | `_advance_hill_climb` ([`prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py)) | (default — no per-strategy fields) | `review_agent_iterative_overlay_hillclimb.md`, `review_agent_cold_start_overlay_hillclimb.md` | — |
+| `beam` | `feat/generalize-beam` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py) (Pareto / crowding distance / hypervolume / `prune_to_size` / `update_elite_set` cold-start floor / `validate_elite_set`) + `search_ops.py:advance_round_beam` | `_advance_beam` | `_populate_beam_review_fields` (beam_rank, crowding_distance, HV, ref_point, stagnation_signal) | `review_agent_iterative_overlay_beam.md`, `review_agent_cold_start_overlay_beam.md`, `review_agent_post_coldstart_base_system.md` | Round-2 derived phase `review_post_coldstart` (`status.py`) + 4-tier prompt assembly via `odysseus_review_agent_post_coldstart` |
+| `sms_emoa` | `feat/generalize-sms-emoa` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py) (`fast_non_dominated_sort` / `dynamic_reference_point` / `exclusive_hypervolume_contribution` / `reduce_population`) + `search_ops.py` (`reduce_iteration`, `advance_warmup_batch`) | `_advance_sms_emoa` (warmup vs steady-state sub-arms; `loop_phase ∈ {"warmup_seed", "warmup_build", "warmup_reduce", "review", "build"}`) | parent_a/b_version + stagnation_signal `{"hypervolume_history", "stagnation_window"}` | `review_agent_iterative_overlay_sms_emoa.md`, `review_agent_warmup_overlay_sms_emoa.md` | Warmup phases in `_detect_stage_4_phase` (`status.py`) |
+| `emosa` | `feat/generalize-emosa` | [`prompt_builder/annealing.py`](../odysseus/agents/prompt_builder/annealing.py) (TrajectoryState, AnnealingState, Tchebycheff, ASF, weight_vectors, metropolis, neighborhood, archive) + `search_ops.py` (calibration + steady-state) | `_advance_emosa` + calibration handler | trajectory_id, weight_vector, binding_axis, acceptance_history, stagnation_signal `{"temperature", "t_min", "review_exit"}` | `review_agent_iterative_overlay_emosa.md`, `review_agent_cold_start_overlay_emosa.md` | **`review_fanout_status` override** in [`pipeline/dispatch.py`](../odysseus/agents/pipeline/dispatch.py) — `algorithm="emosa"` arm delegates to `trajectory_fanout_missing` in [`review/ops.py`](../odysseus/agents/review/ops.py) for K-way per-trajectory fanout |
+
+Diff sizes against `feat/generalize-pipeline` (audit at C-phase tips, `odysseus/` only): beam 12 files / +788/-25; sms_emoa 8 files / +938/-17; emosa 11 files / +1684/-29. The EMOSA branch is the largest because the AnnealingState model and the K-way fanout override carry their own per-trajectory storage helpers in `review/ops.py`.
+
+The pre-generalization legacy branches `feature/parallel-beam-search`, `feature/sms-emoa`, and `feature/emosa` are kept intact for side-by-side testing against the generalized branches; do not delete or rebase them.
+
+## 7. Directory Guide
 
 | Directory | Description |
 |---|---|
@@ -313,7 +328,7 @@ The Review Agent prompt is assembled at dispatch time from three layers: a share
 | `tests/scenarios/` | MCP integration test scenarios |
 | `docs/` | Project documentation and specs |
 
-## 7. Installation (External Users)
+## 8. Installation (External Users)
 
 Add to your project's `.mcp.json`:
 ```json
