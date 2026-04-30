@@ -10,6 +10,7 @@ import pytest
 from odysseus.agents.prompt_builder.annealing import (
     AnnealingState,
     TrajectoryState,
+    adaptive_cool,
     compute_asf_energy,
     compute_cooling_rate,
     compute_neighborhood,
@@ -164,12 +165,8 @@ class TestASFEnergy:
     def test_augmentation_contributes_when_both_gaps_positive(self):
         # Without rho=0, energy = max(term_q, term_c)
         # With rho>0, energy = max + rho*(term_q+term_c) > max
-        energy_no_rho = compute_asf_energy(
-            0.6, 0.4, (0.5, 0.5), (0.8, 0.2), self.IDEAL, self.NADIR, rho=0.0
-        )
-        energy_with_rho = compute_asf_energy(
-            0.6, 0.4, (0.5, 0.5), (0.8, 0.2), self.IDEAL, self.NADIR, rho=1e-3
-        )
+        energy_no_rho = compute_asf_energy(0.6, 0.4, (0.5, 0.5), (0.8, 0.2), self.IDEAL, self.NADIR, rho=0.0)
+        energy_with_rho = compute_asf_energy(0.6, 0.4, (0.5, 0.5), (0.8, 0.2), self.IDEAL, self.NADIR, rho=1e-3)
         assert energy_with_rho > energy_no_rho
 
     def test_none_reference_falls_back_to_tchebycheff_norm(self):
@@ -560,36 +557,43 @@ class TestModels:
         ts1.acceptance_history.append(True)
         assert ts2.acceptance_history == []
 
+    def test_trajectory_state_new_fields_defaults(self):
+        ts = TrajectoryState(trajectory_id=0, weight_vector=(0.5, 0.5))
+        assert ts.temperature == pytest.approx(1.0)
+        assert ts.alpha == pytest.approx(0.95)
+        assert ts.step_count == 0
+
     def test_annealing_state_construction(self):
         trajectories = [
-            TrajectoryState(trajectory_id=i, weight_vector=wv)
-            for i, wv in enumerate(compute_weight_vectors(3))
+            TrajectoryState(trajectory_id=i, weight_vector=wv) for i, wv in enumerate(compute_weight_vectors(3))
         ]
-        alpha = compute_cooling_rate(1.0, 0.01, 30)
-        state = AnnealingState(temperature=1.0, alpha=alpha, trajectories=trajectories)
+        state = AnnealingState(trajectories=trajectories)
         assert state.phase == "calibration"
         assert state.total_evals == 0
         assert len(state.trajectories) == 3
 
     def test_annealing_state_neighborhood_size_default(self):
         trajectories = [TrajectoryState(trajectory_id=0, weight_vector=(0.5, 0.5))]
-        alpha = compute_cooling_rate(1.0, 0.01, 30)
-        state = AnnealingState(temperature=1.0, alpha=alpha, trajectories=trajectories)
+        state = AnnealingState(trajectories=trajectories)
         assert state.neighborhood_size == 4
 
     def test_annealing_state_rho_default(self):
         trajectories = [TrajectoryState(trajectory_id=0, weight_vector=(0.5, 0.5))]
-        alpha = compute_cooling_rate(1.0, 0.01, 30)
-        state = AnnealingState(temperature=1.0, alpha=alpha, trajectories=trajectories)
+        state = AnnealingState(trajectories=trajectories)
         assert state.rho == pytest.approx(1e-3)
 
     def test_annealing_state_phase_literal(self):
         trajectories = [TrajectoryState(trajectory_id=0, weight_vector=(0.5, 0.5))]
-        alpha = compute_cooling_rate(1.0, 0.01, 30)
-        state = AnnealingState(
-            temperature=1.0, alpha=alpha, trajectories=trajectories, phase="search"
-        )
+        state = AnnealingState(trajectories=trajectories, phase="search")
         assert state.phase == "search"
+
+    def test_annealing_state_adaptive_cooling_defaults(self):
+        trajectories = [TrajectoryState(trajectory_id=0, weight_vector=(0.5, 0.5))]
+        state = AnnealingState(trajectories=trajectories)
+        assert state.target_acceptance_low == pytest.approx(0.4)
+        assert state.target_acceptance_high == pytest.approx(0.6)
+        assert state.cooling_exp_fast == pytest.approx(1.5)
+        assert state.cooling_exp_slow == pytest.approx(0.5)
 
 
 # ---------------------------------------------------------------------------
@@ -641,3 +645,85 @@ class TestNeighborhoodReplacementLogic:
         updated_t2 = replace_if_better(t2_state, child_energy_under_t2, "new_v", child_quality=0.9, child_cost=0.8)
         assert updated_t2.current_solution == "good_cost_v"
         assert updated_t2.current_energy == pytest.approx(t2_current_energy)
+
+
+# ---------------------------------------------------------------------------
+# TestAdaptiveCool
+# ---------------------------------------------------------------------------
+
+
+class TestAdaptiveCool:
+    """Tests for adaptive_cool — per-trajectory temperature adjustment."""
+
+    T = 0.5
+    ALPHA = 0.9
+    TARGET_LOW = 0.4
+    TARGET_HIGH = 0.6
+    EXP_FAST = 1.5
+    EXP_SLOW = 0.5
+
+    def test_empty_history_returns_geometric_step(self):
+        result = adaptive_cool(self.T, self.ALPHA, [], self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW)
+        assert result == pytest.approx(self.T * self.ALPHA)
+
+    def test_high_acceptance_rate_cools_faster(self):
+        # rate = 1.0 > target_high → alpha ** exp_fast
+        history = [True] * 5
+        result = adaptive_cool(
+            self.T, self.ALPHA, history, self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW
+        )
+        assert result == pytest.approx(self.T * (self.ALPHA**self.EXP_FAST))
+
+    def test_low_acceptance_rate_cools_slower(self):
+        # rate = 0.0 < target_low → alpha ** exp_slow
+        history = [False] * 5
+        result = adaptive_cool(
+            self.T, self.ALPHA, history, self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW
+        )
+        assert result == pytest.approx(self.T * (self.ALPHA**self.EXP_SLOW))
+
+    def test_rate_in_band_returns_geometric_step(self):
+        # rate = 0.5 in [0.4, 0.6] → default alpha
+        history = [True, True, True, False, False]  # 3/5 = 0.6 — exactly at boundary
+        result = adaptive_cool(
+            self.T, self.ALPHA, history, self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW
+        )
+        # 0.6 is NOT > 0.6, so stays in band → default step
+        assert result == pytest.approx(self.T * self.ALPHA)
+
+    def test_rate_exactly_at_target_low_stays_geometric(self):
+        # rate = 0.4 == target_low → NOT < target_low → default step
+        history = [True, True, False, False, False]  # 2/5 = 0.4
+        result = adaptive_cool(
+            self.T, self.ALPHA, history, self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW
+        )
+        assert result == pytest.approx(self.T * self.ALPHA)
+
+    def test_rate_just_above_target_high_triggers_fast_cooling(self):
+        # Construct a rate just above 0.6: 4/5=0.8 > 0.6
+        history = [True, True, True, True, False]  # 4/5 = 0.8
+        result = adaptive_cool(
+            self.T, self.ALPHA, history, self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW
+        )
+        assert result == pytest.approx(self.T * (self.ALPHA**self.EXP_FAST))
+
+    def test_rate_just_below_target_low_triggers_slow_cooling(self):
+        # rate = 1/5 = 0.2 < 0.4
+        history = [True, False, False, False, False]
+        result = adaptive_cool(
+            self.T, self.ALPHA, history, self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW
+        )
+        assert result == pytest.approx(self.T * (self.ALPHA**self.EXP_SLOW))
+
+    def test_result_is_always_positive(self):
+        for history in [[], [True] * 5, [False] * 5, [True, False, True, False, True]]:
+            result = adaptive_cool(
+                self.T, self.ALPHA, history, self.TARGET_LOW, self.TARGET_HIGH, self.EXP_FAST, self.EXP_SLOW
+            )
+            assert result > 0.0
+
+    def test_fast_cooling_lower_than_slow_cooling(self):
+        """alpha**1.5 < alpha**0.5 for 0 < alpha < 1."""
+        fast = adaptive_cool(self.T, self.ALPHA, [True] * 5, 0.4, 0.6, 1.5, 0.5)
+        slow = adaptive_cool(self.T, self.ALPHA, [False] * 5, 0.4, 0.6, 1.5, 0.5)
+        assert fast < slow

@@ -39,9 +39,15 @@ from odysseus.eval.models import EvalResult, Example, ScoreReport
 
 _log = logging.getLogger(__name__)
 
-_PRIMARY_METRICS = frozenset({
-    "accuracy", "cost_change", "cost_change_with_overhead", "quality_change", "f1/macro",
-})
+_PRIMARY_METRICS = frozenset(
+    {
+        "accuracy",
+        "cost_change",
+        "cost_change_with_overhead",
+        "quality_change",
+        "f1/macro",
+    }
+)
 
 
 def _filter_metric_deltas(
@@ -168,10 +174,10 @@ def build_candidate_comparisons(
         # Filter confusion/* keys from score_report metrics (copy, do not mutate original)
         report_dict: dict[str, Any] = report
         if report_dict.get("metrics"):
-            report_dict = {**report_dict, "metrics": {
-                k: v for k, v in report_dict["metrics"].items()
-                if not k.startswith("confusion/")
-            }}
+            report_dict = {
+                **report_dict,
+                "metrics": {k: v for k, v in report_dict["metrics"].items() if not k.startswith("confusion/")},
+            }
 
         results.append(
             CandidateAnalysis(
@@ -289,13 +295,15 @@ def compute_target_slack(
     for t in targets:
         current = best_metrics.get(t.metric)
         if current is None:
-            slacks.append(_TargetSlackResult(
-                metric=t.metric,
-                surplus=-abs(t.threshold) if t.threshold != 0 else -1.0,
-                regression_budget=0.0,
-                priority_weight=1.0,
-                current_value=None,
-            ))
+            slacks.append(
+                _TargetSlackResult(
+                    metric=t.metric,
+                    surplus=-abs(t.threshold) if t.threshold != 0 else -1.0,
+                    regression_budget=0.0,
+                    priority_weight=1.0,
+                    current_value=None,
+                )
+            )
             continue
 
         if t.operator in (">=", ">"):
@@ -305,13 +313,15 @@ def compute_target_slack(
         else:
             surplus = -abs(current - t.threshold)
 
-        slacks.append(_TargetSlackResult(
-            metric=t.metric,
-            surplus=surplus,
-            regression_budget=max(0.0, surplus),
-            priority_weight=0.0,
-            current_value=current,
-        ))
+        slacks.append(
+            _TargetSlackResult(
+                metric=t.metric,
+                surplus=surplus,
+                regression_budget=max(0.0, surplus),
+                priority_weight=0.0,
+                current_value=current,
+            )
+        )
 
     deficits = [max(0.0, -s.surplus) for s in slacks]
     total_deficit = sum(deficits)
@@ -359,11 +369,13 @@ def compute_near_misses(
                     min_gap_quality = gap_q
                     min_gap_cost = gap_c
         if dominated_by_any:
-            near_misses.append(NearMissCandidate(
-                version=candidate.prompt_version,
-                domination_gap_quality=min_gap_quality,
-                domination_gap_cost=min_gap_cost,
-            ))
+            near_misses.append(
+                NearMissCandidate(
+                    version=candidate.prompt_version,
+                    domination_gap_quality=min_gap_quality,
+                    domination_gap_cost=min_gap_cost,
+                )
+            )
     return near_misses
 
 
@@ -464,8 +476,10 @@ def _sum_capped_progress(targets: list[UserTarget], metrics: dict[str, float]) -
         value = metrics.get(target.metric)
         if value is None:
             continue
-        progress = abs(value / target.threshold) if target.threshold != 0 else (
-            1.0 if bool(_OPERATOR_MAP[target.operator](value, target.threshold)) else 0.0
+        progress = (
+            abs(value / target.threshold)
+            if target.threshold != 0
+            else (1.0 if bool(_OPERATOR_MAP[target.operator](value, target.threshold)) else 0.0)
         )
         total += min(progress, 1.0)
     return total
@@ -480,8 +494,10 @@ def _min_progress(targets: list[UserTarget], metrics: dict[str, float]) -> float
         if value is None:
             continue
         has_any = True
-        progress = abs(value / target.threshold) if target.threshold != 0 else (
-            1.0 if bool(_OPERATOR_MAP[target.operator](value, target.threshold)) else 0.0
+        progress = (
+            abs(value / target.threshold)
+            if target.threshold != 0
+            else (1.0 if bool(_OPERATOR_MAP[target.operator](value, target.threshold)) else 0.0)
         )
         minimum = min(minimum, min(progress, 1.0))
     return minimum if has_any else 0.0
@@ -559,18 +575,20 @@ def compute_target_progress(
                             if met and progress_ratio < 1.0:
                                 progress_ratio = 1.0
 
-        results.append(UserTargetProgress(
-            target=target,
-            current_value=current_value,
-            met=met,
-            progress_ratio=progress_ratio,
-            oracle_ceiling=oracle_ceiling,
-            full_dataset_oracle_ceiling=full_dataset_oracle_ceiling,
-            target_above_oracle=target_above_oracle,
-            translated_threshold=translated_threshold,
-            capture_ratio=capture_ratio,
-            source_version=source_version,
-        ))
+        results.append(
+            UserTargetProgress(
+                target=target,
+                current_value=current_value,
+                met=met,
+                progress_ratio=progress_ratio,
+                oracle_ceiling=oracle_ceiling,
+                full_dataset_oracle_ceiling=full_dataset_oracle_ceiling,
+                target_above_oracle=target_above_oracle,
+                translated_threshold=translated_threshold,
+                capture_ratio=capture_ratio,
+                source_version=source_version,
+            )
+        )
 
     return results
 
@@ -587,9 +605,7 @@ def compute_oracle_metrics(
     return OracleMetrics(
         oracle_cost_change=oracle_cost_change,
         oracle_quality_change=oracle_quality_change,
-        candidate_cost_captured=(
-            candidate_cost_change / oracle_cost_change if oracle_cost_change != 0.0 else None
-        ),
+        candidate_cost_captured=(candidate_cost_change / oracle_cost_change if oracle_cost_change != 0.0 else None),
         candidate_cost_captured_with_overhead=(
             candidate_cost_change_with_overhead / oracle_cost_change if oracle_cost_change != 0.0 else None
         ),
@@ -642,8 +658,7 @@ def _build_score_trajectory(
             trajectory.append(max(scores))
     # Current round
     current_scores = [
-        s for s in (_extract_metric(r, primary_metric) for r in current_reports.values())
-        if s is not None
+        s for s in (_extract_metric(r, primary_metric) for r in current_reports.values()) if s is not None
     ]
     if current_scores:
         trajectory.append(max(current_scores))
@@ -683,9 +698,7 @@ def generate_executive_summary(
     lines.append(f"Round {briefing.round}. {n_candidates} candidate(s) evaluated against {n_elite} elite candidate(s).")
 
     # Best candidate by quality delta vs parent
-    candidates_with_quality = [
-        c for c in briefing.candidates if c.delta_vs_parent.quality_delta is not None
-    ]
+    candidates_with_quality = [c for c in briefing.candidates if c.delta_vs_parent.quality_delta is not None]
     if candidates_with_quality:
         best = max(candidates_with_quality, key=lambda c: c.delta_vs_parent.quality_delta)  # type: ignore[arg-type]
         metrics = best.score_report.metrics or {}
@@ -702,25 +715,21 @@ def generate_executive_summary(
         lines.append(", ".join(parts) + ".")
 
     # Regressions — sorted by support (lowest first = most critical)
-    regressions = [
-        (route, entry)
-        for route, entry in briefing.per_class_recall.items()
-        if entry.regression_flag
-    ]
+    regressions = [(route, entry) for route, entry in briefing.per_class_recall.items() if entry.regression_flag]
     if regressions:
         regressions.sort(key=lambda r: r[1].support)
         for route, entry in regressions:
             prev = entry.trend[-2] if len(entry.trend) >= 2 else None
             prev_str = f"{prev:.2f}" if prev is not None else "?"
-            lines.append(
-                f"REGRESSION: {route} recall {prev_str} -> {entry.recall:.2f} (support={entry.support})."
-            )
+            lines.append(f"REGRESSION: {route} recall {prev_str} -> {entry.recall:.2f} (support={entry.support}).")
 
     # Top confusion cells
     if briefing.confusion_analysis:
         for ci in briefing.confusion_analysis[:3]:
-            persist_label = "structural" if ci.persistence_rate > 0.8 else (
-                "prompt-sensitive" if ci.persistence_rate < 0.3 else "mixed"
+            persist_label = (
+                "structural"
+                if ci.persistence_rate > 0.8
+                else ("prompt-sensitive" if ci.persistence_rate < 0.3 else "mixed")
             )
             lines.append(
                 f"CONFUSION: {ci.true_route}->{ci.predicted_route}: "
@@ -766,9 +775,7 @@ def generate_executive_summary(
                 line += " WARNING: target exceeds oracle ceiling"
             if tp.oracle_ceiling is not None or tp.full_dataset_oracle_ceiling is not None:
                 full_str = (
-                    f"{tp.full_dataset_oracle_ceiling:.4f}"
-                    if tp.full_dataset_oracle_ceiling is not None
-                    else "N/A"
+                    f"{tp.full_dataset_oracle_ceiling:.4f}" if tp.full_dataset_oracle_ceiling is not None else "N/A"
                 )
                 dev_str = f"{tp.oracle_ceiling:.4f}" if tp.oracle_ceiling is not None else "N/A"
                 line += f"\n    oracle: full_dataset={full_str}, dev_set={dev_str}"
@@ -797,9 +804,7 @@ def generate_executive_summary(
     # Backtracking
     if briefing.backtracking:
         version_str = f" ({best_ever_version})" if best_ever_version else ""
-        lines.append(
-            f"Backtracking active: all hypotheses will target best-ever version{version_str}."
-        )
+        lines.append(f"Backtracking active: all hypotheses will target best-ever version{version_str}.")
 
     return "\n".join(lines)
 
@@ -873,10 +878,7 @@ def _compute_persistence(
     result: dict[tuple[str, str], tuple[int, int]] = {}
     for cell_key, sample_ids in cell_samples.items():
         count = len(sample_ids)
-        persistent = sum(
-            1 for eid in sample_ids
-            if all(eid in version_wrong[v] for v in loaded_versions)
-        )
+        persistent = sum(1 for eid in sample_ids if all(eid in version_wrong[v] for v in loaded_versions))
         result[cell_key] = (persistent, count)
     return result
 
@@ -933,11 +935,7 @@ def build_confusion_analysis(
             continue
         seen_triples.add(triple)
 
-        cost_delta = (
-            (routes[predicted].cost or 0.0) - (routes[expected].cost or 0.0)
-            if expected in routes
-            else 0.0
-        )
+        cost_delta = (routes[predicted].cost or 0.0) - (routes[expected].cost or 0.0) if expected in routes else 0.0
         quality_delta = (
             (routes[predicted].quality_score or 0.0) - (routes[expected].quality_score or 0.0)
             if expected in routes
@@ -983,20 +981,22 @@ def build_confusion_analysis(
         volatile_count = count - persistent_count
         persistence_rate = persistent_count / count if count > 0 else 0.0
 
-        impacts.append(ConfusionImpact(
-            true_route=true_route,
-            predicted_route=predicted_route,
-            count=count,
-            support=support,
-            misroute_rate=misroute_rate,
-            cost_impact=total_cost,
-            quality_impact=total_quality,
-            avg_cost_impact=avg_cost,
-            avg_quality_impact=avg_quality,
-            persistence_rate=persistence_rate,
-            persistent_count=persistent_count,
-            volatile_count=volatile_count,
-        ))
+        impacts.append(
+            ConfusionImpact(
+                true_route=true_route,
+                predicted_route=predicted_route,
+                count=count,
+                support=support,
+                misroute_rate=misroute_rate,
+                cost_impact=total_cost,
+                quality_impact=total_quality,
+                avg_cost_impact=avg_cost,
+                avg_quality_impact=avg_quality,
+                persistence_rate=persistence_rate,
+                persistent_count=persistent_count,
+                volatile_count=volatile_count,
+            )
+        )
 
     # Sort by abs(cost_impact) + abs(quality_impact) descending, cap at max_cells
     impacts.sort(key=lambda c: abs(c.cost_impact) + abs(c.quality_impact), reverse=True)
@@ -1045,15 +1045,19 @@ def enrich_confusion_with_history(
                 failed_count += 1
 
         raw_impact = abs(ci.cost_impact) + abs(ci.quality_impact)
-        effective = raw_impact * (0.5 ** failed_count)
+        effective = raw_impact * (0.5**failed_count)
 
-        enriched.append(ci.model_copy(update={
-            "attempt_count": attempt_count,
-            "failed_attempt_count": failed_count,
-            "last_attempted_round": last_round,
-            "best_outcome": best_outcome,
-            "effective_impact": effective,
-        }))
+        enriched.append(
+            ci.model_copy(
+                update={
+                    "attempt_count": attempt_count,
+                    "failed_attempt_count": failed_count,
+                    "last_attempted_round": last_round,
+                    "best_outcome": best_outcome,
+                    "effective_impact": effective,
+                }
+            )
+        )
 
     # Re-sort by effective_impact descending
     enriched.sort(key=lambda c: c.effective_impact, reverse=True)
@@ -1089,7 +1093,10 @@ def _populate_emosa_review_fields(
     pocket = getattr(search_state, "algorithm_state", {}) or {}
 
     trajectories: list[dict[str, Any]] = pocket.get("trajectories") or []
-    step_count: int = int(pocket.get("step_count", 0))
+    # Pre-pick a representative step_count: use sum of per-trajectory step_counts
+    # for the round-robin pacing decision (matches MOEA/D-style equal-compute
+    # rotation across sub-problems).
+    step_count: int = sum(int(t.get("step_count", 0)) for t in trajectories)
     num_trajectories: int = len(trajectories)
 
     # Pick the active trajectory.
@@ -1128,9 +1135,7 @@ def _populate_emosa_review_fields(
         ideal_point: tuple[float, float] = (float(raw_ideal[0]), float(raw_ideal[1]))
         nadir_point: tuple[float, float] = (float(raw_nadir[0]), float(raw_nadir[1]))
 
-        norm_q, norm_c = normalize_objectives(
-            float(current_quality), float(current_cost), ideal_point, nadir_point
-        )
+        norm_q, norm_c = normalize_objectives(float(current_quality), float(current_cost), ideal_point, nadir_point)
         lambda_q, lambda_c = weight_vector
         weighted_q = lambda_q * norm_q
         weighted_c = lambda_c * norm_c
@@ -1138,8 +1143,9 @@ def _populate_emosa_review_fields(
 
     # Stagnation signal mirrors the emosa model comment in ReviewBriefing:
     # {"temperature": float, "t_min": float, "review_exit": bool}
-    # review_exit is True when temperature has dropped to t_min (converged).
-    temperature = pocket.get("temperature")
+    # review_exit is True when the active trajectory's temperature has dropped
+    # to t_min (its sub-problem has converged).
+    temperature = active_traj.get("temperature")
     t_min = pocket.get("t_min")
     review_exit: bool = False
     if temperature is not None and t_min is not None:
@@ -1280,27 +1286,31 @@ def build_review_briefing(
                 source_version=best_version,
             )
             # Merge target slack into target progress items
-            slack_by_metric = {
-                s.metric: s for s in compute_target_slack(user_targets, best_metrics)
-            }
+            slack_by_metric = {s.metric: s for s in compute_target_slack(user_targets, best_metrics)}
             merged: list[UserTargetProgress] = []
             for tp in target_progress_list:
                 slack = slack_by_metric.get(tp.target.metric)
                 if slack is not None:
-                    merged.append(tp.model_copy(update={
-                        "surplus": slack.surplus,
-                        "regression_budget": slack.regression_budget,
-                        "priority_weight": slack.priority_weight,
-                        "source_version": best_version,
-                    }))
+                    merged.append(
+                        tp.model_copy(
+                            update={
+                                "surplus": slack.surplus,
+                                "regression_budget": slack.regression_budget,
+                                "priority_weight": slack.priority_weight,
+                                "source_version": best_version,
+                            }
+                        )
+                    )
                 else:
-                    merged.append(tp.model_copy(update={
-                        "source_version": best_version,
-                    }))
+                    merged.append(
+                        tp.model_copy(
+                            update={
+                                "source_version": best_version,
+                            }
+                        )
+                    )
             target_progress_list = merged
-        single_candidate_meets_all = bool(
-            target_progress_list and all(tp.met for tp in target_progress_list)
-        )
+        single_candidate_meets_all = bool(target_progress_list and all(tp.met for tp in target_progress_list))
     else:
         single_candidate_meets_all = False
 
@@ -1354,43 +1364,48 @@ def build_review_briefing(
                 target_metric_names = {t.metric for t in (user_targets or [])}
                 if metric_deltas_vs_parent:
                     metric_deltas_vs_parent = _filter_metric_deltas(
-                        metric_deltas_vs_parent, target_metrics=target_metric_names,
+                        metric_deltas_vs_parent,
+                        target_metrics=target_metric_names,
                     )
                 if metric_deltas_vs_secondary:
                     metric_deltas_vs_secondary = _filter_metric_deltas(
-                        metric_deltas_vs_secondary, target_metrics=target_metric_names,
+                        metric_deltas_vs_secondary,
+                        target_metrics=target_metric_names,
                     )
 
-                batch_outcomes.append(BatchOutcome(
-                    variant_id=cv.variant_id,
-                    parent_version=candidate.parent_version or "",
-                    mutation_strategy=candidate.mutation_strategy or "targeted",  # type: ignore[arg-type]
-                    directive_ids=[d.directive_id for d in cv.directives],
-                    candidate_version=candidate.prompt_version,
-                    eval_status=candidate.eval_status if candidate.eval_status in ("scored", "failed") else None,
-                    quality_delta_vs_parent=quality_delta,
-                    is_new_best=candidate.quality_score > best_ever_quality,
-                    secondary_parent_version=secondary_pv,
-                    metric_deltas_vs_parent=metric_deltas_vs_parent,
-                    metric_deltas_vs_secondary_parent=metric_deltas_vs_secondary,
-                ))
+                batch_outcomes.append(
+                    BatchOutcome(
+                        variant_id=cv.variant_id,
+                        parent_version=candidate.parent_version or "",
+                        mutation_strategy=candidate.mutation_strategy or "targeted",  # type: ignore[arg-type]
+                        directive_ids=[d.directive_id for d in cv.directives],
+                        candidate_version=candidate.prompt_version,
+                        eval_status=candidate.eval_status if candidate.eval_status in ("scored", "failed") else None,
+                        quality_delta_vs_parent=quality_delta,
+                        is_new_best=candidate.quality_score > best_ever_quality,
+                        secondary_parent_version=secondary_pv,
+                        metric_deltas_vs_parent=metric_deltas_vs_parent,
+                        metric_deltas_vs_secondary_parent=metric_deltas_vs_secondary,
+                    )
+                )
             else:
-                batch_outcomes.append(BatchOutcome(
-                    variant_id=cv.variant_id,
-                    parent_version=cv.parent_version or "",
-                    mutation_strategy="targeted",
-                    directive_ids=[d.directive_id for d in cv.directives],
-                    candidate_version=None,
-                    eval_status=None,
-                    quality_delta_vs_parent=None,
-                    is_new_best=False,
-                ))
+                batch_outcomes.append(
+                    BatchOutcome(
+                        variant_id=cv.variant_id,
+                        parent_version=cv.parent_version or "",
+                        mutation_strategy="targeted",
+                        directive_ids=[d.directive_id for d in cv.directives],
+                        candidate_version=None,
+                        eval_status=None,
+                        quality_delta_vs_parent=None,
+                        is_new_best=False,
+                    )
+                )
 
     recent_directive_history = directive_history[-15:]
 
-    backtracking = (
-        getattr(search_state, "stagnation_count", 0)
-        >= getattr(search_state, "backtrack_threshold", float("inf"))
+    backtracking = getattr(search_state, "stagnation_count", 0) >= getattr(
+        search_state, "backtrack_threshold", float("inf")
     )
     best_ever_version_val: str | None = getattr(search_state, "best_ever_version", None)
 
@@ -1424,9 +1439,7 @@ def build_review_briefing(
     algorithm = getattr(search_state, "algorithm", "hill_climb")
     emosa_overrides: dict[str, Any] = {}
     if algorithm == "emosa":
-        emosa_overrides = _populate_emosa_review_fields(
-            search_state, elite_set, trajectory_id=emosa_trajectory_id
-        )
+        emosa_overrides = _populate_emosa_review_fields(search_state, elite_set, trajectory_id=emosa_trajectory_id)
 
     briefing = ReviewBriefing(
         round=current_round,
@@ -1452,9 +1465,5 @@ def build_review_briefing(
         acceptance_history=emosa_overrides.get("acceptance_history"),
     )
     return briefing.model_copy(
-        update={
-            "executive_summary": generate_executive_summary(
-                briefing, primary_metric, best_ever_version_val
-            )
-        },
+        update={"executive_summary": generate_executive_summary(briefing, primary_metric, best_ever_version_val)},
     )

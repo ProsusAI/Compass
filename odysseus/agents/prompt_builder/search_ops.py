@@ -23,6 +23,8 @@ from typing import Any, Literal
 from odysseus.agents.prompt_builder.annealing import (
     AnnealingState,
     TrajectoryState,
+    adaptive_cool,
+    compute_cooling_rate,
     compute_neighborhood,
     compute_tchebycheff_energy,
     metropolis_accept,
@@ -572,6 +574,7 @@ def _calibration_complete(
     new_nadir: tuple[float, float] = (nadir_q, nadir_c)
 
     # Seed each trajectory: trajectory i gets calibration_scored[i]
+    traj_steps = max(1, annealing.max_evals // annealing.num_trajectories)
     updated_trajectories: list[TrajectoryState] = []
     for traj in annealing.trajectories:
         idx = traj.trajectory_id
@@ -583,6 +586,7 @@ def _calibration_complete(
             new_ideal,
             new_nadir,
         )
+        traj_alpha = compute_cooling_rate(annealing.t_initial, annealing.t_min, traj_steps)
         updated_traj = traj.model_copy(
             update={
                 "current_solution": cand.prompt_version,
@@ -590,6 +594,9 @@ def _calibration_complete(
                 "current_cost": cand.cost,
                 "current_energy": energy,
                 "acceptance_history": [True],
+                "temperature": annealing.t_initial,
+                "alpha": traj_alpha,
+                "step_count": 0,
             }
         )
         updated_trajectories.append(updated_traj)
@@ -599,14 +606,13 @@ def _calibration_complete(
     for cand in calibration_scored:
         new_elite, _ = update_archive(new_elite, cand)
 
-    # Update annealing pocket: flip phase, bump step_count and total_evals
+    # Update annealing pocket: flip phase and total_evals (step_count is now per-trajectory)
     new_annealing = annealing.model_copy(
         update={
             "trajectories": updated_trajectories,
             "ideal_point": new_ideal,
             "nadir_point": new_nadir,
             "phase": "search",
-            "step_count": annealing.step_count + 1,
             "total_evals": annealing.total_evals + num_traj,
         }
     )
@@ -617,10 +623,10 @@ def _calibration_complete(
         candidates_evaluated=[c.prompt_version for c in calibration_scored],
         new_elite_entries=len(new_elite) - len(state.elite_set),
         elite_size=len(new_elite),
-        temperature=annealing.temperature,
+        temperatures={t.trajectory_id: t.temperature for t in updated_trajectories},
         ideal_point=new_ideal,
         nadir_point=new_nadir,
-        step_count=new_annealing.step_count,
+        step_count=sum(t.step_count for t in updated_trajectories),
         phase="search",
     )
 
@@ -737,6 +743,7 @@ def _advance_emosa_search(
 
     # Per-trajectory Metropolis acceptance (Metropolis-then-best-of-accepted)
     updated_trajectories: list[TrajectoryState] = []
+    participating_ids: set[int] = set()
 
     # Separate candidates that match a live trajectory from unmatched ones
     # (unmatched arise when current_solution is None, calibration→search edge).
@@ -758,6 +765,9 @@ def _advance_emosa_search(
             updated_trajectories.append(traj)
             continue
 
+        # Track trajectories that attempted a Metropolis step this round
+        participating_ids.add(traj.trajectory_id)
+
         calibration = traj.current_solution is None or traj.current_energy is None
 
         best_accepted_cand = None
@@ -777,7 +787,7 @@ def _advance_emosa_search(
                 accepted = True
             else:
                 delta_e = energy - traj.current_energy  # type: ignore[operator]
-                accepted = metropolis_accept(delta_e, sa_state.temperature)
+                accepted = metropolis_accept(delta_e, traj.temperature)
 
             if accepted and (best_accepted_energy is None or energy < best_accepted_energy):
                 best_accepted_cand = cand
@@ -860,18 +870,35 @@ def _advance_emosa_search(
     ref_point = _compute_reference_point(new_elite, scored_pending)
     new_hv = compute_hypervolume(new_elite, ref_point)
 
-    # Cool temperature
-    new_temperature = sa_state.temperature * sa_state.alpha
+    # Per-trajectory adaptive cooling: trajectories that attempted a Metropolis
+    # step this round adjust their T_i based on recent acceptance rate.
+    cooled_trajectories: list[TrajectoryState] = []
+    for traj in updated_trajectories:
+        if traj.trajectory_id in participating_ids:
+            new_temp = adaptive_cool(
+                traj.temperature,
+                traj.alpha,
+                traj.acceptance_history,
+                sa_state.target_acceptance_low,
+                sa_state.target_acceptance_high,
+                sa_state.cooling_exp_fast,
+                sa_state.cooling_exp_slow,
+            )
+            cooled_trajectories.append(
+                traj.model_copy(update={"temperature": new_temp, "step_count": traj.step_count + 1})
+            )
+        else:
+            cooled_trajectories.append(traj)
+    updated_trajectories = cooled_trajectories
 
     # Update counters
-    new_step_count = sa_state.step_count + 1
     new_total_evals = sa_state.total_evals + len(scored_pending)
 
-    # Check convergence
+    # Check convergence: temperature_floor when ALL trajectories are below t_min.
     converged = False
     convergence_reason: str | None = None
 
-    if new_temperature < sa_state.t_min:
+    if all(t.temperature < sa_state.t_min for t in updated_trajectories):
         converged = True
         convergence_reason = "temperature_floor"
     elif new_total_evals >= sa_state.max_evals:
@@ -910,13 +937,13 @@ def _advance_emosa_search(
         front_quality_spread=quality_spread,
         round_routing_cost=round_routing_cost,
         convergence_reason=convergence_reason,
-        temperature=new_temperature,
+        temperatures={t.trajectory_id: t.temperature for t in updated_trajectories},
         hypervolume=new_hv,
         reference_point=ref_point,
         acceptance_rates=acceptance_rates_dict if acceptance_rates_dict else None,
         ideal_point=new_ideal,
         nadir_point=new_nadir,
-        step_count=new_step_count,
+        step_count=sum(t.step_count for t in updated_trajectories),
         phase="converged" if converged else "search",
     )
 
@@ -926,8 +953,6 @@ def _advance_emosa_search(
             "trajectories": updated_trajectories,
             "ideal_point": new_ideal,
             "nadir_point": new_nadir,
-            "temperature": new_temperature,
-            "step_count": new_step_count,
             "total_evals": new_total_evals,
             "phase": "converged" if converged else sa_state.phase,
         }

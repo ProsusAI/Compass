@@ -41,17 +41,11 @@ _RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 def _make_annealing_state(num_trajectories: int = 5) -> AnnealingState:
     """Build an AnnealingState in calibration phase with K unseeded trajectories."""
     weight_vectors = compute_weight_vectors(num_trajectories)
-    trajectories = [
-        TrajectoryState(trajectory_id=i, weight_vector=weight_vectors[i])
-        for i in range(num_trajectories)
-    ]
+    trajectories = [TrajectoryState(trajectory_id=i, weight_vector=weight_vectors[i]) for i in range(num_trajectories)]
     return AnnealingState(
-        temperature=1.0,
-        alpha=0.95,
         num_trajectories=num_trajectories,
         trajectories=trajectories,
         phase="calibration",
-        step_count=0,
         total_evals=0,
     )
 
@@ -74,7 +68,7 @@ def _build_scored_pending(num: int) -> list[Candidate]:
     candidates = []
     for i in range(num):
         quality = 0.9 - i * 0.1  # 0.9, 0.8, 0.7, ... (decreasing)
-        cost = 0.01 + i * 0.02   # 0.01, 0.03, 0.05, ... (increasing)
+        cost = 0.01 + i * 0.02  # 0.01, 0.03, 0.05, ... (increasing)
         candidates.append(
             Candidate(
                 prompt_version=f"v{i + 1}",
@@ -111,7 +105,7 @@ class TestAdvanceRoundEmosaCalibration:
         assert state.loop_phase == "review"
 
     def test_k5_step_count_bumped_to_one(self, tmp_path: Path) -> None:
-        """K=5: step_count is incremented from 0 to 1 by calibration."""
+        """K=5: per-trajectory step_count is initialised to 0 by calibration."""
         run_id = "emosa-c5-step"
         _make_emosa_state(tmp_path, run_id, num_trajectories=5)
         _save_pending(run_id, _build_scored_pending(5), tmp_path)
@@ -120,7 +114,9 @@ class TestAdvanceRoundEmosaCalibration:
 
         state = get_search_state(run_id, output_dir=tmp_path)
         pocket = AnnealingState.model_validate(state.algorithm_state)
-        assert pocket.step_count == 1
+        # Calibration seeds step_count=0 on each trajectory (no Metropolis steps yet)
+        for traj in pocket.trajectories:
+            assert traj.step_count == 0
 
     def test_k5_total_evals_equals_k(self, tmp_path: Path) -> None:
         """K=5: total_evals in pocket equals K after calibration."""
@@ -208,7 +204,9 @@ class TestAdvanceRoundEmosaCalibration:
         pocket = AnnealingState.model_validate(state.algorithm_state)
 
         assert pocket.num_trajectories == 3
-        assert pocket.step_count == 1
+        # Calibration seeds step_count=0 on each trajectory
+        for traj in pocket.trajectories:
+            assert traj.step_count == 0
         assert pocket.total_evals == 3
         assert pocket.phase == "search"
         # All 3 trajectories seeded
@@ -269,7 +267,9 @@ class TestAdvanceRoundEmosaCalibration:
         loaded = SearchState.model_validate_json(state_path.read_text(encoding="utf-8"))
         pocket = AnnealingState.model_validate(loaded.algorithm_state)
         assert pocket.phase == "search"
-        assert pocket.step_count == 1
+        # Calibration seeds step_count=0 on each trajectory (no Metropolis steps yet)
+        for traj in pocket.trajectories:
+            assert traj.step_count == 0
         assert loaded.loop_phase == "review"
         assert loaded.round == 1
 
@@ -284,7 +284,8 @@ class TestAdvanceRoundEmosaCalibration:
 
         assert isinstance(summary, RoundSummary)
         assert summary.phase == "search"
-        assert summary.step_count == 1
+        # After calibration, all trajectories have step_count=0 (sum=0)
+        assert summary.step_count == 0
         assert summary.ideal_point is not None
         assert summary.nadir_point is not None
         # Verify ideal_point matches expected values
@@ -341,4 +342,5 @@ class TestAdvanceRoundEmosaCalibration:
             result_json = await advance_step_tool("emosa-tool")
             result = json.loads(result_json)
             assert result["phase"] == "search"
-            assert result["step_count"] == 1
+            # After calibration, all trajectories have step_count=0, so sum=0
+            assert result["step_count"] == 0

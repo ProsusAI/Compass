@@ -52,7 +52,11 @@ def _make_annealing_state(
     with_seeded_trajectories: bool = True,
     seeded_candidates: list[Candidate] | None = None,
 ) -> AnnealingState:
-    """Build an AnnealingState in search phase with optionally seeded trajectories."""
+    """Build an AnnealingState in search phase with optionally seeded trajectories.
+
+    ``temperature``, ``alpha``, and ``step_count`` are applied uniformly to all
+    trajectories (per-trajectory fields since Commit 2).
+    """
     weight_vectors = compute_weight_vectors(num_trajectories)
     trajectories: list[TrajectoryState] = []
     for i in range(num_trajectories):
@@ -73,6 +77,9 @@ def _make_annealing_state(
                 current_cost=cand.cost,
                 current_energy=energy,
                 acceptance_history=[True],
+                temperature=temperature,
+                alpha=alpha,
+                step_count=step_count,
             )
         elif with_seeded_trajectories:
             # Seed with a synthetic solution
@@ -87,19 +94,25 @@ def _make_annealing_state(
                 current_cost=c,
                 current_energy=energy,
                 acceptance_history=[True],
+                temperature=temperature,
+                alpha=alpha,
+                step_count=step_count,
             )
         else:
-            traj = TrajectoryState(trajectory_id=i, weight_vector=weight_vectors[i])
+            traj = TrajectoryState(
+                trajectory_id=i,
+                weight_vector=weight_vectors[i],
+                temperature=temperature,
+                alpha=alpha,
+                step_count=step_count,
+            )
         trajectories.append(traj)
 
     return AnnealingState(
-        temperature=temperature,
-        alpha=alpha,
         t_min=t_min,
         num_trajectories=num_trajectories,
         trajectories=trajectories,
         phase=phase,  # type: ignore[arg-type]
-        step_count=step_count,
         total_evals=total_evals,
         ideal_point=ideal_point,
         nadir_point=nadir_point,
@@ -193,15 +206,15 @@ class TestAdvanceRoundEmosaSearch:
             current_cost=0.05,
             current_energy=seed_energy,
             acceptance_history=[True],
-        )
-        annealing = AnnealingState(
             temperature=10.0,  # Very high T -> near-always accept
             alpha=0.95,
+            step_count=1,
+        )
+        annealing = AnnealingState(
             t_min=0.01,
             num_trajectories=1,
             trajectories=[traj],
             phase="search",
-            step_count=1,
             total_evals=1,
             ideal_point=ideal,
             nadir_point=nadir,
@@ -252,15 +265,15 @@ class TestAdvanceRoundEmosaSearch:
             current_cost=0.05,
             current_energy=seed_energy,
             acceptance_history=[True],
-        )
-        annealing = AnnealingState(
             temperature=100.0,  # Very high T -> accept all
             alpha=0.95,
+            step_count=1,
+        )
+        annealing = AnnealingState(
             t_min=0.01,
             num_trajectories=1,
             trajectories=[traj],
             phase="search",
-            step_count=1,
             total_evals=1,
             ideal_point=ideal,
             nadir_point=nadir,
@@ -345,15 +358,15 @@ class TestAdvanceRoundEmosaSearch:
             current_cost=0.06,
             current_energy=narrow_energy,
             acceptance_history=[True],
-        )
-        annealing = AnnealingState(
             temperature=1.0,
             alpha=0.95,
+            step_count=1,
+        )
+        annealing = AnnealingState(
             t_min=0.01,
             num_trajectories=1,
             trajectories=[traj],
             phase="search",
-            step_count=1,
             total_evals=1,
             ideal_point=narrow_ideal,
             nadir_point=narrow_nadir,
@@ -413,17 +426,17 @@ class TestAdvanceRoundEmosaSearch:
                     current_cost=c,
                     current_energy=e,
                     acceptance_history=[True],
+                    temperature=100.0,  # Very high T -> near-always accept
+                    alpha=0.95,
+                    step_count=1,
                 )
             )
 
         annealing = AnnealingState(
-            temperature=100.0,  # Very high T -> near-always accept
-            alpha=0.95,
             t_min=0.01,
             num_trajectories=num_traj,
             trajectories=trajectories,
             phase="search",
-            step_count=1,
             total_evals=num_traj,
             ideal_point=ideal,
             nadir_point=nadir,
@@ -510,6 +523,9 @@ class TestAdvanceRoundEmosaSearch:
                 current_cost=0.5,
                 current_energy=e_t0,
                 acceptance_history=[True],
+                temperature=0.001,  # Very low T -> Metropolis deterministically rejects worsening moves
+                alpha=0.95,
+                step_count=1,
             ),
             TrajectoryState(
                 trajectory_id=1,
@@ -519,17 +535,17 @@ class TestAdvanceRoundEmosaSearch:
                 current_cost=0.1,
                 current_energy=e_t1,
                 acceptance_history=[True],
+                temperature=0.001,
+                alpha=0.95,
+                step_count=1,
             ),
         ]
 
         annealing = AnnealingState(
-            temperature=0.001,  # Very low T -> Metropolis deterministically rejects worsening moves
-            alpha=0.95,
             t_min=0.0001,
             num_trajectories=2,
             trajectories=trajectories,
             phase="search",
-            step_count=1,
             total_evals=2,
             ideal_point=ideal,
             nadir_point=nadir,
@@ -618,6 +634,9 @@ class TestAdvanceRoundEmosaSearch:
                 current_cost=0.3,
                 current_energy=e_shared_t0,
                 acceptance_history=[True],
+                temperature=0.001,  # Very low T -> Metropolis deterministically rejects worsening moves
+                alpha=0.95,
+                step_count=1,
             ),
             TrajectoryState(
                 trajectory_id=1,
@@ -627,6 +646,9 @@ class TestAdvanceRoundEmosaSearch:
                 current_cost=0.3,
                 current_energy=e_shared_t1,
                 acceptance_history=[True],
+                temperature=0.001,
+                alpha=0.95,
+                step_count=1,
             ),
             TrajectoryState(
                 trajectory_id=2,
@@ -636,17 +658,17 @@ class TestAdvanceRoundEmosaSearch:
                 current_cost=0.8,
                 current_energy=e_t2,
                 acceptance_history=[True],
+                temperature=0.001,
+                alpha=0.95,
+                step_count=1,
             ),
         ]
 
         annealing = AnnealingState(
-            temperature=0.001,  # Very low T -> Metropolis deterministically rejects worsening moves
-            alpha=0.95,
             t_min=0.0001,
             num_trajectories=3,
             trajectories=trajectories,
             phase="search",
-            step_count=1,
             total_evals=3,
             ideal_point=ideal,
             nadir_point=nadir,
@@ -808,15 +830,15 @@ class TestAdvanceRoundEmosaSearch:
             current_quality=None,
             current_cost=None,
             current_energy=None,
-        )
-        annealing = AnnealingState(
             temperature=0.001,  # Very low T -> Metropolis would reject almost anything
             alpha=0.95,
+            step_count=1,
+        )
+        annealing = AnnealingState(
             t_min=0.0001,
             num_trajectories=1,
             trajectories=[traj],
             phase="search",
-            step_count=1,
             total_evals=0,
             ideal_point=ideal,
             nadir_point=nadir,
@@ -851,7 +873,7 @@ class TestAdvanceRoundEmosaSearch:
         assert traj_after.acceptance_history[-1] is True
 
     def test_step_count_and_total_evals_incremented(self, tmp_path: Path) -> None:
-        """step_count and total_evals are incremented after a steady-state advance."""
+        """Per-trajectory step_count and global total_evals are incremented after a steady-state advance."""
         run_id = "emosa-ss-counters"
 
         _make_emosa_search_state(
@@ -885,11 +907,17 @@ class TestAdvanceRoundEmosaSearch:
         advance_round_emosa(run_id=run_id, output_dir=tmp_path)
 
         pocket = AnnealingState.model_validate(get_search_state(run_id, output_dir=tmp_path).algorithm_state)
-        assert pocket.step_count == 4
+        # Both trajectories had children → each step_count increments from 3 to 4
+        for traj in pocket.trajectories:
+            assert traj.step_count == 4, f"T{traj.trajectory_id} expected step_count=4, got {traj.step_count}"
         assert pocket.total_evals == 12  # 10 + 2 scored children
 
     def test_temperature_cooled_by_alpha(self, tmp_path: Path) -> None:
-        """Temperature is multiplied by alpha after each steady-state step."""
+        """Per-trajectory temperature is adjusted after each steady-state step (adaptive cool).
+
+        With acceptance_history=[True] (seed) + new accept, rate = 1.0 > target_high=0.6
+        → fast cooling: T_new = T * alpha ** cooling_exp_fast.
+        """
         run_id = "emosa-ss-temp-cool"
         initial_temp = 0.8
         alpha = 0.9
@@ -914,10 +942,14 @@ class TestAdvanceRoundEmosaSearch:
 
         summary = advance_round_emosa(run_id=run_id, output_dir=tmp_path)
 
-        assert summary.temperature == pytest.approx(initial_temp * alpha)
-
+        # After update: history is [True, True] (seed accept + child accept), rate=1.0
+        # rate > target_high=0.6 → T_new = T * alpha**1.5
+        expected_temp = initial_temp * (alpha**1.5)
         pocket = AnnealingState.model_validate(get_search_state(run_id, output_dir=tmp_path).algorithm_state)
-        assert pocket.temperature == pytest.approx(initial_temp * alpha)
+        traj_after = pocket.trajectories[0]
+        assert traj_after.temperature == pytest.approx(expected_temp)
+        assert summary.temperatures is not None
+        assert summary.temperatures[0] == pytest.approx(expected_temp)
 
     def test_acceptance_rates_populated(self, tmp_path: Path) -> None:
         """acceptance_rates in RoundSummary contains per-trajectory rates."""
@@ -1029,3 +1061,99 @@ class TestAdvanceRoundEmosaSearch:
 
         with pytest.raises(ValueError, match="active_evals"):
             advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+    def test_adaptive_cooling_per_trajectory_diverges(self, tmp_path: Path) -> None:
+        """Trajectories with different acceptance histories cool at different rates.
+
+        T0: acceptance_history=[True]*5 (100% accept > target_high=0.6) → cools faster.
+        T1: acceptance_history=[False]*5 (0% accept < target_low=0.4)   → cools slower.
+
+        After advance_round_emosa, T0.temperature < T1.temperature.
+        """
+        run_id = "emosa-adaptive-diverge"
+        ideal = (0.9, 0.01)
+        nadir = (0.5, 0.09)
+        t_initial = 0.5
+        alpha = 0.9
+        weight_vectors = compute_weight_vectors(2)
+
+        e0 = compute_tchebycheff_energy(0.85, 0.02, weight_vectors[0], ideal, nadir)
+        e1 = compute_tchebycheff_energy(0.55, 0.08, weight_vectors[1], ideal, nadir)
+
+        trajectories = [
+            TrajectoryState(
+                trajectory_id=0,
+                weight_vector=weight_vectors[0],
+                current_solution="seed_t0",
+                current_quality=0.85,
+                current_cost=0.02,
+                current_energy=e0,
+                acceptance_history=[True] * 5,  # rate = 1.0 > target_high → fast cooling
+                temperature=t_initial,
+                alpha=alpha,
+                step_count=5,
+            ),
+            TrajectoryState(
+                trajectory_id=1,
+                weight_vector=weight_vectors[1],
+                current_solution="seed_t1",
+                current_quality=0.55,
+                current_cost=0.08,
+                current_energy=e1,
+                acceptance_history=[False] * 5,  # rate = 0.0 < target_low → slow cooling
+                temperature=t_initial,
+                alpha=alpha,
+                step_count=5,
+            ),
+        ]
+        annealing = AnnealingState(
+            t_min=0.001,
+            num_trajectories=2,
+            trajectories=trajectories,
+            phase="search",
+            total_evals=10,
+            ideal_point=ideal,
+            nadir_point=nadir,
+        )
+        init_search_state(
+            backend="test",
+            run_id=run_id,
+            output_dir=tmp_path,
+            algorithm="emosa",
+            algorithm_state=json.loads(annealing.model_dump_json()),
+        )
+
+        # Give each trajectory one child so both participate in Metropolis
+        children = [
+            Candidate(
+                prompt_version="child_t0",
+                parent_version="seed_t0",
+                quality_score=0.86,
+                cost=0.02,
+                round_introduced=2,
+                eval_status="complete",
+            ),
+            Candidate(
+                prompt_version="child_t1",
+                parent_version="seed_t1",
+                quality_score=0.56,
+                cost=0.07,
+                round_introduced=2,
+                eval_status="complete",
+            ),
+        ]
+        _save_pending(run_id, children, tmp_path)
+
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        pocket = AnnealingState.model_validate(get_search_state(run_id, output_dir=tmp_path).algorithm_state)
+        t0_after = next(t for t in pocket.trajectories if t.trajectory_id == 0)
+        t1_after = next(t for t in pocket.trajectories if t.trajectory_id == 1)
+
+        # T0 had all-True history → rate > target_high → cooled faster (alpha**1.5)
+        # T1 had all-False history → rate < target_low → cooled slower (alpha**0.5)
+        # After the round, T0.temperature < T1.temperature
+        assert t0_after.temperature < t1_after.temperature, (
+            f"Expected T0 ({t0_after.temperature:.4f}) < T1 ({t1_after.temperature:.4f}) "
+            f"(T0 had all-True history, T1 had all-False)"
+        )

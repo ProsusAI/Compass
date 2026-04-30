@@ -318,7 +318,7 @@ class TestRoundSummary:
         assert rs.acceptance_rates is None
         assert rs.reduce_case is None
         assert rs.evicted_version is None
-        assert rs.temperature is None
+        assert rs.temperatures is None
 
     def test_optional_strategy_fields_can_be_set(self) -> None:
         rs = RoundSummary(
@@ -331,14 +331,14 @@ class TestRoundSummary:
             acceptance_rates={0: 0.33, 1: 0.67},
             reduce_case="dominated",
             evicted_version="v0",
-            temperature=0.8,
+            temperatures={0: 0.8, 1: 0.6},
         )
         assert rs.hypervolume == pytest.approx(0.42)
         assert rs.reference_point == (1.0, 0.5)
         assert rs.acceptance_rates == {0: 0.33, 1: 0.67}
         assert rs.reduce_case == "dominated"
         assert rs.evicted_version == "v0"
-        assert rs.temperature == pytest.approx(0.8)
+        assert rs.temperatures == {0: pytest.approx(0.8), 1: pytest.approx(0.6)}
 
 
 # ---------------------------------------------------------------------------

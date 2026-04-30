@@ -467,11 +467,21 @@ class TestEmosaAlgorithmChips:
         """Write a minimal EMOSA search_state.json and return the data from collect_data."""
         search_dir = tmp_path / "search"
         archive = [_make_candidate("v1", None, 0)]
+        # Build per-trajectory state (temperature/step_count are now per-trajectory)
+        trajectories = [
+            {
+                "trajectory_id": i,
+                "weight_vector": [0.5, 0.5],
+                "temperature": 0.5,
+                "alpha": 0.95,
+                "step_count": 3,
+            }
+            for i in range(5)
+        ]
         pocket: dict = {
-            "temperature": 0.5,
             "t_min": 0.01,
             "num_trajectories": 5,
-            "step_count": 3,
+            "trajectories": trajectories,
             "total_evals": 15,
             "max_evals": 50,
             "phase": "search",
@@ -494,18 +504,20 @@ class TestEmosaAlgorithmChips:
         return collect_data(search_dir, run_dir=tmp_path)
 
     def test_emosa_chips_renders_all_four_chips(self, tmp_path: Path) -> None:
-        """emosa run renders traj, T (scientific notation), step, and evals chips."""
+        """emosa run renders traj, T (min–max range), step (min–max range), and evals chips."""
         data = self._make_emosa_state(tmp_path)
         chips = {c["label"]: c["value"] for c in data["algorithm_chips"]}
 
         assert "traj" in chips
         assert chips["traj"] == "5"
 
+        # T shows min–max range; all 5 trajectories have T=0.5, so range is "5.00e-01–5.00e-01"
         assert "T" in chips
-        assert chips["T"] == "5.00e-01"
+        assert chips["T"] == "5.00e-01–5.00e-01"
 
+        # step shows min–max range; all trajectories have step=3
         assert "step" in chips
-        assert chips["step"] == "3"
+        assert chips["step"] == "3–3"
 
         assert "evals" in chips
         assert chips["evals"] == "15/50"

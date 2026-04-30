@@ -62,24 +62,24 @@ class TrajectoryState(BaseModel):
     """Active reference on the quality axis for ASF energy (per-trajectory threshold)."""
     cost_reference: float | None = None
     """Active reference on the cost axis for ASF energy (per-trajectory threshold)."""
+    temperature: float = 1.0
+    """Per-trajectory annealing temperature; initialised at calibration to t_initial."""
+    alpha: float = 0.95
+    """Per-trajectory cooling rate; computed once via compute_cooling_rate at calibration."""
+    step_count: int = 0
+    """Per-trajectory SA steps completed."""
 
 
 class AnnealingState(BaseModel):
     """Full mutable state for the simulated-annealing search loop."""
 
-    temperature: float
-    """Current annealing temperature."""
     t_initial: float = 1.0
     """Initial temperature — sensible default for [0, 1]-normalised objectives."""
     t_min: float = 0.01
     """Minimum temperature; annealing stops below this threshold."""
-    alpha: float
-    """Cooling rate, typically auto-computed via ``compute_cooling_rate``."""
     num_trajectories: int = 5
     children_per_trajectory: int = 1
     """Number of child candidates to generate per trajectory per round (M)."""
-    step_count: int = 0
-    """Total SA steps completed across all trajectories."""
     trajectories: list[TrajectoryState]
     neighborhood_size: int = 4
     """Number of nearest neighbor trajectories for EMOSA neighborhood replacement (B).
@@ -95,6 +95,15 @@ class AnnealingState(BaseModel):
     phase: Literal["calibration", "search", "converged"] = "calibration"
     rho: float = Field(default=1e-3, description="Augmentation coefficient ρ for ASF energy (Wierzbicki 1980).")
     """ρ prevents degenerate solutions by penalising the full weighted sum alongside the Chebyshev max."""
+    # Adaptive-cooling config (Li & Landa-Silva 2011, §3.4)
+    target_acceptance_low: float = 0.4
+    """Lower bound of target acceptance-rate band for adaptive cooling."""
+    target_acceptance_high: float = 0.6
+    """Upper bound of target acceptance-rate band for adaptive cooling."""
+    cooling_exp_fast: float = 1.5
+    """Exponent used when rate > target_high: cool by alpha ** cooling_exp_fast."""
+    cooling_exp_slow: float = 0.5
+    """Exponent used when rate < target_low: cool by alpha ** cooling_exp_slow."""
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +290,34 @@ def metropolis_accept(
     probability = math.exp(-delta_e / temperature)
     draw = rng.random() if rng is not None else random.random()
     return draw < probability
+
+
+def adaptive_cool(
+    temperature: float,
+    alpha: float,
+    acceptance_history: list[bool],
+    target_low: float,
+    target_high: float,
+    exp_fast: float,
+    exp_slow: float,
+) -> float:
+    """Adjust temperature by recent acceptance rate against target band.
+
+    When the trajectory accepts more than ``target_high`` fraction of recent
+    moves, cool faster (``alpha ** exp_fast``). When it accepts less than
+    ``target_low``, cool slower (``alpha ** exp_slow``). Otherwise, default
+    geometric step.
+
+    Reference: Li, H. & Landa-Silva, D. (2011), §3.4.
+    """
+    if not acceptance_history:
+        return temperature * alpha
+    rate = sum(acceptance_history) / len(acceptance_history)
+    if rate > target_high:
+        return temperature * (alpha**exp_fast)
+    if rate < target_low:
+        return temperature * (alpha**exp_slow)
+    return temperature * alpha
 
 
 def compute_weight_vectors(num_trajectories: int) -> list[tuple[float, float]]:

@@ -114,7 +114,8 @@ class RoundSummary(BaseModel):
     acceptance_rates: dict[int, float] | None = None
     reduce_case: Literal["singleton", "dominated", "delta_s_argmin"] | None = None
     evicted_version: str | None = None
-    temperature: float | None = None
+    temperatures: dict[int, float] | None = None
+    """Per-trajectory temperature at end of round, keyed by trajectory_id."""
     # EMOSA-specific optional fields (defaults None — backward-compatible with
     # hill_climb / beam / sms_emoa consumers that never set these)
     ideal_point: tuple[float, float] | None = None
@@ -175,8 +176,11 @@ class SearchState(BaseModel):
     mutation_mode: Literal["targeted", "exploratory"] = "targeted"
     converged: bool = False
     loop_phase: Literal[
-        "build", "review",
-        "warmup_seed", "warmup_build", "warmup_reduce",
+        "build",
+        "review",
+        "warmup_seed",
+        "warmup_build",
+        "warmup_reduce",
         "calibration",
         "build_recovering",
     ] = "review"
@@ -220,9 +224,13 @@ class SearchState(BaseModel):
         if "pareto_front" in data and "elite_set" not in data:
             data["elite_set"] = data.pop("pareto_front")
         _valid_phases = {
-            "build", "review",
-            "warmup_seed", "warmup_build", "warmup_reduce",
-            "calibration", "build_recovering",
+            "build",
+            "review",
+            "warmup_seed",
+            "warmup_build",
+            "warmup_reduce",
+            "calibration",
+            "build_recovering",
         }
         raw_phase = data.get("loop_phase")
         if raw_phase is not None and raw_phase not in _valid_phases:
@@ -359,6 +367,7 @@ def validate_elite_set(elite_set: list[Candidate]) -> list[Candidate]:
     Logs a warning if dominated candidates are found and removed.
     """
     import logging as _logging
+
     _logger = _logging.getLogger(__name__)
 
     if not elite_set:

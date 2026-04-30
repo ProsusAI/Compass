@@ -622,8 +622,7 @@ class TestMissingMetricBehavior:
         search_state = _make_search_state(
             round=2,
             elite_set=[
-                Candidate(prompt_version="v1", parent_version=None,
-                          quality_score=0.80, cost=1.50, round_introduced=1),
+                Candidate(prompt_version="v1", parent_version=None, quality_score=0.80, cost=1.50, round_introduced=1),
             ],
         )
         score_reports = {
@@ -639,10 +638,26 @@ class TestMissingMetricBehavior:
             Example(id="e2", input="b", expected=Expected(route="simple", routes=routes)),
         ]
         eval_results = [
-            EvalResult(example_id="e1", model="test", output={"route": "complex"},
-                       error=None, latency_ms=100, retries=0, token_usage=None, cost=0.01),
-            EvalResult(example_id="e2", model="test", output={"route": "simple"},
-                       error=None, latency_ms=100, retries=0, token_usage=None, cost=0.01),
+            EvalResult(
+                example_id="e1",
+                model="test",
+                output={"route": "complex"},
+                error=None,
+                latency_ms=100,
+                retries=0,
+                token_usage=None,
+                cost=0.01,
+            ),
+            EvalResult(
+                example_id="e2",
+                model="test",
+                output={"route": "simple"},
+                error=None,
+                latency_ms=100,
+                retries=0,
+                token_usage=None,
+                cost=0.01,
+            ),
         ]
         briefing = build_review_briefing(
             search_state=search_state,
@@ -660,10 +675,12 @@ class TestMissingMetricBehavior:
         assert briefing.confusion_analysis[0].predicted_route == "complex"
 
     def test_confusion_analysis_empty_when_no_results(self) -> None:
-        search_state = _make_search_state(round=2, elite_set=[
-            Candidate(prompt_version="v1", parent_version=None,
-                      quality_score=0.80, cost=1.50, round_introduced=1),
-        ])
+        search_state = _make_search_state(
+            round=2,
+            elite_set=[
+                Candidate(prompt_version="v1", parent_version=None, quality_score=0.80, cost=1.50, round_introduced=1),
+            ],
+        )
         score_reports = {
             "v2": _make_report_dict(accuracy=0.85),
             "v1": _make_report_dict(accuracy=0.80),
@@ -789,12 +806,21 @@ class TestGenerateExecutiveSummary:
 
     def test_includes_confusion_analysis(self) -> None:
         from odysseus.agents.review.models import ConfusionImpact
+
         briefing = self._make_briefing()
         ci = ConfusionImpact(
-            true_route="simple", predicted_route="complex", count=10, support=40,
-            misroute_rate=0.25, cost_impact=0.50, quality_impact=-0.10,
-            avg_cost_impact=0.05, avg_quality_impact=-0.01,
-            persistence_rate=0.85, persistent_count=8, volatile_count=2,
+            true_route="simple",
+            predicted_route="complex",
+            count=10,
+            support=40,
+            misroute_rate=0.25,
+            cost_impact=0.50,
+            quality_impact=-0.10,
+            avg_cost_impact=0.05,
+            avg_quality_impact=-0.01,
+            persistence_rate=0.85,
+            persistent_count=8,
+            volatile_count=2,
         )
         briefing = briefing.model_copy(update={"confusion_analysis": [ci]})
         summary = generate_executive_summary(briefing)
@@ -960,7 +986,7 @@ class TestBuildConfusionAnalysis:
         ]
         results = [
             self._make_result("e1", "complex"),  # misrouted
-            self._make_result("e2", "simple"),   # correct
+            self._make_result("e2", "simple"),  # correct
             self._make_result("e3", "complex"),  # correct
         ]
         cells = build_confusion_analysis(
@@ -976,7 +1002,7 @@ class TestBuildConfusionAnalysis:
         assert cell.predicted_route == "complex"
         assert cell.count == 1
         assert cell.support == 2  # 2 examples with true_route=simple
-        assert cell.cost_impact == pytest.approx(0.09)   # 0.10 - 0.01
+        assert cell.cost_impact == pytest.approx(0.09)  # 0.10 - 0.01
         assert cell.quality_impact == pytest.approx(0.15)  # 0.95 - 0.80
 
     def test_empty_results(self) -> None:
@@ -1184,9 +1210,7 @@ class TestBuildConfusionAnalysis:
         Dedup ensures count == 1 (not 3), and cost/quality impacts reflect
         a single-example contribution.
         """
-        example = self._make_example(
-            "e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}
-        )
+        example = self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)})
         examples = [example]
         # Three results from three "candidates" — same example_id, same wrong route
         results = [
@@ -1207,7 +1231,7 @@ class TestBuildConfusionAnalysis:
         assert cell.count == 1  # dedup: not 3
         assert cell.misroute_rate == pytest.approx(1 / support)
         # Single-example cost and quality deltas
-        assert cell.cost_impact == pytest.approx(0.10 - 0.01)   # 0.09
+        assert cell.cost_impact == pytest.approx(0.10 - 0.01)  # 0.09
         assert cell.quality_impact == pytest.approx(0.95 - 0.80)  # 0.15
 
 
@@ -1219,9 +1243,9 @@ class TestSignalToNoiseFilters:
             "accuracy": 0.05,
             "cost_change": -0.02,
             "recall/route_a": 0.001,  # below threshold
-            "confusion/a/b": 3.0,     # confusion key
+            "confusion/a/b": 3.0,  # confusion key
             "f1/macro": 0.015,
-            "recall/route_b": 0.0,    # zero delta
+            "recall/route_b": 0.0,  # zero delta
         }
         filtered = _filter_metric_deltas(deltas)
         assert "accuracy" in filtered
@@ -1249,14 +1273,22 @@ class TestSignalToNoiseFilters:
         """Trend should be limited to last 5 rounds."""
         historical = {}
         for i in range(1, 12):
-            historical[i] = {"v1": _make_report_dict(**{
-                "recall/route_a": 0.50 + i * 0.02,
-                "support/route_a": 10,
-            })}
-        current = {"v1": _make_report_dict(**{
-            "recall/route_a": 0.75,
-            "support/route_a": 10,
-        })}
+            historical[i] = {
+                "v1": _make_report_dict(
+                    **{
+                        "recall/route_a": 0.50 + i * 0.02,
+                        "support/route_a": 10,
+                    }
+                )
+            }
+        current = {
+            "v1": _make_report_dict(
+                **{
+                    "recall/route_a": 0.75,
+                    "support/route_a": 10,
+                }
+            )
+        }
         result = extract_per_class_recall(
             current_reports=current,
             historical_reports=historical,
@@ -1308,20 +1340,24 @@ class TestHolisticVersionSelection:
         # v_a: high primary (quality) but only meets quality target
         # v_b: lower quality but meets both targets
         score_reports = {
-            "v_a": _make_report_dict(**{
-                "quality_change": 0.040,           # meets quality target
-                "cost_change_with_overhead": -0.20, # misses cost target
-                "cost_change": -0.10,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
-            "v_b": _make_report_dict(**{
-                "quality_change": 0.035,           # meets quality target
-                "cost_change_with_overhead": -0.35, # meets cost target
-                "cost_change": -0.25,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v_a": _make_report_dict(
+                **{
+                    "quality_change": 0.040,  # meets quality target
+                    "cost_change_with_overhead": -0.20,  # misses cost target
+                    "cost_change": -0.10,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
+            "v_b": _make_report_dict(
+                **{
+                    "quality_change": 0.035,  # meets quality target
+                    "cost_change_with_overhead": -0.35,  # meets cost target
+                    "cost_change": -0.25,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v_a", "v_b"])
         briefing = build_review_briefing(
@@ -1348,12 +1384,14 @@ class TestHolisticVersionSelection:
             UserTarget(metric="quality_change", operator=">=", threshold=0.03),
         ]
         score_reports = {
-            "v1": _make_report_dict(**{
-                "quality_change": 0.05,   # meets target
-                "cost_change": -0.10,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v1": _make_report_dict(
+                **{
+                    "quality_change": 0.05,  # meets target
+                    "cost_change": -0.10,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v1"])
         briefing = build_review_briefing(
@@ -1377,12 +1415,14 @@ class TestHolisticVersionSelection:
             UserTarget(metric="quality_change", operator=">=", threshold=0.10),  # high bar
         ]
         score_reports = {
-            "v1": _make_report_dict(**{
-                "quality_change": 0.02,   # misses target
-                "cost_change": -0.10,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v1": _make_report_dict(
+                **{
+                    "quality_change": 0.02,  # misses target
+                    "cost_change": -0.10,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v1"])
         briefing = build_review_briefing(
@@ -1407,20 +1447,24 @@ class TestHolisticVersionSelection:
             UserTarget(metric="cost_change_with_overhead", operator="<=", threshold=-0.20),
         ]
         score_reports = {
-            "v1": _make_report_dict(**{
-                "quality_change": 0.04,
-                "cost_change_with_overhead": -0.25,
-                "cost_change": -0.15,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
-            "v2": _make_report_dict(**{
-                "quality_change": 0.02,
-                "cost_change_with_overhead": -0.10,
-                "cost_change": -0.05,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v1": _make_report_dict(
+                **{
+                    "quality_change": 0.04,
+                    "cost_change_with_overhead": -0.25,
+                    "cost_change": -0.15,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
+            "v2": _make_report_dict(
+                **{
+                    "quality_change": 0.02,
+                    "cost_change_with_overhead": -0.10,
+                    "cost_change": -0.05,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v1", "v2"])
         briefing = build_review_briefing(
@@ -1452,6 +1496,8 @@ def _make_emosa_trajectory(
     current_quality: float | None = None,
     current_cost: float | None = None,
     acceptance_history: list[bool] | None = None,
+    step_count: int = 0,
+    temperature: float = 1.0,
 ) -> dict[str, Any]:
     return {
         "trajectory_id": trajectory_id,
@@ -1463,6 +1509,9 @@ def _make_emosa_trajectory(
         "acceptance_history": acceptance_history or [],
         "quality_reference": None,
         "cost_reference": None,
+        "step_count": step_count,
+        "temperature": temperature,
+        "alpha": 0.95,
     }
 
 
@@ -1474,15 +1523,29 @@ def _make_emosa_pocket(
     ideal_point: tuple[float, float] = (1.0, 0.0),
     nadir_point: tuple[float, float] = (0.0, 1.0),
 ) -> dict[str, Any]:
+    """Build an EMOSA algorithm_state pocket.
+
+    ``step_count`` is distributed as per-trajectory: the desired total is placed on
+    the first trajectory (others remain 0), so ``sum(t["step_count"])`` equals the
+    requested value. ``temperature`` is placed on every trajectory.
+    """
+    # Distribute step_count to first trajectory; apply temperature to all
+    distributed: list[dict[str, Any]] = []
+    for idx, traj in enumerate(trajectories):
+        t = dict(traj)
+        if idx == 0:
+            t.setdefault("step_count", 0)
+            t["step_count"] = t["step_count"] + step_count
+        t.setdefault("temperature", temperature)
+        t.setdefault("alpha", 0.95)
+        distributed.append(t)
+
     return {
-        "temperature": temperature,
         "t_initial": 1.0,
         "t_min": t_min,
-        "alpha": 0.95,
         "num_trajectories": len(trajectories),
         "children_per_trajectory": 1,
-        "step_count": step_count,
-        "trajectories": trajectories,
+        "trajectories": distributed,
         "neighborhood_size": 4,
         "ideal_point": list(ideal_point),
         "nadir_point": list(nadir_point),
@@ -1656,9 +1719,7 @@ class TestEmosaExplicitTrajectoryId:
         ]
         # step_count=1, num_trajectories=5 → round-robin would pick index 1.
         # explicit trajectory_id=2 must override and pick trajectory 2 instead.
-        briefing = self._make_emosa_briefing_with_traj_id(
-            trajectories=trajectories, step_count=1, trajectory_id=2
-        )
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=2)
 
         assert briefing.trajectory_id == 2
         assert briefing.weight_vector == (0.5, 0.5)
@@ -1673,9 +1734,7 @@ class TestEmosaExplicitTrajectoryId:
         ]
         # step_count=3, num_trajectories=3 → round-robin would pick index 0 by coincidence.
         # Use step_count=1 to make round-robin pick index 1, but explicit override selects 0.
-        briefing = self._make_emosa_briefing_with_traj_id(
-            trajectories=trajectories, step_count=1, trajectory_id=0
-        )
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=0)
 
         assert briefing.trajectory_id == 0
         assert briefing.weight_vector == (0.9, 0.1)
@@ -1685,14 +1744,16 @@ class TestEmosaExplicitTrajectoryId:
         """trajectory_id=4 (last) works for K=5."""
         trajectories = [
             _make_emosa_trajectory(
-                i, (0.1 * (5 - i), 0.1 * (i + 5)), f"v{i}",
-                0.5 + i * 0.05, 0.001 * (i + 1), [True] * i,
+                i,
+                (0.1 * (5 - i), 0.1 * (i + 5)),
+                f"v{i}",
+                0.5 + i * 0.05,
+                0.001 * (i + 1),
+                [True] * i,
             )
             for i in range(5)
         ]
-        briefing = self._make_emosa_briefing_with_traj_id(
-            trajectories=trajectories, step_count=2, trajectory_id=4
-        )
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=2, trajectory_id=4)
 
         assert briefing.trajectory_id == 4
         assert briefing.weight_vector == (0.1, 0.9)
@@ -1703,9 +1764,7 @@ class TestEmosaExplicitTrajectoryId:
         trajectories = [
             _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
         ]
-        briefing = self._make_emosa_briefing_with_traj_id(
-            trajectories=trajectories, step_count=1, trajectory_id=99
-        )
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=99)
         # Safe fallback: trajectory_id=0 (default from empty dict), empty history, no binding_axis
         assert briefing.trajectory_id == 0
         assert briefing.acceptance_history == []
@@ -1719,9 +1778,7 @@ class TestEmosaExplicitTrajectoryId:
             _make_emosa_trajectory(2, (0.1, 0.9), "v2", 0.70, 0.004, [True, False]),
         ]
         # step_count=2, K=3 → round-robin index = 2 % 3 = 2
-        briefing = self._make_emosa_briefing_with_traj_id(
-            trajectories=trajectories, step_count=2, trajectory_id=None
-        )
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=2, trajectory_id=None)
 
         assert briefing.trajectory_id == 2
         assert briefing.weight_vector == (0.1, 0.9)
@@ -1733,8 +1790,12 @@ class TestEmosaExplicitTrajectoryId:
 
         trajectories = [
             _make_emosa_trajectory(
-                t, ((9 - t) * 0.1, (t + 1) * 0.1), f"sol{t}",
-                0.6 + t * 0.05, 0.001 * (t + 1), [True] * (t % 3 + 1),
+                t,
+                ((9 - t) * 0.1, (t + 1) * 0.1),
+                f"sol{t}",
+                0.6 + t * 0.05,
+                0.001 * (t + 1),
+                [True] * (t % 3 + 1),
             )
             for t in range(5)
         ]
