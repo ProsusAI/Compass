@@ -34,7 +34,23 @@ def _algorithm_chips(state_data: dict) -> list[dict]:
     if algo == "sms_emoa":
         mu = pocket.get("mu") or state_data.get("mu")  # legacy fallback
         return [{"label": "population (μ)", "value": mu}] if mu is not None else []
-    # beam / emosa adapters added in Phase C
+    if algo == "emosa":
+        chips = []
+        num_trajectories = pocket.get("num_trajectories")
+        if num_trajectories is not None:
+            chips.append({"label": "traj", "value": str(num_trajectories)})
+        temperature = pocket.get("temperature")
+        if temperature is not None:
+            chips.append({"label": "T", "value": f"{temperature:.2e}"})
+        step_count = pocket.get("step_count")
+        if step_count is not None:
+            chips.append({"label": "step", "value": str(step_count)})
+        total_evals = pocket.get("total_evals")
+        max_evals = pocket.get("max_evals")
+        if total_evals is not None and max_evals is not None:
+            chips.append({"label": "evals", "value": f"{total_evals}/{max_evals}"})
+        return chips
+    # beam adapter added in Phase C
     return []
 
 

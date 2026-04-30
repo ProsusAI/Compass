@@ -460,9 +460,80 @@ def gen_scenario_53():
     )
 
 
+# ─── EMOSA fixtures (scenario 18 — calibration round) ────────────
+#
+# These fixtures emit a canonical SearchState for EMOSA with K=5
+# trajectories in the calibration phase. The algorithm_state pocket
+# follows the AnnealingState schema from annealing.py.
+
+
+def gen_emosa_calibration():
+    """EMOSA calibration fixture: K=5 unseeded trajectories, loop_phase='calibration'."""
+    print("\nEMOSA calibration (emosa_calibration)")
+
+    weight_vectors = [(0.9, 0.1), (0.7, 0.3), (0.5, 0.5), (0.3, 0.7), (0.1, 0.9)]
+    trajectories = [
+        {
+            "trajectory_id": i,
+            "weight_vector": list(wv),
+            "current_solution": None,
+            "current_energy": None,
+            "current_quality": None,
+            "current_cost": None,
+            "acceptance_history": [],
+            "quality_reference": None,
+            "cost_reference": None,
+        }
+        for i, wv in enumerate(weight_vectors)
+    ]
+
+    # The state dict is returned as a canonical SearchState representation.
+    # Callers can write it to disk or pass it directly to build_review_briefing.
+    state = {
+        "search_state_id": "emosa_calibration",
+        "backend": "mock-echo",
+        "primary_metric_name": "accuracy",
+        "round": 0,
+        "elite_set": [],
+        "round_history": [],
+        "stagnation_count": 0,
+        "stagnation_limit": 3,
+        "convergence_limit": 4,
+        "max_rounds": 50,
+        "mutation_mode": "targeted",
+        "converged": False,
+        "algorithm": "emosa",
+        "algorithm_state": {
+            "temperature": 1.0,
+            "t_initial": 1.0,
+            "t_min": 0.01,
+            "alpha": 0.95,
+            "num_trajectories": 5,
+            "children_per_trajectory": 1,
+            "step_count": 0,
+            "trajectories": trajectories,
+            "neighborhood_size": 4,
+            "ideal_point": [1.0, 0.0],
+            "nadir_point": [0.0, 1.0],
+            "max_evals": 50,
+            "total_evals": 0,
+            "convergence_limit": 4,
+            "epsilon": 0.003,
+            "phase": "calibration",
+            "rho": 1e-3,
+        },
+        "active_evals": [],
+        "loop_phase": "calibration",
+    }
+    return state
+
+
 if __name__ == "__main__":
     print("Generating Review Agent scenario fixtures...")
     gen_scenario_51()
     gen_scenario_52()
     gen_scenario_53()
     print("\nDone.")
+    print("\nEMOSA calibration state (not written to disk — use gen_emosa_calibration() directly).")
+    import json
+    print(json.dumps(gen_emosa_calibration(), indent=2))

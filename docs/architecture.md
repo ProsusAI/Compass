@@ -93,6 +93,19 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
 `ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), and `ChildVariant` list. `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_edit_directives_tool`.
 
+Strategy-specific optional fields pre-provisioned by Increment 4 and populated by each algorithm's preprocessor function:
+
+| Field | Type | Algorithm | Populated by |
+|---|---|---|---|
+| `parent_a_version`, `parent_b_version` | `str \| None` | SMS-EMOA | `_populate_sms_emoa_review_fields` (C2) |
+| `trajectory_id` | `int \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
+| `weight_vector` | `tuple[float, float] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
+| `binding_axis` | `"quality" \| "cost" \| None` | EMOSA | `_populate_emosa_review_fields` (C3) — `argmax_i (λ_i · norm_i)` against active trajectory's current quality/cost vs ideal/nadir |
+| `acceptance_history` | `list[bool] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
+| `stagnation_signal` | `dict \| None` | all | hill-climb: `{count, limit, mutation_mode}`; sms-emoa: `{hypervolume_history, stagnation_window}`; emosa: `{temperature, t_min, review_exit}` |
+
+> **Note:** Steady-state advance + per-trajectory review fanout (`review_fanout_status` override, `trajectory_fanout_missing` field, multi-child Metropolis loop, neighborhood replacement application) land in C4.
+
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
 

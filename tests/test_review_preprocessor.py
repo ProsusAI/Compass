@@ -1438,3 +1438,158 @@ class TestHolisticVersionSelection:
         source_versions = {tp.source_version for tp in briefing.target_progress}
         assert len(source_versions) == 1
         assert source_versions.pop() is not None
+
+
+# ---------------------------------------------------------------------------
+# EMOSA preprocessor tests
+# ---------------------------------------------------------------------------
+
+
+def _make_emosa_trajectory(
+    trajectory_id: int,
+    weight_vector: tuple[float, float],
+    current_solution: str | None = None,
+    current_quality: float | None = None,
+    current_cost: float | None = None,
+    acceptance_history: list[bool] | None = None,
+) -> dict[str, Any]:
+    return {
+        "trajectory_id": trajectory_id,
+        "weight_vector": list(weight_vector),
+        "current_solution": current_solution,
+        "current_energy": None,
+        "current_quality": current_quality,
+        "current_cost": current_cost,
+        "acceptance_history": acceptance_history or [],
+        "quality_reference": None,
+        "cost_reference": None,
+    }
+
+
+def _make_emosa_pocket(
+    trajectories: list[dict[str, Any]],
+    step_count: int = 0,
+    temperature: float = 1.0,
+    t_min: float = 0.01,
+    ideal_point: tuple[float, float] = (1.0, 0.0),
+    nadir_point: tuple[float, float] = (0.0, 1.0),
+) -> dict[str, Any]:
+    return {
+        "temperature": temperature,
+        "t_initial": 1.0,
+        "t_min": t_min,
+        "alpha": 0.95,
+        "num_trajectories": len(trajectories),
+        "children_per_trajectory": 1,
+        "step_count": step_count,
+        "trajectories": trajectories,
+        "neighborhood_size": 4,
+        "ideal_point": list(ideal_point),
+        "nadir_point": list(nadir_point),
+        "max_evals": 50,
+        "total_evals": 0,
+        "convergence_limit": 4,
+        "epsilon": 0.003,
+        "phase": "calibration",
+        "rho": 1e-3,
+    }
+
+
+class TestEmosaPreprocessorDispatch:
+    """Tests for _populate_emosa_review_fields and build_review_briefing emosa dispatch."""
+
+    def _make_emosa_briefing(
+        self,
+        trajectories: list[dict[str, Any]],
+        step_count: int = 1,
+        temperature: float = 0.5,
+        t_min: float = 0.01,
+        ideal_point: tuple[float, float] = (1.0, 0.0),
+        nadir_point: tuple[float, float] = (0.0, 1.0),
+    ) -> Any:
+        pocket = _make_emosa_pocket(
+            trajectories=trajectories,
+            step_count=step_count,
+            temperature=temperature,
+            t_min=t_min,
+            ideal_point=ideal_point,
+            nadir_point=nadir_point,
+        )
+        search_state = _make_search_state(
+            round=1,
+            algorithm="emosa",
+            algorithm_state=pocket,
+            elite_set=[],
+        )
+        score_reports: dict[str, Any] = {}
+        return build_review_briefing(
+            search_state=search_state,
+            score_reports=score_reports,
+            historical_reports={},
+            prompt_texts={},
+            directive_history=[],
+            candidate_versions=[],
+            parent_versions={},
+        )
+
+    def test_emosa_dispatch_populates_all_required_fields(self) -> None:
+        """build_review_briefing dispatches to emosa and populates all required fields."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v1", 0.75, 0.002, [True]),
+            _make_emosa_trajectory(1, (0.5, 0.5), "v2", 0.70, 0.003, [True, False]),
+        ]
+        briefing = self._make_emosa_briefing(trajectories=trajectories, step_count=1)
+
+        # Round-robin: step_count=1, num_trajectories=2 → index 1
+        assert briefing.trajectory_id == 1
+        assert briefing.weight_vector == (0.5, 0.5)
+        assert briefing.binding_axis is not None
+        assert briefing.acceptance_history == [True, False]
+        assert briefing.stagnation_signal is not None
+        assert "temperature" in briefing.stagnation_signal
+        assert "t_min" in briefing.stagnation_signal
+        assert "review_exit" in briefing.stagnation_signal
+
+    def test_binding_axis_quality_when_quality_term_dominates(self) -> None:
+        """binding_axis='quality' when lambda_q * norm_q > lambda_c * norm_c."""
+        # ideal=(1.0, 0.0), nadir=(0.0, 1.0)
+        # quality=0.9 → norm_q = (1.0 - 0.9) / (1.0 - 0.0) = 0.1
+        # cost=0.1   → norm_c = (0.1 - 0.0) / (1.0 - 0.0) = 0.1
+        # weight_vector=(0.9, 0.1): weighted_q = 0.9 * 0.1 = 0.09
+        #                           weighted_c = 0.1 * 0.1 = 0.01 → quality wins
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v1", 0.9, 0.1, [True]),
+        ]
+        briefing = self._make_emosa_briefing(
+            trajectories=trajectories,
+            step_count=1,
+            ideal_point=(1.0, 0.0),
+            nadir_point=(0.0, 1.0),
+        )
+        assert briefing.binding_axis == "quality"
+
+    def test_binding_axis_cost_when_cost_term_dominates(self) -> None:
+        """binding_axis='cost' when lambda_c * norm_c > lambda_q * norm_q."""
+        # ideal=(1.0, 0.0), nadir=(0.0, 1.0)
+        # quality=0.1 → norm_q = (1.0 - 0.1) / 1.0 = 0.9
+        # cost=0.9   → norm_c = (0.9 - 0.0) / 1.0 = 0.9
+        # weight_vector=(0.1, 0.9): weighted_q = 0.1 * 0.9 = 0.09
+        #                           weighted_c = 0.9 * 0.9 = 0.81 → cost wins
+        trajectories = [
+            _make_emosa_trajectory(0, (0.1, 0.9), "v1", 0.1, 0.9, [True]),
+        ]
+        briefing = self._make_emosa_briefing(
+            trajectories=trajectories,
+            step_count=1,
+            ideal_point=(1.0, 0.0),
+            nadir_point=(0.0, 1.0),
+        )
+        assert briefing.binding_axis == "cost"
+
+    def test_binding_axis_none_for_unseeded_trajectory(self) -> None:
+        """Unseeded trajectory (no current_quality/current_cost) returns binding_axis=None."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.5, 0.5)),  # no current_quality/cost
+        ]
+        briefing = self._make_emosa_briefing(trajectories=trajectories, step_count=0)
+        assert briefing.binding_axis is None

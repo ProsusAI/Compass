@@ -49,6 +49,12 @@ Full-pipeline integration test scenarios for Project Odysseus. Each `.md` file i
 |---|----------|---------|-------|
 | 15 | Full End-to-End with Final Report | `full_pipeline_dataset.jsonl` | All 6 stages verified in detail: holdout filtering, holdout eval, briefing, report content |
 
+### EMOSA Algorithm (18)
+
+| # | Scenario | Dataset | Focus |
+|---|----------|---------|-------|
+| 18 | EMOSA — Calibration Round | `emosa_toy_dataset.jsonl` | K=5 trajectories complete calibration round; per-trajectory state seeded; phase calibration→search; loop_phase calibration→review |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
@@ -133,4 +139,5 @@ Test datasets live in `tests/scenarios/data/`:
 | `review/abc123/` | Review Agent fixtures: basic review (search state, score reports, mutation log) |
 | `review/def456/` | Review Agent fixtures: regression guard (v3 drops opus recall) |
 | `review/ghi789/` | Review Agent fixtures: loop exit (round 4, convergence) |
+| `emosa_toy_dataset.jsonl` | 10 rows, 3 tiers (haiku/sonnet/opus), EMOSA calibration testing |
 | `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data |
