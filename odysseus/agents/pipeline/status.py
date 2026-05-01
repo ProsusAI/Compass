@@ -654,6 +654,23 @@ def _detect_stage_4_phase_emosa(
     if loop_phase == "calibration":
         return "calibration"
 
+    # Defense-in-depth: if loop_phase is "build" but no per-trajectory
+    # child_variants_t*.json files exist AND build_dispatched.json is absent,
+    # the builder was never actually dispatched — flip back to "review" to
+    # prevent deadlock.  Mirrors the hill-climb guard at lines 599-610.
+    if (
+        loop_phase == "build"
+        and not any(search_dir.glob("child_variants_t*.json"))
+        and not _is_build_dispatched(run_dir.name, search_dir)
+    ):
+        logger.warning(
+            "loop_phase='build' but no child_variants_t*.json on disk and "
+            "build_dispatched.json absent in %s/search/ — defense-in-depth "
+            "re-flip to 'review'",
+            run_dir,
+        )
+        loop_phase = "review"
+
     # Steady-state: trust loop_phase directly for review/build.
     if loop_phase in {"review", "build"}:
         return loop_phase

@@ -699,13 +699,30 @@ class TestDetectStage4PhaseEmosa:
         assert phase == "review"
 
     def test_build_phase_no_active_evals(self, tmp_path: Path) -> None:
-        """algorithm='emosa', loop_phase='build', no active_evals → 'build'."""
+        """algorithm='emosa', loop_phase='build', child_variants present, no active_evals → 'build'."""
+        search = _make_emosa_search_dir(tmp_path)
+        _write_emosa_state(search, loop_phase="build")
+        # Write a per-trajectory child_variants file so the defense-in-depth
+        # guard sees evidence the review phase produced output.
+        (search / "child_variants_t0.json").write_text("[]", encoding="utf-8")
+
+        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
+
+        assert phase == "build"
+
+    def test_build_phase_defense_in_depth_reflips_to_review(self, tmp_path: Path) -> None:
+        """algorithm='emosa', loop_phase='build' but no child_variants_t*.json and no build marker → 'review'.
+
+        Defense-in-depth guard prevents deadlock when search_state.json says
+        build but the review phase never actually produced trajectory variants
+        (e.g. sub-agent silent failure).
+        """
         search = _make_emosa_search_dir(tmp_path)
         _write_emosa_state(search, loop_phase="build")
 
         phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
 
-        assert phase == "build"
+        assert phase == "review"
 
     def test_build_recovering_when_active_evals_non_empty(self, tmp_path: Path) -> None:
         """algorithm='emosa', active_evals non-empty → 'build_recovering' regardless of loop_phase."""
