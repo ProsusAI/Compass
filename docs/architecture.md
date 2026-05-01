@@ -56,15 +56,15 @@ graph TD
 ## 4. Shared Models
 
 **`Candidate` / `SearchState` / `RoundSummary`** ([`odysseus/agents/prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py))
-`Candidate` is the canonical prompt-candidate record shared across all search strategies. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Strategy-specific optional fields (all default `None`): `secondary_parent_version` (beam/SMS-EMOA recombination), `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`, `trajectory_id` (EMOSA). Accepts `iteration_introduced` as an alias for `round_introduced` (SMS-EMOA back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`).
+`Candidate` is the canonical prompt-candidate record. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Optional fields (all default `None`): `secondary_parent_version`, `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`, `trajectory_id`. Accepts `iteration_introduced` as an alias for `round_introduced` (back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`).
 
 `SearchState` holds the mutable search loop state. Key fields:
 
 | Field | Type | Description |
 |---|---|---|
 | `elite_set` | `list[Candidate]` | Current non-dominated candidate set (formerly `pareto_front`; old files with `pareto_front` key are migrated on load) |
-| `algorithm` | `Literal["hill_climb", "beam", "sms_emoa", "emosa"]` | Discriminator hardcoded per branch via `_BRANCH_ALGORITHM` in `search_ops.py`; written at `init_search_state` time |
-| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket (e.g. `beam_width` for beam, `AnnealingState` dict for EMOSA); hardcoded per branch via `_BRANCH_ALGORITHM_STATE` in `search_ops.py` |
+| `algorithm` | `Literal["hill_climb"]` | Discriminator hardcoded per branch via `_BRANCH_ALGORITHM` in `search_ops.py`; written at `init_search_state` time |
+| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket; hardcoded per branch via `_BRANCH_ALGORITHM_STATE` in `search_ops.py` (empty for hill_climb) |
 | `round`, `stagnation_count`, `mutation_mode` | — | Hill-climb bookkeeping fields |
 | `converged`, `loop_phase` | — | Convergence flag and current sub-phase; widened enum: `"build"`, `"review"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`, `"calibration"`, `"build_recovering"` (hill-climb only uses `"build"` / `"review"`) |
 | `active_evals` | `list[str]` | Prompt versions currently being evaluated (pending or running). Invariant: non-empty iff `loop_phase == "build"` and a concurrent batch eval was interrupted. `_detect_stage_4_phase` returns `"build_recovering"` when this field is non-empty. |
@@ -77,10 +77,6 @@ graph TD
 | `elite_size` | `front_size` (main) | all |
 | `target_improvement` | `front_improvement` (main) | all |
 | `mutation_mode`, `stagnation_count` | — (main only) | optional (hill-climb) |
-| `hypervolume`, `reference_point` | — | optional (beam, SMS-EMOA) |
-| `acceptance_rates` | — | optional (EMOSA) |
-| `reduce_case`, `evicted_version` | — | optional (SMS-EMOA) |
-| `temperature` | — | optional (EMOSA) |
 
 Old state files with `new_pareto_points` / `front_size` / `front_improvement` are migrated on load via a `model_validator(mode="before")`.
 
@@ -187,13 +183,13 @@ The shared guard layer lives in [`odysseus/agents/pipeline/dispatch.py`](../odys
 
 | Value | Used by |
 |---|---|
-| `"review"` | all strategies (default) |
-| `"build"` | all strategies |
-| `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"` | SMS-EMOA warmup phases |
-| `"calibration"` | EMOSA cold-start calibration phase |
-| `"build_recovering"` | All strategies — entered when `active_evals` is non-empty (interrupted batch eval). Recovery sub-agent calls `run_batch_eval(candidates=[])` to resume. |
+| `"review"` | default |
+| `"build"` | active build round |
+| `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"` | reserved — strategy-branch warmup phases |
+| `"calibration"` | reserved — strategy-branch cold-start calibration phase |
+| `"build_recovering"` | entered when `active_evals` is non-empty (interrupted batch eval). Recovery sub-agent calls `run_batch_eval(candidates=[])` to resume. |
 
-Hill-climb (main branch) only ever enters `"build"` and `"review"`. The other values exist so feature-branch state files load without error. Unknown values encountered in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
+Hill-climb only ever enters `"build"` and `"review"`. The other values are reserved for strategy branches; unknown values encountered in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
 
 **Dispatch markers**
 
@@ -208,7 +204,7 @@ Both files contain `{"round": N}` for diagnostics.
 
 **`DispatchFanout` and `review_fanout_status`**
 
-`complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` (degenerate single-slot for hill-climb / beam / SMS-EMOA). The function returns a `DispatchFanout` dataclass:
+`complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` (single-slot fanout). The function returns a `DispatchFanout` dataclass:
 
 | Attribute | Type | Meaning |
 |---|---|---|
@@ -219,7 +215,7 @@ Both files contain `{"round": N}` for diagnostics.
 | `is_complete` | `bool` | `len(completed) >= expected` |
 | `missing` | `list[int]` | `in_flight + not_dispatched` |
 
-For `expected=1`, fanout is complete when `search/child_variants.json` exists.  `expected > 1` (EMOSA K-trajectory fanout) raises `NotImplementedError` on the integration branch — EMOSA overrides `review_fanout_status` on `feat/generalize-emosa` by adding an `algorithm` kwarg and delegating to `trajectory_fanout_missing` in [`review/ops.py`](../odysseus/agents/review/ops.py) when `algorithm == "emosa"`. See section 6 for the cross-branch strategy matrix.
+For `expected=1`, fanout is complete when `search/child_variants.json` exists. `expected > 1` raises `NotImplementedError` and is reserved for strategy-branch overrides.
 
 **`child_variants.json`**
 
@@ -255,13 +251,7 @@ The Review Agent prompt is assembled at dispatch time from three layers: a share
 | [`odysseus/agents/prompts/review_agent_iterative_base_system.md`](../odysseus/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
 | [`odysseus/agents/prompts/review_agent_cold_start_base_system.md`](../odysseus/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
 | [`odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md) | Iterative overlay for `hill_climb` — mutation-mode toggle, single parent, 1 child |
-| [`odysseus/agents/prompts/review_agent_iterative_overlay_beam.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_beam.md) | Iterative overlay for `beam` — beam-rank / crowding-distance, HV-delta stagnation, 1 child |
-| [`odysseus/agents/prompts/review_agent_iterative_overlay_sms_emoa.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_sms_emoa.md) | Iterative overlay for `sms_emoa` — two-parent recombination, HV-plateau stagnation, 1 child |
-| [`odysseus/agents/prompts/review_agent_iterative_overlay_emosa.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_emosa.md) | Iterative overlay for `emosa` — K-fanout dispatch, weight-vector / binding-axis, 1 child per trajectory |
 | [`odysseus/agents/prompts/review_agent_cold_start_overlay_hillclimb.md`](../odysseus/agents/prompts/review_agent_cold_start_overlay_hillclimb.md) | Cold-start overlay for `hill_climb` — round-1 batch, initial prompt parent |
-| [`odysseus/agents/prompts/review_agent_cold_start_overlay_beam.md`](../odysseus/agents/prompts/review_agent_cold_start_overlay_beam.md) | Cold-start overlay for `beam` — K = beam_width, diversity spans cost regions |
-| [`odysseus/agents/prompts/review_agent_warmup_overlay_sms_emoa.md`](../odysseus/agents/prompts/review_agent_warmup_overlay_sms_emoa.md) | Cold-start overlay for `sms_emoa` — warmup_seed phase, K = mu, no recombination yet |
-| [`odysseus/agents/prompts/review_agent_cold_start_overlay_emosa.md`](../odysseus/agents/prompts/review_agent_cold_start_overlay_emosa.md) | Cold-start overlay for `emosa` — calibration phase, K = #trajectories, per-trajectory pinning |
 
 ### Resources
 
@@ -282,22 +272,15 @@ The Review Agent prompt is assembled at dispatch time from three layers: a share
 | `odysseus://agents/backend-setup/defaults` | Backend defaults and pricing resolution | [`odysseus/agents/backend_setup_defaults.md`](../odysseus/agents/backend_setup_defaults.md) |
 | `odysseus://agents/final-report/template` | Markdown skeleton for the final report — section order and placeholders | [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) |
 
-## 6. Cross-Branch Strategy Matrix
+## 6. Strategy Extension Points
 
-The `feat/generalize-pipeline` branch is the integration branch carrying everything strategy-neutral plus the `hill_climb` default. Each non-default search strategy lives on a dedicated branch cut from `feat/generalize-pipeline`. By design, a strategy branch's diff against `feat/generalize-pipeline` collapses to: one algorithm module, one dispatcher arm, preprocessor enrichment, optional phase/prompt extensions, plus (for EMOSA only) a `review_fanout_status` override.
+`feat/generalize-pipeline` is the integration branch carrying all strategy-neutral pipeline code plus the `hill_climb` default. Strategy-specific implementations live on dedicated branches cut from this branch.
 
 **Algorithm is hardcoded per branch.** `search_ops.py` exposes two module-level constants (`_BRANCH_ALGORITHM`, `_BRANCH_ALGORITHM_STATE`) that strategy branches flip. `init_search_state` always uses these constants — agents do not pass `algorithm` or `algorithm_state`. `search_state.json` is **auto-created at Stage 4 entry** by `_ensure_stage4_search_state` (called from `_next_action_for_stage_4` in `status.py`) before `_detect_stage_4_phase` runs, so cold-start sub-agents always find a real `SearchState` on disk.
 
-| Strategy | Branch | Algorithm module | Dispatcher arm | Preprocessor populate fn | Prompt overlays | Special seams |
-|---|---|---|---|---|---|---|
-| `hill_climb` | `feat/generalize-pipeline` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py), [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) | `_advance_hill_climb` ([`prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py)) | (default — no per-strategy fields) | `review_agent_iterative_overlay_hillclimb.md`, `review_agent_cold_start_overlay_hillclimb.md` | — |
-| `beam` | `feat/generalize-beam` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py) (Pareto / crowding distance / hypervolume / `prune_to_size` / `update_elite_set` cold-start floor / `validate_elite_set`) + `search_ops.py:advance_round_beam` | `_advance_beam` | `_populate_beam_review_fields` (beam_rank, crowding_distance, HV, ref_point, stagnation_signal) | `review_agent_iterative_overlay_beam.md`, `review_agent_cold_start_overlay_beam.md`, `review_agent_post_coldstart_base_system.md` | Round-2 derived phase `review_post_coldstart` (`status.py`) + 4-tier prompt assembly via `odysseus_review_agent_post_coldstart` |
-| `sms_emoa` | `feat/generalize-sms-emoa` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py) (`fast_non_dominated_sort` / `dynamic_reference_point` / `exclusive_hypervolume_contribution` / `reduce_population`) + `search_ops.py` (`reduce_iteration`, `advance_warmup_batch`) | `_advance_sms_emoa` (warmup vs steady-state sub-arms; `loop_phase ∈ {"warmup_seed", "warmup_build", "warmup_reduce", "review", "build"}`) | parent_a/b_version + stagnation_signal `{"hypervolume_history", "stagnation_window"}` | `review_agent_iterative_overlay_sms_emoa.md`, `review_agent_warmup_overlay_sms_emoa.md` | Warmup phases in `_detect_stage_4_phase` (`status.py`) |
-| `emosa` | `feat/generalize-emosa` | [`prompt_builder/annealing.py`](../odysseus/agents/prompt_builder/annealing.py) (TrajectoryState, AnnealingState, Tchebycheff, ASF, weight_vectors, metropolis, neighborhood, archive) + `search_ops.py` (calibration + steady-state) | `_advance_emosa` + calibration handler | trajectory_id, weight_vector, binding_axis, acceptance_history, stagnation_signal `{"temperature", "t_min", "review_exit"}` | `review_agent_iterative_overlay_emosa.md`, `review_agent_cold_start_overlay_emosa.md` | **`review_fanout_status` override** in [`pipeline/dispatch.py`](../odysseus/agents/pipeline/dispatch.py) — `algorithm="emosa"` arm delegates to `trajectory_fanout_missing` in [`review/ops.py`](../odysseus/agents/review/ops.py) for K-way per-trajectory fanout |
-
-Diff sizes against `feat/generalize-pipeline` (audit at C-phase tips, `odysseus/` only): beam 12 files / +788/-25; sms_emoa 8 files / +938/-17; emosa 11 files / +1684/-29. The EMOSA branch is the largest because the AnnealingState model and the K-way fanout override carry their own per-trajectory storage helpers in `review/ops.py`.
-
-The pre-generalization legacy branches `feature/parallel-beam-search`, `feature/sms-emoa`, and `feature/emosa` are kept intact for side-by-side testing against the generalized branches; do not delete or rebase them.
+| Strategy | Branch | Algorithm module | Dispatcher arm | Preprocessor populate fn | Prompt overlays |
+|---|---|---|---|---|---|
+| `hill_climb` | `feat/generalize-pipeline` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py), [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) | `_advance_hill_climb` ([`prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py)) | (default — no per-strategy fields) | `review_agent_iterative_overlay_hillclimb.md`, `review_agent_cold_start_overlay_hillclimb.md` |
 
 ## 7. Directory Guide
 

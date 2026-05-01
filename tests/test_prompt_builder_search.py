@@ -135,7 +135,7 @@ class TestCandidate:
     # ------------------------------------------------------------------
 
     def test_iteration_introduced_alias_maps_to_round_introduced(self) -> None:
-        """SMS-EMOA state files use iteration_introduced; it must map to round_introduced."""
+        """Legacy state files use iteration_introduced; it must map to round_introduced."""
         c = Candidate.model_validate(
             {
                 "prompt_version": "v1",
@@ -379,12 +379,12 @@ class TestSearchState:
         assert s.algorithm_state == {}
 
     def test_algorithm_can_be_set(self) -> None:
-        s = SearchState(**self._valid_state(algorithm="beam"))
-        assert s.algorithm == "beam"
+        s = SearchState(**self._valid_state(algorithm="hill_climb"))
+        assert s.algorithm == "hill_climb"
 
     def test_algorithm_state_can_be_set(self) -> None:
-        s = SearchState(**self._valid_state(algorithm_state={"beam_width": 4}))
-        assert s.algorithm_state == {"beam_width": 4}
+        s = SearchState(**self._valid_state(algorithm_state={"custom_key": 4}))
+        assert s.algorithm_state == {"custom_key": 4}
 
     def test_primary_metric_name_can_be_set(self) -> None:
         s = SearchState(**self._valid_state(primary_metric_name="f1_macro"))
