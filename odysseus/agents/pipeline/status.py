@@ -654,6 +654,22 @@ def _detect_stage_4_phase_sms_emoa(
         if active_evals:
             return "build_recovering"
 
+    # Defense-in-depth: if loop_phase is "build" but child_variants.json is
+    # absent AND build_dispatched.json is absent, the builder was never
+    # actually dispatched — flip back to "review" to prevent deadlock.
+    # Mirrors the hill-climb guard in _detect_stage_4_phase (lines ~602-613).
+    if (
+        loop_phase == "build"
+        and not _child_variants_present(search_dir / "child_variants.json")
+        and not _is_build_dispatched(run_dir.name, search_dir)
+    ):
+        logger.warning(
+            "loop_phase='build' but child_variants.json and build_dispatched.json absent "
+            "in %s/search/ — defense-in-depth re-flip to 'review'",
+            run_dir,
+        )
+        loop_phase = "review"
+
     # Steady-state (warm-up complete): trust loop_phase directly.
     if warm_up_complete:
         return loop_phase
