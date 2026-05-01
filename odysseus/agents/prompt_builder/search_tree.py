@@ -96,9 +96,8 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     if not isinstance(state_data, dict):
         raise FileNotFoundError(f"search_state.json not found in {search_dir}")
 
-    archive = load_json(search_dir / "candidate_archive.json")
-    if not isinstance(archive, list):
-        raise FileNotFoundError(f"candidate_archive.json not found in {search_dir}")
+    archive_loaded = load_json(search_dir / "candidate_archive.json")
+    archive: list = archive_loaded if isinstance(archive_loaded, list) else []
 
     pending_loaded = load_json(search_dir / "pending_candidates.json")
     pending: list = pending_loaded if isinstance(pending_loaded, list) else []
@@ -116,7 +115,14 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     elite_set_versions = [e["prompt_version"] for e in elite_entries]
     archive_versions = [e["prompt_version"] for e in archive]
     pending_versions = [p["prompt_version"] for p in pending if p.get("eval_status") == "scored"]
-    all_versions = list(dict.fromkeys(elite_set_versions + archive_versions + pending_versions))
+
+    # Ghost candidates: evaluated (eval/<v>/report.json exists) but not in
+    # elite_set, archive, or pending — recover from the eval directory.
+    # Lineage (parent_version) is lost for ghosts; they render as orphans.
+    eval_versions: list[str] = []
+    if eval_dir.exists():
+        eval_versions = sorted(p.name for p in eval_dir.iterdir() if (p / "report.json").exists())
+    all_versions = list(dict.fromkeys(elite_set_versions + archive_versions + pending_versions + eval_versions))
 
     reductions = _build_reduction_lookup_from_evals(eval_dir, all_versions)
 
@@ -127,6 +133,18 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
             v = e["prompt_version"]
             if v not in source_entries:
                 source_entries[v] = e
+
+    for v in eval_versions:
+        if v in source_entries:
+            continue
+        source_entries[v] = {
+            "prompt_version": v,
+            "parent_version": None,
+            "secondary_parent_version": None,
+            "quality_score": 0.0,
+            "iteration_introduced": 0,
+            "eval_status": "scored",
+        }
 
     candidates: list[dict] = []
     seen: set[str] = set()

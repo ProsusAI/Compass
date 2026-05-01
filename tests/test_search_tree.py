@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from odysseus.agents.prompt_builder.search_tree import collect_data
 
 
@@ -239,15 +237,70 @@ class TestCollectDataFromArchive:
         assert c["version"] == "cv-0-0"
         assert c["score"] == 0.0  # no eval report → zeroed metrics
 
-    def test_raises_when_archive_missing(self, tmp_path: Path) -> None:
-        """collect_data raises FileNotFoundError when candidate_archive.json is absent."""
+    def test_collect_data_succeeds_without_archive(self, tmp_path: Path) -> None:
+        """collect_data succeeds when candidate_archive.json is absent; falls back to empty list."""
         search_dir = tmp_path / "search"
-        state = {"search_state_id": "x", "backend": "b"}
-        _write_json(search_dir / "search_state.json", state)
-        # No archive file
+        eval_dir = tmp_path / "eval"
 
-        with pytest.raises(FileNotFoundError):
-            collect_data(search_dir, run_dir=tmp_path)
+        pending_candidate = _make_candidate("cv-0-0", None, 0)
+        pending_candidate["eval_status"] = "scored"
+
+        state = {
+            "search_state_id": "x",
+            "backend": "b",
+            "elite_set": [],
+            "iteration": 0,
+            "algorithm": "sms_emoa",
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "pending_candidates.json", [pending_candidate])
+        # No candidate_archive.json written
+
+        _write_json(eval_dir / "cv-0-0" / "report.json", _make_eval_report())
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        assert len(data["candidates"]) == 1
+        assert data["candidates"][0]["version"] == "cv-0-0"
+
+    def test_collect_data_surfaces_ghost_candidates_from_eval_dir(self, tmp_path: Path) -> None:
+        """Candidates only in eval/<v>/report.json (ghosts) appear with parent=None and report metrics."""
+        search_dir = tmp_path / "search"
+        eval_dir = tmp_path / "eval"
+
+        state = {
+            "search_state_id": "ghost-test",
+            "backend": "anthropic",
+            "elite_set": [],
+            "iteration": 0,
+            "algorithm": "sms_emoa",
+        }
+        _write_json(search_dir / "search_state.json", state)
+        # No archive, no pending
+        _write_json(search_dir / "pending_candidates.json", [])
+
+        # Two ghost candidates only known from eval reports
+        _write_json(
+            eval_dir / "v1" / "report.json",
+            _make_eval_report(quality_change=0.05, cost_change=-0.1, predicted_cost=0.4),
+        )
+        _write_json(
+            eval_dir / "v2" / "report.json",
+            _make_eval_report(quality_change=0.08, cost_change=-0.15, predicted_cost=0.35),
+        )
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        versions = {c["version"] for c in data["candidates"]}
+        assert "v1" in versions
+        assert "v2" in versions
+
+        for c in data["candidates"]:
+            assert c["parent"] is None  # lineage unknown for ghosts
+
+        # Scores are populated from the eval reports (non-zero quality_change)
+        v1_entry = next(c for c in data["candidates"] if c["version"] == "v1")
+        assert v1_entry["score"] != 0.0  # 0.05 quality_change from report
 
     def test_pareto_front_correct_in_synthesized_rounds(self, tmp_path: Path) -> None:
         """new_elite in a round should be candidates on the Pareto front at that iteration."""
