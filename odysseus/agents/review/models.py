@@ -5,13 +5,16 @@ See docs/superpowers/specs/2026-03-25-review-agent-design.md for the full spec.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.routing_context import RoutingContext
 from odysseus.eval.models import ScoreReport
+
+INITIAL_PARENT_VERSION: Final[str] = "base"
+"""Canonical parent_version for cold-start seed ChildVariants and round-1 candidates."""
 
 # ---------------------------------------------------------------------------
 # ReviewBriefing components
@@ -233,6 +236,8 @@ class ReviewBriefing(BaseModel):
     backtracking: bool = False
     confusion_analysis: list[ConfusionImpact] = Field(default_factory=list)
     child_variants: list[ChildVariant] = Field(default_factory=list)
+    # Canonical parent_version for cold-start / warm-up seeds. Read this instead of hard-coding "base".
+    initial_parent_version: str = INITIAL_PARENT_VERSION
 
     # Strategy-agnostic stagnation signal (populated by the strategy's preprocessor;
     # shape depends on the strategy — see below for per-strategy dict schemas).
@@ -302,7 +307,8 @@ class ChildVariant(BaseModel):
     ] | None = None
     parent_preference_class: str | None = None
     parent_preference_metric: str | None = None
-    parent_version: str | None = None  # assigned by algorithm after preference resolution
+    # resolved parent — cold-start: ReviewBriefing.initial_parent_version ("base"); iterative: per overlay
+    parent_version: str | None = None
     secondary_parent_preference: Literal[
         "best_quality", "best_cost",
         "weakest_on_class", "nearest_target",

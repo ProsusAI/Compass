@@ -118,6 +118,7 @@ class DispatchFanout:
 def review_fanout_status(
     run_id: str,
     *,
+    algorithm: str = "hill_climb",
     expected: int = 1,
     output_dir: Path | None = None,
 ) -> DispatchFanout:
@@ -129,6 +130,9 @@ def review_fanout_status(
 
     Args:
         run_id: Pipeline run identifier.
+        algorithm: Branch algorithm discriminator.  Must be ``"hill_climb"`` on
+            this branch; accepted explicitly so callers can pass
+            ``algorithm=_BRANCH_ALGORITHM`` without defaulting silently.
         expected: Number of sub-agents expected in this fanout.  Must be 1 on
             this branch; EMOSA passes K (number of trajectories).
         output_dir: Root output directory override (default: project outputs/).
@@ -141,6 +145,7 @@ def review_fanout_status(
         NotImplementedError: When ``expected > 1`` — multi-slot fanout requires
             a strategy override (implemented on the EMOSA branch).
     """
+    del algorithm  # accepted for interface parity; always hill_climb on this branch
     search_dir = _search_dir(run_id, output_dir)
     child_variants_path = search_dir / "child_variants.json"
     if expected == 1:
@@ -150,6 +155,4 @@ def review_fanout_status(
             return DispatchFanout(expected=1, in_flight=[0])
         return DispatchFanout(expected=1, not_dispatched=[0])
     # Multi-slot fanout is a strategy override (EMOSA replaces this function).
-    raise NotImplementedError(
-        f"review_fanout_status: expected={expected} fanout requires a strategy override"
-    )
+    raise NotImplementedError(f"review_fanout_status: expected={expected} fanout requires a strategy override")

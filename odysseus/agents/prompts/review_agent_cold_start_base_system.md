@@ -34,7 +34,7 @@ Only now bring directives into the picture. For each of the K diagnoses, produce
 
 - `hypothesis` restates the diagnosis from step 2: the boundary, the source of hardness, and what the prompt needs to make explicit. No numeric impact estimate.
 - `directives` are the minimum bundle (possibly spanning multiple directive types) that operationalises what the prompt needs to say or show in order to disambiguate the boundary.
-- `parent_version` per the overlay.
+- `parent_version` = `briefing.initial_parent_version` (the canonical seed parent; your overlay may override).
 - `parent_preference`: omit (leave null) — there is no elite set to resolve against in round 0.
 
 ### Self-check before emitting
