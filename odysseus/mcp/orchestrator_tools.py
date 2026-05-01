@@ -13,6 +13,7 @@ from odysseus.agents.pipeline.dispatch import (
 )
 from odysseus.agents.pipeline.guards import check_artifacts  # noqa: F401
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status
+from odysseus.agents.prompt_builder.search_ops import _BRANCH_ALGORITHM
 from odysseus.mcp.server import (
     _REVIEW_AGENT_PROMPT_NAMES,
     _STAGE_PROMPT_MAP,
@@ -160,9 +161,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
                     f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
                 ) from e
             except ValueError as e:
-                raise ToolError(
-                    f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}"
-                ) from e
+                raise ToolError(f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}") from e
 
     if result.get("subagent_instruction"):
         result["subagent_instruction"] = (
@@ -259,7 +258,7 @@ async def complete_stage(ctx: Context, run_id: str) -> str:  # noqa: ARG001
         )
 
     if previous == "review":
-        status = review_fanout_status(run_id, expected=1)
+        status = review_fanout_status(run_id, algorithm=_BRANCH_ALGORITHM)
         if not status.is_complete:
             raise ToolError(
                 f"Review fanout incomplete: missing={status.missing}. "

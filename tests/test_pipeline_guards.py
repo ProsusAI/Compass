@@ -115,12 +115,14 @@ _DISPATCH_PATCH = "odysseus.agents.pipeline.dispatch.get_project_dir"
 def _setup_stage_scope(stage_name: str) -> None:
     """Set the active MCP stage so complete_stage is callable."""
     from odysseus.mcp.server import set_active_stage
+
     set_active_stage(stage_name)
 
 
 def _teardown_stage_scope() -> None:
     """Reset MCP stage to orchestrator after a test."""
     from odysseus.mcp.server import set_active_stage
+
     set_active_stage("orchestrator")
 
 
@@ -203,6 +205,49 @@ class TestCompleteStageReviewGuard:
             with patch(_DISPATCH_PATCH, return_value=tmp_path):
                 result = await complete_stage(ctx, run_id="run1")
             assert "review" in result
+        finally:
+            _teardown_stage_scope()
+
+    async def test_hill_climb_passes_with_child_variants(self, tmp_path: Path) -> None:
+        """Regression: complete_stage('review') succeeds for hill_climb when child_variants.json present.
+
+        Verifies that _BRANCH_ALGORITHM='hill_climb' is passed to review_fanout_status
+        so it looks for the single-slot child_variants.json (not per-trajectory files).
+        """
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        search_dir = tmp_path / "outputs" / "run1" / "search"
+        search_dir.mkdir(parents=True)
+        (search_dir / "child_variants.json").write_text("[]")
+
+        _setup_stage_scope("review")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with patch(_DISPATCH_PATCH, return_value=tmp_path):
+                result = await complete_stage(ctx, run_id="run1")
+            assert "review" in result
+        finally:
+            _teardown_stage_scope()
+
+    async def test_hill_climb_fails_without_child_variants(self, tmp_path: Path) -> None:
+        """Regression: complete_stage('review') fails for hill_climb when child_variants.json absent.
+
+        Without child_variants.json the hill_climb fanout is incomplete (missing=[0])
+        and complete_stage must raise ToolError.
+        """
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        # No child_variants.json — fanout slot 0 is missing
+        _setup_stage_scope("review")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with (
+                patch(_DISPATCH_PATCH, return_value=tmp_path),
+                pytest.raises(ToolError, match="Review fanout incomplete"),
+            ):
+                await complete_stage(ctx, run_id="run1")
         finally:
             _teardown_stage_scope()
 
