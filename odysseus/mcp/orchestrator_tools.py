@@ -61,14 +61,7 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  a. Call get_pipeline_status(run_id=...) to get the next action\n"
         f"  b. If DISPATCH_REQUIRED is true → read subagent_instruction\n"
         f"  c. Call start_stage() as specified in the instruction\n"
-        f"  d. Spawn a sub-agent. The sub-agent's INITIAL USER MESSAGE MUST be the\n"
-        f"     `subagent_instruction` string VERBATIM — including the <HARD_STOP>\n"
-        f"     block and the <stage_system_prompt> block. Do NOT paraphrase,\n"
-        f"     summarise, rewrite, or add your own narration. Do NOT compose a\n"
-        f'     higher-level task (e.g. "run the whole Stage 4 loop", "evaluate\n'
-        f'     all N variants"): each dispatch is for ONE phase only. If you feel\n'
-        f"     the urge to rewrite the brief, stop — that means you're about to\n"
-        f"     violate the dispatch contract.\n"
+        f"  d. Spawn a sub-agent with the system prompt from <stage_system_prompt>\n"
         f"  e. After the sub-agent returns → call complete_stage()\n"
         f"  f. Call get_pipeline_status again → repeat until pipeline complete\n\n"
         f"USER INPUT MEDIATION (for stages that need user decisions):\n"

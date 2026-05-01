@@ -207,18 +207,14 @@ class TestSubagentInstruction:
         assert "stratified_split_tool" in instr
 
     def test_stage4_has_subagent_instruction(self, tmp_path: Path) -> None:
-        """Stage 4 first dispatch has a subagent instruction with review agent.
-
-        On the sms_emoa branch the first phase is warmup_seed (not cold_start),
-        so the activated prompt is odysseus_review_agent_warmup.
-        """
+        """Stage 4 cold-start has a subagent instruction with review agent."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "<HARD_STOP>" in instr
         assert "<stage_system_prompt>" in instr
-        assert result["activate_prompt"] == "odysseus_review_agent_warmup"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
     def test_stage4_available_tools_correct(self, tmp_path: Path) -> None:
         """Stage 4 cold-start available_tools should include review tools."""
@@ -260,25 +256,17 @@ class TestSubagentInstruction:
 
 
 class TestStage4ThreePhaseDetection:
-    """Stage 4 three-phase detection: warmup_seed -> warmup_build -> normal loop (sms_emoa)."""
+    """Stage 4 three-phase detection: cold-start -> build-v1 -> normal loop."""
 
-    def test_warmup_seed_when_no_files(self, tmp_path: Path) -> None:
-        """On sms_emoa branch the first dispatch is warmup_seed, not cold_start."""
+    def test_cold_start_when_no_files(self, tmp_path: Path) -> None:
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent_warmup"
-        assert "warm-up seed" in result["next_action"].lower()
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
+        assert "cold-start" in result["next_action"].lower()
 
-    def test_warmup_build_after_warmup_seed(self, tmp_path: Path) -> None:
-        """After warmup_seed directives emitted, phase is warmup_build (Prompt Builder)."""
-        _setup_through_stage3(tmp_path, "r1")
-        search = tmp_path / "r1" / "search"
-        search.mkdir(parents=True, exist_ok=True)
-        # child_variants.json with entries signals warmup_build on sms_emoa branch
-        import json as _json
-
-        (search / "child_variants.json").write_text(_json.dumps([{"run_id": "r1", "trajectory_id": "t1"}]))
+    def test_build_v1_after_cold_start(self, tmp_path: Path) -> None:
+        _setup_stage4_cold_start_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
         assert result["activate_prompt"] == "odysseus_prompt_builder"
@@ -506,10 +494,10 @@ class TestStage4RerunMode:
         assert "build_review_briefing_tool" not in tools
 
     def test_normal_stage4_unaffected_without_rerun_config(self, tmp_path: Path) -> None:
-        """Without rerun_config.json, Stage 4 uses warmup_seed detection (sms_emoa branch)."""
+        """Without rerun_config.json, Stage 4 still uses the three-phase detection."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["activate_prompt"] == "odysseus_review_agent_warmup"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
 
 class TestStage5FinalReport:
@@ -707,7 +695,7 @@ class TestEnsureStage4SearchState:
         assert data["round"] == 3
 
     def test_creates_search_state_when_absent(self, tmp_path: Path) -> None:
-        """First call should write search_state.json with the branch algorithm (sms_emoa)."""
+        """First call should write search_state.json with hill_climb algorithm."""
         run_dir = self._make_run_dir(tmp_path)
         self._make_project_dir_with_backend(tmp_path)
 
@@ -716,8 +704,8 @@ class TestEnsureStage4SearchState:
         search_state_path = run_dir / "search" / "search_state.json"
         assert search_state_path.is_file()
         data = json.loads(search_state_path.read_text())
-        assert data["algorithm"] == "sms_emoa"
-        assert data["algorithm_state"] == {"mu": 8}
+        assert data["algorithm"] == "hill_climb"
+        assert data["algorithm_state"] == {}
 
     def test_created_state_uses_priced_backend(self, tmp_path: Path) -> None:
         """Backend is resolved from backends/*.yaml (first priced one)."""
@@ -764,19 +752,16 @@ class TestEnsureStage4SearchState:
         data = json.loads((run_dir / "search" / "search_state.json").read_text())
         assert data["primary_metric_name"] is None
 
-    def test_detect_stage_4_phase_returns_warmup_seed_after_pre_init(self, tmp_path: Path) -> None:
-        """After pre-init, _detect_stage_4_phase returns 'warmup_seed' on the sms_emoa branch.
-
-        sms_emoa bypasses the hill-climb cold_start/build_v1 path and goes
-        straight to the warm-up sub-phases (warmup_seed → warmup_build → warmup_reduce).
-        """
+    def test_detect_stage_4_phase_returns_cold_start_after_pre_init(self, tmp_path: Path) -> None:
+        """After pre-init, _detect_stage_4_phase returns 'cold_start' when neither
+        directive_history nor a v1 prompt exist."""
         run_dir = self._make_run_dir(tmp_path)
         self._make_project_dir_with_backend(tmp_path)
 
-        # Pre-init creates search_state.json with algorithm="sms_emoa"
+        # Pre-init creates search_state.json
         _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
         assert (run_dir / "search" / "search_state.json").is_file()
 
-        # No child_variants, no pending → warmup_seed (first SMS-EMOA dispatch)
+        # No directive_history, no v1 → should still be cold_start
         phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "warmup_seed"
+        assert phase == "cold_start"

@@ -14,8 +14,6 @@ from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
-    advance_round_sms_emoa,
-    advance_warmup_batch,
     get_search_state,
     init_search_state,
     record_eval_result,
@@ -329,55 +327,14 @@ def _advance_hill_climb(run_id: str) -> str:
     return summary.model_dump_json(indent=2)
 
 
-def _advance_sms_emoa(run_id: str) -> str:
-    """SMS-EMOA arm of advance_step_tool.
-
-    Dispatches to ``advance_warmup_batch`` or ``advance_round_sms_emoa``
-    depending on ``state.loop_phase``:
-
-    - ``"warmup_reduce"`` → ``advance_warmup_batch``
-    - ``"review"`` or ``"build"`` → ``advance_round_sms_emoa``
-    - Any other phase → ``ValueError`` (defensive guard).
-
-    Returns a JSON-serialized RoundSummary and clears the build-dispatch marker.
-    """
-    from odysseus.agents.prompt_builder.search_ops import _default_output_dir, _load_state
-
-    output_dir = _default_output_dir()
-    try:
-        state = _load_state(run_id, output_dir)
-    except FileNotFoundError as exc:
-        raise ToolError(str(exc)) from exc
-
-    loop_phase = state.loop_phase
-    try:
-        if loop_phase == "warmup_reduce":
-            summary = advance_warmup_batch(run_id=run_id)
-        elif loop_phase in ("review", "build"):
-            summary = advance_round_sms_emoa(run_id=run_id)
-        else:
-            raise ValueError(
-                f"_advance_sms_emoa: unsupported loop_phase '{loop_phase}' — "
-                f"expected 'warmup_reduce', 'review', or 'build'"
-            )
-    except FileNotFoundError as exc:
-        raise ToolError(str(exc)) from exc
-    except (ValueError, RuntimeError) as exc:
-        raise ToolError(str(exc)) from exc
-
-    clear_build_dispatched(run_id)
-    return summary.model_dump_json(indent=2)
-
-
 @mcp.tool()
 async def advance_step_tool(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Advance the search loop by one step.
 
     Dispatches to the strategy-specific advance logic determined by the
-    ``algorithm`` field of the current SearchState.  Both ``"hill_climb"``
-    and ``"sms_emoa"`` are implemented on this branch; ``"beam"`` and
-    ``"emosa"`` still raise NotImplementedError and will be wired when their
-    feature branches land.
+    ``algorithm`` field of the current SearchState.  On this branch only
+    ``"hill_climb"`` is implemented; other algorithms raise NotImplementedError
+    and will be wired in when their feature branches rebase onto main.
 
     Args:
         run_id: Pipeline run identifier.
@@ -393,8 +350,6 @@ async def advance_step_tool(run_id: str) -> str:
     algorithm = state.algorithm
     if algorithm == "hill_climb":
         return _advance_hill_climb(run_id)
-    elif algorithm == "sms_emoa":
-        return _advance_sms_emoa(run_id)
 
     raise NotImplementedError(f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch")
 

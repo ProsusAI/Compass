@@ -80,8 +80,6 @@ graph TD
 | `hypervolume`, `reference_point` | — | optional (beam, SMS-EMOA) |
 | `acceptance_rates` | — | optional (EMOSA) |
 | `reduce_case`, `evicted_version` | — | optional (SMS-EMOA) |
-| `hypervolume_delta`, `parent_a_version`, `parent_b_version`, `population_size` | — | optional (SMS-EMOA) |
-| `terminated`, `termination_reason` | — | optional (SMS-EMOA / beam) |
 | `temperature` | — | optional (EMOSA) |
 
 Old state files with `new_pareto_points` / `front_size` / `front_improvement` are migrated on load via a `model_validator(mode="before")`.
@@ -93,19 +91,7 @@ Top-level report from the Data Validation agent containing `SchemaFinding` list,
 Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Prompt Builder Agent.
 
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
-`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), and `ChildVariant` list.
-
-Strategy-specific optional fields on `ReviewBriefing` (`extra="ignore"` allows older briefings to load):
-
-| Field | Strategy | Description |
-|---|---|---|
-| `stagnation_signal` | all | Shape depends on strategy: hill-climb `{"count", "limit", "mutation_mode"}`; beam `{"hypervolume_delta", "backtrack_threshold"}`; sms-emoa `{"hypervolume_history", "stagnation_window"}` |
-| `parent_a_version`, `parent_b_version` | SMS-EMOA | Two parents sampled from population for recombination; populated by `_populate_sms_emoa_review_fields` |
-| `beam_rank`, `crowding_distance` | beam | Pareto rank (all 0) and crowding distance per prompt version; populated by `_populate_beam_review_fields` |
-| `hypervolume`, `reference_point` | beam, SMS-EMOA | Current hypervolume and reference point from `algorithm_state` pocket |
-| `trajectory_id`, `weight_vector`, `binding_axis`, `acceptance_history` | EMOSA | EMOSA-specific dispatch and annealing state |
-
-`ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_child_variants_tool`. `get_edit_directives_tool` is a back-compat helper that flattens all directives across variants into a single list.
+`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_child_variants_tool`. `get_edit_directives_tool` is a back-compat helper that flattens all directives across variants into a single list.
 
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
@@ -153,7 +139,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run; algorithm is hardcoded per branch — no `algorithm`/`algorithm_state` params | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `record_eval_result_tool` | Implemented | Record evaluation results for Pareto tracking | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
-| `advance_step_tool` | Implemented | Strategy-dispatched step advance: `"hill_climb"` closes round + checks convergence; `"sms_emoa"` handles warmup consolidation and steady-state μ+1→μ selection with budget termination | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
+| `advance_step_tool` | Implemented | Strategy-dispatched step advance; `"hill_climb"` arm closes round, updates elite set, checks convergence | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `get_search_state_tool` | Implemented | Load current search state | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `filter_holdout_dataset_tool` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder/holdout_filter.py`](../odysseus/agents/prompt_builder/holdout_filter.py) |
 | `get_child_variants_tool` | Implemented | Retrieve the current round's child variants (grouped directives per child prompt) for the Prompt Builder | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
