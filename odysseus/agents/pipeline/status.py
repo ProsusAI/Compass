@@ -17,9 +17,11 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_3_INSTRUCTION,
     STAGE_4_BUILD_INSTRUCTION,
     STAGE_4_BUILD_RECOVERING_INSTRUCTION,
+    STAGE_4_CALIBRATION_INSTRUCTION,
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
     STAGE_4_REVIEW_INSTRUCTION,
+    STAGE_4_REVIEW_INSTRUCTION_EMOSA,
     STAGE_5_INSTRUCTION,
 )
 from odysseus.project_dir import get_project_dir
@@ -533,6 +535,9 @@ def _detect_stage_4_phase(
     (``"warmup_seed"``, ``"warmup_build"``, ``"warmup_reduce"``,
     ``"calibration"``, ``"build_recovering"``) for feature branches.
 
+    For ``algorithm == "emosa"`` the function uses the calibration-aware
+    detection path (no cold_start/build_v1 phases).
+
     Defense-in-depth: if the persisted ``loop_phase`` is ``"build"`` but
     neither ``child_variants.json`` nor ``build_dispatched.json`` exist on
     disk, the phase is re-interpreted as ``"review"`` to prevent deadlock.
@@ -541,8 +546,19 @@ def _detect_stage_4_phase(
         return "rerun"
 
     search_dir = run_dir / "search"
-    directive_history = search_dir / "directive_history.json"
     search_state_path = search_dir / "search_state.json"
+
+    # -----------------------------------------------------------------------
+    # EMOSA calibration-aware path
+    # -----------------------------------------------------------------------
+    algorithm = _read_algorithm_from_state(run_dir)
+    if algorithm == "emosa":
+        return _detect_stage_4_phase_emosa(run_dir, search_dir, search_state_path)
+
+    # -----------------------------------------------------------------------
+    # Hill-climb / default path (cold_start → build_v1 → normal loop)
+    # -----------------------------------------------------------------------
+    directive_history = search_dir / "directive_history.json"
     prompts_dir = run_dir / "prompts"
     has_v1 = prompts_dir.is_dir() and (
         any(prompts_dir.glob("v1.yaml")) or any(prompts_dir.glob("v1.json")) or any(prompts_dir.glob("v1.txt"))
@@ -598,6 +614,71 @@ def _detect_stage_4_phase(
     return loop_phase
 
 
+def _detect_stage_4_phase_emosa(
+    run_dir: Path,
+    search_dir: Path,
+    search_state_path: Path,
+) -> str:
+    """EMOSA calibration-aware phase detection sub-routine.
+
+    Returns one of: ``"calibration"``, ``"review"``, ``"build"``,
+    ``"build_recovering"``.
+    """
+    # No search state at all — calibration not yet started.
+    if not search_state_path.is_file():
+        return "calibration"
+
+    # Parse search state.
+    loop_phase = "calibration"
+    state_data: dict[str, Any] = {}
+    try:
+        state_data = json.loads(search_state_path.read_text())
+        raw_phase = state_data.get("loop_phase", "calibration")
+        if raw_phase not in _VALID_LOOP_PHASES:
+            logger.warning(
+                "Unexpected loop_phase '%s' in %s/search/search_state.json, defaulting to 'calibration'",
+                raw_phase,
+                run_dir,
+            )
+        else:
+            loop_phase = raw_phase
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
+
+    # Recovery detection: active_evals non-empty signals mid-build crash.
+    active_evals = state_data.get("active_evals", [])
+    if active_evals:
+        return "build_recovering"
+
+    # Calibration phase: trajectories not yet seeded.
+    if loop_phase == "calibration":
+        return "calibration"
+
+    # Defense-in-depth: if loop_phase is "build" but no per-trajectory
+    # child_variants_t*.json files exist AND build_dispatched.json is absent,
+    # the builder was never actually dispatched — flip back to "review" to
+    # prevent deadlock.  Mirrors the hill-climb guard at lines 599-610.
+    if (
+        loop_phase == "build"
+        and not any(search_dir.glob("child_variants_t*.json"))
+        and not _is_build_dispatched(run_dir.name, search_dir)
+    ):
+        logger.warning(
+            "loop_phase='build' but no child_variants_t*.json on disk and "
+            "build_dispatched.json absent in %s/search/ — defense-in-depth "
+            "re-flip to 'review'",
+            run_dir,
+        )
+        loop_phase = "review"
+
+    # Steady-state: trust loop_phase directly for review/build.
+    if loop_phase in {"review", "build"}:
+        return loop_phase
+
+    # Fallback: default to "build" (mirrors sms_emoa default for round 0).
+    return "build"
+
+
 def _read_algorithm_from_state(run_dir: Path) -> str:
     """Read the algorithm discriminator from search_state.json.
 
@@ -613,6 +694,29 @@ def _read_algorithm_from_state(run_dir: Path) -> str:
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         logger.warning("Failed to read algorithm from %s: %s", search_state_path, exc)
         return "hill_climb"
+
+
+def _read_trajectory_count(run_dir: Path) -> int:
+    """Read the number of EMOSA trajectories from search_state.json algorithm_state pocket.
+
+    Returns 3 (a safe default) when the state is absent or contains no trajectory data.
+    """
+    search_state_path = run_dir / "search" / "search_state.json"
+    if not search_state_path.is_file():
+        return 3
+    try:
+        data = json.loads(search_state_path.read_text())
+        pocket = data.get("algorithm_state") or {}
+        num = pocket.get("num_trajectories")
+        if num is not None:
+            return int(num)
+        # Fallback: count trajectories list length if present
+        trajectories = pocket.get("trajectories", [])
+        if trajectories:
+            return len(trajectories)
+    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+        logger.warning("Failed to read trajectory count from %s: %s", search_state_path, exc)
+    return 3
 
 
 def _ensure_stage4_search_state(run_dir: Path, project_dir: Path | None = None) -> None:
@@ -720,6 +824,72 @@ def _next_action_for_stage_4(
             algorithm,
         )
 
+    # EMOSA review phase: K-way parallel fanout — one sub-agent per trajectory.
+    # Format the instruction with trajectory count so the orchestrator knows how
+    # many sub-agents to spawn and can wait for all K completions.
+    if phase == "review" and algorithm == "emosa":
+        from odysseus.agents.review.ops import trajectory_fanout_missing
+
+        num_trajectories = _read_trajectory_count(run_dir)
+        review_instr = STAGE_4_REVIEW_INSTRUCTION_EMOSA.format(
+            run_id=run_dir.name,
+            num_trajectories=num_trajectories,
+            max_trajectory_id=num_trajectories - 1,
+        )
+
+        fanout = trajectory_fanout_missing(run_dir.name, output_dir=run_dir.parent)
+
+        if fanout is not None:
+            num_completed = len(fanout.completed)
+            num_in_flight = len(fanout.in_flight)
+            num_not_dispatched = len(fanout.not_dispatched)
+            num_trajectories_total = fanout.num_trajectories
+
+            if num_not_dispatched == num_trajectories_total and num_completed == 0 and num_in_flight == 0:
+                status_text = (
+                    f"Stage 4 — review phase: spawn {num_trajectories_total} Review Agent sub-agents "
+                    "in parallel (one per trajectory) to analyse eval results and emit child variants. "
+                    "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools."
+                )
+            elif num_not_dispatched > 0 and num_in_flight == 0:
+                status_text = (
+                    f"Stage 4 — review phase (partial, {num_completed}/{num_trajectories_total} completed): "
+                    f"dispatch Review Agent sub-agents for trajectory_id(s) {sorted(fanout.not_dispatched)}."
+                )
+                review_instr = review_instr + f"\nMISSING_TRAJECTORIES: {sorted(fanout.not_dispatched)}"
+            elif num_not_dispatched > 0 and num_in_flight > 0:
+                status_text = (
+                    f"Stage 4 — review phase (partial, {num_completed}/{num_trajectories_total} completed, "
+                    f"{num_in_flight} in flight): "
+                    f"dispatch missing trajectory_id(s) {sorted(fanout.not_dispatched)} in parallel; "
+                    f"do NOT respawn trajectory_id(s) {sorted(fanout.in_flight)} which are already dispatched."
+                )
+                review_instr = review_instr + f"\nMISSING_TRAJECTORIES: {sorted(fanout.not_dispatched)}"
+            else:
+                # All dispatched, some still in flight
+                status_text = (
+                    f"Stage 4 — review phase: all {num_trajectories_total} trajectories dispatched "
+                    f"({num_completed} completed, {num_in_flight} still running). "
+                    f"WAIT for in-flight agents to finish; "
+                    f"do NOT respawn trajectory_id(s) {sorted(fanout.in_flight)}. "
+                    f"Re-poll get_pipeline_status in 30-60s."
+                )
+        else:
+            # No algorithm_state yet (pre-calibration fallback)
+            status_text = (
+                f"Stage 4 — review phase: spawn {num_trajectories} Review Agent sub-agents "
+                "in parallel (one per trajectory) to analyse eval results and emit child variants. "
+                "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools."
+            )
+
+        return (
+            status_text,
+            _REVIEW_TOOLS,
+            ["odysseus_review_agent_iterative"],
+            review_instr,
+            algorithm,
+        )
+
     # All other phases use a static dispatch table.
     # Extended phases (warmup_*, calibration, build_recovering) are used by
     # feature branches; on main (hill-climb) they are never entered.  They are
@@ -787,12 +957,14 @@ def _next_action_for_stage_4(
         ),
         "warmup_build": _build_entry,
         "warmup_reduce": _build_entry,
+        # EMOSA calibration phase
         "calibration": (
-            "Stage 4 — calibration phase: spawn the Review Agent to seed trajectories. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _COLD_REVIEW_TOOLS,
-            ["odysseus_review_agent_cold_start"],
-            STAGE_4_COLD_START_INSTRUCTION,
+            "Stage 4 — calibration phase: spawn the Prompt Builder to emit K diverse seed prompts, "
+            "score them, and seed K EMOSA trajectories. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
+            _BUILD_TOOLS,
+            ["odysseus_prompt_builder"],
+            STAGE_4_CALIBRATION_INSTRUCTION,
             algorithm,
         ),
         "build_recovering": _build_recovering_entry,

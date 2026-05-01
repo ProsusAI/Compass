@@ -125,34 +125,42 @@ def review_fanout_status(
     """Read review-dispatch state from disk and report fanout completion.
 
     For the single-slot case (hill-climb / beam / sms-emoa), ``expected=1`` and
-    the fanout is complete iff ``child_variants.json`` exists.  EMOSA overrides
-    this on its branch to read per-trajectory marker files.
+    the fanout is complete iff ``child_variants.json`` exists.  For EMOSA, the
+    K-way path delegates to :func:`trajectory_fanout_missing` and returns a
+    multi-slot :class:`DispatchFanout`.
 
     Args:
         run_id: Pipeline run identifier.
-        algorithm: Branch algorithm discriminator.  Must be ``"hill_climb"`` on
-            this branch; accepted explicitly so callers can pass
-            ``algorithm=_BRANCH_ALGORITHM`` without defaulting silently.
-        expected: Number of sub-agents expected in this fanout.  Must be 1 on
-            this branch; EMOSA passes K (number of trajectories).
+        algorithm: Search algorithm discriminator.  When ``"emosa"``, uses the
+            per-trajectory fanout path; otherwise uses single-slot semantics.
+        expected: Number of sub-agents expected in this fanout.  Ignored for
+            EMOSA (derived from ``trajectory_fanout_missing``); must be 1 for
+            non-EMOSA algorithms.
         output_dir: Root output directory override (default: project outputs/).
 
     Returns:
         :class:`DispatchFanout` describing which slots are complete / in-flight /
         not dispatched.
-
-    Raises:
-        NotImplementedError: When ``expected > 1`` — multi-slot fanout requires
-            a strategy override (implemented on the EMOSA branch).
     """
-    del algorithm  # accepted for interface parity; always hill_climb on this branch
+    # EMOSA: K-way per-trajectory fanout
+    if algorithm == "emosa":
+        from odysseus.agents.review.ops import trajectory_fanout_missing
+
+        fanout = trajectory_fanout_missing(run_id, output_dir=output_dir)
+        if fanout is not None:
+            return DispatchFanout(
+                expected=fanout.num_trajectories,
+                completed=fanout.completed,
+                in_flight=fanout.in_flight,
+                not_dispatched=fanout.not_dispatched,
+            )
+        # No algorithm_state yet — fall through to single-slot semantics (pre-calibration).
+
+    # Single-slot path (hill-climb / beam / sms-emoa, or EMOSA pre-calibration)
     search_dir = _search_dir(run_id, output_dir)
     child_variants_path = search_dir / "child_variants.json"
-    if expected == 1:
-        if child_variants_path.exists():
-            return DispatchFanout(expected=1, completed=[0])
-        if is_review_dispatched(run_id, output_dir):
-            return DispatchFanout(expected=1, in_flight=[0])
-        return DispatchFanout(expected=1, not_dispatched=[0])
-    # Multi-slot fanout is a strategy override (EMOSA replaces this function).
-    raise NotImplementedError(f"review_fanout_status: expected={expected} fanout requires a strategy override")
+    if child_variants_path.exists():
+        return DispatchFanout(expected=1, completed=[0])
+    if is_review_dispatched(run_id, output_dir):
+        return DispatchFanout(expected=1, in_flight=[0])
+    return DispatchFanout(expected=1, not_dispatched=[0])

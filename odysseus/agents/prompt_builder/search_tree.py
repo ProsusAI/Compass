@@ -19,6 +19,7 @@ def load_json(path: Path, default: dict | list | None = None) -> dict | list | N
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return default
 
+
 _STRATEGY_LABELS: dict[str | None, str] = {
     "parallel_beam": "Parallel Beam Search",
     "sms_emoa": "SMS-EMOA",
@@ -34,7 +35,24 @@ def _algorithm_chips(state_data: dict) -> list[dict]:
     if algo == "sms_emoa":
         mu = pocket.get("mu") or state_data.get("mu")  # legacy fallback
         return [{"label": "population (μ)", "value": mu}] if mu is not None else []
-    # beam / emosa adapters added in Phase C
+    if algo == "emosa":
+        chips = []
+        num_trajectories = pocket.get("num_trajectories")
+        if num_trajectories is not None:
+            chips.append({"label": "traj", "value": str(num_trajectories)})
+        trajectories_pocket = pocket.get("trajectories", []) or []
+        temps = [t.get("temperature") for t in trajectories_pocket if t.get("temperature") is not None]
+        if temps:
+            chips.append({"label": "T", "value": f"{min(temps):.2e}–{max(temps):.2e}"})
+        steps = [t.get("step_count") for t in trajectories_pocket if t.get("step_count") is not None]
+        if steps:
+            chips.append({"label": "step", "value": f"{min(steps)}–{max(steps)}"})
+        total_evals = pocket.get("total_evals")
+        max_evals = pocket.get("max_evals")
+        if total_evals is not None and max_evals is not None:
+            chips.append({"label": "evals", "value": f"{total_evals}/{max_evals}"})
+        return chips
+    # beam adapter added in Phase C
     return []
 
 

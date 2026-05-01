@@ -80,21 +80,53 @@ class TestSearchStateTools:
             assert data["converged"] is False
 
     async def test_full_round_lifecycle(self, tmp_path: Path) -> None:
+        """EMOSA calibration lifecycle: init K=5 state, register+score K candidates, advance."""
+        import json as _json
+
+        from odysseus.agents.prompt_builder.annealing import (
+            AnnealingState,
+            TrajectoryState,
+            compute_weight_vectors,
+        )
+        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
+
         _setup_guard_artifacts(tmp_path, stage="search")
+        output_dir = tmp_path / "outputs"
         with _patch_project_dir(tmp_path):
-            # Init -> Register -> Record -> Advance -> Get
-            init_result = json.loads(await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test"))
+            # Init -> patch to calibration phase -> Register K=5 candidates -> Record -> Advance -> Get
+            init_result = _json.loads(await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test"))
             assert "search_state_id" in init_result
 
-            await register_candidate_tool(_RUN_ID, "v1")
-            await record_eval_result_tool(_RUN_ID, "v1", 0.85, 0.12)
+            # Patch persisted state to calibration phase with full AnnealingState pocket
+            num_traj = 5
+            wvs = compute_weight_vectors(num_traj)
+            trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
+            annealing = AnnealingState(
+                num_trajectories=num_traj, trajectories=trajs, phase="calibration", total_evals=0
+            )
+            state = _load_state(_RUN_ID, output_dir)
+            patched = state.model_copy(
+                update={
+                    "algorithm_state": _json.loads(annealing.model_dump_json()),
+                    "loop_phase": "calibration",
+                }
+            )
+            _save_state(_RUN_ID, patched, output_dir)
 
-            adv = json.loads(await advance_step_tool(_RUN_ID))
+            for i in range(num_traj):
+                await register_candidate_tool(_RUN_ID, f"v{i + 1}")
+                # Use scores where each candidate trades off on a different objective,
+                # so all K are mutually non-dominated (Pareto front has K entries).
+                # v_i: quality = 0.5 + 0.1*i (increasing), cost = 0.1 + 0.1*i (increasing).
+                # No candidate dominates another: higher quality always comes with higher cost.
+                await record_eval_result_tool(_RUN_ID, f"v{i + 1}", 0.5 + i * 0.1, 0.1 + i * 0.1)
+
+            adv = _json.loads(await advance_step_tool(_RUN_ID))
             assert adv["round"] == 1
-            assert adv["new_elite_entries"] == 1
+            assert adv["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
 
-            state = json.loads(await get_search_state_tool(_RUN_ID))
-            assert state["round"] == 1
+            state_after = _json.loads(await get_search_state_tool(_RUN_ID))
+            assert state_after["round"] == 1
 
     async def test_register_candidate_returns_confirmation(self, tmp_path: Path) -> None:
         _setup_guard_artifacts(tmp_path, stage="search")
@@ -152,25 +184,51 @@ class TestSearchStateTools:
         with _patch_project_dir(tmp_path), pytest.raises(ToolError):
             await get_search_state_tool("nonexistent-id")
 
-    async def test_multiple_rounds_stagnation(self, tmp_path: Path) -> None:
-        """Two rounds with same-quality candidates accumulates stagnation."""
+    async def test_calibration_advance_flips_to_review(self, tmp_path: Path) -> None:
+        """EMOSA calibration: after K=5 candidates are scored and advance_step runs,
+        loop_phase flips from 'calibration' to 'review'."""
+        import json as _json
+
+        from odysseus.agents.prompt_builder.annealing import (
+            AnnealingState,
+            TrajectoryState,
+            compute_weight_vectors,
+        )
+        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
+
         _setup_guard_artifacts(tmp_path, stage="search")
+        output_dir = tmp_path / "outputs"
         with _patch_project_dir(tmp_path):
             await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend="test", stagnation_limit=2)
 
-            # Round 1: new candidate improves front
-            await register_candidate_tool(_RUN_ID, "v1")
-            await record_eval_result_tool(_RUN_ID, "v1", 0.8, 0.1)
-            r1 = json.loads(await advance_step_tool(_RUN_ID))
-            assert r1["new_elite_entries"] == 1
-            assert r1["stagnation_count"] == 0
+            # Patch to calibration phase with full AnnealingState pocket
+            num_traj = 5
+            wvs = compute_weight_vectors(num_traj)
+            trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
+            annealing = AnnealingState(
+                num_trajectories=num_traj, trajectories=trajs, phase="calibration", total_evals=0
+            )
+            state = _load_state(_RUN_ID, output_dir)
+            patched = state.model_copy(
+                update={
+                    "algorithm_state": _json.loads(annealing.model_dump_json()),
+                    "loop_phase": "calibration",
+                }
+            )
+            _save_state(_RUN_ID, patched, output_dir)
 
-            # Round 2: dominated candidate - no improvement
-            await register_candidate_tool(_RUN_ID, "v2")
-            await record_eval_result_tool(_RUN_ID, "v2", 0.5, 0.5)
-            r2 = json.loads(await advance_step_tool(_RUN_ID))
-            assert r2["new_elite_entries"] == 0
-            assert r2["stagnation_count"] == 1
+            # Register and score K=5 candidates with mutually non-dominated scores
+            for i in range(num_traj):
+                await register_candidate_tool(_RUN_ID, f"v{i + 1}")
+                # Trade-off: higher quality = higher cost; no candidate dominates another.
+                await record_eval_result_tool(_RUN_ID, f"v{i + 1}", 0.5 + i * 0.1, 0.1 + i * 0.1)
+
+            r1 = json.loads(await advance_step_tool(_RUN_ID))
+            assert r1["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
+
+            # After calibration completes, loop_phase should flip to 'review'
+            state_after = _json.loads(await get_search_state_tool(_RUN_ID))
+            assert state_after["loop_phase"] == "review"
 
 
 class TestFilterHoldoutTool:
@@ -294,18 +352,22 @@ class TestEditDirectivesPersistence:
                 ctx=None,
                 run_id=_RUN_ID,
                 outcomes=[],
-                child_variants=[{
-                    "hypothesis": "Add a clearer boundary example",
-                    "directives": [{
-                        "directive_id": "d1",
-                        "target_version": "v1",
-                        "block_type": "example",
-                        "block_identifier": "Example 1",
-                        "granularity": "macro",
-                        "directive": "Add example",
-                        "priority": "high",
-                    }],
-                }],
+                child_variants=[
+                    {
+                        "hypothesis": "Add a clearer boundary example",
+                        "directives": [
+                            {
+                                "directive_id": "d1",
+                                "target_version": "v1",
+                                "block_type": "example",
+                                "block_identifier": "Example 1",
+                                "granularity": "macro",
+                                "directive": "Add example",
+                                "priority": "high",
+                            }
+                        ],
+                    }
+                ],
                 output_dir=str(tmp_path / "outputs"),
             )
 
@@ -449,3 +511,164 @@ class TestEditDirectivesPersistence:
             assert data[0]["hypothesis"] == "Add a clearer boundary example"
             assert len(data[0]["directives"]) == 1
             assert data[0]["directives"][0]["directive_id"] == "d1"
+
+
+class TestTrajectoryChildVariantsFallback:
+    """Tests for EMOSA per-trajectory child variant source-resolution precedence."""
+
+    @pytest.mark.asyncio
+    async def test_get_child_variants_prefers_trajectory_files(self, tmp_path: Path) -> None:
+        """When per-trajectory files exist, get_child_variants_tool returns them in trajectory_id order."""
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants, save_trajectory_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+
+            # Write three per-trajectory files (t0, t1, t2)
+            for tid, hyp, did in [
+                (0, "Trajectory 0 variant", "t0_d1"),
+                (1, "Trajectory 1 variant", "t1_d1"),
+                (2, "Trajectory 2 variant", "t2_d1"),
+            ]:
+                variant = ChildVariant(
+                    hypothesis=hyp,
+                    directives=[
+                        EditDirective(
+                            directive_id=did,
+                            target_version="v1",
+                            block_type="example",
+                            block_identifier="Example 1",
+                            granularity="macro",
+                            directive="Add example",
+                            priority="high",
+                        ),
+                    ],
+                )
+                save_trajectory_child_variants(_RUN_ID, tid, [variant], output_dir=tmp_path / "outputs")
+
+            # Write a stale single-slot file with a clearly different variant
+            stale_variant = ChildVariant(
+                hypothesis="STALE single-slot variant — should be ignored",
+                directives=[
+                    EditDirective(
+                        directive_id="stale_d1",
+                        target_version="v1",
+                        block_type="rule",
+                        block_identifier="Rule 99",
+                        granularity="micro",
+                        directive="Stale edit",
+                        priority="low",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [stale_variant], output_dir=tmp_path / "outputs")
+
+            result = await get_child_variants_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+
+            # Should return the three per-trajectory variants, not the stale one
+            assert len(data) == 3
+            hypotheses = [d["hypothesis"] for d in data]
+            assert "Trajectory 0 variant" in hypotheses
+            assert "Trajectory 1 variant" in hypotheses
+            assert "Trajectory 2 variant" in hypotheses
+            assert "STALE single-slot variant — should be ignored" not in hypotheses
+
+            # Returned in trajectory_id order (t0, t1, t2)
+            assert hypotheses == ["Trajectory 0 variant", "Trajectory 1 variant", "Trajectory 2 variant"]
+
+            directive_ids = [d["directives"][0]["directive_id"] for d in data]
+            assert directive_ids == ["t0_d1", "t1_d1", "t2_d1"]
+
+    @pytest.mark.asyncio
+    async def test_get_edit_directives_prefers_trajectory_files(self, tmp_path: Path) -> None:
+        """get_edit_directives_tool must also use per-trajectory files when present."""
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants, save_trajectory_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+
+            for tid, did in [(0, "t0_d1"), (1, "t1_d1")]:
+                variant = ChildVariant(
+                    hypothesis=f"Trajectory {tid}",
+                    directives=[
+                        EditDirective(
+                            directive_id=did,
+                            target_version="v1",
+                            block_type="example",
+                            block_identifier="Example 1",
+                            granularity="macro",
+                            directive="Add example",
+                            priority="high",
+                        ),
+                    ],
+                )
+                save_trajectory_child_variants(_RUN_ID, tid, [variant], output_dir=tmp_path / "outputs")
+
+            # Write stale single-slot file
+            stale_variant = ChildVariant(
+                hypothesis="STALE",
+                directives=[
+                    EditDirective(
+                        directive_id="stale_d1",
+                        target_version="v1",
+                        block_type="rule",
+                        block_identifier="Rule 1",
+                        granularity="micro",
+                        directive="Stale",
+                        priority="low",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [stale_variant], output_dir=tmp_path / "outputs")
+
+            result = await get_edit_directives_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+
+            directive_ids = [d["directive_id"] for d in data]
+            assert "stale_d1" not in directive_ids
+            assert directive_ids == ["t0_d1", "t1_d1"]
+
+    @pytest.mark.asyncio
+    async def test_get_child_variants_falls_back_to_single_slot(self, tmp_path: Path) -> None:
+        """When no per-trajectory files exist, get_child_variants_tool returns single-slot variants."""
+        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from odysseus.agents.review.ops import save_child_variants
+
+        with _patch_project_dir(tmp_path):
+            _setup_guard_artifacts(tmp_path, stage="search")
+            variant = ChildVariant(
+                hypothesis="Single-slot variant",
+                directives=[
+                    EditDirective(
+                        directive_id="single_d1",
+                        target_version="v1",
+                        block_type="example",
+                        block_identifier="Example 1",
+                        granularity="macro",
+                        directive="Edit",
+                        priority="medium",
+                    ),
+                ],
+            )
+            save_child_variants(_RUN_ID, [variant], output_dir=tmp_path / "outputs")
+
+            result = await get_child_variants_tool(
+                ctx=None,
+                run_id=_RUN_ID,
+                output_dir=str(tmp_path / "outputs"),
+            )
+            data = json.loads(result)
+            assert len(data) == 1
+            assert data[0]["hypothesis"] == "Single-slot variant"
+            assert data[0]["directives"][0]["directive_id"] == "single_d1"

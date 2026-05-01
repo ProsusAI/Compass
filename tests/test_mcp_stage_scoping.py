@@ -33,9 +33,47 @@ def test_stage_registry_has_all_stages():
         "prompt_building",
         "review_cold",
         "review",
+        "calibration",
         "final_report",
     }
     assert set(STAGE_REGISTRY) == expected
+
+
+def test_calibration_excludes_prompt_and_holdout_tools():
+    """calibration toolbelt must not include get_prompt_text_tool or query_holdout_examples_tool."""
+    calibration_tools = set(STAGE_REGISTRY["calibration"])
+    assert "get_prompt_text_tool" not in calibration_tools
+    assert "query_holdout_examples_tool" not in calibration_tools
+
+
+def test_calibration_includes_builder_tools():
+    """calibration toolbelt must include prompt-building tools for K-seed scoring."""
+    calibration_tools = set(STAGE_REGISTRY["calibration"])
+    expected_builder_tools = {
+        "init_search_state_tool",
+        "register_candidate_tool",
+        "run_batch_eval",
+        "record_eval_result_tool",
+        "advance_step_tool",
+        "save_prompt_tool",
+        "get_edit_directives_tool",
+        "signal_eval_complete_tool",
+    }
+    assert expected_builder_tools.issubset(calibration_tools), (
+        f"calibration stage missing builder tools: {expected_builder_tools - calibration_tools}"
+    )
+
+
+async def test_calibration_stage_filtering():
+    """set_active_stage('calibration') excludes get_prompt_text_tool and query_holdout_examples_tool."""
+    set_active_stage("calibration")
+    tools = await mcp.list_tools()
+    tool_names = {t.name for t in tools}
+    assert "get_prompt_text_tool" not in tool_names
+    assert "query_holdout_examples_tool" not in tool_names
+    # Builder tools must be included
+    assert "run_batch_eval" in tool_names
+    assert "advance_step_tool" in tool_names
 
 
 def test_review_cold_excludes_prompt_and_holdout_tools():
