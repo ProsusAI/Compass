@@ -93,9 +93,8 @@ def is_build_recovering(run_id: str, output_dir: str = "outputs") -> bool:
 class DispatchFanout:
     """Status of a fan-out dispatch (Review or Build).
 
-    For strategies with a single sub-agent per round (hill-climb, beam, sms-emoa),
-    this collapses to a degenerate one-slot fanout.  EMOSA uses a multi-slot
-    variant (one per trajectory).  The fanout helper shared with the orchestrator
+    For the single-sub-agent-per-round case (hill-climb), this collapses to a
+    degenerate one-slot fanout.  The fanout helper shared with the orchestrator
     asks: 'has the dispatch completed?'.
     """
 
@@ -124,17 +123,15 @@ def review_fanout_status(
 ) -> DispatchFanout:
     """Read review-dispatch state from disk and report fanout completion.
 
-    For the single-slot case (hill-climb / beam / sms-emoa), ``expected=1`` and
-    the fanout is complete iff ``child_variants.json`` exists.  EMOSA overrides
-    this on its branch to read per-trajectory marker files.
+    For the single-slot case (``expected=1``), the fanout is complete iff
+    ``child_variants.json`` exists.
 
     Args:
         run_id: Pipeline run identifier.
-        algorithm: Branch algorithm discriminator.  Must be ``"hill_climb"`` on
-            this branch; accepted explicitly so callers can pass
-            ``algorithm=_BRANCH_ALGORITHM`` without defaulting silently.
+        algorithm: Algorithm discriminator (accepted for interface parity; only
+            ``"hill_climb"`` is implemented on this branch).
         expected: Number of sub-agents expected in this fanout.  Must be 1 on
-            this branch; EMOSA passes K (number of trajectories).
+            this branch.
         output_dir: Root output directory override (default: project outputs/).
 
     Returns:
@@ -142,8 +139,7 @@ def review_fanout_status(
         not dispatched.
 
     Raises:
-        NotImplementedError: When ``expected > 1`` — multi-slot fanout requires
-            a strategy override (implemented on the EMOSA branch).
+        NotImplementedError: When ``expected > 1``.
     """
     del algorithm  # accepted for interface parity; always hill_climb on this branch
     search_dir = _search_dir(run_id, output_dir)
@@ -154,5 +150,4 @@ def review_fanout_status(
         if is_review_dispatched(run_id, output_dir):
             return DispatchFanout(expected=1, in_flight=[0])
         return DispatchFanout(expected=1, not_dispatched=[0])
-    # Multi-slot fanout is a strategy override (EMOSA replaces this function).
-    raise NotImplementedError(f"review_fanout_status: expected={expected} fanout requires a strategy override")
+    raise NotImplementedError(f"review_fanout_status: expected={expected} requires a strategy override")

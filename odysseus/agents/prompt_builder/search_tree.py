@@ -19,22 +19,12 @@ def load_json(path: Path, default: dict | list | None = None) -> dict | list | N
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return default
 
-_STRATEGY_LABELS: dict[str | None, str] = {
-    "parallel_beam": "Parallel Beam Search",
-    "sms_emoa": "SMS-EMOA",
-    "emosa": "EMOSA",
-    # extended in Phase C as overlays land
-}
+
+_STRATEGY_LABELS: dict[str | None, str] = {}
 
 
 def _algorithm_chips(state_data: dict) -> list[dict]:
-    """Return strategy-specific stat chips for the header. Adapters per algorithm."""
-    algo = state_data.get("algorithm")
-    pocket = state_data.get("algorithm_state", {})
-    if algo == "sms_emoa":
-        mu = pocket.get("mu") or state_data.get("mu")  # legacy fallback
-        return [{"label": "population (μ)", "value": mu}] if mu is not None else []
-    # beam / emosa adapters added in Phase C
+    """Return strategy-specific stat chips for the header."""
     return []
 
 
@@ -93,8 +83,8 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     # Resolve eval dir: prefer run_dir/eval, fall back to search_dir/../eval
     eval_dir = run_dir / "eval" if run_dir is not None else search_dir.parent / "eval"
 
-    # elite_set is the canonical unified field; population is a legacy SMS-EMOA state-file fallback
-    elite_entries = state_data.get("elite_set", state_data.get("population", []))  # legacy SMS-EMOA state-file fallback
+    # elite_set is the canonical unified field; population is a legacy state-file fallback
+    elite_entries = state_data.get("elite_set", state_data.get("population", []))  # legacy state-file fallback
     elite_versions = {c["prompt_version"] for c in elite_entries}
 
     # Build deduplicated candidate list from union of elite_set + archive + pending.
