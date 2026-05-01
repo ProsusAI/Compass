@@ -808,6 +808,9 @@ def advance_round_beam(
     if round_reports:
         save_round_report(run_id, state.round, round_reports, output_dir=output_dir)
 
+    # Persist scored candidates to archive before clearing pending.
+    _append_archive(run_id, scored_pending, output_dir)
+
     # Clear pending
     _save_pending(run_id, [], output_dir)
 
