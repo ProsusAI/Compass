@@ -353,9 +353,8 @@ async def advance_step_tool(run_id: str) -> str:
 
     Dispatches to the strategy-specific advance logic determined by the
     ``algorithm`` field of the current SearchState.  Both ``"hill_climb"``
-    and ``"beam"`` are implemented on this branch; ``"sms_emoa"`` and
-    ``"emosa"`` still raise NotImplementedError and will be wired when their
-    feature branches land.
+    and ``"beam"`` are implemented on this branch; other algorithms raise
+    NotImplementedError.
 
     Args:
         run_id: Pipeline run identifier.

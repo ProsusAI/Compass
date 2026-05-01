@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Type alias for algorithm discriminator
 # ---------------------------------------------------------------------------
 
-AlgorithmType = Literal["hill_climb"]
+AlgorithmType = Literal["hill_climb", "beam"]
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -342,7 +342,7 @@ def select_best(front: list[Candidate]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Beam search / SMS-EMOA elite set primitives
+# Beam search elite set primitives
 # ---------------------------------------------------------------------------
 
 

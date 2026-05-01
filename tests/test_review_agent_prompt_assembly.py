@@ -164,12 +164,6 @@ class TestOverlayFilenamePostColdstart:
     def test_beam_post_coldstart(self):
         assert _overlay_filename("beam", "post_coldstart") == "review_agent_iterative_overlay_beam"
 
-    def test_sms_emoa_post_coldstart(self):
-        assert _overlay_filename("sms_emoa", "post_coldstart") == "review_agent_iterative_overlay_sms_emoa"
-
-    def test_emosa_post_coldstart(self):
-        assert _overlay_filename("emosa", "post_coldstart") == "review_agent_iterative_overlay_emosa"
-
     def test_unknown_algorithm_post_coldstart_raises(self):
         with pytest.raises(ValueError, match="Unknown.*algorithm.*phase"):
             _overlay_filename("unknown_algo", "post_coldstart")  # type: ignore[arg-type]
@@ -193,7 +187,7 @@ def test_post_coldstart_prompt_contains_beam_overlay_marker():
     assert "# Iterative overlay — parallel beam" in prompt
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb", "beam"])
 def test_post_coldstart_prompt_smoke_all_algorithms(algorithm: str):
     """assemble_review_prompt returns a non-empty string for all post_coldstart combos."""
     prompt = assemble_review_prompt(algorithm, "post_coldstart")
@@ -201,7 +195,7 @@ def test_post_coldstart_prompt_smoke_all_algorithms(algorithm: str):
     assert "# Post-Cold-Start Review Override" in prompt
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb", "beam"])
 def test_post_coldstart_prompt_has_at_least_three_separators(algorithm: str):
     """post_coldstart prompt contains at least 3 horizontal rule separators (4 layers)."""
     prompt = assemble_review_prompt(algorithm, "post_coldstart")

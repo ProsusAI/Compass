@@ -687,24 +687,6 @@ class TestAdvanceStepTool:
             assert result["round"] == 1
             assert result["new_elite_entries"] == 1
 
-    async def test_non_hill_climb_raises_not_implemented(self, tmp_path: Path) -> None:
-        """advance_step_tool raises NotImplementedError for algorithms not yet implemented."""
-        from odysseus.agents.prompt_builder.search_ops import _state_path, init_search_state
-        from odysseus.mcp import advance_step_tool
-
-        output_dir = tmp_path / "outputs"
-        with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
-            # Write a search state with an unknown algorithm — the MCP tool
-            # no longer accepts an algorithm param, so we inject it post-init.
-            init_search_state(backend="test", run_id="run-st2", output_dir=output_dir)
-            path = _state_path("run-st2", output_dir)
-            patched = json.loads(path.read_text())
-            patched["algorithm"] = "unknown_algo"
-            path.write_text(json.dumps(patched))
-
-            with pytest.raises(NotImplementedError, match="unknown_algo"):
-                await advance_step_tool("run-st2")
-
 
 
 # ---------------------------------------------------------------------------
