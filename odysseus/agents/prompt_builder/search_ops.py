@@ -692,6 +692,9 @@ def _calibration_complete(
     _save_state(run_id, updated_state, output_dir)
     _try_write_viz(run_id, output_dir)
 
+    # Persist scored candidates to archive before clearing pending.
+    _append_archive(run_id, scored, output_dir)
+
     # Clear pending candidates
     _save_pending(run_id, [], output_dir)
 
@@ -1023,7 +1026,10 @@ def _advance_emosa_search(
     _save_state(run_id, updated_state, output_dir)
     _try_write_viz(run_id, output_dir)
 
-    # Archive pending, clear
+    # Persist scored candidates to archive before clearing pending.
+    _append_archive(run_id, scored_pending, output_dir)
+
+    # Clear pending
     _save_pending(run_id, [], output_dir)
 
     return summary
