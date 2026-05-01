@@ -21,7 +21,7 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
     STAGE_4_REVIEW_INSTRUCTION,
-    STAGE_4_REVIEW_INSTRUCTION_EMOSA,
+    STAGE_4_REVIEW_POST_COLDSTART_INSTRUCTION,
     STAGE_5_INSTRUCTION,
 )
 from odysseus.project_dir import get_project_dir
@@ -531,9 +531,14 @@ def _detect_stage_4_phase(
     """Detect which phase Stage 4 is in.
 
     Returns one of: ``"rerun"``, ``"cold_start"``, ``"build_v1"``,
-    ``"review"``, ``"build"``, or one of the extended phases
-    (``"warmup_seed"``, ``"warmup_build"``, ``"warmup_reduce"``,
-    ``"calibration"``, ``"build_recovering"``) for feature branches.
+    ``"review"``, ``"review_post_coldstart"``, ``"build"``, or one of the
+    extended phases (``"warmup_seed"``, ``"warmup_build"``,
+    ``"warmup_reduce"``, ``"calibration"``, ``"build_recovering"``) for
+    feature branches.
+
+    ``"review_post_coldstart"`` is a derived phase (not a raw on-disk value):
+    it is returned when ``loop_phase == "review"``, ``round == 1``, and
+    ``algorithm == "beam"``.
 
     For ``algorithm == "emosa"`` the function uses the calibration-aware
     detection path (no cold_start/build_v1 phases).
@@ -575,6 +580,8 @@ def _detect_stage_4_phase(
 
     # Phase 3: Normal loop — read loop_phase from search state
     loop_phase = "review"
+    search_round = 0
+    algorithm_value = "hill_climb"
     state_data: dict[str, Any] = {}
     if search_state_path.is_file():
         try:
@@ -588,6 +595,8 @@ def _detect_stage_4_phase(
                 )
             else:
                 loop_phase = raw_phase
+            search_round = int(state_data.get("round", 0))
+            algorithm_value = str(state_data.get("algorithm", "hill_climb"))
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
 
@@ -610,6 +619,9 @@ def _detect_stage_4_phase(
                 run_dir,
             )
             loop_phase = "review"
+
+    if loop_phase == "review" and search_round == 1 and algorithm_value == "beam":
+        return "review_post_coldstart"
 
     return loop_phase
 
@@ -945,6 +957,15 @@ def _next_action_for_stage_4(
             algorithm,
         ),
         "review": _review_entry,
+        "review_post_coldstart": (
+            "Stage 4 — post-cold-start review: spawn the Review Agent to analyse round-1 results "
+            "and emit exactly one child variant per protected parent. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
+            _REVIEW_TOOLS,
+            ["odysseus_review_agent_post_coldstart"],
+            STAGE_4_REVIEW_POST_COLDSTART_INSTRUCTION,
+            algorithm,
+        ),
         "build": _build_entry,
         # Extended phases — feature branches only; mapped to nearest equivalent
         "warmup_seed": (

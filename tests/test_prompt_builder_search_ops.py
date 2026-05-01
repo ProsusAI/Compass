@@ -697,15 +697,8 @@ class TestConvergenceReason:
 class TestAdvanceStepTool:
     """Tests for the advance_step_tool strategy-dispatch shape."""
 
-    async def test_emosa_arm_calibration_advance(self, tmp_path: Path) -> None:
-        """advance_step_tool with algorithm='emosa' (branch default) runs calibration
-        and produces a valid RoundSummary with K elite entries."""
-        from odysseus.agents.prompt_builder.annealing import (
-            AnnealingState,
-            TrajectoryState,
-            compute_weight_vectors,
-        )
-        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
+    async def test_beam_arm_behaves_like_advance_round(self, tmp_path: Path) -> None:
+        """advance_step_tool with algorithm='beam' produces a valid RoundSummary."""
         from odysseus.mcp import (
             advance_step_tool,
             init_search_state_tool,
@@ -722,31 +715,15 @@ class TestAdvanceStepTool:
             analysis_dir.mkdir(parents=True, exist_ok=True)
             (analysis_dir / "dev.jsonl").write_text("")
 
-            # Algorithm is hardcoded per branch (emosa on this branch)
+            # Algorithm is hardcoded per branch (beam on this branch)
             state_json = await init_search_state_tool(
                 ctx=None,
                 run_id="run-st1",
                 backend="test",
             )
             state_data = json.loads(state_json)
-            assert state_data["algorithm"] == "emosa"
-
-            # Patch state to calibration phase with full AnnealingState pocket
-            output_dir = tmp_path / "outputs"
-            num_traj = 5
-            wvs = compute_weight_vectors(num_traj)
-            trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
-            annealing = AnnealingState(
-                num_trajectories=num_traj, trajectories=trajs, phase="calibration", total_evals=0
-            )
-            state = _load_state("run-st1", output_dir)
-            patched = state.model_copy(
-                update={
-                    "algorithm_state": json.loads(annealing.model_dump_json()),
-                    "loop_phase": "calibration",
-                }
-            )
-            _save_state("run-st1", patched, output_dir)
+            assert state_data["algorithm"] == "beam"
+            assert state_data["algorithm_state"] == {"beam_width": 3}
 
             for i in range(num_traj):
                 await register_candidate_tool("run-st1", f"v{i + 1}")
@@ -757,6 +734,7 @@ class TestAdvanceStepTool:
             result = json.loads(result_json)
             assert result["round"] == 1
             assert result["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
+
 
 
 # ---------------------------------------------------------------------------

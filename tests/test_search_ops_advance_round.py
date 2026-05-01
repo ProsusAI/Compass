@@ -1,362 +1,190 @@
-"""Tests for advance_round_emosa in odysseus.agents.prompt_builder.search_ops.
+"""Integration tests for advance_round_beam cold-start elite-floor behaviour.
 
-Covers the calibration arm introduced in C3 commit 2/4.  Steady-state
-(``phase == "search"``) is deferred to C4 and tested here only via
-NotImplementedError assertions.
+Verifies that:
+- After round 1 (new_round == 1), all scored candidates survive regardless of
+  Pareto dominance (cold-start elite floor).
+- After round 2, standard Pareto competition applies across protected parents
+  and their children.
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
-
-import pytest
-
-from odysseus.agents.prompt_builder.annealing import (
-    AnnealingState,
-    TrajectoryState,
-    compute_tchebycheff_energy,
-    compute_weight_vectors,
-)
-from odysseus.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
 from odysseus.agents.prompt_builder.search_ops import (
-    _load_pending,
-    _load_state,
-    _save_pending,
-    _save_state,
-    advance_round_emosa,
+    advance_round_beam,
     get_search_state,
     init_search_state,
+    record_eval_result,
+    register_candidate,
 )
-
-_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
-_RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_annealing_state(num_trajectories: int = 5) -> AnnealingState:
-    """Build an AnnealingState in calibration phase with K unseeded trajectories."""
-    weight_vectors = compute_weight_vectors(num_trajectories)
-    trajectories = [TrajectoryState(trajectory_id=i, weight_vector=weight_vectors[i]) for i in range(num_trajectories)]
-    return AnnealingState(
-        num_trajectories=num_trajectories,
-        trajectories=trajectories,
-        phase="calibration",
-        total_evals=0,
-    )
-
-
-def _make_emosa_state(tmp_path: Path, run_id: str, num_trajectories: int = 5) -> SearchState:
-    """Init an emosa SearchState with a calibration-phase AnnealingState pocket.
-
-    Since Wave 2, init_search_state uses _BRANCH_ALGORITHM / _BRANCH_ALGORITHM_STATE
-    and no longer accepts algorithm / algorithm_state params.  We init, then patch the
-    persisted state to overwrite algorithm_state with the full AnnealingState (including
-    trajectories and phase='calibration') required by the calibration arm tests.
-    """
-    from odysseus.agents.prompt_builder.search_ops import _save_state
-
-    state = init_search_state(
-        backend="test",
-        run_id=run_id,
+def _register_and_score(
+    run_id: str,
+    prompt_version: str,
+    quality_score: float,
+    cost: float,
+    tmp_path,
+    parent_version: str | None = None,
+) -> None:
+    register_candidate(
+        run_id,
+        prompt_version,
+        parent_version=parent_version,
         output_dir=tmp_path,
     )
-    # Overwrite algorithm_state with a proper calibration-phase AnnealingState so
-    # advance_round_emosa sees the expected pocket structure.
-    annealing = _make_annealing_state(num_trajectories)
-    patched = state.model_copy(
-        update={
-            "algorithm_state": json.loads(annealing.model_dump_json()),
-            "loop_phase": "calibration",
-        }
+    record_eval_result(
+        run_id,
+        prompt_version,
+        quality_score=quality_score,
+        cost=cost,
+        output_dir=tmp_path,
     )
-    _save_state(run_id, patched, tmp_path)
-    return patched
 
 
-def _build_scored_pending(num: int) -> list[Candidate]:
-    """Build *num* scored Candidate objects with distinct quality/cost values."""
-    candidates = []
-    for i in range(num):
-        quality = 0.9 - i * 0.1  # 0.9, 0.8, 0.7, ... (decreasing)
-        cost = 0.01 + i * 0.02  # 0.01, 0.03, 0.05, ... (increasing)
-        candidates.append(
-            Candidate(
-                prompt_version=f"v{i + 1}",
-                parent_version=None,
-                quality_score=quality,
-                cost=cost,
-                round_introduced=1,
-                eval_status="complete",
-            )
+# ---------------------------------------------------------------------------
+# Cold-start floor: post-round-1 elite retains all candidates
+# ---------------------------------------------------------------------------
+
+
+class TestAdvanceRoundColdStartFloor:
+    def test_all_round1_candidates_survive_pareto_domination(self, tmp_path) -> None:
+        """Post-round-1 elite must contain all 3 candidates even when one dominates."""
+        run_id = "coldstart_test"
+        init_search_state(
+            backend="anthropic",
+            run_id=run_id,
+            output_dir=tmp_path,
         )
-    return candidates
+
+        # v1 strictly dominates v2 and v3 on both quality and cost.
+        _register_and_score(run_id, "v1", quality_score=0.95, cost=0.05, tmp_path=tmp_path)
+        _register_and_score(run_id, "v2", quality_score=0.70, cost=0.20, tmp_path=tmp_path)
+        _register_and_score(run_id, "v3", quality_score=0.60, cost=0.30, tmp_path=tmp_path)
+
+        summary = advance_round_beam(run_id, output_dir=tmp_path)
+        state = get_search_state(run_id, output_dir=tmp_path)
+
+        assert summary.round == 1
+        elite_versions = {c.prompt_version for c in state.elite_set}
+        assert elite_versions == {"v1", "v2", "v3"}, (
+            f"All round-1 strategies must survive; got {elite_versions}"
+        )
+
+    def test_round1_elite_size_equals_beam_width(self, tmp_path) -> None:
+        """Cold-start elite must retain all beam_width candidates."""
+        run_id = "coldstart_size"
+        init_search_state(
+            backend="anthropic",
+            run_id=run_id,
+            output_dir=tmp_path,
+        )
+
+        _register_and_score(run_id, "v1", quality_score=0.90, cost=0.10, tmp_path=tmp_path)
+        _register_and_score(run_id, "v2", quality_score=0.75, cost=0.25, tmp_path=tmp_path)
+        _register_and_score(run_id, "v3", quality_score=0.60, cost=0.40, tmp_path=tmp_path)
+
+        advance_round_beam(run_id, output_dir=tmp_path)
+        state = get_search_state(run_id, output_dir=tmp_path)
+
+        assert len(state.elite_set) == 3
 
 
 # ---------------------------------------------------------------------------
-# TestAdvanceRoundEmosaCalibration
+# Round 2: normal Pareto resumes over protected parents + children
 # ---------------------------------------------------------------------------
 
 
-class TestAdvanceRoundEmosaCalibration:
-    """Tests for advance_round_emosa calibration arm (phase == 'calibration')."""
+class TestAdvanceRoundNormalParetoResumesInRound2:
+    def test_dominated_parent_evicted_in_round2_when_child_dominates(self, tmp_path) -> None:
+        """By round 2, Pareto applies: a dominated round-1 strategy is evicted if its
+        child also dominates it and no child is strictly non-dominated by v1."""
+        run_id = "pareto_round2"
+        init_search_state(
+            backend="anthropic",
+            run_id=run_id,
+            output_dir=tmp_path,
+        )
 
-    def test_k5_full_seed_phase_flip(self, tmp_path: Path) -> None:
-        """K=5: calibration flips pocket phase to 'search' and loop_phase to 'review'."""
-        run_id = "emosa-c5-phase"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        scored = _build_scored_pending(5)
-        _save_pending(run_id, scored, tmp_path)
+        # Round 1: three cold-start candidates — v1 dominates v2 and v3.
+        _register_and_score(run_id, "v1", quality_score=0.95, cost=0.05, tmp_path=tmp_path)
+        _register_and_score(run_id, "v2", quality_score=0.70, cost=0.20, tmp_path=tmp_path)
+        _register_and_score(run_id, "v3", quality_score=0.60, cost=0.30, tmp_path=tmp_path)
 
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+        advance_round_beam(run_id, output_dir=tmp_path)  # round -> 1, cold-start elite = {v1, v2, v3}
 
+        # Round 2: one child per protected parent.
+        # v1c: improves on v1 (completely dominates v2, v3, and v2c, v3c).
+        # v2c: slightly better than v2 but still dominated by v1c.
+        # v3c: slightly better than v3 but still dominated by v1c.
+        _register_and_score(run_id, "v1c", quality_score=0.96, cost=0.04, tmp_path=tmp_path, parent_version="v1")
+        _register_and_score(run_id, "v2c", quality_score=0.71, cost=0.19, tmp_path=tmp_path, parent_version="v2")
+        _register_and_score(run_id, "v3c", quality_score=0.61, cost=0.29, tmp_path=tmp_path, parent_version="v3")
+
+        advance_round_beam(run_id, output_dir=tmp_path)  # round -> 2, normal Pareto
         state = get_search_state(run_id, output_dir=tmp_path)
-        pocket = AnnealingState.model_validate(state.algorithm_state)
-        assert pocket.phase == "search"
-        assert state.loop_phase == "review"
 
-    def test_k5_step_count_bumped_to_one(self, tmp_path: Path) -> None:
-        """K=5: per-trajectory step_count is initialised to 0 by calibration."""
-        run_id = "emosa-c5-step"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        _save_pending(run_id, _build_scored_pending(5), tmp_path)
+        assert state.round == 2
+        elite_versions = {c.prompt_version for c in state.elite_set}
+        # v1c dominates everything else — only v1c should survive.
+        assert "v1c" in elite_versions, "v1c must be on the front as the dominant candidate"
+        assert "v2" not in elite_versions, "v2 is dominated by v1c and must be evicted"
+        assert "v3" not in elite_versions, "v3 is dominated by v1c and must be evicted"
+        assert "v2c" not in elite_versions, "v2c is dominated by v1c"
+        assert "v3c" not in elite_versions, "v3c is dominated by v1c"
 
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+    def test_non_dominated_children_survive_in_round2(self, tmp_path) -> None:
+        """Children that occupy genuinely distinct Pareto positions survive round 2."""
+        run_id = "pareto_round2_diverse"
+        init_search_state(
+            backend="anthropic",
+            run_id=run_id,
+            output_dir=tmp_path,
+        )
 
+        # Round 1: v1 dominates v2 and v3 — all survive due to cold-start floor.
+        _register_and_score(run_id, "v1", quality_score=0.95, cost=0.20, tmp_path=tmp_path)
+        _register_and_score(run_id, "v2", quality_score=0.70, cost=0.20, tmp_path=tmp_path)
+        _register_and_score(run_id, "v3", quality_score=0.60, cost=0.30, tmp_path=tmp_path)
+
+        advance_round_beam(run_id, output_dir=tmp_path)
+
+        # Round 2: each parent gets a child.
+        # v1c: highest quality, moderate cost.
+        # v2c: moderate quality, very low cost (genuinely non-dominated).
+        # v3c: better than v3 but still dominated by v1c.
+        _register_and_score(run_id, "v1c", quality_score=0.96, cost=0.20, tmp_path=tmp_path, parent_version="v1")
+        _register_and_score(run_id, "v2c", quality_score=0.72, cost=0.05, tmp_path=tmp_path, parent_version="v2")
+        _register_and_score(run_id, "v3c", quality_score=0.61, cost=0.29, tmp_path=tmp_path, parent_version="v3")
+
+        advance_round_beam(run_id, output_dir=tmp_path)
         state = get_search_state(run_id, output_dir=tmp_path)
-        pocket = AnnealingState.model_validate(state.algorithm_state)
-        # Calibration seeds step_count=0 on each trajectory (no Metropolis steps yet)
-        for traj in pocket.trajectories:
-            assert traj.step_count == 0
 
-    def test_k5_total_evals_equals_k(self, tmp_path: Path) -> None:
-        """K=5: total_evals in pocket equals K after calibration."""
-        run_id = "emosa-c5-evals"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        _save_pending(run_id, _build_scored_pending(5), tmp_path)
+        elite_versions = {c.prompt_version for c in state.elite_set}
+        # v1c (high quality) and v2c (low cost) are both non-dominated.
+        assert "v1c" in elite_versions, "v1c is Pareto non-dominated"
+        assert "v2c" in elite_versions, "v2c is Pareto non-dominated (cheapest)"
+        # v3c is dominated by both — must be gone.
+        assert "v3c" not in elite_versions, "v3c is dominated and must be pruned"
 
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+    def test_stagnation_count_zero_on_round1(self, tmp_path) -> None:
+        """Stagnation count must be 0 after round 1 regardless of hypervolume change."""
+        run_id = "stagnation_round1"
+        init_search_state(
+            backend="anthropic",
+            run_id=run_id,
+            output_dir=tmp_path,
+        )
 
-        state = get_search_state(run_id, output_dir=tmp_path)
-        pocket = AnnealingState.model_validate(state.algorithm_state)
-        assert pocket.total_evals == 5
+        _register_and_score(run_id, "v1", quality_score=0.90, cost=0.10, tmp_path=tmp_path)
+        _register_and_score(run_id, "v2", quality_score=0.75, cost=0.25, tmp_path=tmp_path)
+        _register_and_score(run_id, "v3", quality_score=0.60, cost=0.40, tmp_path=tmp_path)
 
-    def test_k5_ideal_nadir_computed_correctly(self, tmp_path: Path) -> None:
-        """K=5: ideal=(best_quality, lowest_cost), nadir=(worst_quality, highest_cost)."""
-        run_id = "emosa-c5-ideal"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        scored = _build_scored_pending(5)
-        _save_pending(run_id, scored, tmp_path)
+        summary = advance_round_beam(run_id, output_dir=tmp_path)
 
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-        state = get_search_state(run_id, output_dir=tmp_path)
-        pocket = AnnealingState.model_validate(state.algorithm_state)
-
-        expected_ideal_q = max(c.quality_score for c in scored)
-        expected_ideal_c = min(c.cost for c in scored)
-        expected_nadir_q = min(c.quality_score for c in scored)
-        expected_nadir_c = max(c.cost for c in scored)
-
-        assert pocket.ideal_point == (expected_ideal_q, expected_ideal_c)
-        assert pocket.nadir_point == (expected_nadir_q, expected_nadir_c)
-
-    def test_k5_per_trajectory_current_energy_matches_tchebycheff(self, tmp_path: Path) -> None:
-        """Each trajectory's current_energy equals compute_tchebycheff_energy on its weight vector."""
-        run_id = "emosa-c5-energy"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        scored = _build_scored_pending(5)
-        _save_pending(run_id, scored, tmp_path)
-
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-        state = get_search_state(run_id, output_dir=tmp_path)
-        pocket = AnnealingState.model_validate(state.algorithm_state)
-
-        ideal = pocket.ideal_point
-        nadir = pocket.nadir_point
-
-        for traj in pocket.trajectories:
-            i = traj.trajectory_id
-            expected_energy = compute_tchebycheff_energy(
-                scored[i].quality_score,
-                scored[i].cost,
-                traj.weight_vector,
-                ideal,
-                nadir,
-            )
-            assert traj.current_energy == pytest.approx(expected_energy, rel=1e-9)
-
-    def test_k5_acceptance_history_is_true_for_all(self, tmp_path: Path) -> None:
-        """Calibration seeds each trajectory with acceptance_history=[True]."""
-        run_id = "emosa-c5-accept"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        _save_pending(run_id, _build_scored_pending(5), tmp_path)
-
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-        state = get_search_state(run_id, output_dir=tmp_path)
-        pocket = AnnealingState.model_validate(state.algorithm_state)
-        for traj in pocket.trajectories:
-            assert traj.acceptance_history == [True], (
-                f"trajectory {traj.trajectory_id} has acceptance_history={traj.acceptance_history!r}"
-            )
-
-    def test_k3_seeds_correctly_smaller_k(self, tmp_path: Path) -> None:
-        """K=3: smaller K still seeds all 3 trajectories correctly (K read from pocket)."""
-        run_id = "emosa-c3-small"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=3)
-        scored = _build_scored_pending(3)
-        _save_pending(run_id, scored, tmp_path)
-
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-        state = get_search_state(run_id, output_dir=tmp_path)
-        pocket = AnnealingState.model_validate(state.algorithm_state)
-
-        assert pocket.num_trajectories == 3
-        # Calibration seeds step_count=0 on each trajectory
-        for traj in pocket.trajectories:
-            assert traj.step_count == 0
-        assert pocket.total_evals == 3
-        assert pocket.phase == "search"
-        # All 3 trajectories seeded
-        for traj in pocket.trajectories:
-            assert traj.current_solution is not None
-            assert traj.current_energy is not None
-
-    def test_insufficient_scored_raises(self, tmp_path: Path) -> None:
-        """Fewer scored candidates than K raises ValueError with a clear message."""
-        run_id = "emosa-insuf"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        # Only 3 scored for a K=5 run
-        _save_pending(run_id, _build_scored_pending(3), tmp_path)
-
-        with pytest.raises(ValueError, match="num_trajectories"):
-            advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-    def test_search_phase_with_no_pending_raises_value_error(self, tmp_path: Path) -> None:
-        """phase == 'search' with no pending candidates raises ValueError (C4 implemented)."""
-        run_id = "emosa-search-no-pending"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-
-        # Manually flip phase to "search" in pocket (no pending saved)
-        state = _load_state(run_id, tmp_path)
-        pocket = dict(state.algorithm_state)
-        pocket["phase"] = "search"
-        updated = state.model_copy(update={"algorithm_state": pocket})
-        _save_state(run_id, updated, tmp_path)
-
-        with pytest.raises(ValueError, match="No pending candidates"):
-            advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-    def test_invalid_phase_raises_value_error(self, tmp_path: Path) -> None:
-        """An unrecognised phase value raises ValueError mentioning the bad phase."""
-        run_id = "emosa-bad-phase"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-
-        state = _load_state(run_id, tmp_path)
-        pocket = dict(state.algorithm_state)
-        pocket["phase"] = "bogus_phase"
-        updated = state.model_copy(update={"algorithm_state": pocket})
-        _save_state(run_id, updated, tmp_path)
-
-        with pytest.raises(ValueError, match="bogus_phase"):
-            advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-    def test_state_file_persisted_and_round_trippable(self, tmp_path: Path) -> None:
-        """After calibration, state file is readable and shows pocket updates."""
-        run_id = "emosa-persist"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        _save_pending(run_id, _build_scored_pending(5), tmp_path)
-
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-        # Round-trip: read state file directly and revalidate
-        state_path = tmp_path / run_id / "search" / "search_state.json"
-        assert state_path.exists(), "state file missing after calibration"
-        loaded = SearchState.model_validate_json(state_path.read_text(encoding="utf-8"))
-        pocket = AnnealingState.model_validate(loaded.algorithm_state)
-        assert pocket.phase == "search"
-        # Calibration seeds step_count=0 on each trajectory (no Metropolis steps yet)
-        for traj in pocket.trajectories:
-            assert traj.step_count == 0
-        assert loaded.loop_phase == "review"
-        assert loaded.round == 1
-
-    def test_round_summary_fields_populated(self, tmp_path: Path) -> None:
-        """RoundSummary returned has phase='search', ideal/nadir/step_count set."""
-        run_id = "emosa-summary"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        scored = _build_scored_pending(5)
-        _save_pending(run_id, scored, tmp_path)
-
-        summary = advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-        assert isinstance(summary, RoundSummary)
-        assert summary.phase == "search"
-        # After calibration, all trajectories have step_count=0 (sum=0)
-        assert summary.step_count == 0
-        assert summary.ideal_point is not None
-        assert summary.nadir_point is not None
-        # Verify ideal_point matches expected values
-        assert summary.ideal_point[0] == pytest.approx(max(c.quality_score for c in scored))
-        assert summary.ideal_point[1] == pytest.approx(min(c.cost for c in scored))
-
-    def test_pending_cleared_after_calibration(self, tmp_path: Path) -> None:
-        """Pending candidate list is emptied after calibration completes."""
-        run_id = "emosa-clear-pending"
-        _make_emosa_state(tmp_path, run_id, num_trajectories=5)
-        _save_pending(run_id, _build_scored_pending(5), tmp_path)
-
-        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
-
-        pending = _load_pending(run_id, tmp_path)
-        assert pending == []
-
-    async def test_advance_step_tool_emosa_calibration_arm(self, tmp_path: Path) -> None:
-        """advance_step_tool dispatches to _advance_emosa for algorithm='emosa' (branch default)."""
-        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
-        from odysseus.mcp import advance_step_tool, init_search_state_tool
-
-        annealing = _make_annealing_state(num_trajectories=3)
-        annealing_dict = json.loads(annealing.model_dump_json())
-
-        with (
-            patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            patch(_SEARCH_OPS_PATCH, return_value=tmp_path),
-        ):
-            analysis_dir = tmp_path / "outputs" / "emosa-tool" / "analysis"
-            analysis_dir.mkdir(parents=True, exist_ok=True)
-            (analysis_dir / "dev.jsonl").write_text("")
-
-            # init_search_state_tool no longer accepts algorithm/algorithm_state params;
-            # algorithm is hardcoded via _BRANCH_ALGORITHM (='emosa' on this branch).
-            await init_search_state_tool(
-                ctx=None,
-                run_id="emosa-tool",
-                backend="test",
-            )
-
-            # The tool writes state to outputs/<run_id>/search/ under project_dir
-            outputs_dir = tmp_path / "outputs"
-
-            # Overwrite algorithm_state with a proper K=3 calibration AnnealingState,
-            # and flip loop_phase to "calibration" (init defaults to "review").
-            state = _load_state("emosa-tool", outputs_dir)
-            updated = state.model_copy(update={"algorithm_state": annealing_dict, "loop_phase": "calibration"})
-            _save_state("emosa-tool", updated, outputs_dir)
-
-            # Populate pending in the outputs sub-path used by the tool
-            scored = _build_scored_pending(3)
-            _save_pending("emosa-tool", scored, outputs_dir)
-
-            result_json = await advance_step_tool("emosa-tool")
-            result = json.loads(result_json)
-            assert result["phase"] == "search"
-            # After calibration, all trajectories have step_count=0, so sum=0
-            assert result["step_count"] == 0
+        assert summary.stagnation_count == 0, (
+            f"Stagnation must be 0 after round 1; got {summary.stagnation_count}"
+        )

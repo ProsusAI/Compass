@@ -14,7 +14,7 @@ from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
-    advance_round_emosa,
+    advance_round_beam,
     get_search_state,
     init_search_state,
     record_eval_result,
@@ -328,36 +328,21 @@ def _advance_hill_climb(run_id: str) -> str:
     return summary.model_dump_json(indent=2)
 
 
-def _advance_emosa(run_id: str) -> str:
-    """EMOSA arm of advance_step_tool.
+def _advance_beam(run_id: str) -> str:
+    """Beam arm of advance_step_tool.
 
-    Dispatches to ``advance_round_emosa`` when ``loop_phase == "calibration"``.
-    Raises :exc:`NotImplementedError` for ``"review"`` and ``"build"`` phases
-    (steady-state advance lands in C4).
+    Runs hypervolume-based elite-set management (with cold-start floor on
+    round 1) and returns a JSON-serialized RoundSummary.
 
-    Returns a JSON-serialized RoundSummary and clears the build-dispatch marker.
+    Also clears the build-dispatch marker so the orchestrator knows the
+    Prompt Builder sub-agent has finished.
     """
-    from odysseus.agents.prompt_builder.search_ops import _default_output_dir, _load_state
-
-    output_dir = _default_output_dir()
     try:
-        state = _load_state(run_id, output_dir)
+        summary = advance_round_beam(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
-
-    loop_phase = state.loop_phase
-    try:
-        if loop_phase == "calibration":
-            summary = advance_round_emosa(run_id=run_id)
-        elif loop_phase in ("review", "build"):
-            raise NotImplementedError("EMOSA steady-state lands in C4")
-        else:
-            raise ValueError(f"unsupported loop_phase '{loop_phase}' for emosa")
-    except FileNotFoundError as exc:
+    except ValueError as exc:
         raise ToolError(str(exc)) from exc
-    except (ValueError, RuntimeError) as exc:
-        raise ToolError(str(exc)) from exc
-
     clear_build_dispatched(run_id)
     return summary.model_dump_json(indent=2)
 
@@ -368,7 +353,8 @@ async def advance_step_tool(run_id: str) -> str:
 
     Dispatches to the strategy-specific advance logic determined by the
     ``algorithm`` field of the current SearchState.  Both ``"hill_climb"``
-    and ``"emosa"`` are implemented on this branch.
+    and ``"beam"`` are implemented on this branch; other algorithms raise
+    NotImplementedError.
 
     Args:
         run_id: Pipeline run identifier.
@@ -384,8 +370,8 @@ async def advance_step_tool(run_id: str) -> str:
     algorithm = state.algorithm
     if algorithm == "hill_climb":
         return _advance_hill_climb(run_id)
-    elif algorithm == "emosa":
-        return _advance_emosa(run_id)
+    elif algorithm == "beam":
+        return _advance_beam(run_id)
 
     raise NotImplementedError(f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch")
 

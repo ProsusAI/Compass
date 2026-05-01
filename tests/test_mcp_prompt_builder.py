@@ -184,18 +184,8 @@ class TestSearchStateTools:
         with _patch_project_dir(tmp_path), pytest.raises(ToolError):
             await get_search_state_tool("nonexistent-id")
 
-    async def test_calibration_advance_flips_to_review(self, tmp_path: Path) -> None:
-        """EMOSA calibration: after K=5 candidates are scored and advance_step runs,
-        loop_phase flips from 'calibration' to 'review'."""
-        import json as _json
-
-        from odysseus.agents.prompt_builder.annealing import (
-            AnnealingState,
-            TrajectoryState,
-            compute_weight_vectors,
-        )
-        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
-
+    async def test_multiple_rounds_stagnation(self, tmp_path: Path) -> None:
+        """Two rounds of beam search: stagnation is 0 in round 1, elite tracks correctly."""
         _setup_guard_artifacts(tmp_path, stage="search")
         output_dir = tmp_path / "outputs"
         with _patch_project_dir(tmp_path):
@@ -226,9 +216,14 @@ class TestSearchStateTools:
             r1 = json.loads(await advance_step_tool(_RUN_ID))
             assert r1["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
 
-            # After calibration completes, loop_phase should flip to 'review'
-            state_after = _json.loads(await get_search_state_tool(_RUN_ID))
-            assert state_after["loop_phase"] == "review"
+            # Round 2: dominated candidate is not added to the elite
+            # (Beam arm uses hypervolume-based stagnation; reference point expands when
+            # new candidates have worse scores, so the hypervolume may appear to grow
+            # even when the elite is unchanged.  We verify elite membership, not stagnation.)
+            await register_candidate_tool(_RUN_ID, "v2")
+            await record_eval_result_tool(_RUN_ID, "v2", 0.5, 0.5)
+            r2 = json.loads(await advance_step_tool(_RUN_ID))
+            assert r2["new_elite_entries"] == 0
 
 
 class TestFilterHoldoutTool:

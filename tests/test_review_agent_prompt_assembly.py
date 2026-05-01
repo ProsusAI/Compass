@@ -156,3 +156,60 @@ def test_shared_base_does_not_contain_strategy_term(base_file: str, term: str):
         f"Strategy-specific term {term!r} found in shared base {base_file!r}. "
         "Shared bases must be strategy-agnostic; move strategy-specific content to overlays."
     )
+
+
+# ---------------------------------------------------------------------------
+# post_coldstart phase tests
+# ---------------------------------------------------------------------------
+
+
+class TestOverlayFilenamePostColdstart:
+    def test_hill_climb_post_coldstart(self):
+        assert _overlay_filename("hill_climb", "post_coldstart") == "review_agent_iterative_overlay_hillclimb"
+
+    def test_beam_post_coldstart(self):
+        assert _overlay_filename("beam", "post_coldstart") == "review_agent_iterative_overlay_beam"
+
+    def test_unknown_algorithm_post_coldstart_raises(self):
+        with pytest.raises(ValueError, match="Unknown.*algorithm.*phase"):
+            _overlay_filename("unknown_algo", "post_coldstart")  # type: ignore[arg-type]
+
+
+def test_post_coldstart_prompt_contains_override_header():
+    """post_coldstart prompt contains the Post-Cold-Start Review Override header."""
+    prompt = assemble_review_prompt("beam", "post_coldstart")
+    assert "# Post-Cold-Start Review Override" in prompt
+
+
+def test_post_coldstart_prompt_contains_iterative_base_heading():
+    """post_coldstart prompt contains the iterative phase base heading."""
+    prompt = assemble_review_prompt("beam", "post_coldstart")
+    assert "# Review Agent — iterative phase" in prompt
+
+
+def test_post_coldstart_prompt_contains_beam_overlay_marker():
+    """post_coldstart prompt contains the beam overlay marker."""
+    prompt = assemble_review_prompt("beam", "post_coldstart")
+    assert "# Iterative overlay — parallel beam" in prompt
+
+
+@pytest.mark.parametrize("algorithm", ["hill_climb", "beam"])
+def test_post_coldstart_prompt_smoke_all_algorithms(algorithm: str):
+    """assemble_review_prompt returns a non-empty string for all post_coldstart combos."""
+    prompt = assemble_review_prompt(algorithm, "post_coldstart")
+    assert len(prompt) > 100
+    assert "# Post-Cold-Start Review Override" in prompt
+
+
+@pytest.mark.parametrize("algorithm", ["hill_climb", "beam"])
+def test_post_coldstart_prompt_has_at_least_three_separators(algorithm: str):
+    """post_coldstart prompt contains at least 3 horizontal rule separators (4 layers)."""
+    prompt = assemble_review_prompt(algorithm, "post_coldstart")
+    # At least 3 separators between the 4 layers (overlay files may add extra `---`)
+    assert prompt.count("\n\n---\n\n") >= 3
+
+
+def test_post_coldstart_unknown_algorithm_raises():
+    """assemble_review_prompt raises ValueError for an unknown algorithm with post_coldstart."""
+    with pytest.raises(ValueError, match="Unknown"):
+        assemble_review_prompt("unknown_algo", "post_coldstart")

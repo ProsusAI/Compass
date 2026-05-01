@@ -252,6 +252,49 @@ class TestCompleteStageReviewGuard:
             _teardown_stage_scope()
 
 
+class TestCompleteStageReviewGuardBeam:
+    """Beam-specific regression: complete_stage correctly checks single-slot fanout.
+
+    Beam uses single-slot fanout (child_variants.json).  complete_stage passes
+    ``expected=1`` explicitly to review_fanout_status so the check remains
+    correct if the default ever changes.
+    """
+
+    async def test_raises_when_child_variants_absent(self, tmp_path: Path) -> None:
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        # No child_variants.json — fanout incomplete for beam run
+        _setup_stage_scope("review")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with (
+                patch(_DISPATCH_PATCH, return_value=tmp_path),
+                pytest.raises(ToolError, match="Review fanout incomplete"),
+            ):
+                await complete_stage(ctx, run_id="run1")
+        finally:
+            _teardown_stage_scope()
+
+    async def test_passes_when_child_variants_present(self, tmp_path: Path) -> None:
+        from odysseus.mcp.orchestrator_tools import complete_stage
+
+        # child_variants.json present — beam single-slot fanout is complete
+        search_dir = tmp_path / "outputs" / "run1" / "search"
+        search_dir.mkdir(parents=True)
+        (search_dir / "child_variants.json").write_text("[]")
+
+        _setup_stage_scope("review")
+        try:
+            ctx = MagicMock()
+            ctx.session.send_tool_list_changed = AsyncMock()
+            with patch(_DISPATCH_PATCH, return_value=tmp_path):
+                result = await complete_stage(ctx, run_id="run1")
+            assert "review" in result
+        finally:
+            _teardown_stage_scope()
+
+
 # ---------------------------------------------------------------------------
 # Defense-in-depth phase flip in _detect_stage_4_phase
 # ---------------------------------------------------------------------------

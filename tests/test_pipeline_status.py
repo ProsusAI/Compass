@@ -5,6 +5,7 @@ from pathlib import Path
 from odysseus.agents.pipeline.status import (
     _detect_stage_4_phase,
     _ensure_stage4_search_state,
+    _next_action_for_stage_4,
     _read_rerun_config,
     discover_runs,
     get_pipeline_status,
@@ -657,93 +658,88 @@ class TestDetectStage4PhaseRecovery:
 
 
 # ---------------------------------------------------------------------------
-# EMOSA phase detection
+# Helper for Phase 3 setup (past cold_start and build_v1 gates)
 # ---------------------------------------------------------------------------
 
 
-def _make_emosa_search_dir(tmp_path: Path, run_id: str = "r1") -> Path:
-    """Create search dir for an EMOSA run and return it."""
-    search = tmp_path / run_id / "search"
+def _setup_phase3_run(
+    base: Path,
+    run_id: str,
+    loop_phase: str,
+    round_: int,
+    algorithm: str,
+    active_evals: list[str] | None = None,
+) -> Path:
+    """Create a run dir that passes cold_start and build_v1 checks."""
+    search = base / run_id / "search"
     search.mkdir(parents=True, exist_ok=True)
-    return search
-
-
-def _write_emosa_state(search_dir: Path, loop_phase: str, active_evals: list | None = None) -> None:
-    state = {
-        "algorithm": "emosa",
+    prompts = base / run_id / "prompts"
+    prompts.mkdir(parents=True, exist_ok=True)
+    (prompts / "v1.txt").write_text("prompt: seed")
+    (search / "directive_history.json").write_text("[]")
+    state: dict = {
+        "round": round_,
+        "converged": False,
         "loop_phase": loop_phase,
-        "active_evals": active_evals or [],
+        "algorithm": algorithm,
     }
-    (search_dir / "search_state.json").write_text(json.dumps(state))
+    if active_evals is not None:
+        state["active_evals"] = active_evals
+    (search / "search_state.json").write_text(json.dumps(state))
+    return base / run_id
 
 
-class TestDetectStage4PhaseEmosa:
-    """_detect_stage_4_phase routes algorithm='emosa' to the calibration-aware sub-routine."""
+class TestDetectStage4PhasePostColdstart:
+    """_detect_stage_4_phase returns 'review_post_coldstart' for beam round-1 review."""
 
-    def test_calibration_phase_no_active_evals(self, tmp_path: Path) -> None:
-        """algorithm='emosa', loop_phase='calibration', no active_evals → 'calibration'."""
-        search = _make_emosa_search_dir(tmp_path)
-        _write_emosa_state(search, loop_phase="calibration")
+    def test_beam_round1_review_returns_post_coldstart(self, tmp_path: Path) -> None:
+        """loop_phase='review', round=1, algorithm='beam' → 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "review_post_coldstart"
 
-        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
-
-        assert phase == "calibration"
-
-    def test_review_phase_no_active_evals(self, tmp_path: Path) -> None:
-        """algorithm='emosa', loop_phase='review', no active_evals → 'review'."""
-        search = _make_emosa_search_dir(tmp_path)
-        _write_emosa_state(search, loop_phase="review")
-
-        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
-
+    def test_hill_climb_round1_review_returns_review(self, tmp_path: Path) -> None:
+        """Gate: algorithm != 'beam' → returns 'review', not 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="hill_climb")
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
         assert phase == "review"
 
-    def test_build_phase_no_active_evals(self, tmp_path: Path) -> None:
-        """algorithm='emosa', loop_phase='build', child_variants present, no active_evals → 'build'."""
-        search = _make_emosa_search_dir(tmp_path)
-        _write_emosa_state(search, loop_phase="build")
-        # Write a per-trajectory child_variants file so the defense-in-depth
-        # guard sees evidence the review phase produced output.
-        (search / "child_variants_t0.json").write_text("[]", encoding="utf-8")
+    def test_beam_round2_review_returns_review(self, tmp_path: Path) -> None:
+        """Gate: round != 1 → returns 'review', not 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=2, algorithm="beam")
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert phase == "review"
 
-        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
-
+    def test_beam_round1_build_phase_returns_build(self, tmp_path: Path) -> None:
+        """Gate: loop_phase != 'review' → returns 'build', not 'review_post_coldstart'."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "build", round_=1, algorithm="beam", active_evals=[])
+        # Need the dispatch marker so defense-in-depth doesn't flip to review
+        (run_dir / "search" / "build_dispatched.json").write_text(json.dumps({"round": 1}))
+        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
         assert phase == "build"
 
-    def test_build_phase_defense_in_depth_reflips_to_review(self, tmp_path: Path) -> None:
-        """algorithm='emosa', loop_phase='build' but no child_variants_t*.json and no build marker → 'review'.
 
-        Defense-in-depth guard prevents deadlock when search_state.json says
-        build but the review phase never actually produced trajectory variants
-        (e.g. sub-agent silent failure).
-        """
-        search = _make_emosa_search_dir(tmp_path)
-        _write_emosa_state(search, loop_phase="build")
+class TestNextActionForStage4PostColdstart:
+    """_next_action_for_stage_4 returns correct values for 'review_post_coldstart' phase."""
 
-        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
+    def test_post_coldstart_prompt_name(self, tmp_path: Path) -> None:
+        """review_post_coldstart phase returns 'odysseus_review_agent_post_coldstart' prompt."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        _action, _tools, prompts, _instr, _algo = _next_action_for_stage_4(run_dir)
+        assert "odysseus_review_agent_post_coldstart" in prompts
 
-        assert phase == "review"
+    def test_post_coldstart_instruction_contains_hard_stop(self, tmp_path: Path) -> None:
+        """review_post_coldstart instruction contains HARD_STOP and POST-COLDSTART MODE."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        _action, _tools, _prompts, instr, _algo = _next_action_for_stage_4(run_dir)
+        assert "<HARD_STOP>" in instr
+        assert "POST-COLDSTART MODE" in instr
 
-    def test_build_recovering_when_active_evals_non_empty(self, tmp_path: Path) -> None:
-        """algorithm='emosa', active_evals non-empty → 'build_recovering' regardless of loop_phase."""
-        search = _make_emosa_search_dir(tmp_path)
-        _write_emosa_state(search, loop_phase="build", active_evals=["v2"])
-
-        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
-
-        assert phase == "build_recovering"
-
-    def test_dispatcher_routes_emosa_to_emosa_sub_routine(self, tmp_path: Path) -> None:
-        """algorithm='emosa' in search_state.json causes the emosa branch to be taken."""
-        search = _make_emosa_search_dir(tmp_path)
-        # Use 'review' loop_phase to distinguish from default 'cold_start' (hill-climb)
-        _write_emosa_state(search, loop_phase="review")
-
-        phase = _detect_stage_4_phase(tmp_path / "r1", rerun_config=None)
-
-        # Under hill-climb this would be 'cold_start' (no directive_history.json),
-        # but under emosa the sub-routine trusts loop_phase directly.
-        assert phase == "review"
+    def test_post_coldstart_action_text(self, tmp_path: Path) -> None:
+        """review_post_coldstart action text mentions protected parent."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        action, _tools, _prompts, _instr, _algo = _next_action_for_stage_4(run_dir)
+        assert "protected parent" in action
 
 
 # ---------------------------------------------------------------------------
@@ -792,9 +788,7 @@ class TestEnsureStage4SearchState:
         assert data["round"] == 3
 
     def test_creates_search_state_when_absent(self, tmp_path: Path) -> None:
-        """First call should write search_state.json with the branch algorithm (emosa)."""
-        from odysseus.agents.prompt_builder.annealing import AnnealingState
-
+        """First call should write search_state.json with beam algorithm."""
         run_dir = self._make_run_dir(tmp_path)
         self._make_project_dir_with_backend(tmp_path)
 
@@ -803,11 +797,8 @@ class TestEnsureStage4SearchState:
         search_state_path = run_dir / "search" / "search_state.json"
         assert search_state_path.is_file()
         data = json.loads(search_state_path.read_text())
-        assert data["algorithm"] == "emosa"
-        # B1 fix: algorithm_state is now a full AnnealingState dict, not just {"num_trajectories": 5}
-        annealing = AnnealingState.model_validate(data["algorithm_state"])
-        assert annealing.num_trajectories == 5
-        assert len(annealing.trajectories) == 5
+        assert data["algorithm"] == "beam"
+        assert data["algorithm_state"] == {"beam_width": 3}
 
     def test_created_state_uses_priced_backend(self, tmp_path: Path) -> None:
         """Backend is resolved from backends/*.yaml (first priced one)."""

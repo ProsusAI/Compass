@@ -236,7 +236,9 @@ class ReviewBriefing(BaseModel):
     # Canonical parent_version for cold-start / warm-up seeds. Read this instead of hard-coding "base".
     initial_parent_version: str = INITIAL_PARENT_VERSION
 
-    # Hill-climb stagnation signal: {"count": int, "limit": int, "mutation_mode": str}
+    # Strategy-agnostic stagnation signal (shape depends on strategy):
+    # hill-climb: {"count": int, "limit": int, "mutation_mode": str}
+    # beam:       {"hypervolume_delta": float, "backtrack_threshold": int}
     stagnation_signal: dict[str, Any] | None = None
 
     parent_a_version: str | None = None
@@ -247,6 +249,13 @@ class ReviewBriefing(BaseModel):
     weight_vector: tuple[float, float] | None = None  # EMOSA: (lambda_q, lambda_c)
     binding_axis: Literal["quality", "cost"] | None = None  # EMOSA: argmax Tchebycheff term
     acceptance_history: list[bool] | None = None  # EMOSA: per-trajectory recent acceptances
+
+    # Beam-specific optional fields (populated by _populate_beam_review_fields).
+    beam_width: int | None = None
+    beam_rank: dict[str, int] | None = None  # prompt_version -> rank within elite_set
+    crowding_distance: dict[str, float] | None = None  # prompt_version -> crowding distance
+    hypervolume: float | None = None
+    reference_point: tuple[float, float] | None = None
 
 
 # ---------------------------------------------------------------------------
