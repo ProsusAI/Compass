@@ -306,6 +306,8 @@ async def record_directive_outcomes_tool(
         outcomes: List of DirectiveOutcome dicts to record.
         loop_signal: Optional LoopSignal dict from the Review Agent.
         child_variants: Optional list of ChildVariant dicts (Review Agent output).
+            For cold-start / warm-up seeds, set each variant's parent_version to
+            briefing.initial_parent_version (default "base").
         review_result: Optional full ReviewResult dict to persist to disk. Legacy fallback —
             prefer decomposed parameters. When provided, child_variants, loop_signal, and
             outcomes are extracted from it as fallbacks for any of those params not explicitly

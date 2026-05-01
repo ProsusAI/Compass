@@ -19,6 +19,7 @@ from typing import Any
 
 from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.review.models import (
+    INITIAL_PARENT_VERSION,
     BatchOutcome,
     CandidateAnalysis,
     ChildVariant,
@@ -1463,6 +1464,7 @@ def build_review_briefing(
         weight_vector=emosa_overrides.get("weight_vector"),
         binding_axis=emosa_overrides.get("binding_axis"),
         acceptance_history=emosa_overrides.get("acceptance_history"),
+        initial_parent_version=INITIAL_PARENT_VERSION,
     )
     return briefing.model_copy(
         update={"executive_summary": generate_executive_summary(briefing, primary_metric, best_ever_version_val)},
