@@ -622,8 +622,7 @@ class TestMissingMetricBehavior:
         search_state = _make_search_state(
             round=2,
             elite_set=[
-                Candidate(prompt_version="v1", parent_version=None,
-                          quality_score=0.80, cost=1.50, round_introduced=1),
+                Candidate(prompt_version="v1", parent_version=None, quality_score=0.80, cost=1.50, round_introduced=1),
             ],
         )
         score_reports = {
@@ -639,10 +638,26 @@ class TestMissingMetricBehavior:
             Example(id="e2", input="b", expected=Expected(route="simple", routes=routes)),
         ]
         eval_results = [
-            EvalResult(example_id="e1", model="test", output={"route": "complex"},
-                       error=None, latency_ms=100, retries=0, token_usage=None, cost=0.01),
-            EvalResult(example_id="e2", model="test", output={"route": "simple"},
-                       error=None, latency_ms=100, retries=0, token_usage=None, cost=0.01),
+            EvalResult(
+                example_id="e1",
+                model="test",
+                output={"route": "complex"},
+                error=None,
+                latency_ms=100,
+                retries=0,
+                token_usage=None,
+                cost=0.01,
+            ),
+            EvalResult(
+                example_id="e2",
+                model="test",
+                output={"route": "simple"},
+                error=None,
+                latency_ms=100,
+                retries=0,
+                token_usage=None,
+                cost=0.01,
+            ),
         ]
         briefing = build_review_briefing(
             search_state=search_state,
@@ -660,10 +675,12 @@ class TestMissingMetricBehavior:
         assert briefing.confusion_analysis[0].predicted_route == "complex"
 
     def test_confusion_analysis_empty_when_no_results(self) -> None:
-        search_state = _make_search_state(round=2, elite_set=[
-            Candidate(prompt_version="v1", parent_version=None,
-                      quality_score=0.80, cost=1.50, round_introduced=1),
-        ])
+        search_state = _make_search_state(
+            round=2,
+            elite_set=[
+                Candidate(prompt_version="v1", parent_version=None, quality_score=0.80, cost=1.50, round_introduced=1),
+            ],
+        )
         score_reports = {
             "v2": _make_report_dict(accuracy=0.85),
             "v1": _make_report_dict(accuracy=0.80),
@@ -789,12 +806,21 @@ class TestGenerateExecutiveSummary:
 
     def test_includes_confusion_analysis(self) -> None:
         from odysseus.agents.review.models import ConfusionImpact
+
         briefing = self._make_briefing()
         ci = ConfusionImpact(
-            true_route="simple", predicted_route="complex", count=10, support=40,
-            misroute_rate=0.25, cost_impact=0.50, quality_impact=-0.10,
-            avg_cost_impact=0.05, avg_quality_impact=-0.01,
-            persistence_rate=0.85, persistent_count=8, volatile_count=2,
+            true_route="simple",
+            predicted_route="complex",
+            count=10,
+            support=40,
+            misroute_rate=0.25,
+            cost_impact=0.50,
+            quality_impact=-0.10,
+            avg_cost_impact=0.05,
+            avg_quality_impact=-0.01,
+            persistence_rate=0.85,
+            persistent_count=8,
+            volatile_count=2,
         )
         briefing = briefing.model_copy(update={"confusion_analysis": [ci]})
         summary = generate_executive_summary(briefing)
@@ -887,18 +913,9 @@ class TestBuildReviewBriefingStagnationSignal:
         assert sig["mutation_mode"] == "targeted"
 
     def test_strategy_specific_fields_are_none_for_hillclimb(self) -> None:
-        """All strategy-specific optional fields should be None on hill-climb output."""
+        """Strategy-specific optional fields are absent / None on hill-climb output."""
         briefing = self._make_hillclimb_briefing()
         assert briefing.parent_a_version is None
-        assert briefing.parent_b_version is None
-        assert briefing.beam_rank is None
-        assert briefing.crowding_distance is None
-        assert briefing.trajectory_id is None
-        assert briefing.weight_vector is None
-        assert briefing.binding_axis is None
-        assert briefing.acceptance_history is None
-        assert briefing.hypervolume is None
-        assert briefing.reference_point is None
 
 
 class TestBeamReviewBriefingFields:
@@ -1038,7 +1055,7 @@ class TestBuildConfusionAnalysis:
         ]
         results = [
             self._make_result("e1", "complex"),  # misrouted
-            self._make_result("e2", "simple"),   # correct
+            self._make_result("e2", "simple"),  # correct
             self._make_result("e3", "complex"),  # correct
         ]
         cells = build_confusion_analysis(
@@ -1054,7 +1071,7 @@ class TestBuildConfusionAnalysis:
         assert cell.predicted_route == "complex"
         assert cell.count == 1
         assert cell.support == 2  # 2 examples with true_route=simple
-        assert cell.cost_impact == pytest.approx(0.09)   # 0.10 - 0.01
+        assert cell.cost_impact == pytest.approx(0.09)  # 0.10 - 0.01
         assert cell.quality_impact == pytest.approx(0.15)  # 0.95 - 0.80
 
     def test_empty_results(self) -> None:
@@ -1262,9 +1279,7 @@ class TestBuildConfusionAnalysis:
         Dedup ensures count == 1 (not 3), and cost/quality impacts reflect
         a single-example contribution.
         """
-        example = self._make_example(
-            "e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)}
-        )
+        example = self._make_example("e1", "simple", {"simple": (0.01, 0.80), "complex": (0.10, 0.95)})
         examples = [example]
         # Three results from three "candidates" — same example_id, same wrong route
         results = [
@@ -1285,7 +1300,7 @@ class TestBuildConfusionAnalysis:
         assert cell.count == 1  # dedup: not 3
         assert cell.misroute_rate == pytest.approx(1 / support)
         # Single-example cost and quality deltas
-        assert cell.cost_impact == pytest.approx(0.10 - 0.01)   # 0.09
+        assert cell.cost_impact == pytest.approx(0.10 - 0.01)  # 0.09
         assert cell.quality_impact == pytest.approx(0.95 - 0.80)  # 0.15
 
 
@@ -1297,9 +1312,9 @@ class TestSignalToNoiseFilters:
             "accuracy": 0.05,
             "cost_change": -0.02,
             "recall/route_a": 0.001,  # below threshold
-            "confusion/a/b": 3.0,     # confusion key
+            "confusion/a/b": 3.0,  # confusion key
             "f1/macro": 0.015,
-            "recall/route_b": 0.0,    # zero delta
+            "recall/route_b": 0.0,  # zero delta
         }
         filtered = _filter_metric_deltas(deltas)
         assert "accuracy" in filtered
@@ -1327,14 +1342,22 @@ class TestSignalToNoiseFilters:
         """Trend should be limited to last 5 rounds."""
         historical = {}
         for i in range(1, 12):
-            historical[i] = {"v1": _make_report_dict(**{
-                "recall/route_a": 0.50 + i * 0.02,
-                "support/route_a": 10,
-            })}
-        current = {"v1": _make_report_dict(**{
-            "recall/route_a": 0.75,
-            "support/route_a": 10,
-        })}
+            historical[i] = {
+                "v1": _make_report_dict(
+                    **{
+                        "recall/route_a": 0.50 + i * 0.02,
+                        "support/route_a": 10,
+                    }
+                )
+            }
+        current = {
+            "v1": _make_report_dict(
+                **{
+                    "recall/route_a": 0.75,
+                    "support/route_a": 10,
+                }
+            )
+        }
         result = extract_per_class_recall(
             current_reports=current,
             historical_reports=historical,
@@ -1386,20 +1409,24 @@ class TestHolisticVersionSelection:
         # v_a: high primary (quality) but only meets quality target
         # v_b: lower quality but meets both targets
         score_reports = {
-            "v_a": _make_report_dict(**{
-                "quality_change": 0.040,           # meets quality target
-                "cost_change_with_overhead": -0.20, # misses cost target
-                "cost_change": -0.10,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
-            "v_b": _make_report_dict(**{
-                "quality_change": 0.035,           # meets quality target
-                "cost_change_with_overhead": -0.35, # meets cost target
-                "cost_change": -0.25,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v_a": _make_report_dict(
+                **{
+                    "quality_change": 0.040,  # meets quality target
+                    "cost_change_with_overhead": -0.20,  # misses cost target
+                    "cost_change": -0.10,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
+            "v_b": _make_report_dict(
+                **{
+                    "quality_change": 0.035,  # meets quality target
+                    "cost_change_with_overhead": -0.35,  # meets cost target
+                    "cost_change": -0.25,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v_a", "v_b"])
         briefing = build_review_briefing(
@@ -1426,12 +1453,14 @@ class TestHolisticVersionSelection:
             UserTarget(metric="quality_change", operator=">=", threshold=0.03),
         ]
         score_reports = {
-            "v1": _make_report_dict(**{
-                "quality_change": 0.05,   # meets target
-                "cost_change": -0.10,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v1": _make_report_dict(
+                **{
+                    "quality_change": 0.05,  # meets target
+                    "cost_change": -0.10,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v1"])
         briefing = build_review_briefing(
@@ -1455,12 +1484,14 @@ class TestHolisticVersionSelection:
             UserTarget(metric="quality_change", operator=">=", threshold=0.10),  # high bar
         ]
         score_reports = {
-            "v1": _make_report_dict(**{
-                "quality_change": 0.02,   # misses target
-                "cost_change": -0.10,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v1": _make_report_dict(
+                **{
+                    "quality_change": 0.02,  # misses target
+                    "cost_change": -0.10,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v1"])
         briefing = build_review_briefing(
@@ -1485,20 +1516,24 @@ class TestHolisticVersionSelection:
             UserTarget(metric="cost_change_with_overhead", operator="<=", threshold=-0.20),
         ]
         score_reports = {
-            "v1": _make_report_dict(**{
-                "quality_change": 0.04,
-                "cost_change_with_overhead": -0.25,
-                "cost_change": -0.15,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
-            "v2": _make_report_dict(**{
-                "quality_change": 0.02,
-                "cost_change_with_overhead": -0.10,
-                "cost_change": -0.05,
-                "oracle_cost_change": 0.5,
-                "oracle_quality_change": 0.1,
-            }),
+            "v1": _make_report_dict(
+                **{
+                    "quality_change": 0.04,
+                    "cost_change_with_overhead": -0.25,
+                    "cost_change": -0.15,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
+            "v2": _make_report_dict(
+                **{
+                    "quality_change": 0.02,
+                    "cost_change_with_overhead": -0.10,
+                    "cost_change": -0.05,
+                    "oracle_cost_change": 0.5,
+                    "oracle_quality_change": 0.1,
+                }
+            ),
         }
         state = self._make_state(["v1", "v2"])
         briefing = build_review_briefing(

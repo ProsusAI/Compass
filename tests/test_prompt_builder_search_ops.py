@@ -694,16 +694,17 @@ class TestAdvanceStepTool:
 
         output_dir = tmp_path / "outputs"
         with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
-            # Write a search state with algorithm="sms_emoa" directly — the MCP tool
+            # Write a search state with an unknown algorithm — the MCP tool
             # no longer accepts an algorithm param, so we inject it post-init.
             init_search_state(backend="test", run_id="run-st2", output_dir=output_dir)
             path = _state_path("run-st2", output_dir)
             patched = json.loads(path.read_text())
-            patched["algorithm"] = "sms_emoa"
+            patched["algorithm"] = "unknown_algo"
             path.write_text(json.dumps(patched))
 
-            with pytest.raises(NotImplementedError, match="sms_emoa"):
+            with pytest.raises(NotImplementedError, match="unknown_algo"):
                 await advance_step_tool("run-st2")
+
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Type alias for algorithm discriminator
 # ---------------------------------------------------------------------------
 
-AlgorithmType = Literal["hill_climb", "beam", "sms_emoa", "emosa"]
+AlgorithmType = Literal["hill_climb"]
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -30,17 +30,14 @@ AlgorithmType = Literal["hill_climb", "beam", "sms_emoa", "emosa"]
 class Candidate(BaseModel):
     """A single prompt candidate with quality and cost metrics.
 
-    Optional fields cover strategy-specific metadata used by feature branches
-    (parallel-beam, SMS-EMOA, EMOSA).  All default to ``None`` / empty so that
-    main-branch (hill-climb) code never has to set them.
+    Optional fields default to ``None`` / empty; hill-climb code never has to
+    set them.
 
-    Serialisation note: old state files may contain a ``dominated`` field
-    (removed in the cross-branch generalisation).  ``extra="ignore"`` ensures
-    they load without error — the field is simply discarded.
+    Serialisation note: old state files may contain a ``dominated`` field.
+    ``extra="ignore"`` ensures they load without error — the field is discarded.
 
-    Alias note: ``iteration_introduced`` is accepted as an input key and mapped
-    to ``round_introduced`` (the canonical name).  This makes SMS-EMOA state
-    files round-trippable without a migration step.
+    Alias note: ``iteration_introduced`` is accepted as an alias for
+    ``round_introduced`` for back-compat with older state files.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -71,9 +68,8 @@ class Candidate(BaseModel):
     def _alias_iteration_introduced(cls, data: Any) -> Any:
         """Accept ``iteration_introduced`` as an alias for ``round_introduced``.
 
-        Enables SMS-EMOA state files (which use ``iteration_introduced``) to
-        round-trip without a migration step.  If both keys are present,
-        ``round_introduced`` wins.
+        Enables older state files to load without a migration step.
+        If both keys are present, ``round_introduced`` wins.
         """
         if isinstance(data, dict) and "iteration_introduced" in data and "round_introduced" not in data:
             data = dict(data)
@@ -155,7 +151,7 @@ class SearchState(BaseModel):
 
     The ``algorithm`` discriminator records which search strategy produced this
     state; ``algorithm_state`` is a free-form pocket for strategy-specific
-    sub-state (e.g. beam_width for beam, AnnealingState dict for EMOSA).
+    sub-state (empty for hill_climb; feature branches may populate it).
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -173,8 +169,11 @@ class SearchState(BaseModel):
     mutation_mode: Literal["targeted", "exploratory"] = "targeted"
     converged: bool = False
     loop_phase: Literal[
-        "build", "review",
-        "warmup_seed", "warmup_build", "warmup_reduce",
+        "build",
+        "review",
+        "warmup_seed",
+        "warmup_build",
+        "warmup_reduce",
         "calibration",
         "build_recovering",
     ] = "review"
@@ -218,9 +217,13 @@ class SearchState(BaseModel):
         if "pareto_front" in data and "elite_set" not in data:
             data["elite_set"] = data.pop("pareto_front")
         _valid_phases = {
-            "build", "review",
-            "warmup_seed", "warmup_build", "warmup_reduce",
-            "calibration", "build_recovering",
+            "build",
+            "review",
+            "warmup_seed",
+            "warmup_build",
+            "warmup_reduce",
+            "calibration",
+            "build_recovering",
         }
         raw_phase = data.get("loop_phase")
         if raw_phase is not None and raw_phase not in _valid_phases:

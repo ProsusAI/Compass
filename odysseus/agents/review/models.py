@@ -145,9 +145,7 @@ class ContrastPairContent(BaseModel):
         pair_routes = {self.example_a.route, self.example_b.route}
         target_routes = {self.target_true_route, self.target_predicted_route}
         if pair_routes != target_routes:
-            raise ValueError(
-                f"Example routes {pair_routes} must match target routes {target_routes}"
-            )
+            raise ValueError(f"Example routes {pair_routes} must match target routes {target_routes}")
         return self
 
 
@@ -229,7 +227,6 @@ class ReviewBriefing(BaseModel):
     near_miss_candidates: list[NearMissCandidate] = []
     directive_history: list[DirectiveOutcome] = Field(default_factory=list)
     executive_summary: str = ""
-    beam_width: int = 2
     batch_outcomes: list[BatchOutcome] = Field(default_factory=list)
     target_progress: list[UserTargetProgress] = Field(default_factory=list)
     single_candidate_meets_all: bool = False
@@ -239,29 +236,10 @@ class ReviewBriefing(BaseModel):
     # Canonical parent_version for cold-start / warm-up seeds. Read this instead of hard-coding "base".
     initial_parent_version: str = INITIAL_PARENT_VERSION
 
-    # Strategy-agnostic stagnation signal (populated by the strategy's preprocessor;
-    # shape depends on the strategy — see below for per-strategy dict schemas).
-    # hill-climb: {"count": int, "limit": int, "mutation_mode": str}
-    # beam:       {"hypervolume_delta": float, "backtrack_threshold": int}
-    # sms-emoa:   {"hypervolume_history": [...], "stagnation_window": int}
-    # emosa:      {"temperature": float, "t_min": float, "review_exit": bool}
+    # Hill-climb stagnation signal: {"count": int, "limit": int, "mutation_mode": str}
     stagnation_signal: dict[str, Any] | None = None
 
-    # Strategy-specific optional fields (populated by the strategy's preprocessor;
-    # the Review Agent overlay reads only the fields it cares about).
     parent_a_version: str | None = None
-    parent_b_version: str | None = None  # SMS-EMOA recombination
-
-    beam_rank: dict[str, int] | None = None  # prompt_version -> rank within elite_set
-    crowding_distance: dict[str, float] | None = None  # prompt_version -> crowding distance
-
-    trajectory_id: int | None = None  # EMOSA: which trajectory this dispatch is bound to
-    weight_vector: tuple[float, float] | None = None  # EMOSA: (lambda_q, lambda_c)
-    binding_axis: Literal["quality", "cost"] | None = None  # EMOSA: argmax Tchebycheff term
-    acceptance_history: list[bool] | None = None  # EMOSA: per-trajectory recent acceptances
-
-    hypervolume: float | None = None  # beam, sms-emoa
-    reference_point: tuple[float, float] | None = None  # beam, sms-emoa
 
 
 # ---------------------------------------------------------------------------
@@ -301,18 +279,28 @@ class ChildVariant(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     variant_id: str | None = None  # assigned by algorithm; maps to Candidate.source_directive_batch_id
-    parent_preference: Literal[
-        "best_quality", "best_cost",
-        "weakest_on_class", "nearest_target",
-    ] | None = None
+    parent_preference: (
+        Literal[
+            "best_quality",
+            "best_cost",
+            "weakest_on_class",
+            "nearest_target",
+        ]
+        | None
+    ) = None
     parent_preference_class: str | None = None
     parent_preference_metric: str | None = None
     # resolved parent — cold-start: ReviewBriefing.initial_parent_version ("base"); iterative: per overlay
     parent_version: str | None = None
-    secondary_parent_preference: Literal[
-        "best_quality", "best_cost",
-        "weakest_on_class", "nearest_target",
-    ] | None = None
+    secondary_parent_preference: (
+        Literal[
+            "best_quality",
+            "best_cost",
+            "weakest_on_class",
+            "nearest_target",
+        ]
+        | None
+    ) = None
     secondary_parent_preference_class: str | None = None
     secondary_parent_preference_metric: str | None = None
     secondary_parent_version: str | None = None  # resolved by algorithm

@@ -770,13 +770,13 @@ class TestEnsureStage4SearchState:
         run_dir = self._make_run_dir(tmp_path)
         search = run_dir / "search"
         search.mkdir(parents=True, exist_ok=True)
-        existing = {"algorithm": "emosa", "backend": "custom", "round": 3}
+        existing = {"algorithm": "hill_climb", "backend": "custom", "round": 3}
         (search / "search_state.json").write_text(json.dumps(existing))
 
         _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
 
         data = json.loads((search / "search_state.json").read_text())
-        assert data["algorithm"] == "emosa"
+        assert data["algorithm"] == "hill_climb"
         assert data["backend"] == "custom"
         assert data["round"] == 3
 

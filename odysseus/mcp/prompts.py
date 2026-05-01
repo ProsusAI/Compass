@@ -29,20 +29,14 @@ def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start", 
         ("hill_climb", "cold_start"): "review_agent_cold_start_overlay_hillclimb",
         ("beam", "iterative"): "review_agent_iterative_overlay_beam",
         ("beam", "cold_start"): "review_agent_cold_start_overlay_beam",
-        ("sms_emoa", "iterative"): "review_agent_iterative_overlay_sms_emoa",
-        ("sms_emoa", "cold_start"): "review_agent_warmup_overlay_sms_emoa",
-        ("emosa", "iterative"): "review_agent_iterative_overlay_emosa",
-        ("emosa", "cold_start"): "review_agent_cold_start_overlay_emosa",
         ("hill_climb", "post_coldstart"): "review_agent_iterative_overlay_hillclimb",
         ("beam", "post_coldstart"): "review_agent_iterative_overlay_beam",
-        ("sms_emoa", "post_coldstart"): "review_agent_iterative_overlay_sms_emoa",
-        ("emosa", "post_coldstart"): "review_agent_iterative_overlay_emosa",
     }
     key = (algorithm, phase)
     if key not in _overlay_map:
         raise ValueError(
             f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
-            f"Valid algorithms: hill_climb, beam, sms_emoa, emosa. "
+            f"Valid algorithms: hill_climb, beam. "
             f"Valid phases: iterative, cold_start, post_coldstart."
         )
     return _overlay_map[key]
@@ -63,11 +57,9 @@ def assemble_review_prompt(
     override mandates exactly one child per protected parent for round 2.
 
     Args:
-        algorithm: Strategy discriminator — one of ``hill_climb``, ``beam``,
-            ``sms_emoa``, ``emosa``.
+        algorithm: Strategy discriminator — one of ``hill_climb``, ``beam``.
         phase: ``"iterative"`` for rounds ≥ 2; ``"cold_start"`` for the seeding
-            round (including ``warmup_seed`` and ``calibration`` phases);
-            ``"post_coldstart"`` for round 2 of beam search after cold-start.
+            round; ``"post_coldstart"`` for round 2 of beam search after cold-start.
 
     Returns:
         Assembled Markdown string ready to use as a system prompt.
@@ -133,8 +125,8 @@ async def odysseus_review_agent_iterative(algorithm: str = "hill_climb") -> list
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``,
-            ``sms_emoa``, ``emosa``.  Defaults to ``hill_climb``.
+        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
+            Defaults to ``hill_climb``.
     """
     content = assemble_review_prompt(algorithm, "iterative")
     return [UserMessage(content=content)]
@@ -148,8 +140,8 @@ async def odysseus_review_agent_cold_start(algorithm: str = "hill_climb") -> lis
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``,
-            ``sms_emoa``, ``emosa``.  Defaults to ``hill_climb``.
+        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
+            Defaults to ``hill_climb``.
     """
     content = assemble_review_prompt(algorithm, "cold_start")
     return [UserMessage(content=content)]
@@ -163,8 +155,8 @@ async def odysseus_review_agent_post_coldstart(algorithm: str = "hill_climb") ->
     post-coldstart override + iterative strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``,
-            ``sms_emoa``, ``emosa``.  Defaults to ``hill_climb``.
+        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
+            Defaults to ``hill_climb``.
     """
     content = assemble_review_prompt(algorithm, "post_coldstart")
     return [UserMessage(content=content)]
