@@ -144,6 +144,8 @@ def compute_cost_quality_change(
     oracle_quality = 0.0
     routing_overhead = 0.0
     counted = 0
+    skipped_pred_samples: list[str] = []
+    expected_keys_sample: list[str] = []
 
     for r, ex in zip(results, examples, strict=True):
         routes = ex.expected.routes
@@ -156,6 +158,10 @@ def compute_cost_quality_change(
                 pred_route,
                 ex.id,
             )
+            if len(skipped_pred_samples) < 5 and pred_route not in skipped_pred_samples:
+                skipped_pred_samples.append(pred_route)
+            if not expected_keys_sample:
+                expected_keys_sample = sorted(routes.keys())
             continue
 
         oracle_route = ex.expected.route
@@ -170,6 +176,17 @@ def compute_cost_quality_change(
         counted += 1
 
     if counted == 0:
+        logger.error(
+            "compute_cost_quality_change: every prediction skipped as hallucination "
+            "(%d results, 0 counted). Likely a route-label namespace mismatch: "
+            "predicted routes are not keys of expected.routes. "
+            "Sample predicted routes: %s; expected.routes keys: %s. "
+            "Fix the routing prompt / dataset so both use the same label set "
+            "(canonical = expected.routes keys).",
+            len(results),
+            skipped_pred_samples,
+            expected_keys_sample,
+        )
         return zero_result
 
     cost_change = (predicted_cost - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0

@@ -167,6 +167,13 @@ def transform_dataset(
 
     Returns:
         TransformResult with output path, row count, and mapping details.
+
+    Raises:
+        ValueError: If the mapping produces rows where ``expected.route`` is not
+            a key of ``expected.routes``. The keys of ``expected.routes`` are
+            the canonical route-label set used downstream (prompt, eval,
+            metrics, reporting); a misaligned ``expected.route`` would silently
+            collapse cost/quality metrics to zero. No output is written.
     """
     mapping: dict[str, str] = json.loads(field_mapping)
     _check_required_targets(mapping)
@@ -179,48 +186,93 @@ def transform_dataset(
     dropped = sorted(all_source_fields - mapped_source_fields)
 
     out_path = Path(output_path)
+
+    target_rows: list[dict[str, Any]] = []
+
+    for idx, source_row in enumerate(source_rows):
+        target_row: dict[str, Any] = {}
+
+        for src_field, tgt_field in mapping.items():
+            if "*" in src_field or "*" in tgt_field:
+                matches = _get_nested_wildcard(source_row, src_field)
+                for key_seq, val in matches:
+                    _set_nested_wildcard(target_row, tgt_field, key_seq, val)
+                if not matches and idx == 0:
+                    logger.warning(
+                        "Wildcard mapping key %r matched nothing in source row (target: %r)",
+                        src_field,
+                        tgt_field,
+                    )
+            else:
+                value = _get_nested(source_row, src_field)
+                if value is not None:
+                    _set_nested(target_row, tgt_field, value)
+                elif idx == 0:
+                    logger.warning(
+                        "Mapping key %r not found in source row (target: %r)",
+                        src_field,
+                        tgt_field,
+                    )
+
+        if "id" not in target_row:
+            target_row["id"] = f"row-{idx}"
+
+        target_rows.append(target_row)
+
+    _check_route_in_routes(target_rows)
+
     out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    rows_written = 0
-
     with out_path.open("w", encoding="utf-8") as f:
-        for idx, source_row in enumerate(source_rows):
-            target_row: dict[str, Any] = {}
-
-            for src_field, tgt_field in mapping.items():
-                if "*" in src_field or "*" in tgt_field:
-                    matches = _get_nested_wildcard(source_row, src_field)
-                    for key_seq, val in matches:
-                        _set_nested_wildcard(target_row, tgt_field, key_seq, val)
-                    if not matches and idx == 0:
-                        logger.warning(
-                            "Wildcard mapping key %r matched nothing in source row (target: %r)",
-                            src_field,
-                            tgt_field,
-                        )
-                else:
-                    value = _get_nested(source_row, src_field)
-                    if value is not None:
-                        _set_nested(target_row, tgt_field, value)
-                    elif idx == 0:
-                        logger.warning(
-                            "Mapping key %r not found in source row (target: %r)",
-                            src_field,
-                            tgt_field,
-                        )
-
-            if "id" not in target_row:
-                target_row["id"] = f"row-{idx}"
-
+        for target_row in target_rows:
             f.write(json.dumps(target_row) + "\n")
-            rows_written += 1
 
     return TransformResult(
         output_path=str(out_path),
         original_dataset_path=dataset_path,
-        rows_written=rows_written,
+        rows_written=len(target_rows),
         fields_mapped=mapping,
         fields_dropped=dropped,
+    )
+
+
+def _check_route_in_routes(rows: list[dict[str, Any]]) -> None:
+    """Validate that every row's ``expected.route`` is a key of ``expected.routes``.
+
+    The keys of ``expected.routes`` are the canonical route-label set used by
+    every downstream consumer (prompt builder, eval, metrics, reporting). If
+    ``expected.route`` uses a different namespace (e.g. mapped from a parallel
+    label field), per-route lookups silently miss and cost/quality metrics
+    collapse to zero. Fail loud here so the mapping is corrected before any
+    downstream stage runs.
+    """
+    sample_pairs: list[tuple[int, Any, Any]] = []
+    fail_indices: list[int] = []
+
+    for idx, row in enumerate(rows):
+        expected = row.get("expected")
+        if not isinstance(expected, dict):
+            continue
+        route = expected.get("route")
+        routes = expected.get("routes")
+        if not isinstance(routes, dict):
+            continue
+        if route not in routes:
+            fail_indices.append(idx)
+            if len(sample_pairs) < 3:
+                sample_pairs.append((idx, route, sorted(routes.keys())))
+
+    if not fail_indices:
+        return
+
+    samples = "; ".join(
+        f"row {idx}: expected.route={route!r}, expected.routes keys={keys}" for idx, route, keys in sample_pairs
+    )
+    raise ValueError(
+        f"Field mapping produced {len(fail_indices)} row(s) where expected.route "
+        f"is not a key of expected.routes. The keys of expected.routes are the "
+        f"canonical route-label set used downstream — expected.route must be one "
+        f"of them. Fix the mapping so both fields resolve to values from the "
+        f"same namespace. Samples: {samples}"
     )
 
 

@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.mcp import validate_dataset
+from odysseus.mcp import save_routing_context, stratified_split_tool, validate_dataset
 
 RUN_ID = "test_run"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
@@ -106,3 +106,111 @@ class TestValidateDataset:
         report = json.loads(result)
 
         assert report["query_length"]["count"] == 1
+
+
+def _routing_context_json(route_names: list[str]) -> str:
+    return json.dumps(
+        {
+            "domain": "test domain",
+            "routes": [{"name": n, "description": f"desc {n}"} for n in route_names],
+            "routing_dimensions": [
+                {"name": "cost", "direction": "lower_is_better", "description": "cost"},
+            ],
+        }
+    )
+
+
+def _write_transformed_dataset(tmp_path: Path, route_keys: list[str]) -> Path:
+    validation_dir = tmp_path / "outputs" / RUN_ID / "validation"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    transformed = validation_dir / "transformed.jsonl"
+    rows = [
+        {
+            "id": "ex-1",
+            "input": "q",
+            "expected": {
+                "route": route_keys[0],
+                "routes": {k: {"cost": 0.01, "quality_score": 0.5} for k in route_keys},
+            },
+        }
+    ]
+    _write_jsonl(rows, transformed)
+    return transformed
+
+
+class TestSaveRoutingContext:
+    @pytest.mark.asyncio
+    async def test_matching_route_names_persists(self, tmp_path: Path) -> None:
+        _write_transformed_dataset(tmp_path, ["0_simple", "1_complex"])
+        rc_json = _routing_context_json(["0_simple", "1_complex"])
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            msg = await save_routing_context(ctx=None, run_id=RUN_ID, routing_context_json=rc_json)
+
+        out = tmp_path / "outputs" / RUN_ID / "validation" / "routing_context.json"
+        assert out.is_file()
+        assert "Routing context saved" in msg
+
+    @pytest.mark.asyncio
+    async def test_mismatched_route_names_raises(self, tmp_path: Path) -> None:
+        _write_transformed_dataset(tmp_path, ["0_simple", "1_complex"])
+        rc_json = _routing_context_json(["simple", "complex"])
+
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            pytest.raises(ToolError, match="do not match the canonical"),
+        ):
+            await save_routing_context(ctx=None, run_id=RUN_ID, routing_context_json=rc_json)
+
+        out = tmp_path / "outputs" / RUN_ID / "validation" / "routing_context.json"
+        assert not out.exists()
+
+    @pytest.mark.asyncio
+    async def test_missing_transformed_dataset_raises(self, tmp_path: Path) -> None:
+        (tmp_path / "outputs" / RUN_ID / "validation").mkdir(parents=True, exist_ok=True)
+        rc_json = _routing_context_json(["a", "b"])
+
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            pytest.raises(ToolError, match="Transformed dataset not found"),
+        ):
+            await save_routing_context(ctx=None, run_id=RUN_ID, routing_context_json=rc_json)
+
+
+def _make_quality_report(tmp_path: Path) -> None:
+    """Write a passing data_quality_report so the split tool guard passes."""
+    validation_dir = tmp_path / "outputs" / RUN_ID / "validation"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    (validation_dir / "data_quality_report.json").write_text("{}", encoding="utf-8")
+
+
+class TestStratifiedSplitToolRouteInRoutes:
+    @pytest.mark.asyncio
+    async def test_misaligned_route_raises(self, tmp_path: Path) -> None:
+        _make_quality_report(tmp_path)
+        dataset = tmp_path / "data.jsonl"
+        rows = [
+            {
+                "id": f"ex-{i}",
+                "input": f"q{i}",
+                "expected": {
+                    "route": "simple",
+                    "routes": {
+                        "0_simple": {"cost": 0.01, "quality_score": 0.5},
+                        "1_complex": {"cost": 0.1, "quality_score": 0.9},
+                    },
+                },
+            }
+            for i in range(10)
+        ]
+        _write_jsonl(rows, dataset)
+
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            pytest.raises(ToolError, match="expected.route is not a key of"),
+        ):
+            await stratified_split_tool(ctx=None, run_id=RUN_ID, dataset_path=str(dataset))
+
+        analysis_dir = tmp_path / "outputs" / RUN_ID / "analysis"
+        assert not (analysis_dir / "dev.jsonl").exists()
+        assert not (analysis_dir / "holdout.jsonl").exists()

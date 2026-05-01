@@ -377,7 +377,14 @@ def _check_stage(
 
 
 def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
-    """Stage 2: Data Validated — validation files + dev/holdout split outputs."""
+    """Stage 2: Data Validated — validation files + dev/holdout split outputs.
+
+    Critical-severity failures in the data quality report block stage
+    completion regardless of file presence: downstream stages (eval,
+    prompt builder) read the dataset verbatim and would silently
+    produce broken results (e.g. zero cost/quality metrics) on
+    misaligned route labels.
+    """
     validation_files = [
         run_dir / "validation" / "transformed.jsonl",
         run_dir / "validation" / "data_quality_report.json",
@@ -389,6 +396,11 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
     ]
     all_files = validation_files + split_files
     artifacts = [str(f) for f in all_files]
+
+    quality_report_path = run_dir / "validation" / "data_quality_report.json"
+    if quality_report_path.is_file() and _has_critical_schema_failure(quality_report_path):
+        return "incomplete", artifacts, "data_quality_critical_fail"
+
     missing = [p for p in artifacts if not Path(p).is_file()]
     if not missing:
         return "complete", artifacts, ""
@@ -400,6 +412,27 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
         return "incomplete", artifacts + [str(proposed_mapping)], "mapping_confirmation_needed"
 
     return "incomplete", artifacts, ""
+
+
+def _has_critical_schema_failure(quality_report_path: Path) -> bool:
+    """Return True if the data quality report has any critical schema failure.
+
+    Read defensively — a missing or malformed report is treated as no
+    critical failure (the file-existence checks elsewhere handle absence).
+    """
+    try:
+        report = json.loads(quality_report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    findings = report.get("schema_findings") if isinstance(report, dict) else None
+    if not isinstance(findings, list):
+        return False
+    for finding in findings:
+        if not isinstance(finding, dict):
+            continue
+        if finding.get("severity") == "critical" and finding.get("status") == "fail":
+            return True
+    return False
 
 
 def _check_stage_3(

@@ -379,6 +379,30 @@ def test_cost_quality_empty_results():
     assert out["oracle_quality_captured"] == 1.0
 
 
+def test_cost_quality_all_predictions_hallucinated_logs_error(caplog: pytest.LogCaptureFixture):
+    """When every prediction is outside expected.routes keys (label namespace mismatch),
+    emit a single aggregate logger.error with sample values from each side."""
+    examples = [
+        _cost_quality_example("ex-0", route="gpt-4o", routes=_ROUTES),
+        _cost_quality_example("ex-1", route="haiku", routes=_ROUTES),
+    ]
+    # Predictions use a different label namespace — none match _ROUTES keys.
+    results = [_result("ex-0", route="0_simple"), _result("ex-1", route="1_complex")]
+
+    with caplog.at_level("ERROR", logger="odysseus.eval.metrics"):
+        out = compute_cost_quality_change(results, examples)
+
+    assert out["cost_change"] == 0.0
+    assert out["quality_change"] == 0.0
+
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) == 1
+    msg = error_records[0].getMessage()
+    assert "every prediction skipped as hallucination" in msg
+    assert "0_simple" in msg
+    assert "gpt-4o" in msg or "claude-sonnet" in msg or "haiku" in msg
+
+
 def test_cost_quality_with_routing_overhead():
     """Routing overhead is included in cost_change_with_overhead but not cost_change."""
     examples = [

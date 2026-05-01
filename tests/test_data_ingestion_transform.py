@@ -110,7 +110,10 @@ class TestCheckRequiredTargets:
 
 
 def _routes_obj() -> dict:
-    return {"opus": {"cost": 0.05, "quality_score": 0.9}}
+    return {
+        "opus": {"cost": 0.05, "quality_score": 0.9},
+        "haiku": {"cost": 0.001, "quality_score": 0.7},
+    }
 
 
 class TestFlatToFlat:
@@ -356,3 +359,62 @@ class TestWildcardTransform:
         assert row["expected"]["routes"]["simple"]["cost"] == 0.02
         assert row["expected"]["routes"]["complex"]["quality_score"] == 0.94
         assert row["expected"]["routes"]["complex"]["cost"] == 0.11
+
+
+class TestRouteInRoutesInvariant:
+    """expected.route must be a key of expected.routes after the mapping is applied."""
+
+    def test_misaligned_route_label_raises(self, tmp_path: Path) -> None:
+        src = tmp_path / "source.jsonl"
+        src.write_text(
+            json.dumps(
+                {
+                    "text": "hello",
+                    "label": "simple",
+                    "tier_details": {
+                        "0_simple": {"score": 0.87, "cost_usd": 0.02},
+                        "1_complex": {"score": 0.94, "cost_usd": 0.11},
+                    },
+                }
+            )
+            + "\n"
+        )
+        out = tmp_path / "transformed.jsonl"
+        mapping = {
+            "text": "input",
+            "label": "expected.route",
+            "tier_details": "expected.routes",
+            "tier_details.*.score": "expected.routes.*.quality_score",
+            "tier_details.*.cost_usd": "expected.routes.*.cost",
+        }
+        with pytest.raises(ValueError, match="expected.route is not a key of expected.routes"):
+            transform_dataset(str(src), json.dumps(mapping), str(out))
+        assert not out.exists()
+
+    def test_aligned_route_label_passes(self, tmp_path: Path) -> None:
+        src = tmp_path / "source.jsonl"
+        src.write_text(
+            json.dumps(
+                {
+                    "text": "hello",
+                    "label": "0_simple",
+                    "tier_details": {
+                        "0_simple": {"score": 0.87, "cost_usd": 0.02},
+                        "1_complex": {"score": 0.94, "cost_usd": 0.11},
+                    },
+                }
+            )
+            + "\n"
+        )
+        out = tmp_path / "transformed.jsonl"
+        mapping = {
+            "text": "input",
+            "label": "expected.route",
+            "tier_details": "expected.routes",
+            "tier_details.*.score": "expected.routes.*.quality_score",
+            "tier_details.*.cost_usd": "expected.routes.*.cost",
+        }
+        transform_dataset(str(src), json.dumps(mapping), str(out))
+        row = json.loads(out.read_text().strip().splitlines()[0])
+        assert row["expected"]["route"] == "0_simple"
+        assert "0_simple" in row["expected"]["routes"]
