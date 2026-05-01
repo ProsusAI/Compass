@@ -27,6 +27,7 @@ from odysseus.agents.prompt_builder.annealing import (
     compute_cooling_rate,
     compute_neighborhood,
     compute_tchebycheff_energy,
+    compute_weight_vectors,
     metropolis_accept,
     replace_if_better,
     update_archive,
@@ -60,7 +61,27 @@ def _default_output_dir() -> Path:
 # these default to hill_climb / {}.  Search-specific branches (Wave 2) flip
 # exactly these two lines and nothing else.
 _BRANCH_ALGORITHM: AlgorithmType = "emosa"
-_BRANCH_ALGORITHM_STATE: dict[str, Any] = {"num_trajectories": 5}
+
+
+def _build_emosa_initial_state(num_trajectories: int = 5) -> dict[str, Any]:
+    """Construct a complete AnnealingState dict for EMOSA initialization.
+
+    Trajectories are seeded with weight vectors but no current solution; the
+    per-trajectory current_solution / current_energy fields are filled in by
+    _calibration_complete after the K cold-start prompts are evaluated.
+    """
+    weight_vectors = compute_weight_vectors(num_trajectories)
+    trajectories = [
+        TrajectoryState(trajectory_id=i, weight_vector=wv)
+        for i, wv in enumerate(weight_vectors)
+    ]
+    return AnnealingState(
+        num_trajectories=num_trajectories,
+        trajectories=trajectories,
+    ).model_dump()
+
+
+_BRANCH_ALGORITHM_STATE: dict[str, Any] = _build_emosa_initial_state()
 
 
 # ---------------------------------------------------------------------------

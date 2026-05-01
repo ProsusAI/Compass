@@ -149,6 +149,52 @@ class TestRunIdPaths:
 
 
 # ---------------------------------------------------------------------------
+# B1: EMOSA init seeds full AnnealingState
+# ---------------------------------------------------------------------------
+
+
+class TestInitSearchStateEmosaSeeds:
+    """B1: init_search_state on the EMOSA branch seeds a valid AnnealingState."""
+
+    def test_init_search_state_emosa_seeds_annealing_state(self, tmp_path) -> None:
+        """AnnealingState.model_validate succeeds on algorithm_state after init."""
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+
+        state = init_search_state("anthropic", run_id="emosa-b1-seed", output_dir=tmp_path)
+        annealing = AnnealingState.model_validate(state.algorithm_state)
+        assert annealing.num_trajectories == 5
+        assert len(annealing.trajectories) == 5
+
+    def test_init_search_state_emosa_trajectory_ids_and_weights(self, tmp_path) -> None:
+        """Seeded trajectories have correct trajectory_id (0..4) and non-zero weight vectors."""
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+
+        state = init_search_state("anthropic", run_id="emosa-b1-wv", output_dir=tmp_path)
+        annealing = AnnealingState.model_validate(state.algorithm_state)
+        for i, traj in enumerate(annealing.trajectories):
+            assert traj.trajectory_id == i
+            lq, lc = traj.weight_vector
+            assert lq > 0.0
+            assert lc > 0.0
+            assert abs(lq + lc - 1.0) < 1e-9
+
+    def test_init_search_state_emosa_no_current_solution(self, tmp_path) -> None:
+        """Seeded trajectories have no current_solution (filled in by _calibration_complete)."""
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+
+        state = init_search_state("anthropic", run_id="emosa-b1-nosol", output_dir=tmp_path)
+        annealing = AnnealingState.model_validate(state.algorithm_state)
+        for traj in annealing.trajectories:
+            assert traj.current_solution is None
+            assert traj.current_energy is None
+
+    def test_init_search_state_emosa_algorithm_field(self, tmp_path) -> None:
+        """State reports algorithm == 'emosa'."""
+        state = init_search_state("anthropic", run_id="emosa-b1-alg", output_dir=tmp_path)
+        assert state.algorithm == "emosa"
+
+
+# ---------------------------------------------------------------------------
 # Task 7: register_candidate
 # ---------------------------------------------------------------------------
 

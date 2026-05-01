@@ -793,6 +793,8 @@ class TestEnsureStage4SearchState:
 
     def test_creates_search_state_when_absent(self, tmp_path: Path) -> None:
         """First call should write search_state.json with the branch algorithm (emosa)."""
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+
         run_dir = self._make_run_dir(tmp_path)
         self._make_project_dir_with_backend(tmp_path)
 
@@ -802,7 +804,10 @@ class TestEnsureStage4SearchState:
         assert search_state_path.is_file()
         data = json.loads(search_state_path.read_text())
         assert data["algorithm"] == "emosa"
-        assert data["algorithm_state"] == {"num_trajectories": 5}
+        # B1 fix: algorithm_state is now a full AnnealingState dict, not just {"num_trajectories": 5}
+        annealing = AnnealingState.model_validate(data["algorithm_state"])
+        assert annealing.num_trajectories == 5
+        assert len(annealing.trajectories) == 5
 
     def test_created_state_uses_priced_backend(self, tmp_path: Path) -> None:
         """Backend is resolved from backends/*.yaml (first priced one)."""
