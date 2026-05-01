@@ -630,6 +630,143 @@ def advance_round_beam(
     if output_dir is None:
         output_dir = _default_output_dir()
     state = _load_state(run_id, output_dir)
+    pocket = state.algorithm_state
+    annealing = AnnealingState.model_validate(pocket)
+    num_traj = annealing.num_trajectories
+
+    pending = _load_pending(run_id, output_dir)
+    scored = [c for c in pending if c.eval_status in ("complete", None)]
+
+    if len(scored) < num_traj:
+        raise ValueError(
+            f"EMOSA calibration requires {num_traj} scored candidates "
+            f"(num_trajectories={num_traj}), but only {len(scored)} are scored. "
+            f"Ensure all {num_traj} cold-start candidates are evaluated before "
+            f"calling advance_round_emosa."
+        )
+
+    # Use exactly num_traj — the first num_traj scored candidates
+    calibration_scored = scored[:num_traj]
+
+    # Compute round-1 ideal/nadir from the K scored candidates.
+    # ideal = (best_quality, lowest_cost); nadir = (worst_quality, highest_cost)
+    ideal_q = max(c.quality_score for c in calibration_scored)
+    ideal_c = min(c.cost for c in calibration_scored)
+    nadir_q = min(c.quality_score for c in calibration_scored)
+    nadir_c = max(c.cost for c in calibration_scored)
+    new_ideal: tuple[float, float] = (ideal_q, ideal_c)
+    new_nadir: tuple[float, float] = (nadir_q, nadir_c)
+
+    # Seed each trajectory: trajectory i gets calibration_scored[i]
+    traj_steps = max(1, annealing.max_evals // annealing.num_trajectories)
+    updated_trajectories: list[TrajectoryState] = []
+    for traj in annealing.trajectories:
+        idx = traj.trajectory_id
+        cand = calibration_scored[idx]
+        energy = compute_tchebycheff_energy(
+            cand.quality_score,
+            cand.cost,
+            traj.weight_vector,
+            new_ideal,
+            new_nadir,
+        )
+        traj_alpha = compute_cooling_rate(annealing.t_initial, annealing.t_min, traj_steps)
+        updated_traj = traj.model_copy(
+            update={
+                "current_solution": cand.prompt_version,
+                "current_quality": cand.quality_score,
+                "current_cost": cand.cost,
+                "current_energy": energy,
+                "acceptance_history": [True],
+                "temperature": annealing.t_initial,
+                "alpha": traj_alpha,
+                "step_count": 0,
+            }
+        )
+        updated_trajectories.append(updated_traj)
+
+    # Update elite set: add scored candidates not already present
+    new_elite = list(state.elite_set)
+    for cand in calibration_scored:
+        new_elite, _ = update_archive(new_elite, cand)
+
+    # Update annealing pocket: flip phase and total_evals (step_count is now per-trajectory)
+    new_annealing = annealing.model_copy(
+        update={
+            "trajectories": updated_trajectories,
+            "ideal_point": new_ideal,
+            "nadir_point": new_nadir,
+            "phase": "search",
+            "total_evals": annealing.total_evals + num_traj,
+        }
+    )
+
+    new_round = state.round + 1
+    summary = RoundSummary(
+        round=new_round,
+        candidates_evaluated=[c.prompt_version for c in calibration_scored],
+        new_elite_entries=len(new_elite) - len(state.elite_set),
+        elite_size=len(new_elite),
+        temperatures={t.trajectory_id: t.temperature for t in updated_trajectories},
+        ideal_point=new_ideal,
+        nadir_point=new_nadir,
+        step_count=sum(t.step_count for t in updated_trajectories),
+        phase="search",
+    )
+
+    updated_state = state.model_copy(
+        update={
+            "round": new_round,
+            "elite_set": new_elite,
+            "round_history": [*state.round_history, summary],
+            "algorithm_state": new_annealing.model_dump(),
+            "loop_phase": "review",
+        }
+    )
+    _save_state(run_id, updated_state, output_dir)
+    _try_write_viz(run_id, output_dir)
+
+    # Persist scored candidates to archive before clearing pending.
+    _append_archive(run_id, scored, output_dir)
+
+    # Clear pending candidates
+    _save_pending(run_id, [], output_dir)
+
+    return summary
+
+
+def _advance_emosa_search(
+    run_id: str,
+    state: SearchState,
+    output_dir: Path,
+) -> RoundSummary:
+    """Execute one EMOSA steady-state advance step (phase == 'search').
+
+    Implements per-trajectory Metropolis-then-best-of-accepted acceptance,
+    EMOSA neighborhood replacement (B=4 nearest weight-vector neighbors),
+    archive update, geometric cooling, and three-way convergence detection.
+
+    Steps:
+        a. Load AnnealingState from algorithm_state pocket; assert active_evals empty.
+        b. Load pending; split scored / failed.
+        c. Update ideal/nadir from scored candidates.
+        d. Drift-cache refresh: recompute trajectory current_energy under new ideal/nadir.
+        e. Per-trajectory Metropolis-then-best-of-accepted.
+        f. EMOSA neighborhood replacement for each accepted child.
+        g. Update archive (elite_set) with all scored candidates.
+        h. Compute hypervolume.
+        i. Cool temperature; increment step_count and total_evals.
+        j. Check convergence: temperature_floor, eval_budget, review_exit.
+        k. Build RoundSummary.
+        l. Save state (AnnealingState back into algorithm_state pocket).
+
+    Args:
+        run_id: Run identifier.
+        state: Currently-loaded SearchState.
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        A :class:`RoundSummary` with EMOSA optional fields populated.
 
     # Guard: do not advance while batch evals are still in flight.
     if state.active_evals:
@@ -798,6 +935,13 @@ def advance_round_beam(
 
     # Save round report from each pending candidate's eval report on disk
     from odysseus.agents.review.ops import save_round_report
+    # Persist scored candidates to archive before clearing pending.
+    _append_archive(run_id, scored_pending, output_dir)
+
+    # Clear pending
+    _save_pending(run_id, [], output_dir)
+
+    return summary
 
     round_reports: dict[str, dict] = {}
     eval_dir = output_dir / run_id / "eval"
