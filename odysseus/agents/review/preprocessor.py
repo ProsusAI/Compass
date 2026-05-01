@@ -19,6 +19,7 @@ from typing import Any
 
 from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.review.models import (
+    INITIAL_PARENT_VERSION,
     BatchOutcome,
     CandidateAnalysis,
     ChildVariant,
@@ -1339,6 +1340,7 @@ def build_review_briefing(
         child_variants=child_variants or [],
         stagnation_signal=stagnation_signal,
         confusion_analysis=confusion_analysis,
+        initial_parent_version=INITIAL_PARENT_VERSION,
     )
     return briefing.model_copy(
         update={

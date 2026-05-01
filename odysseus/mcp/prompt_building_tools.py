@@ -124,7 +124,8 @@ async def register_candidate_tool(
     Args:
         run_id: Pipeline run identifier.
         prompt_version: Unique version identifier for the new prompt candidate.
-        parent_version: Parent prompt version, if any.
+        parent_version: Parent prompt version, if any. Round-1 / cold-start candidates
+            use the canonical "base" (matches ReviewBriefing.initial_parent_version).
         example_ids: Holdout example IDs used as few-shots in this prompt version (backend tracking only).
 
     Returns:
