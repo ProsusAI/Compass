@@ -10,7 +10,13 @@ from odysseus.agents.prompt_builder.search import (
     RoundSummary,
     SearchState,
     compute_front_improvement,
+    compute_hypervolume,
+    compute_pareto_front,
     dominates,
+    dynamic_reference_point,
+    exclusive_hypervolume_contribution,
+    fast_non_dominated_sort,
+    reduce_population,
     select_best,
     update_pareto_front,
 )
@@ -771,3 +777,247 @@ class TestComputeFrontImprovement:
         new_front = [_candidate(prompt_version="v2", quality_score=0.9, cost=0.01)]
         result = compute_front_improvement(old_front, new_front)
         assert result == 0.0
+
+
+# ---------------------------------------------------------------------------
+# SMS-EMOA primitives
+# ---------------------------------------------------------------------------
+
+# Local helper that mirrors the source branch's _c() factory but uses
+# round_introduced (the canonical field name on this branch) instead of
+# iteration_introduced.
+def _c(
+    prompt_version: str = "v1",
+    quality_score: float = 0.9,
+    cost: float = 0.01,
+    parent_version: str | None = None,
+    round_introduced: int = 1,
+    **kwargs,
+) -> Candidate:
+    return Candidate(
+        prompt_version=prompt_version,
+        parent_version=parent_version,
+        quality_score=quality_score,
+        cost=cost,
+        round_introduced=round_introduced,
+        **kwargs,
+    )
+
+
+class TestFastNonDominatedSort:
+    def test_empty_input(self) -> None:
+        assert fast_non_dominated_sort([]) == []
+
+    def test_single_front_when_all_non_dominated(self) -> None:
+        a = _c("a", quality_score=0.9, cost=0.3)
+        b = _c("b", quality_score=0.7, cost=0.1)
+        fronts = fast_non_dominated_sort([a, b])
+        assert len(fronts) == 1
+        assert len(fronts[0]) == 2
+
+    def test_two_fronts_of_size_two(self) -> None:
+        """4 candidates: 2 non-dominated, 2 dominated -> 2 fronts."""
+        a = _c("a", quality_score=0.9, cost=0.1)  # non-dominated
+        b = _c("b", quality_score=0.7, cost=0.05)  # non-dominated
+        c = _c("c", quality_score=0.8, cost=0.3)  # dominated by a
+        d = _c("d", quality_score=0.6, cost=0.2)  # dominated by b
+        fronts = fast_non_dominated_sort([a, b, c, d])
+        assert len(fronts) == 2
+        assert len(fronts[0]) == 2
+        assert len(fronts[1]) == 2
+        f1_versions = {x.prompt_version for x in fronts[0]}
+        assert f1_versions == {"a", "b"}
+
+    def test_all_dominated_chain(self) -> None:
+        """v1 dominates v2 dominates v3 — three singleton fronts."""
+        v1 = _c("v1", quality_score=0.9, cost=0.1)
+        v2 = _c("v2", quality_score=0.8, cost=0.2)
+        v3 = _c("v3", quality_score=0.7, cost=0.3)
+        fronts = fast_non_dominated_sort([v1, v2, v3])
+        assert len(fronts) == 3
+        assert fronts[0][0].prompt_version == "v1"
+
+
+class TestDynamicReferencePoint:
+    def test_empty_front(self) -> None:
+        assert dynamic_reference_point([], delta=0.05) == (0.0, 0.0)
+
+    def test_single_point_front(self) -> None:
+        front = [_c("v1", quality_score=0.8, cost=0.2)]
+        r = dynamic_reference_point(front, delta=0.1)
+        # range is 0, so delta*range=0; ref_q = min_q - 0, ref_c = max_c + 0
+        assert r == pytest.approx((0.8, 0.2))
+
+    def test_delta_zero(self) -> None:
+        front = [_c("v1", quality_score=0.9, cost=0.1), _c("v2", quality_score=0.7, cost=0.3)]
+        r = dynamic_reference_point(front, delta=0.0)
+        assert r == pytest.approx((0.7, 0.3))
+
+    def test_shifts_with_front(self) -> None:
+        front1 = [_c("v1", quality_score=0.9, cost=0.1), _c("v2", quality_score=0.7, cost=0.3)]
+        r1 = dynamic_reference_point(front1, delta=0.05)
+
+        # Extend front to include a cheaper, lower-quality point
+        front2 = front1 + [_c("v3", quality_score=0.5, cost=0.5)]
+        r2 = dynamic_reference_point(front2, delta=0.05)
+
+        # max_c increases -> reference cost should be higher
+        assert r2[1] > r1[1]
+        # min_q decreases -> reference quality should be lower
+        assert r2[0] < r1[0]
+
+
+class TestExclusiveHypervolumeContribution:
+    def test_endpoints_positive(self) -> None:
+        """Proper trade-off front: both endpoints have positive exclusive contribution."""
+        front = [
+            _c("v1", quality_score=0.9, cost=0.4),  # high quality, high cost
+            _c("v2", quality_score=0.7, cost=0.1),  # low quality, low cost
+        ]
+        ref = dynamic_reference_point(front)
+        delta_v1 = exclusive_hypervolume_contribution(front[0], front, ref)
+        delta_v2 = exclusive_hypervolume_contribution(front[1], front, ref)
+        assert delta_v1 > 0
+        assert delta_v2 > 0
+
+    def test_duplicate_point_near_zero_contribution(self) -> None:
+        """A candidate with identical objectives as another has ~0 exclusive contribution."""
+        v1 = _c("v1", quality_score=0.8, cost=0.2)
+        v_dup = _c("v_dup", quality_score=0.8, cost=0.2)
+        front = [v1, v_dup]
+        ref = (0.5, 0.5)
+        delta = exclusive_hypervolume_contribution(v_dup, front, ref)
+        # With normalisation, both points collapse to same normalised coords -> HV diff ~ 0
+        assert abs(delta) < 1e-9
+
+    def test_interior_vs_endpoint(self) -> None:
+        """Three-point Pareto front: all members have non-negative exclusive contribution."""
+        front = [
+            _c("a", quality_score=0.9, cost=0.4),   # high quality, high cost
+            _c("b", quality_score=0.75, cost=0.25),  # mid
+            _c("c", quality_score=0.6, cost=0.1),   # low quality, low cost
+        ]
+        # Verify it's actually non-dominated
+        assert len(compute_pareto_front(front)) == 3
+        ref = dynamic_reference_point(front)
+        for pt in front:
+            d = exclusive_hypervolume_contribution(pt, front, ref)
+            assert d >= 0, f"{pt.prompt_version} delta_s={d} < 0"
+
+
+class TestComputeHypervolume:
+    def test_empty_front_is_zero(self) -> None:
+        assert compute_hypervolume([], (0.5, 0.5)) == 0.0
+
+    def test_scale_invariant(self) -> None:
+        """Scale cost by 1000x; HV ranking across two candidate sets must be preserved."""
+        set_a = [_c("a1", quality_score=0.9, cost=0.1), _c("a2", quality_score=0.7, cost=0.3)]
+        set_b = [_c("b1", quality_score=0.85, cost=0.15), _c("b2", quality_score=0.65, cost=0.35)]
+
+        ref_normal = (0.5, 0.5)
+        hv_a = compute_hypervolume(set_a, ref_normal)
+        hv_b = compute_hypervolume(set_b, ref_normal)
+        rank_normal = hv_a > hv_b
+
+        # Scale costs by 1000
+        set_a_scaled = [_c(c.prompt_version, quality_score=c.quality_score, cost=c.cost * 1000) for c in set_a]
+        set_b_scaled = [_c(c.prompt_version, quality_score=c.quality_score, cost=c.cost * 1000) for c in set_b]
+        ref_scaled = (0.5, 0.5 * 1000)
+        hv_a_scaled = compute_hypervolume(set_a_scaled, ref_scaled)
+        hv_b_scaled = compute_hypervolume(set_b_scaled, ref_scaled)
+        rank_scaled = hv_a_scaled > hv_b_scaled
+
+        assert rank_normal == rank_scaled
+
+    def test_single_point(self) -> None:
+        c = _c("v1", quality_score=0.8, cost=0.2)
+        result = compute_hypervolume([c], (0.5, 0.5))
+        assert isinstance(result, float)
+
+
+class TestReducePopulation:
+    def _pop(self, specs: list[tuple[str, float, float]]) -> list[Candidate]:
+        return [_c(v, quality_score=q, cost=c) for v, q, c in specs]
+
+    # Case A: singleton last front
+    def test_case_a_singleton_last_front(self) -> None:
+        """Child lands alone on last front — evicted immediately (Case A)."""
+        population = self._pop([("v1", 0.9, 0.1), ("v2", 0.7, 0.05)])
+        child = _c("v3", quality_score=0.6, cost=0.3)  # dominated by both
+        new_pop, evicted, case = reduce_population(population, child, mu=2, delta=0.05)
+        assert case == "A_singleton"
+        assert evicted.prompt_version == "v3"
+        assert len(new_pop) == 2
+
+    # Case B: single most-dominated member
+    def test_case_b_single_most_dominated(self) -> None:
+        """Child lands on singleton last front — effectively Case A."""
+        population = self._pop([("v1", 0.9, 0.1), ("v2", 0.7, 0.05)])
+        # child dominated by both v1 and v2 → singleton last front → Case A
+        child = _c("v3", quality_score=0.6, cost=0.2)
+        new_pop, evicted, case = reduce_population(population, child, mu=2, delta=0.05)
+        assert case == "A_singleton"
+        assert evicted.prompt_version == "v3"
+
+    # Case C: single front — argmin delta_s
+    def test_case_c_delta_s_argmin(self) -> None:
+        """All 4 candidates mutually non-dominated (single front) -> Case C."""
+        population = self._pop(
+            [
+                ("v1", 0.95, 0.3),
+                ("v2", 0.80, 0.15),
+                ("v3", 0.65, 0.05),
+            ]
+        )
+        child = _c("v4", quality_score=0.90, cost=0.25)  # non-dominated
+        new_pop, evicted, case = reduce_population(population, child, mu=3, delta=0.05)
+        assert case == "C_delta_s"
+        assert len(new_pop) == 3
+
+    def test_preserves_size_mu(self) -> None:
+        population = self._pop([("v1", 0.9, 0.1), ("v2", 0.7, 0.05), ("v3", 0.8, 0.2)])
+        child = _c("v4", quality_score=0.75, cost=0.15)
+        new_pop, _, _ = reduce_population(population, child, mu=3, delta=0.05)
+        assert len(new_pop) == 3
+
+    def test_can_evict_child(self) -> None:
+        """When child lands on singleton last front, it is evicted."""
+        population = self._pop([("v1", 0.9, 0.1), ("v2", 0.7, 0.05)])
+        child = _c("child", quality_score=0.5, cost=0.8)  # dominated by all
+        new_pop, evicted, case = reduce_population(population, child, mu=2, delta=0.05)
+        assert evicted.prompt_version == "child"
+        assert {c.prompt_version for c in new_pop} == {"v1", "v2"}
+
+    def test_dedup_by_prompt_version_raises(self) -> None:
+        population = self._pop([("v1", 0.9, 0.1), ("v2", 0.7, 0.05)])
+        child = _c("v1", quality_score=0.85, cost=0.12)  # duplicate version
+        with pytest.raises(ValueError, match="Duplicate prompt_version"):
+            reduce_population(population, child, mu=2, delta=0.05)
+
+    def test_deterministic_under_delta_s_tie(self) -> None:
+        """Two candidates with identical (q, c): lex-later prompt_version is always evicted."""
+        population = [
+            _c("vA", quality_score=0.8, cost=0.2),
+            _c("vZ", quality_score=0.8, cost=0.2),  # same objectives as vA
+        ]
+        child = _c("v_new", quality_score=0.9, cost=0.1)
+        # The front is {vA, vZ, v_new}; delta_s for vA == delta_s for vZ
+        # tie-break by (q, c, version): "vZ" > "vA" lexicographically -> evict "vZ"
+        for _ in range(20):
+            new_pop, evicted, _ = reduce_population(population, child, mu=2, delta=0.05)
+            assert evicted.prompt_version == "vZ", (
+                f"Expected vZ to be evicted but got {evicted.prompt_version}"
+            )
+
+    def test_deterministic_lex_tiebreak_prompt_version(self) -> None:
+        """Identical-objective points evict lex-later prompt_version consistently."""
+        population = [
+            _c("alpha", quality_score=0.75, cost=0.25),
+            _c("zeta", quality_score=0.75, cost=0.25),
+            _c("beta", quality_score=0.60, cost=0.10),
+        ]
+        child = _c("new_child", quality_score=0.85, cost=0.35)
+        for _ in range(20):
+            new_pop, evicted, _ = reduce_population(population, child, mu=3, delta=0.05)
+            assert evicted.prompt_version in {"alpha", "zeta", "new_child", "beta"}
+            assert len(new_pop) == 3

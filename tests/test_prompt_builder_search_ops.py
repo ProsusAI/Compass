@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -26,7 +26,6 @@ from odysseus.agents.prompt_builder.search_ops import (
 )
 from odysseus.agents.review.models import LoopSignal
 
-_RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
 
 
@@ -651,40 +650,70 @@ class TestConvergenceReason:
 class TestAdvanceStepTool:
     """Tests for the advance_step_tool strategy-dispatch shape."""
 
-    async def test_hill_climb_arm_behaves_like_advance_round(self, tmp_path: Path) -> None:
-        """advance_step_tool with algorithm='hill_climb' produces a valid RoundSummary."""
-        from odysseus.mcp import (
-            advance_step_tool,
-            init_search_state_tool,
-            record_eval_result_tool,
-            register_candidate_tool,
+    async def test_sms_emoa_arm_behaves_like_advance_round_sms_emoa(self, tmp_path: Path) -> None:
+        """advance_step_tool with algorithm='sms_emoa' produces a valid RoundSummary."""
+        from odysseus.agents.prompt_builder.search import Candidate
+        from odysseus.agents.prompt_builder.search_ops import (
+            _pending_path,
+            _state_path,
+            init_search_state,
         )
+        from odysseus.mcp import advance_step_tool
 
-        with (
-            patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            patch(_SEARCH_OPS_PATCH, return_value=tmp_path),
-        ):
-            # Set up stage 4 guard artifact
-            analysis_dir = tmp_path / "outputs" / "run-st1" / "analysis"
-            analysis_dir.mkdir(parents=True, exist_ok=True)
-            (analysis_dir / "dev.jsonl").write_text("")
+        output_dir = tmp_path / "outputs"
+        with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
+            # Init state — branch hardcodes sms_emoa
+            state = init_search_state(backend="test", run_id="run-st1", output_dir=output_dir)
+            assert state.algorithm == "sms_emoa"
 
-            # Algorithm is hardcoded per branch (hill_climb on this branch)
-            state_json = await init_search_state_tool(
-                ctx=None,
-                run_id="run-st1",
-                backend="test",
+            # Patch state to have warm_up_complete=True and a 2-member population
+            path = _state_path("run-st1", output_dir)
+            raw = json.loads(path.read_text())
+            seed_a = Candidate(
+                prompt_version="seed-a",
+                parent_version=None,
+                quality_score=0.8,
+                cost=0.1,
+                round_introduced=0,
+                eval_status="complete",
             )
-            state_data = json.loads(state_json)
-            assert state_data["algorithm"] == "hill_climb"
+            seed_b = Candidate(
+                prompt_version="seed-b",
+                parent_version=None,
+                quality_score=0.7,
+                cost=0.05,
+                round_introduced=0,
+                eval_status="complete",
+            )
+            raw["algorithm_state"] = {
+                "mu": 2,
+                "warm_up_complete": True,
+                "population": [seed_a.model_dump(), seed_b.model_dump()],
+                "hypervolume_history": [0.1],
+                "iteration": 0,
+                "evaluations_used": 2,
+                "evaluation_budget": 50,
+                "reference_delta": 0.05,
+                "stagnation_window": 5,
+            }
+            raw["loop_phase"] = "review"
+            raw["round"] = 1
+            path.write_text(json.dumps(raw))
 
-            await register_candidate_tool("run-st1", "v1")
-            await record_eval_result_tool("run-st1", "v1", 0.85, 0.12)
+            # Add one scored pending candidate (the child)
+            child = Candidate(
+                prompt_version="v1",
+                parent_version=None,
+                quality_score=0.85,
+                cost=0.12,
+                round_introduced=1,
+                eval_status="complete",
+            )
+            _pending_path("run-st1", output_dir).write_text(json.dumps([child.model_dump()]))
 
             result_json = await advance_step_tool("run-st1")
             result = json.loads(result_json)
-            assert result["round"] == 1
-            assert result["new_elite_entries"] == 1
+            assert result["round"] == 2
 
     async def test_non_hill_climb_raises_not_implemented(self, tmp_path: Path) -> None:
         """advance_step_tool raises NotImplementedError for algorithms not yet implemented."""

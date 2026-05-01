@@ -460,9 +460,267 @@ def gen_scenario_53():
     )
 
 
+# ─── SMS-EMOA fixtures (scenarios 13/14 SMS-EMOA variants) ───────
+#
+# These fixtures mirror abc123/def456/ghi789 but use the canonical
+# algorithm_state pocket shape (population, hypervolume_history, etc.
+# nested under algorithm_state — NOT top-level).
+
+
+def gen_sms_emoa_basic():
+    """SMS-EMOA variant of abc123: basic review after first iteration."""
+    print("\nSMS-EMOA basic (abc123_emoa)")
+    d = BASE / "abc123_emoa"
+
+    _write_json(
+        d / "search_state.json",
+        {
+            "search_state_id": "abc123_emoa",
+            "backend": "anthropic",
+            "primary_metric_name": "accuracy",
+            "round": 1,
+            "elite_set": [],
+            "round_history": [],
+            "stagnation_count": 0,
+            "stagnation_limit": 3,
+            "convergence_limit": 5,
+            "max_rounds": 50,
+            "mutation_mode": "targeted",
+            "converged": False,
+            "algorithm": "sms_emoa",
+            "algorithm_state": {
+                "mu": 4,
+                "iteration": 1,
+                "warm_up_complete": True,
+                "evaluation_budget": 50,
+                "evaluations_used": 5,
+                "reference_delta": 0.05,
+                "stagnation_window": 5,
+                "reference_point": [0.65, 0.004],
+                "hypervolume_history": [0.12],
+                "loop_phase": "review",
+                "population": [
+                    {
+                        "prompt_version": "v1",
+                        "parent_version": None,
+                        "quality_score": 0.72,
+                        "cost": 0.002,
+                        "round_introduced": 1,
+                    }
+                ],
+            },
+            "active_evals": [],
+            "loop_phase": "review",
+        },
+    )
+
+    v1_report = _score_report(
+        accuracy=0.72,
+        cost=0.002,
+        recall={"haiku": 0.80, "sonnet": 0.65, "opus": 0.70},
+        support={"haiku": 10, "sonnet": 7, "opus": 3},
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.0012,
+        quality_change=0.072,
+        report_path="tests/scenarios/data/review/abc123_emoa/v1_score_report.json",
+        results_path="tests/scenarios/data/review/abc123_emoa/v1_results.jsonl",
+    )
+    _write_json(d / "v1_score_report.json", v1_report)
+
+    v2_report = _score_report(
+        accuracy=0.78,
+        cost=0.0025,
+        recall={"haiku": 0.85, "sonnet": 0.70, "opus": 0.75},
+        support={"haiku": 10, "sonnet": 7, "opus": 3},
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.0018,
+        quality_change=0.09,
+        report_path="tests/scenarios/data/review/abc123_emoa/v2_score_report.json",
+        results_path="tests/scenarios/data/review/abc123_emoa/v2_results.jsonl",
+    )
+    _write_json(d / "v2_score_report.json", v2_report)
+
+    _write_json(
+        d / "mutation_log.json",
+        [
+            {
+                "child_version": "v2",
+                "parent_version": "v1",
+                "mutation_type": "example_swap",
+                "description": "added second sonnet example",
+                "directive_ids": None,
+            }
+        ],
+    )
+
+    _write_prompt(
+        "v1",
+        (
+            "# Routing Prompt v1\n\n"
+            "## Rules\n1. Route simple queries to haiku.\n"
+            "2. Route analytical queries to opus.\n\n"
+            "## Examples\n### Example 1\nSimple lookup → haiku\n\n"
+            '## Output Schema\n{"route": "<model>"}\n'
+        ),
+    )
+    _write_prompt(
+        "v2",
+        (
+            "# Routing Prompt v2\n\n"
+            "## Rules\n1. Route simple queries to haiku.\n"
+            "2. Route analytical queries to opus.\n"
+            "3. Route moderate-complexity queries to sonnet.\n\n"
+            "## Examples\n### Example 1\nSimple lookup → haiku\n"
+            "### Example 2\nModerate analysis → sonnet\n\n"
+            '## Output Schema\n{"route": "<model>"}\n'
+        ),
+    )
+
+
+def gen_sms_emoa_stagnation():
+    """SMS-EMOA variant of ghi789: stagnation/convergence exit with HV plateau."""
+    print("\nSMS-EMOA stagnation (ghi789_emoa)")
+    d = BASE / "ghi789_emoa"
+    supports = {"haiku": 10, "sonnet": 7, "opus": 3}
+
+    _write_json(
+        d / "search_state.json",
+        {
+            "search_state_id": "ghi789_emoa",
+            "backend": "anthropic",
+            "primary_metric_name": "accuracy",
+            "round": 5,
+            "elite_set": [],
+            "round_history": [],
+            "stagnation_count": 0,
+            "stagnation_limit": 3,
+            "convergence_limit": 5,
+            "max_rounds": 50,
+            "mutation_mode": "targeted",
+            "converged": False,
+            "algorithm": "sms_emoa",
+            "algorithm_state": {
+                "mu": 4,
+                "iteration": 5,
+                "warm_up_complete": True,
+                "evaluation_budget": 50,
+                "evaluations_used": 9,
+                "reference_delta": 0.05,
+                "stagnation_window": 5,
+                "reference_point": [0.80, 0.004],
+                "hypervolume_history": [0.14, 0.17, 0.18, 0.18, 0.18],
+                "loop_phase": "review",
+                "population": [
+                    {
+                        "prompt_version": "v6",
+                        "parent_version": "v5",
+                        "quality_score": 0.89,
+                        "cost": 0.0021,
+                        "round_introduced": 5,
+                    }
+                ],
+            },
+            "active_evals": [],
+            "loop_phase": "review",
+        },
+    )
+
+    rounds_data = {
+        1: ("v1", 0.87, 0.0024, {"haiku": 0.88, "sonnet": 0.75, "opus": 0.78}),
+        2: ("v2", 0.878, 0.0023, {"haiku": 0.89, "sonnet": 0.77, "opus": 0.79}),
+        3: ("v3", 0.884, 0.0022, {"haiku": 0.90, "sonnet": 0.78, "opus": 0.80}),
+        4: ("v5", 0.888, 0.00215, {"haiku": 0.91, "sonnet": 0.79, "opus": 0.81}),
+    }
+
+    for round_num, (version, accuracy, cost, recall) in rounds_data.items():
+        report = _score_report(
+            accuracy=accuracy,
+            cost=cost,
+            recall=recall,
+            support=supports,
+            oracle_cost_change=0.003,
+            oracle_quality_change=0.15,
+            cost_change=cost * 0.85,
+            quality_change=accuracy * 0.13,
+            report_path=f"tests/scenarios/data/review/ghi789_emoa/{version}_score_report.json",
+            results_path=f"tests/scenarios/data/review/ghi789_emoa/{version}_results.jsonl",
+        )
+        _write_json(d / "round_reports" / f"round_{round_num}.json", {version: report})
+
+    v6_report = _score_report(
+        accuracy=0.89,
+        cost=0.0021,
+        recall={"haiku": 0.92, "sonnet": 0.80, "opus": 0.82},
+        support=supports,
+        oracle_cost_change=0.003,
+        oracle_quality_change=0.15,
+        cost_change=0.00273,
+        quality_change=0.1395,
+        report_path="tests/scenarios/data/review/ghi789_emoa/v6_score_report.json",
+        results_path="tests/scenarios/data/review/ghi789_emoa/v6_results.jsonl",
+    )
+    _write_json(d / "v6_score_report.json", v6_report)
+    _write_json(
+        d / "v5_score_report.json",
+        _score_report(
+            accuracy=0.888,
+            cost=0.00215,
+            recall={"haiku": 0.91, "sonnet": 0.79, "opus": 0.81},
+            support=supports,
+            oracle_cost_change=0.003,
+            oracle_quality_change=0.15,
+            cost_change=0.00268,
+            quality_change=0.138,
+            report_path="tests/scenarios/data/review/ghi789_emoa/v5_score_report.json",
+            results_path="tests/scenarios/data/review/ghi789_emoa/v5_results.jsonl",
+        ),
+    )
+
+    _write_json(
+        d / "mutation_log.json",
+        [
+            {"child_version": "v2", "parent_version": "v1", "mutation_type": "example_swap",
+             "description": "replaced haiku example with sonnet boundary case", "directive_ids": None},
+            {"child_version": "v3", "parent_version": "v2", "mutation_type": "rule_edit",
+             "description": "added explicit opus trigger conditions", "directive_ids": None},
+            {"child_version": "v4", "parent_version": "v3", "mutation_type": "rule_add",
+             "description": "added cost-awareness rule for haiku preference", "directive_ids": None},
+            {"child_version": "v5", "parent_version": "v4", "mutation_type": "example_swap",
+             "description": "swapped opus example for ambiguity-tagged boundary case", "directive_ids": None},
+            {"child_version": "v6", "parent_version": "v5", "mutation_type": "rule_edit",
+             "description": "micro-edit — rephrased haiku instruction", "directive_ids": None},
+        ],
+    )
+
+    base_prompt = (
+        "# Routing Prompt\n\n## Rules\n"
+        "1. Route simple factual queries to haiku.\n"
+        "2. Route moderate-complexity analytical queries to sonnet.\n"
+        "3. Route complex multi-step reasoning to opus.\n"
+        "4. Prefer haiku when cost is a concern and quality is equivalent.\n\n"
+        "## Examples\n### Example 1\nSimple lookup → haiku\n"
+        "### Example 2\nModerate analysis → sonnet\n"
+        "### Example 3\nComplex reasoning → opus\n\n"
+        '## Output Schema\n{"route": "<model>"}\n'
+    )
+    _write_prompt("v5", base_prompt)
+    _write_prompt(
+        "v6",
+        base_prompt.replace(
+            "Route simple factual queries to haiku.",
+            "Route simple factual queries to haiku (including translations and arithmetic).",
+        ),
+    )
+
+
 if __name__ == "__main__":
     print("Generating Review Agent scenario fixtures...")
     gen_scenario_51()
     gen_scenario_52()
     gen_scenario_53()
+    print("\nGenerating SMS-EMOA scenario fixtures...")
+    gen_sms_emoa_basic()
+    gen_sms_emoa_stagnation()
     print("\nDone.")

@@ -18,7 +18,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from odysseus.agents.prompt_builder.search import (
     AlgorithmType,
@@ -26,6 +26,10 @@ from odysseus.agents.prompt_builder.search import (
     RoundSummary,
     SearchState,
     compute_front_improvement,
+    compute_hypervolume,
+    compute_pareto_front,
+    dynamic_reference_point,
+    reduce_population,
     update_pareto_front,
 )
 from odysseus.agents.prompt_builder.viz import _try_write_viz
@@ -38,6 +42,9 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
+# Safety cap on iterations (prevents runaway SMS-EMOA loops)
+_MAX_ITERATIONS = 500
+
 
 def _default_output_dir() -> Path:
     return get_project_dir() / "outputs"
@@ -46,8 +53,8 @@ def _default_output_dir() -> Path:
 # Branch-level algorithm constants.  On feat/generalize-pipeline (and main)
 # these default to hill_climb / {}.  Search-specific branches (Wave 2) flip
 # exactly these two lines and nothing else.
-_BRANCH_ALGORITHM: AlgorithmType = "hill_climb"
-_BRANCH_ALGORITHM_STATE: dict[str, Any] = {}
+_BRANCH_ALGORITHM: AlgorithmType = "sms_emoa"
+_BRANCH_ALGORITHM_STATE: dict[str, Any] = {"mu": 8}
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +486,362 @@ def advance_round(
 
     # Clear pending
     _save_pending(run_id, [], output_dir)
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# SMS-EMOA: _check_termination
+# ---------------------------------------------------------------------------
+
+
+def _check_termination(
+    evaluations_used: int,
+    evaluation_budget: int,
+    hv_history: list[float],
+    stagnation_window: int,
+    stagnation_epsilon: float,
+    iteration: int,
+) -> tuple[bool, Literal["budget", "plateau", "max_iterations"] | None]:
+    """Return (terminated, reason) based on budget, plateau, and max-iteration checks.
+
+    Plateau uses max-min over the rolling window (tolerates non-monotonicity).
+    Stagnation epsilon is reference_delta; plateau fires when HV variation in
+    the window falls below this threshold.
+    """
+    if evaluations_used >= evaluation_budget:
+        return True, "budget"
+
+    if iteration >= _MAX_ITERATIONS:
+        return True, "max_iterations"
+
+    if len(hv_history) >= stagnation_window:
+        window = hv_history[-stagnation_window:]
+        if (max(window) - min(window)) < stagnation_epsilon:
+            return True, "plateau"
+
+    return False, None
+
+
+# ---------------------------------------------------------------------------
+# SMS-EMOA: advance_warmup_batch
+# ---------------------------------------------------------------------------
+
+
+def advance_warmup_batch(
+    run_id: str,
+    output_dir: Path | None = None,
+) -> RoundSummary:
+    """Complete warm-up: set population from the μ scored seeds.
+
+    Called once, when ``warm_up_complete`` is ``False`` and μ children are all
+    scored in pending.  Reads algorithm-specific config from the
+    ``algorithm_state`` pocket (with safe defaults) and writes the resulting
+    population state back.
+
+    Args:
+        run_id: Run identifier used to locate the state on disk.
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        A :class:`RoundSummary` with ``reduce_case="warmup"``.
+
+    Raises:
+        ValueError: If warm-up is already complete, active_evals is non-empty,
+            pending is empty, or fewer than 2 scored candidates are available.
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    state = _load_state(run_id, output_dir)
+    pending = _load_pending(run_id, output_dir)
+
+    # --- Read algorithm_state pocket with safe defaults ---
+    ast = state.algorithm_state
+    mu = int(ast.get("mu", 8))
+    warm_up_complete = bool(ast.get("warm_up_complete", False))
+    reference_delta = float(ast.get("reference_delta", 0.05))
+
+    if warm_up_complete:
+        raise ValueError("advance_warmup_batch called but warm_up_complete is already True")
+
+    if not pending:
+        raise ValueError("No pending candidates to advance_warmup_batch with")
+
+    if state.active_evals:
+        raise ValueError(f"Cannot advance_warmup_batch while active_evals is non-empty: {state.active_evals}")
+
+    scored_pending = [c for c in pending if c.eval_status in ("complete", None)]
+    failed_pending = [c for c in pending if c.eval_status == "failed"]
+
+    if len(scored_pending) < 2:
+        raise ValueError(
+            f"advance_warmup_batch requires at least 2 scored candidates; "
+            f"got {len(scored_pending)} scored, {len(failed_pending)} failed"
+        )
+
+    # Sort deterministically by prompt_version for reproducibility
+    population = sorted(scored_pending[:mu], key=lambda c: c.prompt_version)
+
+    # Compute initial dynamic reference point and hypervolume
+    front = compute_pareto_front(population)
+    r = dynamic_reference_point(front, delta=reference_delta)
+    hv = compute_hypervolume(front, r)
+
+    # Build updated algorithm_state pocket
+    new_ast = {**ast}
+    new_ast["population"] = [c.model_dump() for c in population]
+    new_ast["warm_up_complete"] = True
+    new_ast["iteration"] = 0
+    new_ast["evaluations_used"] = len(pending)
+    new_ast["hypervolume_history"] = [hv]
+    new_ast["reference_point"] = list(r)
+
+    # Represent warmup as round 0 in the summary
+    new_round = state.round + 1
+
+    # Use first/last population members as nominal parents for traceability
+    parent_a = population[0].prompt_version
+    parent_b = population[-1].prompt_version if len(population) > 1 else parent_a
+
+    summary = RoundSummary(
+        round=new_round,
+        candidates_evaluated=[c.prompt_version for c in pending],
+        new_elite_entries=len(population),
+        elite_size=len(population),
+        converged=False,
+        hypervolume=hv,
+        hypervolume_delta=0.0,
+        reference_point=r,
+        reduce_case="warmup",
+        evicted_version="",
+        parent_a_version=parent_a,
+        parent_b_version=parent_b,
+        population_size=len(population),
+        terminated=False,
+        termination_reason=None,
+    )
+
+    updated_state = state.model_copy(
+        update={
+            "round": new_round,
+            "elite_set": list(population),
+            "round_history": [*state.round_history, summary],
+            "loop_phase": "review",
+            "algorithm_state": new_ast,
+        }
+    )
+    _save_state(run_id, updated_state, output_dir)
+    _save_pending(run_id, [], output_dir)
+    _try_write_viz(run_id, output_dir)
+
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# SMS-EMOA: advance_round_sms_emoa
+# ---------------------------------------------------------------------------
+
+
+def advance_round_sms_emoa(
+    run_id: str,
+    output_dir: Path | None = None,
+) -> RoundSummary:
+    """Advance the SMS-EMOA loop by one steady-state iteration.
+
+    Expects exactly one scored pending candidate (the child from the current
+    build phase). Updates population via reduce_population, checks termination,
+    and persists state.  Algorithm-specific state lives in the
+    ``algorithm_state`` pocket.
+
+    Args:
+        run_id: Run identifier used to locate the state on disk.
+        output_dir: Root directory for persisted state files.
+
+    Returns:
+        A :class:`RoundSummary` with termination information.
+
+    Raises:
+        ValueError: If pending is empty or active_evals is non-empty.
+        RuntimeError: If called before warm-up is complete.
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+    state = _load_state(run_id, output_dir)
+    pending = _load_pending(run_id, output_dir)
+
+    if not pending:
+        raise ValueError("No pending candidates to advance_round_sms_emoa with")
+
+    if state.active_evals:
+        raise ValueError(f"Cannot advance_round_sms_emoa while active_evals is non-empty: {state.active_evals}")
+
+    # --- Read algorithm_state pocket with safe defaults ---
+    ast = state.algorithm_state
+    mu = int(ast.get("mu", 8))
+    warm_up_complete = bool(ast.get("warm_up_complete", False))
+    population_raw = ast.get("population", [])
+    population: list[Candidate] = [Candidate.model_validate(c) for c in population_raw]
+    hypervolume_history: list[float] = list(ast.get("hypervolume_history", []))
+    iteration = int(ast.get("iteration", 0))
+    evaluation_budget = int(ast.get("evaluation_budget", 50))
+    evaluations_used = int(ast.get("evaluations_used", 0))
+    reference_delta = float(ast.get("reference_delta", 0.05))
+    stagnation_window = int(ast.get("stagnation_window", 5))
+
+    if not warm_up_complete:
+        raise RuntimeError("advance_round_sms_emoa called before warm-up complete — use advance_warmup_batch")
+
+    scored_pending = [c for c in pending if c.eval_status in ("complete", None)]
+    failed_pending = [c for c in pending if c.eval_status == "failed"]
+
+    if failed_pending:
+        logger.warning(
+            "advance_round_sms_emoa: %d candidate(s) failed evaluation: %s",
+            len(failed_pending),
+            [c.prompt_version for c in failed_pending],
+        )
+
+    prev_hv = hypervolume_history[-1] if hypervolume_history else 0.0
+    new_round = state.round + 1
+    candidates_evaluated = [c.prompt_version for c in pending]
+
+    if not scored_pending:
+        # All-failed: carry population forward; still consume budget
+        new_iteration = iteration + 1
+        new_evaluations_used = evaluations_used + len(pending)
+        new_hv_history = hypervolume_history + [prev_hv]
+
+        terminated, termination_reason = _check_termination(
+            new_evaluations_used,
+            evaluation_budget,
+            new_hv_history,
+            stagnation_window,
+            reference_delta,
+            new_iteration,
+        )
+
+        new_ast = {**ast}
+        new_ast["iteration"] = new_iteration
+        new_ast["evaluations_used"] = new_evaluations_used
+        new_ast["hypervolume_history"] = new_hv_history
+
+        rep_parent = population[0].prompt_version if population else ""
+
+        summary = RoundSummary(
+            round=new_round,
+            candidates_evaluated=candidates_evaluated,
+            new_elite_entries=0,
+            elite_size=len(population),
+            converged=terminated,
+            hypervolume=prev_hv,
+            hypervolume_delta=0.0,
+            reference_point=tuple(ast.get("reference_point", [0.0, 0.0])),
+            reduce_case="A_singleton",
+            evicted_version="",
+            parent_a_version=rep_parent,
+            parent_b_version=rep_parent,
+            population_size=len(population),
+            terminated=terminated,
+            termination_reason=termination_reason,
+        )
+
+        updated_state = state.model_copy(
+            update={
+                "round": new_round,
+                "round_history": [*state.round_history, summary],
+                "converged": terminated,
+                "loop_phase": "build" if terminated else "review",
+                "algorithm_state": new_ast,
+            }
+        )
+        _save_state(run_id, updated_state, output_dir)
+        _save_pending(run_id, [], output_dir)
+        _try_write_viz(run_id, output_dir)
+
+        return summary
+
+    # Exactly one scored child expected post-warmup
+    child = scored_pending[0]
+    if len(scored_pending) > 1:
+        logger.warning(
+            "advance_round_sms_emoa: expected 1 scored child, got %d; using first by prompt_version",
+            len(scored_pending),
+        )
+        child = min(scored_pending, key=lambda c: c.prompt_version)
+
+    # Compute dynamic reference point from current front before reduce
+    current_front = compute_pareto_front(population)
+    r = dynamic_reference_point(current_front, delta=reference_delta)
+
+    new_population, evicted, reduce_case_str = reduce_population(population, child, mu, reference_delta)
+    reduce_case = cast(
+        Literal["A_singleton", "B_dominated", "C_delta_s"],
+        reduce_case_str,
+    )
+
+    new_front = compute_pareto_front(new_population)
+    new_hv = compute_hypervolume(new_front, r)
+    hv_delta = new_hv - prev_hv
+
+    new_iteration = iteration + 1
+    new_evaluations_used = evaluations_used + len(pending)
+    new_hv_history = hypervolume_history + [new_hv]
+
+    terminated, termination_reason = _check_termination(
+        new_evaluations_used,
+        evaluation_budget,
+        new_hv_history,
+        stagnation_window,
+        reference_delta,
+        new_iteration,
+    )
+
+    # Derive parent versions from child metadata
+    parent_a = child.parent_version or ""
+    parent_b = child.secondary_parent_version or parent_a
+
+    # Count how many new elite entries were introduced (child entered population)
+    child_in_pop = any(c.prompt_version == child.prompt_version for c in new_population)
+    new_elite_entries = 1 if child_in_pop else 0
+
+    summary = RoundSummary(
+        round=new_round,
+        candidates_evaluated=candidates_evaluated,
+        new_elite_entries=new_elite_entries,
+        elite_size=len(new_population),
+        converged=terminated,
+        hypervolume=new_hv,
+        hypervolume_delta=hv_delta,
+        reference_point=r,
+        reduce_case=reduce_case,
+        evicted_version=evicted.prompt_version,
+        parent_a_version=parent_a,
+        parent_b_version=parent_b,
+        population_size=len(new_population),
+        terminated=terminated,
+        termination_reason=termination_reason,
+    )
+
+    new_ast = {**ast}
+    new_ast["population"] = [c.model_dump() for c in new_population]
+    new_ast["iteration"] = new_iteration
+    new_ast["evaluations_used"] = new_evaluations_used
+    new_ast["hypervolume_history"] = new_hv_history
+    new_ast["reference_point"] = list(r)
+
+    updated_state = state.model_copy(
+        update={
+            "round": new_round,
+            "elite_set": list(new_front),
+            "round_history": [*state.round_history, summary],
+            "converged": terminated,
+            "loop_phase": "build" if terminated else "review",
+            "algorithm_state": new_ast,
+        }
+    )
+    _save_state(run_id, updated_state, output_dir)
+    _save_pending(run_id, [], output_dir)
+    _try_write_viz(run_id, output_dir)
 
     return summary
 

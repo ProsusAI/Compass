@@ -49,6 +49,13 @@ Full-pipeline integration test scenarios for Project Odysseus. Each `.md` file i
 |---|----------|---------|-------|
 | 15 | Full End-to-End with Final Report | `full_pipeline_dataset.jsonl` | All 6 stages verified in detail: holdout filtering, holdout eval, briefing, report content |
 
+### SMS-EMOA Algorithm (16–17)
+
+| # | Scenario | Dataset | Focus |
+|---|----------|---------|-------|
+| 16 | SMS-EMOA — Warm-Up Then Iterations | `sms_emoa_toy_dataset.jsonl` | Full SMS-EMOA loop: warm-up (μ=4 seeds → batch eval → advance_step_tool), two steady-state iterations, budget termination |
+| 17 | Stage 4 — Build-Phase Dispatch Guard | pre-configured fixture | Verifies `build_dispatched.json` prevents duplicate sub-agent dispatch; `DISPATCH_REQUIRED: false` while in-flight, recovers after deletion |
+
 ## Prerequisites
 
 - The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
@@ -133,4 +140,5 @@ Test datasets live in `tests/scenarios/data/`:
 | `review/abc123/` | Review Agent fixtures: basic review (search state, score reports, mutation log) |
 | `review/def456/` | Review Agent fixtures: regression guard (v3 drops opus recall) |
 | `review/ghi789/` | Review Agent fixtures: loop exit (round 4, convergence) |
-| `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data |
+| `sms_emoa_toy_dataset.jsonl` | 20 rows, 3 tiers (haiku/sonnet/opus), SMS-EMOA loop testing |
+| `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data (hill-climb + SMS-EMOA variants) |
