@@ -165,9 +165,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
                     f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
                 ) from e
             except ValueError as e:
-                raise ToolError(
-                    f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}"
-                ) from e
+                raise ToolError(f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}") from e
 
     if result.get("subagent_instruction"):
         result["subagent_instruction"] = (
