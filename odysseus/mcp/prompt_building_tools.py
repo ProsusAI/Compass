@@ -14,6 +14,7 @@ from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
+    advance_round_emosa,
     get_search_state,
     init_search_state,
     record_eval_result,
@@ -327,14 +328,47 @@ def _advance_hill_climb(run_id: str) -> str:
     return summary.model_dump_json(indent=2)
 
 
+def _advance_emosa(run_id: str) -> str:
+    """EMOSA arm of advance_step_tool.
+
+    Dispatches to ``advance_round_emosa`` when ``loop_phase == "calibration"``.
+    Raises :exc:`NotImplementedError` for ``"review"`` and ``"build"`` phases
+    (steady-state advance lands in C4).
+
+    Returns a JSON-serialized RoundSummary and clears the build-dispatch marker.
+    """
+    from odysseus.agents.prompt_builder.search_ops import _default_output_dir, _load_state
+
+    output_dir = _default_output_dir()
+    try:
+        state = _load_state(run_id, output_dir)
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+
+    loop_phase = state.loop_phase
+    try:
+        if loop_phase == "calibration":
+            summary = advance_round_emosa(run_id=run_id)
+        elif loop_phase in ("review", "build"):
+            raise NotImplementedError("EMOSA steady-state lands in C4")
+        else:
+            raise ValueError(f"unsupported loop_phase '{loop_phase}' for emosa")
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+    except (ValueError, RuntimeError) as exc:
+        raise ToolError(str(exc)) from exc
+
+    clear_build_dispatched(run_id)
+    return summary.model_dump_json(indent=2)
+
+
 @mcp.tool()
 async def advance_step_tool(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Advance the search loop by one step.
 
     Dispatches to the strategy-specific advance logic determined by the
-    ``algorithm`` field of the current SearchState.  On this branch only
-    ``"hill_climb"`` is implemented; other algorithms raise NotImplementedError
-    and will be wired in when their feature branches rebase onto main.
+    ``algorithm`` field of the current SearchState.  Both ``"hill_climb"``
+    and ``"emosa"`` are implemented on this branch.
 
     Args:
         run_id: Pipeline run identifier.
@@ -350,6 +384,8 @@ async def advance_step_tool(run_id: str) -> str:
     algorithm = state.algorithm
     if algorithm == "hill_climb":
         return _advance_hill_climb(run_id)
+    elif algorithm == "emosa":
+        return _advance_emosa(run_id)
 
     raise NotImplementedError(f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch")
 
@@ -415,6 +451,10 @@ async def get_child_variants_tool(
     via record_directive_outcomes_tool. Each variant specifies a parent version
     and the directives to apply together as one child prompt.
 
+    Prefers per-trajectory files (``child_variants_t<N>.json``) produced by EMOSA
+    K-way fanout when they exist, falling back to the single-slot
+    ``child_variants.json`` written during calibration and non-EMOSA strategies.
+
     Args:
         run_id: Pipeline run identifier.
         output_dir: Output directory (default "outputs").
@@ -422,11 +462,16 @@ async def get_child_variants_tool(
     Returns:
         JSON-serialized list of ChildVariant objects.
     """
-    from odysseus.agents.review.ops import load_child_variants
+    from odysseus.agents.review.ops import load_all_trajectory_child_variants, load_child_variants
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    variants = load_child_variants(run_id, output_dir=out)
+    search_dir = out / run_id / "search"
+    trajectory_files = list(search_dir.glob("child_variants_t*.json")) if search_dir.exists() else []
+    if trajectory_files:
+        variants = load_all_trajectory_child_variants(run_id, output_dir=out)
+    else:
+        variants = load_child_variants(run_id, output_dir=out)
 
     # Dedup: if secondary version matches primary, set to None
     variants = [
@@ -460,11 +505,16 @@ async def get_edit_directives_tool(
     Returns:
         JSON-serialized flat list of EditDirective objects across all child variants.
     """
-    from odysseus.agents.review.ops import load_child_variants
+    from odysseus.agents.review.ops import load_all_trajectory_child_variants, load_child_variants
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    variants = load_child_variants(run_id, output_dir=out)
+    search_dir = out / run_id / "search"
+    trajectory_files = list(search_dir.glob("child_variants_t*.json")) if search_dir.exists() else []
+    if trajectory_files:
+        variants = load_all_trajectory_child_variants(run_id, output_dir=out)
+    else:
+        variants = load_child_variants(run_id, output_dir=out)
     directives = [d for v in variants for d in v.directives]
     return json.dumps([d.model_dump(mode="json") for d in directives], indent=2)
 

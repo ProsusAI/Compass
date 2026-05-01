@@ -171,6 +171,84 @@ class TestRecordDirectiveOutcomesDecomposed:
         assert not review_result_path.exists()
 
 
+class TestRecordDirectiveOutcomesTrajectoryId:
+    """Tests for the EMOSA trajectory_id fanout path of record_directive_outcomes_tool."""
+
+    _RUN_ID = "test-run-trajectory"
+
+    async def test_trajectory_id_writes_per_trajectory_file(self, tmp_path: Path) -> None:
+        """trajectory_id=2 writes child_variants_t2.json, not child_variants.json."""
+        with _patch_project_dir(tmp_path):
+            result_json = await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[_OUTCOME],
+                child_variants=_CHILD_VARIANTS,
+                trajectory_id=2,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert result["child_variants_saved"] == 1
+
+        # Per-trajectory file must exist
+        per_traj = tmp_path / "outputs" / self._RUN_ID / "search" / "child_variants_t2.json"
+        assert per_traj.exists(), "child_variants_t2.json must be written for trajectory_id=2"
+
+        # Single-slot sentinel must NOT be written
+        single_slot = tmp_path / "outputs" / self._RUN_ID / "search" / "child_variants.json"
+        assert not single_slot.exists(), "child_variants.json must not be written for EMOSA fanout"
+
+    async def test_trajectory_id_updates_review_dispatched(self, tmp_path: Path) -> None:
+        """trajectory_id=2 adds 2 to review_dispatched.json trajectory_ids list."""
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[_OUTCOME],
+                child_variants=_CHILD_VARIANTS,
+                trajectory_id=2,
+                output_dir="outputs",
+            )
+
+        from odysseus.agents.review.ops import load_dispatched_trajectories
+
+        dispatched = load_dispatched_trajectories(self._RUN_ID, output_dir=tmp_path / "outputs")
+        assert 2 in dispatched, f"trajectory_id 2 must appear in dispatched list; got {dispatched}"
+
+    async def test_trajectory_variant_id_format(self, tmp_path: Path) -> None:
+        """Variant ids use cv-{round}-t{trajectory_id}-{i} format for EMOSA fanout."""
+        with _patch_project_dir(tmp_path):
+            result_json = await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[_OUTCOME],
+                child_variants=[{**_CHILD_VARIANTS[0]}],  # no variant_id set
+                trajectory_id=2,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        summary = result["variants_summary"]
+        assert len(summary) == 1
+        # round defaults to 0 when no search_state.json exists
+        assert summary[0]["variant_id"] == "cv-0-t2-0"
+
+    async def test_single_slot_path_unchanged_without_trajectory_id(self, tmp_path: Path) -> None:
+        """Without trajectory_id, the existing single-slot path still writes child_variants.json."""
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID + "-single",
+                outcomes=[_OUTCOME],
+                child_variants=_CHILD_VARIANTS,
+                output_dir="outputs",
+            )
+
+        single_slot = tmp_path / "outputs" / (self._RUN_ID + "-single") / "search" / "child_variants.json"
+        assert single_slot.exists(), "child_variants.json must be written for single-slot path"
+
+
 class TestChildVariantNoParentPreference:
     """Tests for ChildVariant.parent_preference being optional."""
 
@@ -728,6 +806,168 @@ class TestBuildReviewBriefingToolSelector:
         assert simple_to_complex["count"] == 1, (
             "selector override to 'va' only should reflect 1 unique misroute (e1), not 2"
         )
+
+
+# ---------------------------------------------------------------------------
+# B2: build_review_briefing_tool auto-fires calibration for EMOSA
+# ---------------------------------------------------------------------------
+
+
+def _make_emosa_state_dict(run_id: str, annealing_state: dict) -> dict:
+    """Build a minimal SearchState dict for an EMOSA run."""
+    return {
+        "search_state_id": run_id,
+        "backend": "anthropic",
+        "round": 0,
+        "elite_set": [],
+        "round_history": [],
+        "stagnation_count": 0,
+        "stagnation_limit": 3,
+        "convergence_limit": 5,
+        "max_rounds": 50,
+        "mutation_mode": "targeted",
+        "converged": False,
+        "algorithm": "emosa",
+        "algorithm_state": annealing_state,
+        "loop_phase": "review",
+    }
+
+
+def _write_pending_candidates(tmp_path: Path, run_id: str, candidates: list[dict]) -> None:
+    """Write pending_candidates.json for the given run."""
+    search_dir = tmp_path / "outputs" / run_id / "search"
+    search_dir.mkdir(parents=True, exist_ok=True)
+    (search_dir / "pending_candidates.json").write_text(json.dumps(candidates), encoding="utf-8")
+
+
+class TestBuildReviewBriefingAutoFiresCalibration:
+    """B2: build_review_briefing_tool auto-fires _calibration_complete on first review entry."""
+
+    _RUN_ID = "test-emosa-autocalib"
+
+    def _make_scored_candidates(self, run_id: str, num: int = 5) -> list[dict]:
+        """Build K scored pending candidates that form a Pareto front (none dominated).
+
+        Trade-off: higher quality → higher cost, so no single candidate dominates another.
+        """
+        return [
+            {
+                "prompt_version": f"v{i + 1}",
+                "parent_version": None,
+                "quality_score": 0.7 + i * 0.03,  # higher quality …
+                "cost": 0.01 + i * 0.02,  # … but also higher cost
+                "round_introduced": 1,
+                "eval_status": "complete",
+                "example_ids": [],
+            }
+            for i in range(num)
+        ]
+
+    async def test_build_review_briefing_auto_fires_calibration(self, tmp_path: Path) -> None:
+        """With K=5 scored pending and empty elite_set, calibration fires automatically.
+
+        Post-call state must have round==1, len(elite_set)==5, algorithm_state["phase"]=="search".
+        """
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+        from odysseus.agents.prompt_builder.search_ops import (
+            _build_emosa_initial_state,
+            get_search_state,
+        )
+
+        run_id = self._RUN_ID + "-fires"
+        annealing_state = _build_emosa_initial_state(num_trajectories=5)
+        state_dict = _make_emosa_state_dict(run_id, annealing_state)
+        _write_state(tmp_path, run_id, state_dict)
+        candidates = self._make_scored_candidates(run_id, num=5)
+        _write_pending_candidates(tmp_path, run_id, candidates)
+
+        with _patch_project_dir(tmp_path):
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        post_state = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
+        assert post_state.round == 1, f"Expected round==1, got {post_state.round}"
+        assert len(post_state.elite_set) == 5, f"Expected 5 elite entries, got {len(post_state.elite_set)}"
+        annealing = AnnealingState.model_validate(post_state.algorithm_state)
+        assert annealing.phase == "search", f"Expected phase=='search', got {annealing.phase}"
+
+    async def test_build_review_briefing_auto_fire_idempotent(self, tmp_path: Path) -> None:
+        """After first call seeds elite_set, calling again does NOT re-trigger calibration.
+
+        round stays at 1 and elite_set stays at 5 entries after the second call.
+        """
+        from odysseus.agents.prompt_builder.search_ops import (
+            _build_emosa_initial_state,
+            get_search_state,
+        )
+
+        run_id = self._RUN_ID + "-idempotent"
+        annealing_state = _build_emosa_initial_state(num_trajectories=5)
+        state_dict = _make_emosa_state_dict(run_id, annealing_state)
+        _write_state(tmp_path, run_id, state_dict)
+        candidates = self._make_scored_candidates(run_id, num=5)
+        _write_pending_candidates(tmp_path, run_id, candidates)
+
+        with _patch_project_dir(tmp_path):
+            # First call: should auto-fire calibration
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+            post_first = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
+            assert post_first.round == 1
+            assert len(post_first.elite_set) == 5
+
+            # Second call: elite_set is non-empty → guard short-circuits, round stays at 1
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        post_second = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
+        assert post_second.round == 1, f"Expected round to stay at 1, got {post_second.round}"
+        assert len(post_second.elite_set) == 5, (
+            f"Expected elite_set to stay at 5 entries, got {len(post_second.elite_set)}"
+        )
+
+    async def test_build_review_briefing_skips_calibration_when_elite_set_populated(self, tmp_path: Path) -> None:
+        """If elite_set is already populated, calibration guard is skipped (non-EMOSA path)."""
+        from odysseus.agents.prompt_builder.search_ops import get_search_state
+
+        run_id = self._RUN_ID + "-skip"
+        # State already has elite_set entries (post-calibration shape)
+        state_dict = _make_state_dict(
+            run_id,
+            elite_set=[
+                {
+                    "prompt_version": "v1",
+                    "parent_version": None,
+                    "quality_score": 0.80,
+                    "cost": 1.0,
+                    "round_introduced": 1,
+                }
+            ],
+            round_=1,
+        )
+        state_dict["algorithm"] = "emosa"
+        _write_state(tmp_path, run_id, state_dict)
+
+        with _patch_project_dir(tmp_path):
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        post_state = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
+        # round should NOT have advanced beyond what calibration would do
+        assert post_state.round == 1, "round should stay at 1 when elite_set is already populated"
 
 
 # ---------------------------------------------------------------------------

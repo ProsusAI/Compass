@@ -240,6 +240,13 @@ class ReviewBriefing(BaseModel):
     stagnation_signal: dict[str, Any] | None = None
 
     parent_a_version: str | None = None
+    parent_b_version: str | None = None
+
+    # EMOSA-specific optional fields (populated by _populate_emosa_review_fields)
+    trajectory_id: int | None = None  # EMOSA: which trajectory this dispatch is bound to
+    weight_vector: tuple[float, float] | None = None  # EMOSA: (lambda_q, lambda_c)
+    binding_axis: Literal["quality", "cost"] | None = None  # EMOSA: argmax Tchebycheff term
+    acceptance_history: list[bool] | None = None  # EMOSA: per-trajectory recent acceptances
 
 
 # ---------------------------------------------------------------------------

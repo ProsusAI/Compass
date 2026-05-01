@@ -149,6 +149,52 @@ class TestRunIdPaths:
 
 
 # ---------------------------------------------------------------------------
+# B1: EMOSA init seeds full AnnealingState
+# ---------------------------------------------------------------------------
+
+
+class TestInitSearchStateEmosaSeeds:
+    """B1: init_search_state on the EMOSA branch seeds a valid AnnealingState."""
+
+    def test_init_search_state_emosa_seeds_annealing_state(self, tmp_path) -> None:
+        """AnnealingState.model_validate succeeds on algorithm_state after init."""
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+
+        state = init_search_state("anthropic", run_id="emosa-b1-seed", output_dir=tmp_path)
+        annealing = AnnealingState.model_validate(state.algorithm_state)
+        assert annealing.num_trajectories == 5
+        assert len(annealing.trajectories) == 5
+
+    def test_init_search_state_emosa_trajectory_ids_and_weights(self, tmp_path) -> None:
+        """Seeded trajectories have correct trajectory_id (0..4) and non-zero weight vectors."""
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+
+        state = init_search_state("anthropic", run_id="emosa-b1-wv", output_dir=tmp_path)
+        annealing = AnnealingState.model_validate(state.algorithm_state)
+        for i, traj in enumerate(annealing.trajectories):
+            assert traj.trajectory_id == i
+            lq, lc = traj.weight_vector
+            assert lq > 0.0
+            assert lc > 0.0
+            assert abs(lq + lc - 1.0) < 1e-9
+
+    def test_init_search_state_emosa_no_current_solution(self, tmp_path) -> None:
+        """Seeded trajectories have no current_solution (filled in by _calibration_complete)."""
+        from odysseus.agents.prompt_builder.annealing import AnnealingState
+
+        state = init_search_state("anthropic", run_id="emosa-b1-nosol", output_dir=tmp_path)
+        annealing = AnnealingState.model_validate(state.algorithm_state)
+        for traj in annealing.trajectories:
+            assert traj.current_solution is None
+            assert traj.current_energy is None
+
+    def test_init_search_state_emosa_algorithm_field(self, tmp_path) -> None:
+        """State reports algorithm == 'emosa'."""
+        state = init_search_state("anthropic", run_id="emosa-b1-alg", output_dir=tmp_path)
+        assert state.algorithm == "emosa"
+
+
+# ---------------------------------------------------------------------------
 # Task 7: register_candidate
 # ---------------------------------------------------------------------------
 
@@ -651,8 +697,15 @@ class TestConvergenceReason:
 class TestAdvanceStepTool:
     """Tests for the advance_step_tool strategy-dispatch shape."""
 
-    async def test_hill_climb_arm_behaves_like_advance_round(self, tmp_path: Path) -> None:
-        """advance_step_tool with algorithm='hill_climb' produces a valid RoundSummary."""
+    async def test_emosa_arm_calibration_advance(self, tmp_path: Path) -> None:
+        """advance_step_tool with algorithm='emosa' (branch default) runs calibration
+        and produces a valid RoundSummary with K elite entries."""
+        from odysseus.agents.prompt_builder.annealing import (
+            AnnealingState,
+            TrajectoryState,
+            compute_weight_vectors,
+        )
+        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
         from odysseus.mcp import (
             advance_step_tool,
             init_search_state_tool,
@@ -669,22 +722,41 @@ class TestAdvanceStepTool:
             analysis_dir.mkdir(parents=True, exist_ok=True)
             (analysis_dir / "dev.jsonl").write_text("")
 
-            # Algorithm is hardcoded per branch (hill_climb on this branch)
+            # Algorithm is hardcoded per branch (emosa on this branch)
             state_json = await init_search_state_tool(
                 ctx=None,
                 run_id="run-st1",
                 backend="test",
             )
             state_data = json.loads(state_json)
-            assert state_data["algorithm"] == "hill_climb"
+            assert state_data["algorithm"] == "emosa"
 
-            await register_candidate_tool("run-st1", "v1")
-            await record_eval_result_tool("run-st1", "v1", 0.85, 0.12)
+            # Patch state to calibration phase with full AnnealingState pocket
+            output_dir = tmp_path / "outputs"
+            num_traj = 5
+            wvs = compute_weight_vectors(num_traj)
+            trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
+            annealing = AnnealingState(
+                num_trajectories=num_traj, trajectories=trajs, phase="calibration", total_evals=0
+            )
+            state = _load_state("run-st1", output_dir)
+            patched = state.model_copy(
+                update={
+                    "algorithm_state": json.loads(annealing.model_dump_json()),
+                    "loop_phase": "calibration",
+                }
+            )
+            _save_state("run-st1", patched, output_dir)
+
+            for i in range(num_traj):
+                await register_candidate_tool("run-st1", f"v{i + 1}")
+                # Mutually non-dominated: higher quality = higher cost; Pareto front has K entries.
+                await record_eval_result_tool("run-st1", f"v{i + 1}", 0.5 + i * 0.1, 0.1 + i * 0.1)
 
             result_json = await advance_step_tool("run-st1")
             result = json.loads(result_json)
             assert result["round"] == 1
-            assert result["new_elite_entries"] == 1
+            assert result["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
 
 
 # ---------------------------------------------------------------------------

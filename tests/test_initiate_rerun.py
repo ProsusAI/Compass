@@ -77,6 +77,7 @@ def _run_initiate_rerun(
 ) -> dict:
     """Call the initiate_rerun business logic directly (no MCP layer)."""
     from odysseus.mcp._initiate_rerun import initiate_rerun_logic
+
     return initiate_rerun_logic(
         outputs_dir=outputs_dir,
         run_id=run_id,
@@ -117,9 +118,7 @@ class TestInitiateRerun:
         (tmp_path / "r1" / "input").mkdir(parents=True, exist_ok=True)
         (tmp_path / "r1" / "input" / "input_report.md").write_text("# Report")
         (tmp_path / "r1" / "search").mkdir(parents=True, exist_ok=True)
-        (tmp_path / "r1" / "search" / "search_state.json").write_text(
-            json.dumps({"converged": False, "round": 1})
-        )
+        (tmp_path / "r1" / "search" / "search_state.json").write_text(json.dumps({"converged": False, "round": 1}))
         with pytest.raises(ValueError, match="Stage 4 is not complete"):
             _run_initiate_rerun(tmp_path, "r1")
 

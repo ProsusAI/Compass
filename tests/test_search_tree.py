@@ -641,3 +641,92 @@ class TestStrategySeams:
 
         assert data["strategy_label"] == "Prompt-Builder Search"
         assert data["algorithm_chips"] == []
+
+
+class TestEmosaAlgorithmChips:
+    """EMOSA _algorithm_chips adapter renders correct chips; non-emosa runs are guarded."""
+
+    def _make_emosa_state(self, tmp_path: Path, **pocket_overrides: object) -> dict:
+        """Write a minimal EMOSA search_state.json and return the data from collect_data."""
+        search_dir = tmp_path / "search"
+        archive = [_make_candidate("v1", None, 0)]
+        # Build per-trajectory state (temperature/step_count are now per-trajectory)
+        trajectories = [
+            {
+                "trajectory_id": i,
+                "weight_vector": [0.5, 0.5],
+                "temperature": 0.5,
+                "alpha": 0.95,
+                "step_count": 3,
+            }
+            for i in range(5)
+        ]
+        pocket: dict = {
+            "t_min": 0.01,
+            "num_trajectories": 5,
+            "trajectories": trajectories,
+            "total_evals": 15,
+            "max_evals": 50,
+            "phase": "search",
+        }
+        pocket.update(pocket_overrides)
+        state = {
+            "search_state_id": "emosa-test",
+            "backend": "mock-echo",
+            "round": 1,
+            "algorithm": "emosa",
+            "algorithm_state": pocket,
+            "elite_set": archive,
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", archive)
+        _write_json(search_dir / "pending_candidates.json", [])
+        return collect_data(search_dir, run_dir=tmp_path)
+
+    def test_emosa_chips_renders_all_four_chips(self, tmp_path: Path) -> None:
+        """emosa run renders traj, T (min–max range), step (min–max range), and evals chips."""
+        data = self._make_emosa_state(tmp_path)
+        chips = {c["label"]: c["value"] for c in data["algorithm_chips"]}
+
+        assert "traj" in chips
+        assert chips["traj"] == "5"
+
+        # T shows min–max range; all 5 trajectories have T=0.5, so range is "5.00e-01–5.00e-01"
+        assert "T" in chips
+        assert chips["T"] == "5.00e-01–5.00e-01"
+
+        # step shows min–max range; all trajectories have step=3
+        assert "step" in chips
+        assert chips["step"] == "3–3"
+
+        assert "evals" in chips
+        assert chips["evals"] == "15/50"
+
+    def test_non_emosa_run_does_not_render_emosa_chips(self, tmp_path: Path) -> None:
+        """hill_climb run does NOT render traj, T, step, or evals chips (regression guard)."""
+        search_dir = tmp_path / "search"
+        archive = [_make_candidate("v1", None, 0)]
+        state = {
+            "search_state_id": "hill-climb-test",
+            "backend": "anthropic",
+            "round": 1,
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
+            "elite_set": archive,
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", archive)
+        _write_json(search_dir / "pending_candidates.json", [])
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        chip_labels = {c["label"] for c in data["algorithm_chips"]}
+        assert "traj" not in chip_labels
+        assert "T" not in chip_labels
+        assert "step" not in chip_labels
+        assert "evals" not in chip_labels

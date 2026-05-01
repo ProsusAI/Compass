@@ -436,9 +436,7 @@ def _setup_versioned_run(tmp_path: Path, run_id: str = "test-run", version: str 
     # Move holdout eval files to version-specific path
     (run_dir / "holdout_eval" / version).mkdir(parents=True, exist_ok=True)
     (run_dir / "holdout_eval" / "report.json").rename(run_dir / "holdout_eval" / version / "report.json")
-    (run_dir / "holdout_eval" / "results.jsonl").rename(
-        run_dir / "holdout_eval" / version / "results.jsonl"
-    )
+    (run_dir / "holdout_eval" / "results.jsonl").rename(run_dir / "holdout_eval" / version / "results.jsonl")
 
     return run_dir
 

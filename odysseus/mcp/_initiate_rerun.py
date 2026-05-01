@@ -36,8 +36,7 @@ def initiate_rerun_logic(
 
     if not search_state_path.is_file():
         raise ValueError(
-            f"Stage 4 is not complete for run '{run_id}': "
-            f"search_state.json not found at {search_state_path}"
+            f"Stage 4 is not complete for run '{run_id}': search_state.json not found at {search_state_path}"
         )
 
     try:
@@ -47,8 +46,7 @@ def initiate_rerun_logic(
 
     if not data.get("converged"):
         raise ValueError(
-            f"Stage 4 is not complete for run '{run_id}': "
-            f"search_state.json exists but converged is not true"
+            f"Stage 4 is not complete for run '{run_id}': search_state.json exists but converged is not true"
         )
 
     original_backend: str = data.get("backend", "unknown")
@@ -60,8 +58,7 @@ def initiate_rerun_logic(
         elite_set_data: list[dict] = data.get("elite_set") or data.get("pareto_front", [])
         if not elite_set_data:
             raise ValueError(
-                f"No candidates on elite set for run '{run_id}'. "
-                f"Cannot select best prompt version automatically."
+                f"No candidates on elite set for run '{run_id}'. Cannot select best prompt version automatically."
             )
         front = [Candidate.model_validate(c) for c in elite_set_data]
         source_prompt_version = select_best(front)

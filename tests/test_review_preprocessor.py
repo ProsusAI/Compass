@@ -1473,3 +1473,344 @@ class TestHolisticVersionSelection:
         source_versions = {tp.source_version for tp in briefing.target_progress}
         assert len(source_versions) == 1
         assert source_versions.pop() is not None
+
+
+# ---------------------------------------------------------------------------
+# EMOSA preprocessor tests
+# ---------------------------------------------------------------------------
+
+
+def _make_emosa_trajectory(
+    trajectory_id: int,
+    weight_vector: tuple[float, float],
+    current_solution: str | None = None,
+    current_quality: float | None = None,
+    current_cost: float | None = None,
+    acceptance_history: list[bool] | None = None,
+    step_count: int = 0,
+    temperature: float = 1.0,
+) -> dict[str, Any]:
+    return {
+        "trajectory_id": trajectory_id,
+        "weight_vector": list(weight_vector),
+        "current_solution": current_solution,
+        "current_energy": None,
+        "current_quality": current_quality,
+        "current_cost": current_cost,
+        "acceptance_history": acceptance_history or [],
+        "quality_reference": None,
+        "cost_reference": None,
+        "step_count": step_count,
+        "temperature": temperature,
+        "alpha": 0.95,
+    }
+
+
+def _make_emosa_pocket(
+    trajectories: list[dict[str, Any]],
+    step_count: int = 0,
+    temperature: float = 1.0,
+    t_min: float = 0.01,
+    ideal_point: tuple[float, float] = (1.0, 0.0),
+    nadir_point: tuple[float, float] = (0.0, 1.0),
+) -> dict[str, Any]:
+    """Build an EMOSA algorithm_state pocket.
+
+    ``step_count`` is distributed as per-trajectory: the desired total is placed on
+    the first trajectory (others remain 0), so ``sum(t["step_count"])`` equals the
+    requested value. ``temperature`` is placed on every trajectory.
+    """
+    # Distribute step_count to first trajectory; apply temperature to all
+    distributed: list[dict[str, Any]] = []
+    for idx, traj in enumerate(trajectories):
+        t = dict(traj)
+        if idx == 0:
+            t.setdefault("step_count", 0)
+            t["step_count"] = t["step_count"] + step_count
+        t.setdefault("temperature", temperature)
+        t.setdefault("alpha", 0.95)
+        distributed.append(t)
+
+    return {
+        "t_initial": 0.2,
+        "t_min": t_min,
+        "num_trajectories": len(trajectories),
+        "children_per_trajectory": 1,
+        "trajectories": distributed,
+        "neighborhood_size": 4,
+        "ideal_point": list(ideal_point),
+        "nadir_point": list(nadir_point),
+        "max_evals": 50,
+        "total_evals": 0,
+        "convergence_limit": 4,
+        "epsilon": 0.003,
+        "phase": "calibration",
+        "rho": 1e-3,
+    }
+
+
+class TestEmosaPreprocessorDispatch:
+    """Tests for _populate_emosa_review_fields and build_review_briefing emosa dispatch."""
+
+    def _make_emosa_briefing(
+        self,
+        trajectories: list[dict[str, Any]],
+        step_count: int = 1,
+        temperature: float = 0.5,
+        t_min: float = 0.01,
+        ideal_point: tuple[float, float] = (1.0, 0.0),
+        nadir_point: tuple[float, float] = (0.0, 1.0),
+    ) -> Any:
+        pocket = _make_emosa_pocket(
+            trajectories=trajectories,
+            step_count=step_count,
+            temperature=temperature,
+            t_min=t_min,
+            ideal_point=ideal_point,
+            nadir_point=nadir_point,
+        )
+        search_state = _make_search_state(
+            round=1,
+            algorithm="emosa",
+            algorithm_state=pocket,
+            elite_set=[],
+        )
+        score_reports: dict[str, Any] = {}
+        return build_review_briefing(
+            search_state=search_state,
+            score_reports=score_reports,
+            historical_reports={},
+            prompt_texts={},
+            directive_history=[],
+            candidate_versions=[],
+            parent_versions={},
+        )
+
+    def test_emosa_dispatch_populates_all_required_fields(self) -> None:
+        """build_review_briefing dispatches to emosa and populates all required fields."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v1", 0.75, 0.002, [True]),
+            _make_emosa_trajectory(1, (0.5, 0.5), "v2", 0.70, 0.003, [True, False]),
+        ]
+        briefing = self._make_emosa_briefing(trajectories=trajectories, step_count=1)
+
+        # Round-robin: step_count=1, num_trajectories=2 → index 1
+        assert briefing.trajectory_id == 1
+        assert briefing.weight_vector == (0.5, 0.5)
+        assert briefing.binding_axis is not None
+        assert briefing.acceptance_history == [True, False]
+        assert briefing.stagnation_signal is not None
+        assert "temperature" in briefing.stagnation_signal
+        assert "t_min" in briefing.stagnation_signal
+        assert "review_exit" in briefing.stagnation_signal
+
+    def test_binding_axis_quality_when_quality_term_dominates(self) -> None:
+        """binding_axis='quality' when lambda_q * norm_q > lambda_c * norm_c."""
+        # ideal=(1.0, 0.0), nadir=(0.0, 1.0)
+        # quality=0.9 → norm_q = (1.0 - 0.9) / (1.0 - 0.0) = 0.1
+        # cost=0.1   → norm_c = (0.1 - 0.0) / (1.0 - 0.0) = 0.1
+        # weight_vector=(0.9, 0.1): weighted_q = 0.9 * 0.1 = 0.09
+        #                           weighted_c = 0.1 * 0.1 = 0.01 → quality wins
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v1", 0.9, 0.1, [True]),
+        ]
+        briefing = self._make_emosa_briefing(
+            trajectories=trajectories,
+            step_count=1,
+            ideal_point=(1.0, 0.0),
+            nadir_point=(0.0, 1.0),
+        )
+        assert briefing.binding_axis == "quality"
+
+    def test_binding_axis_cost_when_cost_term_dominates(self) -> None:
+        """binding_axis='cost' when lambda_c * norm_c > lambda_q * norm_q."""
+        # ideal=(1.0, 0.0), nadir=(0.0, 1.0)
+        # quality=0.1 → norm_q = (1.0 - 0.1) / 1.0 = 0.9
+        # cost=0.9   → norm_c = (0.9 - 0.0) / 1.0 = 0.9
+        # weight_vector=(0.1, 0.9): weighted_q = 0.1 * 0.9 = 0.09
+        #                           weighted_c = 0.9 * 0.9 = 0.81 → cost wins
+        trajectories = [
+            _make_emosa_trajectory(0, (0.1, 0.9), "v1", 0.1, 0.9, [True]),
+        ]
+        briefing = self._make_emosa_briefing(
+            trajectories=trajectories,
+            step_count=1,
+            ideal_point=(1.0, 0.0),
+            nadir_point=(0.0, 1.0),
+        )
+        assert briefing.binding_axis == "cost"
+
+    def test_binding_axis_none_for_unseeded_trajectory(self) -> None:
+        """Unseeded trajectory (no current_quality/current_cost) returns binding_axis=None."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.5, 0.5)),  # no current_quality/cost
+        ]
+        briefing = self._make_emosa_briefing(trajectories=trajectories, step_count=0)
+        assert briefing.binding_axis is None
+
+
+# ---------------------------------------------------------------------------
+# EMOSA preprocessor — explicit trajectory_id parameter (K-way fork support)
+# ---------------------------------------------------------------------------
+
+
+class TestEmosaExplicitTrajectoryId:
+    """Tests for _populate_emosa_review_fields with explicit trajectory_id override.
+
+    When trajectory_id is provided, the matching trajectory is selected directly
+    (not round-robin). Default (None) preserves the existing calibration / round-robin
+    behavior.
+    """
+
+    def _make_emosa_briefing_with_traj_id(
+        self,
+        trajectories: list[dict[str, Any]],
+        step_count: int = 1,
+        trajectory_id: int | None = None,
+        temperature: float = 0.95,
+        t_min: float = 0.01,
+        ideal_point: tuple[float, float] = (0.9, 0.001),
+        nadir_point: tuple[float, float] = (0.5, 0.01),
+    ) -> Any:
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        pocket = _make_emosa_pocket(
+            trajectories=trajectories,
+            step_count=step_count,
+            temperature=temperature,
+            t_min=t_min,
+            ideal_point=ideal_point,
+            nadir_point=nadir_point,
+        )
+        search_state = _make_search_state(
+            round=1,
+            algorithm="emosa",
+            algorithm_state=pocket,
+            elite_set=[],
+        )
+        return build_review_briefing(
+            search_state=search_state,
+            score_reports={},
+            historical_reports={},
+            prompt_texts={},
+            directive_history=[],
+            candidate_versions=[],
+            parent_versions={},
+            emosa_trajectory_id=trajectory_id,
+        )
+
+    def test_explicit_trajectory_id_selects_named_slot(self) -> None:
+        """trajectory_id=2 picks the third trajectory, not round-robin index."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
+            _make_emosa_trajectory(1, (0.7, 0.3), "v1", 0.75, 0.003, [True, True]),
+            _make_emosa_trajectory(2, (0.5, 0.5), "v2", 0.70, 0.004, [True, False, True]),
+            _make_emosa_trajectory(3, (0.3, 0.7), "v3", 0.65, 0.005, [False]),
+            _make_emosa_trajectory(4, (0.1, 0.9), "v4", 0.60, 0.006, [True]),
+        ]
+        # step_count=1, num_trajectories=5 → round-robin would pick index 1.
+        # explicit trajectory_id=2 must override and pick trajectory 2 instead.
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=2)
+
+        assert briefing.trajectory_id == 2
+        assert briefing.weight_vector == (0.5, 0.5)
+        assert briefing.acceptance_history == [True, False, True]
+
+    def test_explicit_trajectory_id_zero(self) -> None:
+        """trajectory_id=0 selects trajectory 0 even when round-robin would not."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.85, 0.001, [True, True, True]),
+            _make_emosa_trajectory(1, (0.5, 0.5), "v1", 0.70, 0.005, [False]),
+            _make_emosa_trajectory(2, (0.1, 0.9), "v2", 0.60, 0.008, [True, False]),
+        ]
+        # step_count=3, num_trajectories=3 → round-robin would pick index 0 by coincidence.
+        # Use step_count=1 to make round-robin pick index 1, but explicit override selects 0.
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=0)
+
+        assert briefing.trajectory_id == 0
+        assert briefing.weight_vector == (0.9, 0.1)
+        assert briefing.acceptance_history == [True, True, True]
+
+    def test_explicit_trajectory_id_last_slot(self) -> None:
+        """trajectory_id=4 (last) works for K=5."""
+        trajectories = [
+            _make_emosa_trajectory(
+                i,
+                (0.1 * (5 - i), 0.1 * (i + 5)),
+                f"v{i}",
+                0.5 + i * 0.05,
+                0.001 * (i + 1),
+                [True] * i,
+            )
+            for i in range(5)
+        ]
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=2, trajectory_id=4)
+
+        assert briefing.trajectory_id == 4
+        assert briefing.weight_vector == (0.1, 0.9)
+        assert briefing.acceptance_history == [True, True, True, True]
+
+    def test_explicit_id_absent_from_trajectories_returns_empty_traj(self) -> None:
+        """trajectory_id not in trajectories list returns safe empty defaults."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
+        ]
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=99)
+        # Safe fallback: trajectory_id=0 (default from empty dict), empty history, no binding_axis
+        assert briefing.trajectory_id == 0
+        assert briefing.acceptance_history == []
+        assert briefing.binding_axis is None
+
+    def test_none_trajectory_id_uses_round_robin(self) -> None:
+        """Default (trajectory_id=None) preserves round-robin behavior."""
+        trajectories = [
+            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
+            _make_emosa_trajectory(1, (0.5, 0.5), "v1", 0.75, 0.003, [False]),
+            _make_emosa_trajectory(2, (0.1, 0.9), "v2", 0.70, 0.004, [True, False]),
+        ]
+        # step_count=2, K=3 → round-robin index = 2 % 3 = 2
+        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=2, trajectory_id=None)
+
+        assert briefing.trajectory_id == 2
+        assert briefing.weight_vector == (0.1, 0.9)
+        assert briefing.acceptance_history == [True, False]
+
+    def test_build_review_briefing_threads_trajectory_id(self) -> None:
+        """build_review_briefing(emosa_trajectory_id=3) routes to trajectory 3."""
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        trajectories = [
+            _make_emosa_trajectory(
+                t,
+                ((9 - t) * 0.1, (t + 1) * 0.1),
+                f"sol{t}",
+                0.6 + t * 0.05,
+                0.001 * (t + 1),
+                [True] * (t % 3 + 1),
+            )
+            for t in range(5)
+        ]
+        pocket = _make_emosa_pocket(trajectories=trajectories, step_count=1)
+        search_state = _make_search_state(
+            round=2,
+            algorithm="emosa",
+            algorithm_state=pocket,
+            elite_set=[],
+        )
+
+        briefing = build_review_briefing(
+            search_state=search_state,
+            score_reports={},
+            historical_reports={},
+            prompt_texts={},
+            directive_history=[],
+            candidate_versions=[],
+            parent_versions={},
+            emosa_trajectory_id=3,
+        )
+
+        assert briefing.trajectory_id == 3
+        assert briefing.weight_vector is not None
+        assert briefing.weight_vector[0] == pytest.approx(0.6)  # (9-3)*0.1=0.6
+        assert briefing.weight_vector[1] == pytest.approx(0.4)  # (3+1)*0.1=0.4
+        assert briefing.acceptance_history == [True]  # 3 % 3 + 1 = 1 → [True]

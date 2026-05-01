@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Type alias for algorithm discriminator
 # ---------------------------------------------------------------------------
 
-AlgorithmType = Literal["hill_climb"]
+AlgorithmType = Literal["hill_climb", "emosa"]
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -110,7 +110,14 @@ class RoundSummary(BaseModel):
     acceptance_rates: dict[int, float] | None = None
     reduce_case: Literal["singleton", "dominated", "delta_s_argmin"] | None = None
     evicted_version: str | None = None
-    temperature: float | None = None
+    temperatures: dict[int, float] | None = None
+    """Per-trajectory temperature at end of round, keyed by trajectory_id."""
+    # EMOSA-specific optional fields (defaults None — backward-compatible with
+    # hill_climb consumers that never set these)
+    ideal_point: tuple[float, float] | None = None
+    nadir_point: tuple[float, float] | None = None
+    step_count: int | None = None
+    phase: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -312,6 +319,70 @@ def update_pareto_front(
         new_pareto_points += 1
 
     return front, new_pareto_points
+
+
+# ---------------------------------------------------------------------------
+# Hypervolume + elite validation
+# ---------------------------------------------------------------------------
+
+
+def compute_hypervolume(front: list[Candidate], reference_point: tuple[float, float]) -> float:
+    """Compute the 2D hypervolume indicator for the front relative to a reference point.
+
+    Quality is maximized (x-axis), cost is minimized (y-axis). The reference point
+    is (min_quality_bound, max_cost_bound). Uses a sweepline over quality.
+
+    Args:
+        front: Non-dominated candidates.
+        reference_point: (min_quality, max_cost) lower-left reference corner.
+
+    Returns:
+        Hypervolume as a float (0.0 for empty front).
+    """
+    if not front:
+        return 0.0
+
+    ref_quality, ref_cost = reference_point
+    # Sort by quality ascending for left-to-right sweep
+    sorted_front = sorted(front, key=lambda c: c.quality_score)
+
+    hypervolume = 0.0
+    prev_quality = ref_quality
+    for candidate in sorted_front:
+        width = candidate.quality_score - prev_quality
+        height = ref_cost - candidate.cost
+        if width > 0 and height > 0:
+            hypervolume += width * height
+        prev_quality = candidate.quality_score
+
+    return hypervolume
+
+
+def validate_elite_set(elite_set: list[Candidate]) -> list[Candidate]:
+    """Recompute Pareto front from the elite set, removing any dominated members.
+
+    Defensive check: if the elite is correctly maintained, this is a no-op.
+    Logs a warning if dominated candidates are found and removed.
+    """
+    import logging as _logging
+
+    _logger = _logging.getLogger(__name__)
+
+    if not elite_set:
+        return []
+    # Recompute front using existing dominates function
+    recomputed: list[Candidate] = []
+    for candidate in elite_set:
+        if not any(dominates(other, candidate) for other in elite_set if other is not candidate):
+            recomputed.append(candidate)
+    if len(recomputed) < len(elite_set):
+        removed = {c.prompt_version for c in elite_set} - {c.prompt_version for c in recomputed}
+        _logger.warning(
+            "validate_elite_set: removed %d dominated candidate(s): %s",
+            len(removed),
+            removed,
+        )
+    return recomputed
 
 
 # ---------------------------------------------------------------------------

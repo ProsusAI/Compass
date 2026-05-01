@@ -83,6 +83,7 @@ async def build_review_briefing_tool(
     parent_versions: dict[str, str | None] | None = None,
     report_paths: dict[str, str] | None = None,
     output_dir: str = "outputs",
+    trajectory_id: int | None = None,
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Build a ReviewBriefing for the Review Agent.
 
@@ -105,6 +106,10 @@ async def build_review_briefing_tool(
             Auto-discovered from disk (outputs/<run_id>/eval/<version>/report.json)
             if omitted.
         output_dir: Output directory (default "outputs").
+        trajectory_id: EMOSA only. When provided, populate EMOSA-specific briefing
+            fields (weight_vector, binding_axis, acceptance_history) from this
+            specific trajectory rather than using the default round-robin pick.
+            Pass the trajectory's integer ID (0-indexed). Ignored for non-EMOSA runs.
 
     Returns:
         JSON-serialized ReviewBriefing.
@@ -130,6 +135,19 @@ async def build_review_briefing_tool(
         state = get_search_state(run_id=run_id, output_dir=out)
     except FileNotFoundError as exc:
         raise ToolError("search_state.json missing — Stage 4 not initialised") from exc
+
+    # EMOSA-specific: auto-fire calibration on first review entry.
+    # Calibration is pure computation (no LLM), so it lives in the backend
+    # transition rather than as a separate user-facing step.
+    if state.algorithm == "emosa" and not state.elite_set:
+        pending_for_calib = _load_pending(run_id, out)
+        scored_for_calib = [c for c in pending_for_calib if c.eval_status in ("complete", None)]
+        num_traj = state.algorithm_state.get("num_trajectories", 0)
+        if num_traj and len(scored_for_calib) >= num_traj:
+            from odysseus.agents.prompt_builder.search_ops import _calibration_complete
+
+            _calibration_complete(run_id, state, out)
+            state = get_search_state(run_id=run_id, output_dir=out)
 
     # Auto-discover pending candidates
     pending_candidates_list = _load_pending(run_id, out)
@@ -296,6 +314,7 @@ async def build_review_briefing_tool(
         examples=examples_for_confusion,
         run_dir=out / run_id,
         cell_attempt_history=cell_attempt_history or None,
+        emosa_trajectory_id=trajectory_id,
     )
 
     # Save current round's reports for future historical access
@@ -336,6 +355,7 @@ async def record_directive_outcomes_tool(
     candidate_ranking: list[dict[str, Any]] | None = None,
     promotion_decisions: list[dict[str, Any]] | None = None,
     regression_guards: list[dict[str, Any]] | None = None,
+    trajectory_id: int | None = None,
     output_dir: str = "outputs",
 ) -> str:
     """[Stage 4: Refinement Loop -- Review] Record the outcomes of prior Review Agent directives.
@@ -366,6 +386,11 @@ async def record_directive_outcomes_tool(
             Recommended over review_result to avoid size limits.
         regression_guards: Decomposed ReviewResult field — list of regression guard dicts.
             Recommended over review_result to avoid size limits.
+        trajectory_id: EMOSA-only — when provided together with child_variants, persists
+            variants to child_variants_t<trajectory_id>.json via
+            save_trajectory_child_variants and records the trajectory as dispatched via
+            record_trajectory_dispatched. Variant ids use the format cv-{round}-t{trajectory_id}-{i}.
+            When None (default), the single-slot child_variants.json path is used.
         output_dir: Output directory (default "outputs").
 
     Returns:
@@ -376,8 +401,10 @@ async def record_directive_outcomes_tool(
     from odysseus.agents.review.models import ChildVariant, DirectiveOutcome, LoopSignal
     from odysseus.agents.review.ops import (
         load_directive_history,
+        record_trajectory_dispatched,
         save_child_variants,
         save_directive_history,
+        save_trajectory_child_variants,
     )
 
     project_dir = await _resolve_project_dir(ctx)
@@ -412,9 +439,9 @@ async def record_directive_outcomes_tool(
         "total": len(existing) + len(parsed),
     }
 
-    # Persist child variants and write the canonical fanout-completion sentinel.
-    # Also assigns stable variant_ids so the Prompt Builder can reference them
-    # and batch_outcomes can link directives to eval results.
+    # Persist child variants.
+    # EMOSA path (trajectory_id is not None): write per-trajectory file and record dispatch.
+    # Single-slot path (trajectory_id is None): write the canonical child_variants.json sentinel.
     if child_variants is not None:
         parsed_variants = [ChildVariant.model_validate(v) for v in child_variants]
 
@@ -429,20 +456,34 @@ async def record_directive_outcomes_tool(
                     next_seq += 1
             _save_state(run_id, state.model_copy(update={"next_variant_seq": next_seq}), out)
 
-        save_child_variants(run_id, parsed_variants, output_dir=out)
+        if trajectory_id is not None:
+            # EMOSA K-way fanout: use per-trajectory variant ids and file.
+            for i, v in enumerate(parsed_variants):
+                if v.variant_id is None:
+                    parsed_variants[i] = v.model_copy(update={"variant_id": f"cv-{current_round}-t{trajectory_id}-{i}"})
+            save_trajectory_child_variants(run_id, trajectory_id, parsed_variants, output_dir=out)
+            record_trajectory_dispatched(run_id, trajectory_id, output_dir=out)
+        else:
+            # Single-slot path (hill-climb).
+            for i, v in enumerate(parsed_variants):
+                if v.variant_id is None:
+                    parsed_variants[i] = v.model_copy(update={"variant_id": f"cv-{current_round}-{i}"})
+
+            save_child_variants(run_id, parsed_variants, output_dir=out)
+
+            # Write the shared child_variants.json sentinel so review_fanout_status
+            # can confirm the fanout is complete without knowledge of directive format.
+            child_variants_path = out / run_id / "search" / "child_variants.json"
+            child_variants_path.parent.mkdir(parents=True, exist_ok=True)
+            child_variants_path.write_text(
+                json.dumps([v.model_dump(mode="json") for v in parsed_variants], indent=2),
+                encoding="utf-8",
+            )
+
         result["child_variants_saved"] = len(parsed_variants)
         result["variants_summary"] = [
             {"variant_id": v.variant_id, "hypothesis": v.hypothesis[:80]} for v in parsed_variants
         ]
-
-        # Write the shared child_variants.json sentinel so review_fanout_status
-        # can confirm the fanout is complete without knowledge of directive format.
-        child_variants_path = out / run_id / "search" / "child_variants.json"
-        child_variants_path.parent.mkdir(parents=True, exist_ok=True)
-        child_variants_path.write_text(
-            json.dumps([v.model_dump(mode="json") for v in parsed_variants], indent=2),
-            encoding="utf-8",
-        )
 
     # Handle loop signal from Review Agent
     if loop_signal is not None:
@@ -478,10 +519,14 @@ async def record_directive_outcomes_tool(
         result["loop_signal_applied"] = "refine"
 
     # Transition search loop to build phase so orchestrator spawns Prompt Builder next.
-    # Also clear the review-dispatch marker so complete_stage("review") can proceed.
     with contextlib.suppress(FileNotFoundError):
         _set_loop_phase(run_id, "build", output_dir=out)
-    clear_review_dispatched(run_id, output_dir=out)
+    # For EMOSA K-way fanout (trajectory_id is not None), preserve review_dispatched.json
+    # so trajectory_fanout_missing can track in-flight vs completed slots across N sub-agent
+    # calls.  For single-slot algorithms, clear the marker so complete_stage("review") can
+    # proceed.
+    if trajectory_id is None:
+        clear_review_dispatched(run_id, output_dir=out)
     return json.dumps(result)
 
 

@@ -1065,6 +1065,107 @@ def enrich_confusion_with_history(
     return enriched
 
 
+def _populate_emosa_review_fields(
+    search_state: Any,
+    elite_set: list[Candidate],
+    trajectory_id: int | None = None,
+) -> dict[str, Any]:
+    """Read EMOSA-specific fields from algorithm_state pocket.
+
+    Returns dict to splat into ReviewBriefing constructor:
+    - trajectory_id: int
+    - weight_vector: tuple[float, float]
+    - binding_axis: "quality" | "cost" | None
+    - acceptance_history: list[bool]
+    - stagnation_signal: dict with "temperature", "t_min", "review_exit"
+
+    Active trajectory selection rule:
+    When trajectory_id is provided (per-fork K-way steady-state dispatch),
+    the named trajectory's fields are populated directly.  When trajectory_id
+    is None (default), the legacy round-robin / calibration path is used:
+    - step_count == 0 (calibration): first unseeded trajectory.
+    - step_count > 0 (steady-state fallback): round-robin by step_count % K.
+
+    Round-robin pacing matches the typical MOEA/D-style loop where each
+    sub-problem gets equal compute. The explicit trajectory_id override lets
+    K parallel forks each pre-populate their own sub-problem slot without
+    interfering with one another.
+    """
+    pocket = getattr(search_state, "algorithm_state", {}) or {}
+
+    trajectories: list[dict[str, Any]] = pocket.get("trajectories") or []
+    # Pre-pick a representative step_count: use sum of per-trajectory step_counts
+    # for the round-robin pacing decision (matches MOEA/D-style equal-compute
+    # rotation across sub-problems).
+    step_count: int = sum(int(t.get("step_count", 0)) for t in trajectories)
+    num_trajectories: int = len(trajectories)
+
+    # Pick the active trajectory.
+    active_traj: dict[str, Any] = {}
+    if num_trajectories > 0:
+        if trajectory_id is not None:
+            # Explicit per-fork override: look up by trajectory_id field.
+            matched = [t for t in trajectories if int(t.get("trajectory_id", -1)) == trajectory_id]
+            active_traj = matched[0] if matched else {}
+        elif step_count > 0:
+            # Steady-state fallback: round-robin across K sub-problems.
+            idx = step_count % num_trajectories
+            active_traj = trajectories[idx]
+        else:
+            # Calibration: hand the agent the first unseeded trajectory.
+            unseeded = [t for t in trajectories if t.get("current_solution") is None]
+            active_traj = unseeded[0] if unseeded else trajectories[0]
+
+    active_trajectory_id: int = int(active_traj.get("trajectory_id", 0))
+    raw_wv = active_traj.get("weight_vector", (0.5, 0.5))
+    weight_vector: tuple[float, float] = (float(raw_wv[0]), float(raw_wv[1]))
+    acceptance_history: list[bool] = list(active_traj.get("acceptance_history", []))
+
+    # Compute binding_axis: argmax_i (lambda_i * norm_i).
+    # Identifies which objective is the dominant Tchebycheff term for the
+    # active trajectory's current solution — guides the Review Agent toward
+    # the tighter constraint.
+    binding_axis: str | None = None
+    current_quality = active_traj.get("current_quality")
+    current_cost = active_traj.get("current_cost")
+    if current_quality is not None and current_cost is not None:
+        from odysseus.agents.prompt_builder.annealing import normalize_objectives
+
+        raw_ideal = pocket.get("ideal_point", (1.0, 0.0))
+        raw_nadir = pocket.get("nadir_point", (0.0, 1.0))
+        ideal_point: tuple[float, float] = (float(raw_ideal[0]), float(raw_ideal[1]))
+        nadir_point: tuple[float, float] = (float(raw_nadir[0]), float(raw_nadir[1]))
+
+        norm_q, norm_c = normalize_objectives(float(current_quality), float(current_cost), ideal_point, nadir_point)
+        lambda_q, lambda_c = weight_vector
+        weighted_q = lambda_q * norm_q
+        weighted_c = lambda_c * norm_c
+        binding_axis = "quality" if weighted_q >= weighted_c else "cost"
+
+    # Stagnation signal mirrors the emosa model comment in ReviewBriefing:
+    # {"temperature": float, "t_min": float, "review_exit": bool}
+    # review_exit is True when the active trajectory's temperature has dropped
+    # to t_min (its sub-problem has converged).
+    temperature = active_traj.get("temperature")
+    t_min = pocket.get("t_min")
+    review_exit: bool = False
+    if temperature is not None and t_min is not None:
+        review_exit = float(temperature) <= float(t_min)
+    stagnation_signal: dict[str, Any] = {
+        "temperature": temperature,
+        "t_min": t_min,
+        "review_exit": review_exit,
+    }
+
+    return {
+        "trajectory_id": active_trajectory_id,
+        "weight_vector": weight_vector,
+        "binding_axis": binding_axis,
+        "acceptance_history": acceptance_history,
+        "stagnation_signal": stagnation_signal,
+    }
+
+
 def build_review_briefing(
     *,
     search_state: Any,
@@ -1084,6 +1185,7 @@ def build_review_briefing(
     examples: list[Example] | None = None,
     run_dir: Path | None = None,
     cell_attempt_history: dict[str, list[dict[str, Any]]] | None = None,
+    emosa_trajectory_id: int | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 
@@ -1334,6 +1436,11 @@ def build_review_briefing(
     if confusion_analysis and cell_attempt_history:
         confusion_analysis = enrich_confusion_with_history(confusion_analysis, cell_attempt_history)
 
+    algorithm = getattr(search_state, "algorithm", "hill_climb")
+    emosa_overrides: dict[str, Any] = {}
+    if algorithm == "emosa":
+        emosa_overrides = _populate_emosa_review_fields(search_state, elite_set, trajectory_id=emosa_trajectory_id)
+
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
@@ -1349,8 +1456,12 @@ def build_review_briefing(
         single_candidate_meets_all=single_candidate_meets_all,
         backtracking=backtracking,
         child_variants=child_variants or [],
-        stagnation_signal=stagnation_signal,
+        stagnation_signal=emosa_overrides.get("stagnation_signal") or stagnation_signal,
         confusion_analysis=confusion_analysis,
+        trajectory_id=emosa_overrides.get("trajectory_id"),
+        weight_vector=emosa_overrides.get("weight_vector"),
+        binding_axis=emosa_overrides.get("binding_axis"),
+        acceptance_history=emosa_overrides.get("acceptance_history"),
         initial_parent_version=INITIAL_PARENT_VERSION,
     )
     return briefing.model_copy(

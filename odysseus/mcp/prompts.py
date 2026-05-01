@@ -21,12 +21,14 @@ def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start"])
     _overlay_map: dict[tuple[str, str], str] = {
         ("hill_climb", "iterative"): "review_agent_iterative_overlay_hillclimb",
         ("hill_climb", "cold_start"): "review_agent_cold_start_overlay_hillclimb",
+        ("emosa", "iterative"): "review_agent_iterative_overlay_emosa",
+        ("emosa", "cold_start"): "review_agent_cold_start_overlay_emosa",
     }
     key = (algorithm, phase)
     if key not in _overlay_map:
         raise ValueError(
             f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
-            f"Valid algorithms: hill_climb. "
+            f"Valid algorithms: hill_climb, emosa. "
             f"Valid phases: iterative, cold_start."
         )
     return _overlay_map[key]
@@ -39,7 +41,7 @@ def assemble_review_prompt(algorithm: str, phase: Literal["iterative", "cold_sta
     horizontal rules so the agent can read them as three layered sections.
 
     Args:
-        algorithm: Strategy discriminator — ``"hill_climb"`` on this branch.
+        algorithm: Strategy discriminator — ``"hill_climb"`` or ``"emosa"`` on this branch.
         phase: ``"iterative"`` for rounds ≥ 2; ``"cold_start"`` for the seeding round.
 
     Returns:
@@ -103,7 +105,7 @@ async def odysseus_review_agent_iterative(algorithm: str = "hill_climb") -> list
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — ``"hill_climb"`` on this branch.
+        algorithm: Search strategy in use — ``"hill_climb"`` or ``"emosa"`` on this branch.
             Defaults to ``hill_climb``.
     """
     content = assemble_review_prompt(algorithm, "iterative")
@@ -118,7 +120,7 @@ async def odysseus_review_agent_cold_start(algorithm: str = "hill_climb") -> lis
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — ``"hill_climb"`` on this branch.
+        algorithm: Search strategy in use — ``"hill_climb"`` or ``"emosa"`` on this branch.
             Defaults to ``hill_climb``.
     """
     content = assemble_review_prompt(algorithm, "cold_start")

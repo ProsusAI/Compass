@@ -60,9 +60,7 @@ async def test_run_eval_success() -> None:
     """Successful run_eval returns report path, results path, metrics, and summary."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         result = await run_eval(
@@ -88,9 +86,7 @@ async def test_run_eval_forwards_all_params() -> None:
     """run_eval passes all tool parameters to the agent context."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         await run_eval(
@@ -112,9 +108,7 @@ async def test_run_eval_default_config_path() -> None:
     """run_eval uses default config_path when not specified."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         await run_eval(
@@ -135,9 +129,7 @@ async def test_run_eval_default_config_path() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_not_found_raises_tool_error() -> None:
     """Agent not_found error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {"error": {"category": "not_found", "detail": "config missing"}}
 
         with pytest.raises(ToolError, match="not_found"):
@@ -151,9 +143,7 @@ async def test_run_eval_not_found_raises_tool_error() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_validation_error_raises_tool_error() -> None:
     """Agent validation_error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {"error": {"category": "validation_error", "detail": "bad config"}}
 
         with pytest.raises(ToolError, match="validation_error"):
@@ -167,9 +157,7 @@ async def test_run_eval_validation_error_raises_tool_error() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_run_error_raises_tool_error() -> None:
     """Agent run_error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {"error": {"category": "run_error", "detail": "connection reset"}}
 
         with pytest.raises(ToolError, match="run_error"):
@@ -183,9 +171,7 @@ async def test_run_eval_run_error_raises_tool_error() -> None:
 @pytest.mark.asyncio
 async def test_run_eval_permission_error_raises_tool_error() -> None:
     """Agent permission_denied error is translated to ToolError."""
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {"error": {"category": "permission_denied", "detail": "read-only"}}
 
         with pytest.raises(ToolError, match="permission_denied"):
@@ -282,9 +268,7 @@ async def test_run_eval_no_search_state_id_skips_preflight() -> None:
     """Without search_state_id, run_eval behaves as before."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         result = await run_eval(
@@ -316,8 +300,13 @@ async def test_run_eval_pipeline_builds_config_from_state(tmp_path: Path) -> Non
         round=1,
         round_history=[
             RoundSummary(
-                round=1, candidates_evaluated=["v1"], new_elite_entries=1,
-                elite_size=1, mutation_mode="targeted", stagnation_count=0, converged=False,
+                round=1,
+                candidates_evaluated=["v1"],
+                new_elite_entries=1,
+                elite_size=1,
+                mutation_mode="targeted",
+                stagnation_count=0,
+                converged=False,
             ),
         ],
     )
@@ -353,6 +342,7 @@ async def test_run_eval_pipeline_builds_config_from_state(tmp_path: Path) -> Non
 async def test_run_eval_backend_optional_for_pipeline() -> None:
     """run_eval can be called without backend when run_id is provided."""
     import inspect
+
     sig = inspect.signature(run_eval)
     param = sig.parameters["backend"]
     assert param.default is not inspect.Parameter.empty, "backend should have a default"
@@ -368,9 +358,7 @@ async def test_run_eval_standalone_forwards_backend_and_config() -> None:
     """Standalone run_eval (no run_id) passes backend and config_path to agent."""
     score_report = _stub_score_report()
 
-    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-        RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-    ):
+    with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
         mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
         await run_eval(
@@ -397,24 +385,26 @@ class TestBuildPipelineConfig:
 
     def test_default_metric_when_no_primary(self, tmp_path: Path) -> None:
         """No primary_metric_name → accuracy + confusion + f1 + cost_quality_change."""
-        state = SearchState(
-            search_state_id="r1", backend="anthropic", primary_metric_name=None
-        )
+        state = SearchState(search_state_id="r1", backend="anthropic", primary_metric_name=None)
         config = build_pipeline_config(
-            state=state, prompt_version="v1", data_source="d.jsonl",
-            run_id="r1", project_dir=tmp_path,
+            state=state,
+            prompt_version="v1",
+            data_source="d.jsonl",
+            run_id="r1",
+            project_dir=tmp_path,
         )
         names = [m.name for m in config.metrics]
         assert names == ["accuracy", "confusion", "f1", "cost_quality_change"]
 
     def test_primary_metric_with_slash(self, tmp_path: Path) -> None:
         """primary_metric_name='f1/macro' → default metrics; f1 already included with default params."""
-        state = SearchState(
-            search_state_id="r1", backend="anthropic", primary_metric_name="f1/macro"
-        )
+        state = SearchState(search_state_id="r1", backend="anthropic", primary_metric_name="f1/macro")
         config = build_pipeline_config(
-            state=state, prompt_version="v1", data_source="d.jsonl",
-            run_id="r1", project_dir=tmp_path,
+            state=state,
+            prompt_version="v1",
+            data_source="d.jsonl",
+            run_id="r1",
+            project_dir=tmp_path,
         )
         assert len(config.metrics) == 4
         names = [m.name for m in config.metrics]
@@ -425,35 +415,38 @@ class TestBuildPipelineConfig:
 
     def test_primary_metric_accuracy_no_duplicate(self, tmp_path: Path) -> None:
         """primary_metric_name='accuracy' → defaults only (no duplicate accuracy)."""
-        state = SearchState(
-            search_state_id="r1", backend="anthropic", primary_metric_name="accuracy"
-        )
+        state = SearchState(search_state_id="r1", backend="anthropic", primary_metric_name="accuracy")
         config = build_pipeline_config(
-            state=state, prompt_version="v1", data_source="d.jsonl",
-            run_id="r1", project_dir=tmp_path,
+            state=state,
+            prompt_version="v1",
+            data_source="d.jsonl",
+            run_id="r1",
+            project_dir=tmp_path,
         )
         names = [m.name for m in config.metrics]
         assert names == ["accuracy", "confusion", "f1", "cost_quality_change"]
 
     def test_output_paths_scoped_to_run(self, tmp_path: Path) -> None:
         """Output paths are under outputs/<run_id>/eval/."""
-        state = SearchState(
-            search_state_id="r1", backend="anthropic"
-        )
+        state = SearchState(search_state_id="r1", backend="anthropic")
         config = build_pipeline_config(
-            state=state, prompt_version="v1", data_source="d.jsonl",
-            run_id="r1", project_dir=tmp_path,
+            state=state,
+            prompt_version="v1",
+            data_source="d.jsonl",
+            run_id="r1",
+            project_dir=tmp_path,
         )
         assert "r1/eval/v1/results.jsonl" in config.output.results_path
         assert "r1/eval/v1/report.json" in config.output.report_path
 
     def test_backend_from_state(self, tmp_path: Path) -> None:
         """Backend comes from search state."""
-        state = SearchState(
-            search_state_id="r1", backend="openai"
-        )
+        state = SearchState(search_state_id="r1", backend="openai")
         config = build_pipeline_config(
-            state=state, prompt_version="v1", data_source="d.jsonl",
-            run_id="r1", project_dir=tmp_path,
+            state=state,
+            prompt_version="v1",
+            data_source="d.jsonl",
+            run_id="r1",
+            project_dir=tmp_path,
         )
         assert config.backend == "openai"
