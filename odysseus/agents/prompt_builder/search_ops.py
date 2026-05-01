@@ -146,6 +146,28 @@ def _load_pending(run_id: str, output_dir: Path) -> list[Candidate]:
     return [Candidate.model_validate(item) for item in data]
 
 
+def _archive_path(run_id: str, output_dir: Path) -> Path:
+    return output_dir / run_id / "search" / "candidate_archive.json"
+
+
+def _load_archive(run_id: str, output_dir: Path) -> list[dict[str, Any]]:
+    path = _archive_path(run_id, output_dir)
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _append_archive(run_id: str, candidates: list[Candidate], output_dir: Path) -> None:
+    if not candidates:
+        return
+    path = _archive_path(run_id, output_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    archive = _load_archive(run_id, output_dir)
+    seen = {e["prompt_version"] for e in archive}
+    archive.extend(c.model_dump() for c in candidates if c.prompt_version not in seen)
+    path.write_text(json.dumps(archive, indent=2), encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # Task 6: init_search_state / get_search_state
 # ---------------------------------------------------------------------------
@@ -507,6 +529,9 @@ def advance_round(
     )
     _save_state(run_id, updated_state, output_dir)
     _try_write_viz(run_id, output_dir)
+
+    # Persist scored candidates to archive before clearing pending.
+    _append_archive(run_id, scored, output_dir)
 
     # Clear pending
     _save_pending(run_id, [], output_dir)

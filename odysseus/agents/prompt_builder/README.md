@@ -24,7 +24,7 @@ The subpackage is code-only; the Prompt Builder Agent (LLM-driven, system prompt
 outputs/<run_id>/search/
   search_state.json        # SearchState (elite_set, round_history, phase)
   pending_candidates.json  # Candidates registered but not yet advanced
-  candidate_archive.json   # All evaluated candidates (append-only)
+  candidate_archive.json   # Append-only record of every scored candidate (used by search-tree viz to preserve lineage of dominated/non-elite candidates)
   viz.html                 # Live interactive visualization (regenerated after each state mutation)
 ```
 
