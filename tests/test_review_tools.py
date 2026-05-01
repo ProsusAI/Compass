@@ -336,6 +336,111 @@ class TestGetPromptTextTool:
         assert param.default is inspect.Parameter.empty, "run_id must have no default (required)"
 
 
+class TestVariantIdSequentialCounter:
+    """variant_ids assigned by record_directive_outcomes_tool are sequential across calls."""
+
+    _RUN_ID = "test-run-seq"
+
+    _CHILD_VARIANT_RAW = {
+        "hypothesis": "Improve recall on route_a",
+        "directives": [
+            {
+                "directive_id": "d1",
+                "target_version": "v1",
+                "block_type": "rule",
+                "block_identifier": "Rule 1",
+                "granularity": "micro",
+                "directive": "Add rule",
+                "priority": "medium",
+            }
+        ],
+    }
+
+    def _make_search_state(self, tmp_path: Path, run_id: str, next_seq: int = 1) -> None:
+        """Write a minimal search_state.json with the given next_variant_seq."""
+        from odysseus.agents.prompt_builder.search import SearchState
+        from odysseus.agents.prompt_builder.search_ops import _save_state
+
+        state = SearchState(
+            search_state_id=run_id,
+            backend="anthropic",
+            next_variant_seq=next_seq,
+        )
+        out = tmp_path / "outputs"
+        _save_state(run_id, state, out)
+
+    async def test_first_call_assigns_v1_v2(self, tmp_path: Path) -> None:
+        """First call with two variants assigns v1 and v2."""
+        self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
+
+        two_variants = [self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="Variant 2")]
+
+        with _patch_project_dir(tmp_path):
+            result_json = await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=two_variants,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        ids = [v["variant_id"] for v in result["variants_summary"]]
+        assert ids == ["v1", "v2"]
+
+    async def test_second_call_continues_counter(self, tmp_path: Path) -> None:
+        """Second call picks up where the first left off (counter persisted in state)."""
+        self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
+
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[self._CHILD_VARIANT_RAW],
+                output_dir="outputs",
+            )
+            result_json = await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[
+                    dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant A"),
+                    dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant B"),
+                ],
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        ids = [v["variant_id"] for v in result["variants_summary"]]
+        assert ids == ["v2", "v3"]
+
+    async def test_state_next_variant_seq_updated(self, tmp_path: Path) -> None:
+        """After assigning 3 ids across two calls, next_variant_seq == 4."""
+        from odysseus.agents.prompt_builder.search_ops import _load_state
+
+        self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
+
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="V2")],
+                output_dir="outputs",
+            )
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[dict(self._CHILD_VARIANT_RAW, hypothesis="V3")],
+                output_dir="outputs",
+            )
+
+        state = _load_state(self._RUN_ID, tmp_path / "outputs")
+        assert state.next_variant_seq == 4
+
+
 class TestQueryHoldoutExamplesPagination:
     """Smoke tests for offset pagination in query_holdout_examples_tool."""
 

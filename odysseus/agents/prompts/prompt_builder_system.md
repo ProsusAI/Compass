@@ -89,7 +89,7 @@ Execute these steps exactly in order on round 1.
 3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
 4. **Initialize search state.** Call `init_search_state_tool(run_id=run_id, backend=backend)`. The tool applies default search parameters. If the routing context or input report specifies custom search budget parameters, pass them as overrides. Store the returned `search_state_id`.
 5. **Retrieve child variants.** Call `get_child_variants_tool(run_id=run_id)`. On round 1, expect one or more variants, each with `parent_version: "base"` (the canonical initial parent — matches `ReviewBriefing.initial_parent_version`). Each variant contains a complete directive set — examples, rules, and optionally vocabulary. Validate that every variant has at least one directive with `block_type == 'example'`.
-6. **Compile one prompt per variant.** For each ChildVariant, compile a separate prompt using `v_<variant_id>` as the prompt version handle (e.g., `v_<uuid-fragment>`):
+6. **Compile one prompt per variant.** For each ChildVariant, compile a separate prompt using `<variant_id>` as the prompt version handle (variant ids are sequential `v1`, `v2`, …):
 
    **Extract directives from the variant:**
    - Filter to `block_type == 'example'`: extract `example_content` for few-shot examples. Collect `example_id` from each for backend tracking — do **not** include in prompt text.
@@ -115,11 +115,11 @@ Execute these steps exactly in order on round 1.
 
    When a model-specific addendum was read in step 3, its formatting guidance overrides or refines the provider base conventions on any conflicting points.
 
-8. **Write all prompts.** Call `save_prompt_tool` for each variant's compiled prompt using version handles derived from `variant_id` (e.g., `v_<variant_id>`).
-9. **Register candidates.** For each compiled prompt, call `register_candidate_tool(run_id=run_id, prompt_version="v_<variant_id>", example_ids=[<complete list of example_ids for this variant>])`.
-10. **Evaluate each candidate.** For each candidate, call `run_eval(prompt_version="v_<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
+8. **Write all prompts.** Call `save_prompt_tool` for each variant's compiled prompt using `<variant_id>` as the prompt version handle.
+9. **Register candidates.** For each compiled prompt, call `register_candidate_tool(run_id=run_id, prompt_version="<variant_id>", example_ids=[<complete list of example_ids for this variant>])`.
+10. **Evaluate each candidate.** For each candidate, call `run_eval(prompt_version="<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
 11. **Extract scores.** From each ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
-12. **Record results.** Call `record_eval_result_tool(run_id, "v_<variant_id>", quality_score, cost)` for each candidate.
+12. **Record results.** Call `record_eval_result_tool(run_id, "<variant_id>", quality_score, cost)` for each candidate.
 13. **Advance round.** Call `advance_step_tool(run_id)`.
 14. **Set output.** Set `prompt_version` to the best candidate from this round (highest quality, break ties by lowest cost) in context. This triggers the Review Agent.
 
@@ -142,12 +142,12 @@ Execute on round 2 and every subsequent round.
    | `targeted` | Apply the variant's directives faithfully: paraphrase sections, reorder rules, tighten precision, swap or reorder few-shot examples |
    | `exploratory` | Use the variant's directives as a starting point, but make larger structural changes: add/delete sections, completely different example sets, different prompting style |
 
-5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="v_<variant_id>", content=<child prompt text>)` for each child. Search state is persisted under `outputs/<run_id>/search/`.
+5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="<variant_id>", content=<child prompt text>)` for each child. Search state is persisted under `outputs/<run_id>/search/`.
 6. **Evaluate each child.** For each child prompt:
-   - Call `register_candidate_tool(run_id=run_id, prompt_version="v_<variant_id>", parent_version=variant.parent_version, example_ids=[<complete list of example IDs in this child>])`. The `example_ids` list must contain every example ID in the child — the full set, not just changed examples.
-   - Call `run_eval(prompt_version="v_<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
+   - Call `register_candidate_tool(run_id=run_id, prompt_version="<variant_id>", parent_version=variant.parent_version, example_ids=[<complete list of example IDs in this child>])`. The `example_ids` list must contain every example ID in the child — the full set, not just changed examples.
+   - Call `run_eval(prompt_version="<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
    - Extract `quality_score` and `cost` from the ScoreReport.
-   - Call `record_eval_result_tool(run_id, "v_<variant_id>", quality_score, cost)`.
+   - Call `record_eval_result_tool(run_id, "<variant_id>", quality_score, cost)`.
 7. **Advance round.** Call `advance_step_tool(run_id)`. Read the returned RoundSummary.
 8. **Read round result.**
    - If `converged` is true: select the best candidate from the Pareto front (highest quality, break ties by lowest cost). Set `prompt_version` to that candidate. Done.

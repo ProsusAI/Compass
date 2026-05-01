@@ -189,6 +189,8 @@ class SearchState(BaseModel):
     # Used by _detect_stage_4_phase to detect build_recovering and by
     # advance_round to guard against advancing while evals are in flight.
     active_evals: list[str] = Field(default_factory=list)
+    # Global monotonic counter for sequential vN variant ids (v1, v2, …).
+    next_variant_seq: int = 1
 
     @field_validator("search_state_id")
     @classmethod

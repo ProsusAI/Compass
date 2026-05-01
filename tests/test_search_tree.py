@@ -435,6 +435,182 @@ class TestCollectDataFromArchive:
         assert v9["on_front"] is True
 
 
+class TestVizFilterRegression:
+    """Regression tests for the eval_status filter in collect_data.
+
+    Canonical search-side status is {pending, running, complete, failed}.  The
+    viz must include entries with eval_status="complete" (real candidates) and
+    eval_status=None (archive entries without a status field).  The legacy
+    "scored" tag is kept for synthesised ghost entries built from the eval/
+    directory.
+    """
+
+    def test_elite_set_with_complete_status_appears_in_candidates(self, tmp_path: Path) -> None:
+        """Elite entries with eval_status='complete' appear in collect_data candidates."""
+        search_dir = tmp_path / "search"
+        eval_dir = tmp_path / "eval"
+
+        elite = [
+            {
+                "prompt_version": f"v{i}",
+                "parent_version": "base",
+                "secondary_parent_version": None,
+                "quality_score": 0.8 + i * 0.01,
+                "cost": 0.5 - i * 0.01,
+                "iteration_introduced": 1,
+                "eval_status": "complete",
+            }
+            for i in range(1, 4)
+        ]
+
+        state = {
+            "search_state_id": "reg-test",
+            "backend": "anthropic",
+            "elite_set": elite,
+            "iteration": 1,
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", [])
+        _write_json(search_dir / "pending_candidates.json", [])
+
+        for i in range(1, 4):
+            _write_json(eval_dir / f"v{i}" / "report.json", _make_eval_report())
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        versions = {c["version"] for c in data["candidates"]}
+        assert "v1" in versions
+        assert "v2" in versions
+        assert "v3" in versions
+
+    def test_elite_entries_have_correct_parent_version(self, tmp_path: Path) -> None:
+        """Elite entries with eval_status='complete' have parent='base', not None."""
+        search_dir = tmp_path / "search"
+        eval_dir = tmp_path / "eval"
+
+        elite = [
+            {
+                "prompt_version": "v1",
+                "parent_version": "base",
+                "secondary_parent_version": None,
+                "quality_score": 0.85,
+                "cost": 0.45,
+                "iteration_introduced": 1,
+                "eval_status": "complete",
+            }
+        ]
+        state = {
+            "search_state_id": "parent-test",
+            "backend": "anthropic",
+            "elite_set": elite,
+            "iteration": 1,
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", [])
+        _write_json(search_dir / "pending_candidates.json", [])
+        _write_json(eval_dir / "v1" / "report.json", _make_eval_report())
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        assert len(data["candidates"]) == 1
+        c = data["candidates"][0]
+        assert c["version"] == "v1"
+        assert c["parent"] == "base"
+
+    def test_pending_with_complete_status_appears_in_candidates(self, tmp_path: Path) -> None:
+        """Pending entries with eval_status='complete' are included (not filtered out)."""
+        search_dir = tmp_path / "search"
+        eval_dir = tmp_path / "eval"
+
+        pending = [
+            {
+                "prompt_version": "v5",
+                "parent_version": "v2",
+                "secondary_parent_version": None,
+                "quality_score": 0.9,
+                "cost": 0.4,
+                "iteration_introduced": 2,
+                "eval_status": "complete",
+            }
+        ]
+        state = {
+            "search_state_id": "pending-test",
+            "backend": "anthropic",
+            "elite_set": [],
+            "iteration": 2,
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", [])
+        _write_json(search_dir / "pending_candidates.json", pending)
+        _write_json(eval_dir / "v5" / "report.json", _make_eval_report())
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        versions = {c["version"] for c in data["candidates"]}
+        assert "v5" in versions
+
+    def test_running_and_failed_statuses_excluded(self, tmp_path: Path) -> None:
+        """Entries with eval_status='running' or 'failed' are excluded from candidates."""
+        search_dir = tmp_path / "search"
+
+        elite = [
+            {
+                "prompt_version": "v-running",
+                "parent_version": "base",
+                "secondary_parent_version": None,
+                "quality_score": 0.8,
+                "cost": 0.5,
+                "iteration_introduced": 1,
+                "eval_status": "running",
+            },
+            {
+                "prompt_version": "v-failed",
+                "parent_version": "base",
+                "secondary_parent_version": None,
+                "quality_score": 0.0,
+                "cost": 0.0,
+                "iteration_introduced": 1,
+                "eval_status": "failed",
+            },
+        ]
+        state = {
+            "search_state_id": "excl-test",
+            "backend": "anthropic",
+            "elite_set": elite,
+            "iteration": 1,
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", [])
+        _write_json(search_dir / "pending_candidates.json", [])
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        # Neither running nor failed should appear (no eval reports either to make ghosts)
+        versions = {c["version"] for c in data["candidates"]}
+        assert "v-running" not in versions
+        assert "v-failed" not in versions
+
+
 class TestStrategySeams:
     """Strategy label and algorithm_chips injection seams work correctly."""
 
