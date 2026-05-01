@@ -948,9 +948,7 @@ class TestBedrockBackend:
 
     @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
     @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
-    async def test_backend_call_non_json_raises(
-        self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
-    ) -> None:
+    async def test_backend_call_non_json_raises(self, mock_session_cls: MagicMock, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
         mock_client.messages.create = AsyncMock(

@@ -437,6 +437,10 @@ async def get_child_variants_tool(
     via record_directive_outcomes_tool. Each variant specifies a parent version
     and the directives to apply together as one child prompt.
 
+    Prefers per-trajectory files (``child_variants_t<N>.json``) produced by EMOSA
+    K-way fanout when they exist, falling back to the single-slot
+    ``child_variants.json`` written during calibration and non-EMOSA strategies.
+
     Args:
         run_id: Pipeline run identifier.
         output_dir: Output directory (default "outputs").
@@ -444,11 +448,16 @@ async def get_child_variants_tool(
     Returns:
         JSON-serialized list of ChildVariant objects.
     """
-    from odysseus.agents.review.ops import load_child_variants
+    from odysseus.agents.review.ops import load_all_trajectory_child_variants, load_child_variants
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    variants = load_child_variants(run_id, output_dir=out)
+    search_dir = out / run_id / "search"
+    trajectory_files = list(search_dir.glob("child_variants_t*.json")) if search_dir.exists() else []
+    if trajectory_files:
+        variants = load_all_trajectory_child_variants(run_id, output_dir=out)
+    else:
+        variants = load_child_variants(run_id, output_dir=out)
 
     # Dedup: if secondary version matches primary, set to None
     variants = [
@@ -482,11 +491,16 @@ async def get_edit_directives_tool(
     Returns:
         JSON-serialized flat list of EditDirective objects across all child variants.
     """
-    from odysseus.agents.review.ops import load_child_variants
+    from odysseus.agents.review.ops import load_all_trajectory_child_variants, load_child_variants
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    variants = load_child_variants(run_id, output_dir=out)
+    search_dir = out / run_id / "search"
+    trajectory_files = list(search_dir.glob("child_variants_t*.json")) if search_dir.exists() else []
+    if trajectory_files:
+        variants = load_all_trajectory_child_variants(run_id, output_dir=out)
+    else:
+        variants = load_child_variants(run_id, output_dir=out)
     directives = [d for v in variants for d in v.directives]
     return json.dumps([d.model_dump(mode="json") for d in directives], indent=2)
 

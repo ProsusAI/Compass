@@ -42,15 +42,12 @@ async def test_run_holdout_eval_tool_registered():
     assert "run_holdout_eval" in tool_names
 
 
-
 async def test_optimize_routing_prompt_has_no_user_params():
     """optimize_routing_prompt must expose no user-facing parameters."""
     tools = await mcp.list_tools()
     tool = next(t for t in tools if t.name == "optimize_routing_prompt")
     schema_properties = tool.inputSchema.get("properties", {})
-    assert schema_properties == {}, (
-        f"optimize_routing_prompt must have no parameters, got: {list(schema_properties)}"
-    )
+    assert schema_properties == {}, f"optimize_routing_prompt must have no parameters, got: {list(schema_properties)}"
 
 
 def _make_stub_score_report() -> ScoreReport:
@@ -80,9 +77,7 @@ class TestRunEval:
         """Successful run returns JSON with report_path, results_path, metrics, and summary."""
         score_report = _make_stub_score_report()
 
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-        ):
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
             mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
             from odysseus.mcp import run_eval
@@ -103,9 +98,7 @@ class TestRunEval:
         """MCP tool passes all parameters to agent context."""
         score_report = _make_stub_score_report()
 
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-        ):
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
             mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
 
             from odysseus.mcp import run_eval
@@ -125,9 +118,7 @@ class TestRunEval:
 
     async def test_agent_error_raises_tool_error(self):
         """Agent error dict is translated to ToolError."""
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-        ):
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
             mock_run.return_value = {"error": {"category": "not_found", "detail": "config missing"}}
 
             from odysseus.mcp import run_eval
@@ -141,9 +132,7 @@ class TestRunEval:
 
     async def test_validation_error_raises_tool_error(self):
         """Agent validation error is translated to ToolError."""
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(
-            RESOLVE_PROJECT_DIR, new_callable=AsyncMock
-        ):
+        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
             mock_run.return_value = {"error": {"category": "validation_error", "detail": "bad config"}}
 
             from odysseus.mcp import run_eval

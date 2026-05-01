@@ -186,13 +186,21 @@ STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+# Shared steady-review sub-agent toolbelt — used by both STAGE_4_REVIEW_INSTRUCTION
+# and STAGE_4_REVIEW_INSTRUCTION_EMOSA so the two instructions stay in sync.
+_STEADY_REVIEW_TOOLS_LINE: str = (
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "build_review_briefing_tool, record_directive_outcomes_tool, "
+    "get_prompt_text_tool, query_holdout_examples_tool"
+)
+
 STAGE_4_REVIEW_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "build_review_briefing_tool, record_directive_outcomes_tool\n"
+    + _STEADY_REVIEW_TOOLS_LINE
+    + "\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call get_pipeline_status.\n"

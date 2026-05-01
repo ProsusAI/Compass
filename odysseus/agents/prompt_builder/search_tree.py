@@ -105,10 +105,12 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
 
     # Build deduplicated candidate list from union of elite_set + archive + pending.
     # Precedence: elite_set > archive > pending (elite_set is most current).
-    # Only include entries where eval_status is "scored" or absent.
+    # Only include entries where eval_status is "complete" or absent (canonical search-side
+    # statuses: pending, running, complete, failed). Ghost entries synthesised from the eval/
+    # directory are tagged "scored" to distinguish them; that tag also passes here.
     elite_set_versions = [e["prompt_version"] for e in elite_entries]
     archive_versions = [e["prompt_version"] for e in archive]
-    pending_versions = [p["prompt_version"] for p in pending if p.get("eval_status") == "scored"]
+    pending_versions = [p["prompt_version"] for p in pending if p.get("eval_status") in ("complete", None)]
 
     # Ghost candidates: evaluated (eval/<v>/report.json exists) but not in
     # elite_set, archive, or pending — recover from the eval directory.
@@ -146,7 +148,7 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
         if v in seen:
             continue
         e = source_entries[v]
-        if e.get("eval_status") not in ("scored", None):
+        if e.get("eval_status") not in ("complete", "scored", None):
             continue
         seen.add(v)
         r = reductions.get(v, {})

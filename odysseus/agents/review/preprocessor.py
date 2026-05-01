@@ -1131,6 +1131,7 @@ def build_review_briefing(
     examples: list[Example] | None = None,
     run_dir: Path | None = None,
     cell_attempt_history: dict[str, list[dict[str, Any]]] | None = None,
+    emosa_trajectory_id: int | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 

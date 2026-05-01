@@ -139,4 +139,5 @@ Test datasets live in `tests/scenarios/data/`:
 | `review/abc123/` | Review Agent fixtures: basic review (search state, score reports, mutation log) |
 | `review/def456/` | Review Agent fixtures: regression guard (v3 drops opus recall) |
 | `review/ghi789/` | Review Agent fixtures: loop exit (round 4, convergence) |
-| `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data |
+| `emosa_toy_dataset.jsonl` | 10 rows, 3 tiers (haiku/sonnet/opus), EMOSA calibration testing |
+| `review/generate_fixtures.py` | Script to regenerate Review Agent fixture data; exports `gen_emosa_calibration()` and `gen_emosa_steady_state()` |

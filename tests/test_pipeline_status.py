@@ -208,14 +208,15 @@ class TestSubagentInstruction:
         assert "stratified_split_tool" in instr
 
     def test_stage4_has_subagent_instruction(self, tmp_path: Path) -> None:
-        """Stage 4 cold-start has a subagent instruction with review agent."""
+        """Stage 4 initial dispatch has a subagent instruction.
+        On EMOSA branch, pre-init routes through the EMOSA path (review phase)."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "<HARD_STOP>" in instr
         assert "<stage_system_prompt>" in instr
-        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
+        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
 
     def test_stage4_available_tools_correct(self, tmp_path: Path) -> None:
         """Stage 4 cold-start available_tools should include review tools."""
@@ -257,20 +258,25 @@ class TestSubagentInstruction:
 
 
 class TestStage4ThreePhaseDetection:
-    """Stage 4 three-phase detection: cold-start -> build-v1 -> normal loop."""
+    """Stage 4 phase detection: EMOSA branch routes all fresh state through EMOSA sub-routine."""
 
     def test_cold_start_when_no_files(self, tmp_path: Path) -> None:
+        # On EMOSA branch, _ensure_stage4_search_state pre-inits search_state.json
+        # with algorithm='emosa' and loop_phase='review'. The EMOSA sub-routine
+        # then returns 'review' rather than hill-climb's 'cold_start'.
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
-        assert "cold-start" in result["next_action"].lower()
+        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
 
     def test_build_v1_after_cold_start(self, tmp_path: Path) -> None:
+        # On EMOSA branch there is no 'build_v1' phase. After directive_history
+        # exists and pre-init runs, the EMOSA sub-routine reads loop_phase='review'
+        # from the freshly created search_state.json and returns 'review'.
         _setup_stage4_cold_start_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_prompt_builder"
+        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
 
     def test_normal_loop_review_phase(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
@@ -495,10 +501,11 @@ class TestStage4RerunMode:
         assert "build_review_briefing_tool" not in tools
 
     def test_normal_stage4_unaffected_without_rerun_config(self, tmp_path: Path) -> None:
-        """Without rerun_config.json, Stage 4 still uses the three-phase detection."""
+        """Without rerun_config.json, Stage 4 uses EMOSA phase detection.
+        Pre-init creates search_state.json with algorithm='emosa', loop_phase='review'."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
+        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
 
 
 class TestStage5FinalReport:
@@ -838,16 +845,16 @@ class TestEnsureStage4SearchState:
         data = json.loads((run_dir / "search" / "search_state.json").read_text())
         assert data["primary_metric_name"] is None
 
-    def test_detect_stage_4_phase_returns_cold_start_after_pre_init(self, tmp_path: Path) -> None:
-        """After pre-init, _detect_stage_4_phase returns 'cold_start' when neither
-        directive_history nor a v1 prompt exist."""
+    def test_detect_stage_4_phase_uses_emosa_path_after_pre_init(self, tmp_path: Path) -> None:
+        """After pre-init on the EMOSA branch, _detect_stage_4_phase routes through the EMOSA
+        sub-routine (algorithm='emosa' in search_state.json), not the hill-climb cold_start path."""
         run_dir = self._make_run_dir(tmp_path)
         self._make_project_dir_with_backend(tmp_path)
 
-        # Pre-init creates search_state.json
+        # Pre-init creates search_state.json with algorithm='emosa', loop_phase='review'
         _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
         assert (run_dir / "search" / "search_state.json").is_file()
 
-        # No directive_history, no v1 → should still be cold_start
+        # EMOSA sub-routine trusts loop_phase directly; fresh state has loop_phase='review'
         phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "cold_start"
+        assert phase == "review"  # not 'cold_start' — EMOSA path is taken

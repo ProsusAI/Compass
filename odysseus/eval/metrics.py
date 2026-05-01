@@ -177,12 +177,8 @@ def compute_cost_quality_change(
         (predicted_cost + routing_overhead - baseline_cost) / baseline_cost if baseline_cost != 0 else 0.0
     )
 
-    quality_change = (
-        (predicted_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
-    )
-    oracle_quality_change = (
-        (oracle_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
-    )
+    quality_change = (predicted_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
+    oracle_quality_change = (oracle_quality - baseline_quality) / baseline_quality if baseline_quality != 0 else 0.0
 
     return {
         "cost_change": cost_change,

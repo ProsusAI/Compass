@@ -89,6 +89,19 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
 `ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_child_variants_tool`. `get_edit_directives_tool` is a back-compat helper that flattens all directives across variants into a single list.
 
+Strategy-specific optional fields pre-provisioned by Increment 4 and populated by each algorithm's preprocessor function:
+
+| Field | Type | Algorithm | Populated by |
+|---|---|---|---|
+| `parent_a_version`, `parent_b_version` | `str \| None` | all | `build_review_briefing` |
+| `trajectory_id` | `int \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
+| `weight_vector` | `tuple[float, float] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
+| `binding_axis` | `"quality" \| "cost" \| None` | EMOSA | `_populate_emosa_review_fields` (C3) — `argmax_i (λ_i · norm_i)` against active trajectory's current quality/cost vs ideal/nadir |
+| `acceptance_history` | `list[bool] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
+| `stagnation_signal` | `dict \| None` | all | hill-climb: `{count, limit, mutation_mode}`; emosa: `{temperature, t_min, review_exit}` |
+
+EMOSA steady-state advance ([`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) — `_advance_emosa_search`) executes per round when `algorithm_state.phase == "search"`: drift-cache refresh (recompute each trajectory's `current_energy` under updated `ideal_point`/`nadir_point`), per-trajectory Metropolis-then-best-of-accepted, EMOSA neighborhood replacement (B=4 nearest weight-vector neighbors via `compute_neighborhood` + `replace_if_better`), archive update, hypervolume computation, geometric cooling. Convergence exits (`temperature_floor`, `eval_budget`, `review_exit`) set `algorithm_state.phase = "converged"` and `SearchState.converged = True` in the same atomic state write; `SearchState.loop_phase` is always written `"review"` to advance to the next dispatch cycle. The top-level `converged` flag is checked by `_check_stage_4` before `_detect_stage_4_phase_emosa` is reached, so no converged short-circuit is needed inside the EMOSA phase detector.
+
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
 
@@ -158,6 +171,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `get_child_variants_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
 | `review_cold` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
+| `calibration` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `init_search_state_tool`, `register_candidate_tool`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `save_prompt_tool`, `get_edit_directives_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
 #### Sub-Agent Guard Pattern
@@ -201,7 +215,11 @@ Two JSON sentinel files signal that a sub-agent is in-flight for the current rou
 | `search/build_dispatched.json` | `register_candidate_tool` (first builder action) | `advance_step_tool` (round complete); `run_batch_eval_impl` (when `active_evals` drains after batch eval) | `complete_stage("prompt_building")` rejects while present |
 | `search/review_dispatched.json` | `build_review_briefing_tool` (reviewer dispatch) | `record_directive_outcomes_tool` (directives saved) | `complete_stage("review")` checks fanout |
 
-Both files contain `{"round": N}` for diagnostics.
+`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is dual-format: `{"round": N}` for hill-climb; `{"round": N, "trajectory_ids": [...]}` for EMOSA (tracks per-trajectory dispatch within the round).
+
+**EMOSA review instruction — K-way fanout**
+
+When `phase == "review"` and `algorithm == "emosa"`, `_next_action_for_stage_4` formats `STAGE_4_REVIEW_INSTRUCTION_EMOSA` (in [`odysseus/agents/pipeline/instructions.py`](../odysseus/agents/pipeline/instructions.py)) with `{num_trajectories}` and `{max_trajectory_id}`.  The instruction directs the orchestrator to spawn N independent Review Agent sub-agents in a single parallel batch (one per trajectory ID 0..N-1), each told its `trajectory_id` and required to call `record_directive_outcomes_tool(run_id='{run_id}', trajectory_id=<N>, child_variants=[...])`.  The tool routes per-trajectory writes through `save_trajectory_child_variants` + `record_trajectory_dispatched`, writing `child_variants_t<N>.json` for each slot.  The orchestrator must wait for all N completions before calling `complete_stage`.
 
 **`DispatchFanout` and `review_fanout_status`**
 
@@ -216,11 +234,11 @@ Both files contain `{"round": N}` for diagnostics.
 | `is_complete` | `bool` | `len(completed) >= expected` |
 | `missing` | `list[int]` | `in_flight + not_dispatched` |
 
-For `expected=1`, fanout is complete when `search/child_variants.json` exists. `expected > 1` raises `NotImplementedError` and is reserved for strategy-branch overrides.
+For `expected=1` (hill-climb), fanout is complete when `search/child_variants.json` exists.  For `algorithm="emosa"`, `review_fanout_status` delegates to `trajectory_fanout_missing` (see `odysseus/agents/review/ops.py`) which checks per-slot `child_variants_t<N>.json` files; each slot maps to one EMOSA trajectory.  Dispatch state for EMOSA is tracked in `review_dispatched.json` as a round-keyed list of trajectory_ids rather than the simple `{"round": N}` marker used by other algorithms.
 
-**`child_variants.json`**
+**`child_variants.json` / `child_variants_t<N>.json`**
 
-Written by `record_directive_outcomes_tool` whenever child variants are saved.  Acts as the canonical review-completion sentinel checked by `review_fanout_status`.
+Written by `record_directive_outcomes_tool` for the single-slot algorithm (hill-climb); acts as the canonical review-completion sentinel.  For EMOSA, each trajectory's Review Agent sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, which internally calls `save_trajectory_child_variants` (in [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py)) to write `child_variants_t<N>.json` for slot N, and `record_trajectory_dispatched` to mark the slot complete.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
 
 **Defense-in-depth phase flip**
 

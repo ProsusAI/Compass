@@ -460,9 +460,188 @@ def gen_scenario_53():
     )
 
 
+# ─── EMOSA fixtures (scenario 18 — calibration round) ────────────
+#
+# These fixtures emit a canonical SearchState for EMOSA with K=5
+# trajectories in the calibration phase. The algorithm_state pocket
+# follows the AnnealingState schema from annealing.py.
+
+
+def gen_emosa_calibration():
+    """EMOSA calibration fixture: K=5 unseeded trajectories, loop_phase='calibration'."""
+    print("\nEMOSA calibration (emosa_calibration)")
+
+    weight_vectors = [(0.9, 0.1), (0.7, 0.3), (0.5, 0.5), (0.3, 0.7), (0.1, 0.9)]
+    trajectories = [
+        {
+            "trajectory_id": i,
+            "weight_vector": list(wv),
+            "current_solution": None,
+            "current_energy": None,
+            "current_quality": None,
+            "current_cost": None,
+            "acceptance_history": [],
+            "quality_reference": None,
+            "cost_reference": None,
+        }
+        for i, wv in enumerate(weight_vectors)
+    ]
+
+    # The state dict is returned as a canonical SearchState representation.
+    # Callers can write it to disk or pass it directly to build_review_briefing.
+    state = {
+        "search_state_id": "emosa_calibration",
+        "backend": "mock-echo",
+        "primary_metric_name": "accuracy",
+        "round": 0,
+        "elite_set": [],
+        "round_history": [],
+        "stagnation_count": 0,
+        "stagnation_limit": 3,
+        "convergence_limit": 4,
+        "max_rounds": 50,
+        "mutation_mode": "targeted",
+        "converged": False,
+        "algorithm": "emosa",
+        "algorithm_state": {
+            "temperature": 1.0,
+            "t_initial": 1.0,
+            "t_min": 0.01,
+            "alpha": 0.95,
+            "num_trajectories": 5,
+            "children_per_trajectory": 1,
+            "step_count": 0,
+            "trajectories": trajectories,
+            "neighborhood_size": 4,
+            "ideal_point": [1.0, 0.0],
+            "nadir_point": [0.0, 1.0],
+            "max_evals": 50,
+            "total_evals": 0,
+            "convergence_limit": 4,
+            "epsilon": 0.003,
+            "phase": "calibration",
+            "rho": 1e-3,
+        },
+        "active_evals": [],
+        "loop_phase": "calibration",
+    }
+    return state
+
+
+def gen_emosa_steady_state():
+    """EMOSA steady-state fixture: K=5 seeded trajectories, loop_phase='review', phase='search'.
+
+    Represents post-calibration state where each trajectory already has a
+    current_solution (seed prompt version), current_quality, current_cost,
+    current_energy, and an initial acceptance_history = [True] from calibration.
+
+    step_count=1, temperature=0.95 (cooled once from 1.0 via alpha=0.95).
+    """
+    weight_vectors = [(0.9, 0.1), (0.7, 0.3), (0.5, 0.5), (0.3, 0.7), (0.1, 0.9)]
+    seed_qualities = [0.82, 0.78, 0.75, 0.72, 0.68]
+    seed_costs = [0.0010, 0.0018, 0.0025, 0.0032, 0.0040]
+
+    # Ideal/nadir computed from seed qualities/costs after calibration
+    # ideal = (max_quality, min_cost) = (0.82, 0.0010)
+    # nadir = (min_quality, max_cost) = (0.68, 0.0040)
+    ideal_point = [0.82, 0.0010]
+    nadir_point = [0.68, 0.0040]
+
+    def _tchebycheff_energy(quality: float, cost: float, wv: tuple, ideal: list, nadir: list) -> float:
+        """Minimal inline Tchebycheff for fixture generation (no import needed at test time)."""
+        ideal_q, ideal_c = ideal
+        nadir_q, nadir_c = nadir
+        range_q = max(nadir_q - ideal_q, 1e-9)
+        range_c = max(nadir_c - ideal_c, 1e-9)
+        norm_q = (ideal_q - quality) / range_q  # lower quality → higher norm_q (cost term)
+        norm_c = (cost - ideal_c) / range_c
+        wq, wc = wv
+        return max(wq * norm_q, wc * norm_c)
+
+    trajectories = []
+    for i, (wv, quality, cost) in enumerate(zip(weight_vectors, seed_qualities, seed_costs)):
+        energy = _tchebycheff_energy(quality, cost, wv, ideal_point, nadir_point)
+        trajectories.append({
+            "trajectory_id": i,
+            "weight_vector": list(wv),
+            "current_solution": f"v_seed_{i}",
+            "current_energy": energy,
+            "current_quality": quality,
+            "current_cost": cost,
+            "acceptance_history": [True],
+            "quality_reference": None,
+            "cost_reference": None,
+        })
+
+    # Pending child variants: one per trajectory, children of the seed solutions.
+    # Format follows child_variants_t<N>.json pattern used by save_trajectory_child_variants.
+    pending_children = [
+        {
+            "trajectory_id": i,
+            "parent_version": f"v_seed_{i}",
+            "child_versions": [f"v_child_{i}_0"],
+            "weight_vector": list(wv),
+        }
+        for i, wv in enumerate(weight_vectors)
+    ]
+
+    state = {
+        "search_state_id": "emosa_steady_state",
+        "backend": "mock-echo",
+        "primary_metric_name": "accuracy",
+        "round": 1,
+        "elite_set": [
+            {
+                "prompt_version": f"v_seed_{i}",
+                "parent_version": None,
+                "quality_score": q,
+                "cost": c,
+                "round_introduced": 0,
+            }
+            for i, (q, c) in enumerate(zip(seed_qualities, seed_costs))
+        ],
+        "round_history": [],
+        "stagnation_count": 0,
+        "stagnation_limit": 3,
+        "convergence_limit": 4,
+        "max_rounds": 50,
+        "mutation_mode": "targeted",
+        "converged": False,
+        "algorithm": "emosa",
+        "algorithm_state": {
+            "temperature": 0.95,
+            "t_initial": 1.0,
+            "t_min": 0.01,
+            "alpha": 0.95,
+            "num_trajectories": 5,
+            "children_per_trajectory": 1,
+            "step_count": 1,
+            "trajectories": trajectories,
+            "neighborhood_size": 4,
+            "ideal_point": ideal_point,
+            "nadir_point": nadir_point,
+            "max_evals": 50,
+            "total_evals": 5,
+            "convergence_limit": 4,
+            "epsilon": 0.003,
+            "phase": "search",
+            "rho": 1e-3,
+        },
+        "active_evals": [],
+        "loop_phase": "review",
+        "pending_children": pending_children,
+    }
+    return state
+
+
 if __name__ == "__main__":
     print("Generating Review Agent scenario fixtures...")
     gen_scenario_51()
     gen_scenario_52()
     gen_scenario_53()
     print("\nDone.")
+    print("\nEMOSA calibration state (not written to disk — use gen_emosa_calibration() directly).")
+    import json
+    print(json.dumps(gen_emosa_calibration(), indent=2))
+    print("\nEMOSA steady-state fixture (not written to disk — use gen_emosa_steady_state() directly).")
+    print(json.dumps(gen_emosa_steady_state(), indent=2))

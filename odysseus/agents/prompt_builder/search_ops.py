@@ -20,6 +20,18 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
+from odysseus.agents.prompt_builder.annealing import (
+    AnnealingState,
+    TrajectoryState,
+    adaptive_cool,
+    compute_cooling_rate,
+    compute_neighborhood,
+    compute_tchebycheff_energy,
+    compute_weight_vectors,
+    metropolis_accept,
+    replace_if_better,
+    update_archive,
+)
 from odysseus.agents.prompt_builder.search import (
     AlgorithmType,
     Candidate,

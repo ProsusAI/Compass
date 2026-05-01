@@ -98,9 +98,7 @@ def _get_nested_wildcard(obj: dict, dot_path: str) -> list[tuple[list[str], Any]
     return results
 
 
-def _set_nested_wildcard(
-    obj: dict, dot_path: str, key_sequence: list[str], value: Any
-) -> None:
+def _set_nested_wildcard(obj: dict, dot_path: str, key_sequence: list[str], value: Any) -> None:
     """Set a value in a nested dict, substituting ``*`` with keys from *key_sequence*."""
     parts = dot_path.split(".")
     ki = 0
