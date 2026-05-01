@@ -316,10 +316,7 @@ def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
             field="canonical_route_fields",
             status="fail" if unrecognized_route_field_indices else "pass",
             severity="critical",
-            violation=(
-                "Route objects contain unrecognized field names; "
-                "expected only 'cost' and 'quality_score'"
-            )
+            violation=("Route objects contain unrecognized field names; expected only 'cost' and 'quality_score'")
             if unrecognized_route_field_indices
             else None,
             row_indices=unrecognized_route_field_indices,

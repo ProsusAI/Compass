@@ -348,9 +348,7 @@ class TestAdvanceRoundEmosaCalibration:
             # Overwrite algorithm_state with a proper K=3 calibration AnnealingState,
             # and flip loop_phase to "calibration" (init defaults to "review").
             state = _load_state("emosa-tool", outputs_dir)
-            updated = state.model_copy(
-                update={"algorithm_state": annealing_dict, "loop_phase": "calibration"}
-            )
+            updated = state.model_copy(update={"algorithm_state": annealing_dict, "loop_phase": "calibration"})
             _save_state("emosa-tool", updated, outputs_dir)
 
             # Populate pending in the outputs sub-path used by the tool

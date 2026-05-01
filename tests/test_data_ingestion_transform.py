@@ -196,9 +196,7 @@ class TestFlatToFlat:
     def test_auto_generate_mapping_key_still_generates_id(self, tmp_path: Path) -> None:
         """When mapping has _auto_generate -> id but source lacks that field, id is still generated."""
         src = tmp_path / "source.jsonl"
-        src.write_text(
-            json.dumps({"prompt": "hi", "tier": "opus", "routes": _routes_obj()}) + "\n"
-        )
+        src.write_text(json.dumps({"prompt": "hi", "tier": "opus", "routes": _routes_obj()}) + "\n")
         out = tmp_path / "transformed.jsonl"
         mapping = {
             "_auto_generate": "id",
@@ -215,9 +213,7 @@ class TestFlatToFlat:
         import logging
 
         src = tmp_path / "source.jsonl"
-        src.write_text(
-            json.dumps({"prompt": "hi", "tier": "opus", "routes": _routes_obj()}) + "\n"
-        )
+        src.write_text(json.dumps({"prompt": "hi", "tier": "opus", "routes": _routes_obj()}) + "\n")
         out = tmp_path / "transformed.jsonl"
         mapping = {
             "_auto_generate": "id",
@@ -334,14 +330,16 @@ class TestWildcardTransform:
         """Wildcard mapping renames nested fields across all keys."""
         src = tmp_path / "source.jsonl"
         src.write_text(
-            json.dumps({
-                "text": "hello",
-                "tier": "simple",
-                "routes": {
-                    "simple": {"score": 0.87, "cost_usd": 0.02},
-                    "complex": {"score": 0.94, "cost_usd": 0.11},
-                },
-            })
+            json.dumps(
+                {
+                    "text": "hello",
+                    "tier": "simple",
+                    "routes": {
+                        "simple": {"score": 0.87, "cost_usd": 0.02},
+                        "complex": {"score": 0.94, "cost_usd": 0.11},
+                    },
+                }
+            )
             + "\n"
         )
         out = tmp_path / "transformed.jsonl"

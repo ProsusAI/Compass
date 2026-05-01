@@ -93,12 +93,12 @@ Strategy-specific optional fields pre-provisioned by Increment 4 and populated b
 
 | Field | Type | Algorithm | Populated by |
 |---|---|---|---|
-| `parent_a_version`, `parent_b_version` | `str \| None` | SMS-EMOA | `_populate_sms_emoa_review_fields` (C2) |
+| `parent_a_version`, `parent_b_version` | `str \| None` | all | `build_review_briefing` |
 | `trajectory_id` | `int \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
 | `weight_vector` | `tuple[float, float] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
 | `binding_axis` | `"quality" \| "cost" \| None` | EMOSA | `_populate_emosa_review_fields` (C3) — `argmax_i (λ_i · norm_i)` against active trajectory's current quality/cost vs ideal/nadir |
 | `acceptance_history` | `list[bool] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
-| `stagnation_signal` | `dict \| None` | all | hill-climb: `{count, limit, mutation_mode}`; sms-emoa: `{hypervolume_history, stagnation_window}`; emosa: `{temperature, t_min, review_exit}` |
+| `stagnation_signal` | `dict \| None` | all | hill-climb: `{count, limit, mutation_mode}`; emosa: `{temperature, t_min, review_exit}` |
 
 EMOSA steady-state advance ([`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) — `_advance_emosa_search`) executes per round when `algorithm_state.phase == "search"`: drift-cache refresh (recompute each trajectory's `current_energy` under updated `ideal_point`/`nadir_point`), per-trajectory Metropolis-then-best-of-accepted, EMOSA neighborhood replacement (B=4 nearest weight-vector neighbors via `compute_neighborhood` + `replace_if_better`), archive update, hypervolume computation, geometric cooling. Convergence exits (`temperature_floor`, `eval_budget`, `review_exit`) set `algorithm_state.phase = "converged"` and `SearchState.converged = True` in the same atomic state write; `SearchState.loop_phase` is always written `"review"` to advance to the next dispatch cycle. The top-level `converged` flag is checked by `_check_stage_4` before `_detect_stage_4_phase_emosa` is reached, so no converged short-circuit is needed inside the EMOSA phase detector.
 
@@ -214,7 +214,7 @@ Two JSON sentinel files signal that a sub-agent is in-flight for the current rou
 | `search/build_dispatched.json` | `register_candidate_tool` (first builder action) | `advance_step_tool` (round complete); `run_batch_eval_impl` (when `active_evals` drains after batch eval) | `complete_stage("prompt_building")` rejects while present |
 | `search/review_dispatched.json` | `build_review_briefing_tool` (reviewer dispatch) | `record_directive_outcomes_tool` (directives saved) | `complete_stage("review")` checks fanout |
 
-`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is dual-format: `{"round": N}` for hill-climb / beam / SMS-EMOA; `{"round": N, "trajectory_ids": [...]}` for EMOSA (tracks per-trajectory dispatch within the round).
+`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is dual-format: `{"round": N}` for hill-climb; `{"round": N, "trajectory_ids": [...]}` for EMOSA (tracks per-trajectory dispatch within the round).
 
 **EMOSA review instruction — K-way fanout**
 
@@ -237,7 +237,7 @@ For `expected=1` (hill-climb), fanout is complete when `search/child_variants.js
 
 **`child_variants.json` / `child_variants_t<N>.json`**
 
-Written by `record_directive_outcomes_tool` for single-slot algorithms (hill-climb / beam / SMS-EMOA); acts as the canonical review-completion sentinel.  For EMOSA, each trajectory's Review Agent sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, which internally calls `save_trajectory_child_variants` (in [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py)) to write `child_variants_t<N>.json` for slot N, and `record_trajectory_dispatched` to mark the slot complete.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
+Written by `record_directive_outcomes_tool` for the single-slot algorithm (hill-climb); acts as the canonical review-completion sentinel.  For EMOSA, each trajectory's Review Agent sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, which internally calls `save_trajectory_child_variants` (in [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py)) to write `child_variants_t<N>.json` for slot N, and `record_trajectory_dispatched` to mark the slot complete.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
 
 **Defense-in-depth phase flip**
 

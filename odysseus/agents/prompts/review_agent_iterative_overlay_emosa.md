@@ -10,7 +10,7 @@ You are dispatched K times per round, once per trajectory. The `selection_hint` 
 
 **Step-1 confusion-cell selection (λ picks axis *and* rank position; threshold/oracle picks the ranking criterion).**
 
-Ranking criterion (same two-phase pattern as hill-climb and beam):
+Ranking criterion (same two-phase pattern as hill-climb):
   - **Threshold on this trajectory's axis NOT yet met.** Rank each axis's confusion cells by **threshold gap** against the parent.
   - **Threshold met.** Rank by **oracle gap** — `oracle_cost_change` for cost-axis cells, `oracle_quality_change` for quality-axis cells.
 

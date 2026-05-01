@@ -86,10 +86,7 @@ class TestJsonlDatasetManagerErrors:
         from odysseus.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "bad.jsonl"
-        valid = (
-            '{"id":"1","input":"hi","expected":'
-            '{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}'
-        )
+        valid = '{"id":"1","input":"hi","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}'
         path.write_text(f"{valid}\nNOT JSON\n")
 
         manager = JsonlDatasetManager()

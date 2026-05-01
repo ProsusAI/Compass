@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Type alias for algorithm discriminator
 # ---------------------------------------------------------------------------
 
-AlgorithmType = Literal["hill_climb"]
+AlgorithmType = Literal["hill_climb", "emosa"]
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -113,7 +113,7 @@ class RoundSummary(BaseModel):
     temperatures: dict[int, float] | None = None
     """Per-trajectory temperature at end of round, keyed by trajectory_id."""
     # EMOSA-specific optional fields (defaults None — backward-compatible with
-    # hill_climb / beam / sms_emoa consumers that never set these)
+    # hill_climb consumers that never set these)
     ideal_point: tuple[float, float] | None = None
     nadir_point: tuple[float, float] | None = None
     step_count: int | None = None

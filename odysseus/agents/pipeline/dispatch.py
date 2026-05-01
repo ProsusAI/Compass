@@ -155,7 +155,7 @@ def review_fanout_status(
             )
         # No algorithm_state yet — fall through to single-slot semantics (pre-calibration).
 
-    # Single-slot path (hill-climb / beam / sms-emoa, or EMOSA pre-calibration)
+    # Single-slot path (hill-climb, or EMOSA pre-calibration)
     search_dir = _search_dir(run_id, output_dir)
     child_variants_path = search_dir / "child_variants.json"
     if child_variants_path.exists():

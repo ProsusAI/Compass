@@ -145,6 +145,7 @@ async def build_review_briefing_tool(
         num_traj = state.algorithm_state.get("num_trajectories", 0)
         if num_traj and len(scored_for_calib) >= num_traj:
             from odysseus.agents.prompt_builder.search_ops import _calibration_complete
+
             _calibration_complete(run_id, state, out)
             state = get_search_state(run_id=run_id, output_dir=out)
 
@@ -458,7 +459,7 @@ async def record_directive_outcomes_tool(
             save_trajectory_child_variants(run_id, trajectory_id, parsed_variants, output_dir=out)
             record_trajectory_dispatched(run_id, trajectory_id, output_dir=out)
         else:
-            # Single-slot path (hill-climb / beam / SMS-EMOA).
+            # Single-slot path (hill-climb).
             for i, v in enumerate(parsed_variants):
                 if v.variant_id is None:
                     parsed_variants[i] = v.model_copy(update={"variant_id": f"cv-{current_round}-{i}"})

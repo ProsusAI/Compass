@@ -362,7 +362,7 @@ async def test_backoff_sleeps_outside_semaphore():
                 id="ex-0",
                 input="q1",
                 expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
-                ),
+            ),
             RetryConfig(max_attempts=2, backoff_factor=1.0),
             rate_limiter,
             semaphore,

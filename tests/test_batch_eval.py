@@ -493,9 +493,7 @@ async def test_run_batch_eval_mcp_tool_roundtrip(tmp_run: tuple[str, Path]) -> N
         failed=[],
     )
 
-    candidates_payload = [
-        {"prompt_version": "v2", "parent_version": "v1", "example_ids": ["e1"]}
-    ]
+    candidates_payload = [{"prompt_version": "v2", "parent_version": "v1", "example_ids": ["e1"]}]
 
     with (
         patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),

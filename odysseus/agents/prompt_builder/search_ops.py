@@ -71,10 +71,7 @@ def _build_emosa_initial_state(num_trajectories: int = 5) -> dict[str, Any]:
     _calibration_complete after the K cold-start prompts are evaluated.
     """
     weight_vectors = compute_weight_vectors(num_trajectories)
-    trajectories = [
-        TrajectoryState(trajectory_id=i, weight_vector=wv)
-        for i, wv in enumerate(weight_vectors)
-    ]
+    trajectories = [TrajectoryState(trajectory_id=i, weight_vector=wv) for i, wv in enumerate(weight_vectors)]
     return AnnealingState(
         num_trajectories=num_trajectories,
         trajectories=trajectories,

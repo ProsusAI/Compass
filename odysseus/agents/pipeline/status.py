@@ -675,7 +675,7 @@ def _detect_stage_4_phase_emosa(
     if loop_phase in {"review", "build"}:
         return loop_phase
 
-    # Fallback: default to "build" (mirrors sms_emoa default for round 0).
+    # Fallback: default to "build".
     return "build"
 
 

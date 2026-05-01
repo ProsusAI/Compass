@@ -156,12 +156,16 @@ def test_enrich_reset_on_success_counts_only_trailing_failures() -> None:
 def test_enrich_resorting_by_effective_impact() -> None:
     """A cell with raw_impact=1.0 and 2 failures ranks below a cell with raw_impact=0.5 and 0 failures."""
     high_raw = _make_confusion_impact(
-        true_route="route_a", predicted_route="route_b",
-        cost_impact=0.6, quality_impact=-0.4,  # raw = 1.0
+        true_route="route_a",
+        predicted_route="route_b",
+        cost_impact=0.6,
+        quality_impact=-0.4,  # raw = 1.0
     )
     low_raw = _make_confusion_impact(
-        true_route="route_c", predicted_route="route_d",
-        cost_impact=0.3, quality_impact=-0.2,  # raw = 0.5
+        true_route="route_c",
+        predicted_route="route_d",
+        cost_impact=0.3,
+        quality_impact=-0.2,  # raw = 0.5
     )
     history = {
         "route_a/route_b": [{"outcome": "no_effect"}, {"outcome": "no_effect"}],
@@ -462,14 +466,22 @@ def test_update_cell_attempt_history_accumulates_across_calls(tmp_path: Path) ->
 
     bo1 = _make_batch_outcome(variant_id="cv-1-0", quality_delta=0.001)  # no_effect
     update_cell_attempt_history(
-        "test_run", batch_outcomes=[bo1], child_variants=[cv],
-        confusion_analysis=[ci], current_round=1, output_dir=tmp_path,
+        "test_run",
+        batch_outcomes=[bo1],
+        child_variants=[cv],
+        confusion_analysis=[ci],
+        current_round=1,
+        output_dir=tmp_path,
     )
 
     bo2 = _make_batch_outcome(variant_id="cv-1-0", quality_delta=0.02)  # improved
     update_cell_attempt_history(
-        "test_run", batch_outcomes=[bo2], child_variants=[cv],
-        confusion_analysis=[ci], current_round=2, output_dir=tmp_path,
+        "test_run",
+        batch_outcomes=[bo2],
+        child_variants=[cv],
+        confusion_analysis=[ci],
+        current_round=2,
+        output_dir=tmp_path,
     )
 
     history = load_cell_attempt_history("test_run", output_dir=tmp_path)

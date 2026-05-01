@@ -110,9 +110,7 @@ def _build_result(
     dev_ids = {ex.id for ex in dev}
 
     # Build strata report by route
-    strata_counts: dict[str, dict[str, int]] = defaultdict(
-        lambda: {"total": 0, "dev": 0, "holdout": 0}
-    )
+    strata_counts: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "dev": 0, "holdout": 0})
     for ex in all_examples:
         route = ex.expected.route
         strata_counts[route]["total"] += 1
@@ -128,8 +126,7 @@ def _build_result(
 
     # Route distribution
     route_distribution = {
-        route: {"dev": v["dev"], "holdout": v["holdout"]}
-        for route, v in sorted(strata_counts.items())
+        route: {"dev": v["dev"], "holdout": v["holdout"]} for route, v in sorted(strata_counts.items())
     }
 
     report = SplitReport(

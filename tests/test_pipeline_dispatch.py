@@ -35,6 +35,7 @@ class TestBuildDispatchMarker:
         marker = tmp_path / _RUN_ID / "search" / "build_dispatched.json"
         assert marker.is_file()
         import json
+
         data = json.loads(marker.read_text())
         assert data["round"] == 2
 
@@ -71,6 +72,7 @@ class TestReviewDispatchMarker:
         marker = tmp_path / _RUN_ID / "search" / "review_dispatched.json"
         assert marker.is_file()
         import json
+
         data = json.loads(marker.read_text())
         assert data["round"] == 5
 
@@ -145,7 +147,7 @@ class TestReviewFanoutStatus:
 
     def test_non_emosa_expected_1_not_dispatched(self, tmp_path: Path) -> None:
         # Non-EMOSA algorithms default to single-slot not_dispatched when nothing exists
-        status = review_fanout_status(_RUN_ID, algorithm="beam", expected=1, output_dir=tmp_path)
+        status = review_fanout_status(_RUN_ID, algorithm="hill_climb", expected=1, output_dir=tmp_path)
         assert status.not_dispatched == [0]
         assert not status.is_complete
 
@@ -165,9 +167,7 @@ class TestReviewFanoutStatusEmosa:
             "algorithm": "emosa",
             "algorithm_state": {"num_trajectories": num_trajectories},
         }
-        (search_dir / "search_state.json").write_text(
-            json.dumps(state), encoding="utf-8"
-        )
+        (search_dir / "search_state.json").write_text(json.dumps(state), encoding="utf-8")
 
     def test_all_not_dispatched_at_start(self, tmp_path: Path) -> None:
         self._write_search_state(tmp_path, _RUN_ID, num_trajectories=3)
@@ -203,6 +203,7 @@ class TestReviewFanoutStatusEmosa:
     def test_in_flight_when_dispatched_not_completed(self, tmp_path: Path) -> None:
         self._write_search_state(tmp_path, _RUN_ID, num_trajectories=3)
         from odysseus.agents.review.ops import record_trajectory_dispatched
+
         record_trajectory_dispatched(_RUN_ID, 1, output_dir=tmp_path)
 
         status = review_fanout_status(_RUN_ID, algorithm="emosa", output_dir=tmp_path)
@@ -222,6 +223,7 @@ class TestReviewFanoutStatusEmosa:
         search_dir = tmp_path / _RUN_ID / "search"
         (search_dir / "child_variants_t0.json").write_text("[]", encoding="utf-8")
         from odysseus.agents.review.ops import record_trajectory_dispatched
+
         record_trajectory_dispatched(_RUN_ID, 1, output_dir=tmp_path)
 
         status = review_fanout_status(_RUN_ID, algorithm="emosa", output_dir=tmp_path)

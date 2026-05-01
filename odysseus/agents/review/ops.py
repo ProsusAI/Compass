@@ -198,10 +198,10 @@ class FanoutStatus:
     """
 
     num_trajectories: int
-    missing: list[int]         # not_dispatched ∪ in_flight (backwards compat)
-    completed: list[int]       # child_variants_t<N>.json present on disk
-    dispatched: list[int]      # from review_dispatched.json (current round only)
-    in_flight: list[int]       # dispatched \ completed
+    missing: list[int]  # not_dispatched ∪ in_flight (backwards compat)
+    completed: list[int]  # child_variants_t<N>.json present on disk
+    dispatched: list[int]  # from review_dispatched.json (current round only)
+    in_flight: list[int]  # dispatched \ completed
     not_dispatched: list[int]  # all_ids \ dispatched \ completed
 
 
@@ -481,10 +481,12 @@ def update_cell_attempt_history(
             else:
                 outcome = "no_effect"
 
-        history.setdefault(cell, []).append({
-            "round": current_round,
-            "variant_id": vid,
-            "outcome": outcome,
-        })
+        history.setdefault(cell, []).append(
+            {
+                "round": current_round,
+                "variant_id": vid,
+                "outcome": outcome,
+            }
+        )
 
     save_cell_attempt_history(run_id, history, output_dir=output_dir)

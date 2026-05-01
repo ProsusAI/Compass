@@ -79,9 +79,13 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
     remaining_examples = [ex for ex in examples if ex.id not in completed_ids]
 
     # 4. Evaluate remaining examples, streaming results to disk
-    rate_limiter = deps.rate_limiter if deps.rate_limiter is not None else TokenBucketRateLimiter(
-        requests_per_minute=deps.requests_per_minute,
-        tokens_per_minute=deps.tokens_per_minute,
+    rate_limiter = (
+        deps.rate_limiter
+        if deps.rate_limiter is not None
+        else TokenBucketRateLimiter(
+            requests_per_minute=deps.requests_per_minute,
+            tokens_per_minute=deps.tokens_per_minute,
+        )
     )
     semaphore = asyncio.Semaphore(config.concurrency.max_concurrent_requests)
 

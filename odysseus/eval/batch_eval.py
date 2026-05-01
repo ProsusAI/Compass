@@ -195,9 +195,7 @@ def _extract_cost(report: object) -> float | None:
     return float(val) if val is not None else None
 
 
-def _extract_quality_score_from_dict(
-    metrics: dict[str, Any], primary_metric_name: str | None
-) -> float | None:
+def _extract_quality_score_from_dict(metrics: dict[str, Any], primary_metric_name: str | None) -> float | None:
     """Extract quality_score from a metrics dict (used when recovering from disk)."""
     if not metrics:
         return None
@@ -214,9 +212,7 @@ def _extract_quality_score_from_dict(
     return None
 
 
-def _try_load_existing_report(
-    run_id: str, prompt_version: str, output_dir: Path
-) -> dict[str, Any] | None:
+def _try_load_existing_report(run_id: str, prompt_version: str, output_dir: Path) -> dict[str, Any] | None:
     """Return parsed report.json if it exists and is valid for this candidate.
 
     A valid report has a non-empty ``metrics`` dict and ``summary.succeeded > 0``.
@@ -271,9 +267,7 @@ async def _run_recovery(run_id: str, output_dir: Path) -> BatchEvalResult:
 
     # Filter to candidates that are still in-flight and tracked by active_evals
     in_flight = [
-        c
-        for c in pending
-        if c.eval_status in ("pending", "running") and c.prompt_version in state.active_evals
+        c for c in pending if c.eval_status in ("pending", "running") and c.prompt_version in state.active_evals
     ]
 
     if not in_flight:

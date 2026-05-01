@@ -749,8 +749,8 @@ class TestBuildReviewBriefingAutoFiresCalibration:
             {
                 "prompt_version": f"v{i + 1}",
                 "parent_version": None,
-                "quality_score": 0.7 + i * 0.03,   # higher quality …
-                "cost": 0.01 + i * 0.02,            # … but also higher cost
+                "quality_score": 0.7 + i * 0.03,  # higher quality …
+                "cost": 0.01 + i * 0.02,  # … but also higher cost
                 "round_introduced": 1,
                 "eval_status": "complete",
                 "example_ids": [],
@@ -831,9 +831,7 @@ class TestBuildReviewBriefingAutoFiresCalibration:
             f"Expected elite_set to stay at 5 entries, got {len(post_second.elite_set)}"
         )
 
-    async def test_build_review_briefing_skips_calibration_when_elite_set_populated(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_build_review_briefing_skips_calibration_when_elite_set_populated(self, tmp_path: Path) -> None:
         """If elite_set is already populated, calibration guard is skipped (non-EMOSA path)."""
         from odysseus.agents.prompt_builder.search_ops import get_search_state
 
@@ -864,9 +862,7 @@ class TestBuildReviewBriefingAutoFiresCalibration:
 
         post_state = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
         # round should NOT have advanced beyond what calibration would do
-        assert post_state.round == 1, (
-            "round should stay at 1 when elite_set is already populated"
-        )
+        assert post_state.round == 1, "round should stay at 1 when elite_set is already populated"
 
 
 # ---------------------------------------------------------------------------
@@ -954,9 +950,7 @@ class TestLoadScoreReportDict:
         assert score_report.report_path == str(report_path)
         assert score_report.results_path == str(results_path)
 
-    def test_load_score_report_dict_converts_runreport_derives_results_path(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_score_report_dict_converts_runreport_derives_results_path(self, tmp_path: Path) -> None:
         """When results_path is None, it is derived from report_path's parent dir."""
         from odysseus.eval.models import ScoreReport
         from odysseus.mcp.review_tools import _load_score_report_dict
