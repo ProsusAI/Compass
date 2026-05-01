@@ -913,18 +913,9 @@ class TestBuildReviewBriefingStagnationSignal:
         assert sig["mutation_mode"] == "targeted"
 
     def test_strategy_specific_fields_are_none_for_hillclimb(self) -> None:
-        """All strategy-specific optional fields should be None on hill-climb output."""
+        """Strategy-specific optional fields are absent / None on hill-climb output."""
         briefing = self._make_hillclimb_briefing()
         assert briefing.parent_a_version is None
-        assert briefing.parent_b_version is None
-        assert briefing.beam_rank is None
-        assert briefing.crowding_distance is None
-        assert briefing.trajectory_id is None
-        assert briefing.weight_vector is None
-        assert briefing.binding_axis is None
-        assert briefing.acceptance_history is None
-        assert briefing.hypervolume is None
-        assert briefing.reference_point is None
 
 
 class TestBuildConfusionAnalysis:

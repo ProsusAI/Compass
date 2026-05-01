@@ -21,8 +21,49 @@ from odysseus.agents.prompt_builder.search_ops import (
 from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase as _set_loop_phase,
 )
+from odysseus.eval.models import RunReport, ScoreReport
 from odysseus.mcp.server import mcp
 from odysseus.project_dir import resolve_project_dir as _resolve_project_dir
+
+
+def _load_score_report_dict(
+    report_path: Path,
+    results_path: Path | None = None,
+) -> dict[str, Any]:
+    """Load a report.json and return a ScoreReport-shaped dict.
+
+    If report_path already contains a ScoreReport-shaped dict (i.e., all of
+    ``errors``, ``diff``, ``report_path``, and ``results_path`` are present),
+    it is returned as-is (idempotent).  Otherwise the file is parsed as a
+    ``RunReport`` and converted via ``ScoreReport.from_run_report``.
+
+    Args:
+        report_path: Path to the report JSON file.
+        results_path: Path to the corresponding results JSONL file.  When
+            ``None``, derived by convention as ``report_path.parent /
+            "results.jsonl"``.
+
+    Returns:
+        A dict that satisfies ``ScoreReport.model_validate(...)``.
+    """
+    if results_path is None:
+        results_path = report_path.parent / "results.jsonl"
+
+    raw: dict[str, Any] = json.loads(report_path.read_text(encoding="utf-8"))
+
+    # Idempotency check: already ScoreReport-shaped
+    _score_report_keys = {"errors", "diff", "report_path", "results_path"}
+    if _score_report_keys.issubset(raw.keys()):
+        return raw
+
+    # Convert RunReport → ScoreReport
+    run_report = RunReport.model_validate(raw)
+    return ScoreReport.from_run_report(
+        report=run_report,
+        report_path=str(report_path),
+        results_path=str(results_path),
+        previous_report=None,
+    ).model_dump(mode="json")
 
 
 def _select_confusion_candidates(state: SearchState) -> list[str]:
@@ -61,7 +102,7 @@ async def build_review_briefing_tool(
             from pending candidates on disk if omitted.
         parent_versions: Mapping of candidate -> parent version. Auto-discovered
             from pending candidates if omitted.
-        report_paths: Mapping of version -> path to its ScoreReport JSON.
+        report_paths: Mapping of version -> path to its RunReport JSON (auto-converted to ScoreReport on load).
             Auto-discovered from disk (outputs/<run_id>/eval/<version>/report.json)
             if omitted.
         output_dir: Output directory (default "outputs").
@@ -141,11 +182,25 @@ async def build_review_briefing_tool(
         if version in report_paths:
             rp = Path(report_paths[version])
             if rp.exists():
-                score_reports[version] = json.loads(rp.read_text(encoding="utf-8"))
+                results_path = rp.parent / "results.jsonl"
+                score_reports[version] = _load_score_report_dict(rp, results_path)
         elif version not in score_reports:
             for round_data in historical.values():
                 if version in round_data:
-                    score_reports[version] = round_data[version]
+                    synthetic_report_path = out / run_id / "eval" / version / "report.json"
+                    synthetic_results_path = out / run_id / "eval" / version / "results.jsonl"
+                    historical_dict = round_data[version]
+                    _score_report_keys = {"errors", "diff", "report_path", "results_path"}
+                    if _score_report_keys.issubset(historical_dict.keys()):
+                        score_reports[version] = historical_dict
+                    else:
+                        run_report = RunReport.model_validate(historical_dict)
+                        score_reports[version] = ScoreReport.from_run_report(
+                            report=run_report,
+                            report_path=str(synthetic_report_path),
+                            results_path=str(synthetic_results_path),
+                            previous_report=None,
+                        ).model_dump(mode="json")
                     break
 
     # Load prompt texts (used internally for diversity metrics, not surfaced in briefing)

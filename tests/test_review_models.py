@@ -519,7 +519,6 @@ class TestReviewBriefing:
         assert briefing.child_variants == []
         assert briefing.target_progress == []
         assert briefing.backtracking is False
-        assert briefing.beam_width == 2
 
     def test_old_json_without_new_fields_still_loads(self) -> None:
         """A ReviewBriefing serialised before new fields loads without error (extra=ignore)."""
@@ -873,6 +872,7 @@ def test_example_content_model():
 
 def test_edit_directive_with_example_content():
     from odysseus.agents.review.models import EditDirective, ExampleContent
+
     directive = EditDirective(
         directive_id="d1",
         target_version="v2",
@@ -894,6 +894,7 @@ def test_edit_directive_with_example_content():
 
 def test_edit_directive_without_example_content():
     from odysseus.agents.review.models import EditDirective
+
     directive = EditDirective(
         directive_id="d2",
         target_version="v2",
@@ -914,6 +915,7 @@ def test_edit_directive_without_example_content():
 class TestExampleContent:
     def test_with_example_id(self) -> None:
         from odysseus.agents.review.models import ExampleContent
+
         content = ExampleContent(
             example_id="ex-042",
             input="Build a multi-step data pipeline",
@@ -925,6 +927,7 @@ class TestExampleContent:
 
     def test_example_id_defaults_to_none(self) -> None:
         from odysseus.agents.review.models import ExampleContent
+
         content = ExampleContent(
             input="Hello",
             route="simple",
@@ -940,25 +943,16 @@ class TestExampleContent:
 
 
 class TestReviewBriefingStrategyFields:
-    """Round-trip and backward-compat tests for the new optional fields."""
+    """Round-trip and backward-compat tests for the optional fields."""
 
     def test_strategy_fields_round_trip(self) -> None:
-        """All strategy-specific optional fields survive a model_dump / model_validate round-trip."""
+        """Strategy-specific optional fields survive a model_dump / model_validate round-trip."""
         from odysseus.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(
             **_make_minimal_briefing_kwargs(),
             stagnation_signal={"count": 2, "limit": 3, "mutation_mode": "targeted"},
             parent_a_version="v1",
-            parent_b_version="v2",
-            beam_rank={"v1": 0, "v2": 1},
-            crowding_distance={"v1": 0.5, "v2": 1.2},
-            trajectory_id=3,
-            weight_vector=(0.7, 0.3),
-            binding_axis="quality",
-            acceptance_history=[True, False, True],
-            hypervolume=0.42,
-            reference_point=(0.0, 2.0),
         )
 
         data = briefing.model_dump()
@@ -966,15 +960,6 @@ class TestReviewBriefingStrategyFields:
 
         assert restored.stagnation_signal == {"count": 2, "limit": 3, "mutation_mode": "targeted"}
         assert restored.parent_a_version == "v1"
-        assert restored.parent_b_version == "v2"
-        assert restored.beam_rank == {"v1": 0, "v2": 1}
-        assert restored.crowding_distance == {"v1": 0.5, "v2": 1.2}
-        assert restored.trajectory_id == 3
-        assert restored.weight_vector == (0.7, 0.3)
-        assert restored.binding_axis == "quality"
-        assert restored.acceptance_history == [True, False, True]
-        assert restored.hypervolume == pytest.approx(0.42)
-        assert restored.reference_point == (0.0, 2.0)
 
     def test_new_fields_default_to_none(self) -> None:
         """When none of the optional fields are set, they all default to None."""
@@ -984,15 +969,6 @@ class TestReviewBriefingStrategyFields:
 
         assert briefing.stagnation_signal is None
         assert briefing.parent_a_version is None
-        assert briefing.parent_b_version is None
-        assert briefing.beam_rank is None
-        assert briefing.crowding_distance is None
-        assert briefing.trajectory_id is None
-        assert briefing.weight_vector is None
-        assert briefing.binding_axis is None
-        assert briefing.acceptance_history is None
-        assert briefing.hypervolume is None
-        assert briefing.reference_point is None
 
 
 # ---------------------------------------------------------------------------

@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from odysseus.agents.prompt_builder.search_tree import collect_data
 
 
@@ -76,8 +74,8 @@ class TestCollectDataFromArchive:
             "backend": "anthropic",
             "primary_metric_name": "accuracy",
             "iteration": 0,
-            "algorithm": "sms_emoa",
-            "algorithm_state": {"mu": 8},
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
             "elite_set": archive[:8],
             "warm_up_complete": True,
             "evaluation_budget": 50,
@@ -130,8 +128,8 @@ class TestCollectDataFromArchive:
             "search_state_id": "test-run",
             "backend": "anthropic",
             "iteration": 0,
-            "algorithm": "sms_emoa",
-            "algorithm_state": {"mu": 8},
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
             "elite_set": archive,
             "warm_up_complete": True,
             "evaluation_budget": 50,
@@ -171,8 +169,8 @@ class TestCollectDataFromArchive:
             "search_state_id": "test-run",
             "backend": "anthropic",
             "iteration": 2,
-            "algorithm": "sms_emoa",
-            "algorithm_state": {"mu": 8},
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
             "elite_set": elite_set,
             "warm_up_complete": True,
             "evaluation_budget": 50,
@@ -214,8 +212,8 @@ class TestCollectDataFromArchive:
             "search_state_id": "test-run",
             "backend": "anthropic",
             "iteration": 0,
-            "algorithm": "sms_emoa",
-            "algorithm_state": {"mu": 8},
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
             "elite_set": archive,
             "warm_up_complete": True,
             "evaluation_budget": 50,
@@ -239,15 +237,70 @@ class TestCollectDataFromArchive:
         assert c["version"] == "cv-0-0"
         assert c["score"] == 0.0  # no eval report → zeroed metrics
 
-    def test_raises_when_archive_missing(self, tmp_path: Path) -> None:
-        """collect_data raises FileNotFoundError when candidate_archive.json is absent."""
+    def test_collect_data_succeeds_without_archive(self, tmp_path: Path) -> None:
+        """collect_data succeeds when candidate_archive.json is absent; falls back to empty list."""
         search_dir = tmp_path / "search"
-        state = {"search_state_id": "x", "backend": "b"}
-        _write_json(search_dir / "search_state.json", state)
-        # No archive file
+        eval_dir = tmp_path / "eval"
 
-        with pytest.raises(FileNotFoundError):
-            collect_data(search_dir, run_dir=tmp_path)
+        pending_candidate = _make_candidate("cv-0-0", None, 0)
+        pending_candidate["eval_status"] = "scored"
+
+        state = {
+            "search_state_id": "x",
+            "backend": "b",
+            "elite_set": [],
+            "iteration": 0,
+            "algorithm": "hill_climb",
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "pending_candidates.json", [pending_candidate])
+        # No candidate_archive.json written
+
+        _write_json(eval_dir / "cv-0-0" / "report.json", _make_eval_report())
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        assert len(data["candidates"]) == 1
+        assert data["candidates"][0]["version"] == "cv-0-0"
+
+    def test_collect_data_surfaces_ghost_candidates_from_eval_dir(self, tmp_path: Path) -> None:
+        """Candidates only in eval/<v>/report.json (ghosts) appear with parent=None and report metrics."""
+        search_dir = tmp_path / "search"
+        eval_dir = tmp_path / "eval"
+
+        state = {
+            "search_state_id": "ghost-test",
+            "backend": "anthropic",
+            "elite_set": [],
+            "iteration": 0,
+            "algorithm": "hill_climb",
+        }
+        _write_json(search_dir / "search_state.json", state)
+        # No archive, no pending
+        _write_json(search_dir / "pending_candidates.json", [])
+
+        # Two ghost candidates only known from eval reports
+        _write_json(
+            eval_dir / "v1" / "report.json",
+            _make_eval_report(quality_change=0.05, cost_change=-0.1, predicted_cost=0.4),
+        )
+        _write_json(
+            eval_dir / "v2" / "report.json",
+            _make_eval_report(quality_change=0.08, cost_change=-0.15, predicted_cost=0.35),
+        )
+
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        versions = {c["version"] for c in data["candidates"]}
+        assert "v1" in versions
+        assert "v2" in versions
+
+        for c in data["candidates"]:
+            assert c["parent"] is None  # lineage unknown for ghosts
+
+        # Scores are populated from the eval reports (non-zero quality_change)
+        v1_entry = next(c for c in data["candidates"] if c["version"] == "v1")
+        assert v1_entry["score"] != 0.0  # 0.05 quality_change from report
 
     def test_pareto_front_correct_in_synthesized_rounds(self, tmp_path: Path) -> None:
         """new_elite in a round should be candidates on the Pareto front at that iteration."""
@@ -263,8 +316,8 @@ class TestCollectDataFromArchive:
             "search_state_id": "test-run",
             "backend": "anthropic",
             "iteration": 0,
-            "algorithm": "sms_emoa",
-            "algorithm_state": {"mu": 2},
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
             "elite_set": [archive[0]],  # vA is on front
             "warm_up_complete": True,
             "evaluation_budget": 50,
@@ -321,8 +374,8 @@ class TestCollectDataFromArchive:
             "backend": "anthropic",
             "primary_metric_name": "accuracy",
             "iteration": 1,
-            "algorithm": "sms_emoa",
-            "algorithm_state": {"mu": 8},
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
             "elite_set": elite_set,
             "warm_up_complete": True,
             "evaluation_budget": 50,
@@ -382,65 +435,19 @@ class TestCollectDataFromArchive:
         assert v9["on_front"] is True
 
 
-class TestLegacyStateCompat:
-    """Legacy SMS-EMOA state-file shapes (top-level population + mu) still read correctly."""
-
-    def test_legacy_smsemoa_state_shape_still_reads(self, tmp_path: Path) -> None:
-        """Legacy state with top-level 'population' and 'mu' still produces a non-empty candidates list
-        and the mu chip appears via the algorithm_state fallback path."""
-        search_dir = tmp_path / "search"
-        eval_dir = tmp_path / "eval"
-
-        # Legacy shape: top-level 'population' and 'mu' (no elite_set, no algorithm_state)
-        archive = [_make_candidate(f"cv-0-{i}", None, 0, quality=0.7 + i * 0.01, cost=0.5 - i * 0.01) for i in range(4)]
-
-        state = {
-            "search_state_id": "legacy-test",
-            "backend": "anthropic",
-            "iteration": 0,
-            "mu": 4,  # top-level, legacy SMS-EMOA shape
-            "population": archive,  # legacy key, not elite_set
-            "algorithm": "sms_emoa",  # algorithm present so chip adapter activates
-            "warm_up_complete": True,
-            "evaluation_budget": 20,
-            "evaluations_used": 4,
-            "converged": False,
-            "loop_phase": "review",
-            "active_evals": [],
-        }
-
-        _write_json(search_dir / "search_state.json", state)
-        _write_json(search_dir / "candidate_archive.json", archive)
-        _write_json(search_dir / "pending_candidates.json", [])
-
-        for i in range(4):
-            v = f"cv-0-{i}"
-            _write_json(eval_dir / v / "report.json", _make_eval_report())
-
-        data = collect_data(search_dir, run_dir=tmp_path)
-
-        # Legacy shape still produces candidates
-        assert len(data["candidates"]) > 0
-
-        # The mu chip should appear via the top-level fallback in _algorithm_chips
-        assert len(data["algorithm_chips"]) == 1
-        assert data["algorithm_chips"][0]["label"] == "population (μ)"
-        assert data["algorithm_chips"][0]["value"] == 4
-
-
 class TestStrategySeams:
     """Strategy label and algorithm_chips injection seams work correctly."""
 
-    def test_strategy_seams_for_non_smsemoa(self, tmp_path: Path) -> None:
-        """A parallel_beam state yields correct strategy_label and empty algorithm_chips."""
+    def test_strategy_seams_default_label(self, tmp_path: Path) -> None:
+        """An unknown algorithm value falls back to the default strategy_label."""
         search_dir = tmp_path / "search"
 
         archive = [_make_candidate("cv-0-0", None, 0)]
         state = {
-            "search_state_id": "beam-test",
+            "search_state_id": "hc-test",
             "backend": "anthropic",
             "iteration": 0,
-            "algorithm": "parallel_beam",
+            "algorithm": "hill_climb",
             "elite_set": archive,
             "warm_up_complete": True,
             "evaluation_budget": 20,
@@ -456,7 +463,7 @@ class TestStrategySeams:
 
         data = collect_data(search_dir, run_dir=tmp_path)
 
-        assert data["strategy_label"] == "Parallel Beam Search"
+        assert data["strategy_label"] == "Prompt-Builder Search"
         assert data["algorithm_chips"] == []
 
 

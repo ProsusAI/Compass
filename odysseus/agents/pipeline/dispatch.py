@@ -93,9 +93,8 @@ def is_build_recovering(run_id: str, output_dir: str = "outputs") -> bool:
 class DispatchFanout:
     """Status of a fan-out dispatch (Review or Build).
 
-    For strategies with a single sub-agent per round (hill-climb, beam, sms-emoa),
-    this collapses to a degenerate one-slot fanout.  EMOSA uses a multi-slot
-    variant (one per trajectory).  The fanout helper shared with the orchestrator
+    For the single-sub-agent-per-round case (hill-climb), this collapses to a
+    degenerate one-slot fanout.  The fanout helper shared with the orchestrator
     asks: 'has the dispatch completed?'.
     """
 
@@ -124,7 +123,7 @@ def review_fanout_status(
 ) -> DispatchFanout:
     """Read review-dispatch state from disk and report fanout completion.
 
-    For the single-slot case (hill-climb / beam / sms-emoa), ``expected=1`` and
+    For the single-slot case (hill-climb), ``expected=1`` and
     the fanout is complete iff ``child_variants.json`` exists.  For EMOSA, the
     K-way path delegates to :func:`trajectory_fanout_missing` and returns a
     multi-slot :class:`DispatchFanout`.

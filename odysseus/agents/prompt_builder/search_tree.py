@@ -21,10 +21,7 @@ def load_json(path: Path, default: dict | list | None = None) -> dict | list | N
 
 
 _STRATEGY_LABELS: dict[str | None, str] = {
-    "parallel_beam": "Parallel Beam Search",
-    "sms_emoa": "SMS-EMOA",
     "emosa": "EMOSA",
-    # extended in Phase C as overlays land
 }
 
 
@@ -32,9 +29,6 @@ def _algorithm_chips(state_data: dict) -> list[dict]:
     """Return strategy-specific stat chips for the header. Adapters per algorithm."""
     algo = state_data.get("algorithm")
     pocket = state_data.get("algorithm_state", {})
-    if algo == "sms_emoa":
-        mu = pocket.get("mu") or state_data.get("mu")  # legacy fallback
-        return [{"label": "population (μ)", "value": mu}] if mu is not None else []
     if algo == "emosa":
         chips = []
         num_trajectories = pocket.get("num_trajectories")
@@ -52,7 +46,6 @@ def _algorithm_chips(state_data: dict) -> list[dict]:
         if total_evals is not None and max_evals is not None:
             chips.append({"label": "evals", "value": f"{total_evals}/{max_evals}"})
         return chips
-    # beam adapter added in Phase C
     return []
 
 
@@ -102,9 +95,8 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     if not isinstance(state_data, dict):
         raise FileNotFoundError(f"search_state.json not found in {search_dir}")
 
-    archive = load_json(search_dir / "candidate_archive.json")
-    if not isinstance(archive, list):
-        raise FileNotFoundError(f"candidate_archive.json not found in {search_dir}")
+    archive_loaded = load_json(search_dir / "candidate_archive.json")
+    archive: list = archive_loaded if isinstance(archive_loaded, list) else []
 
     pending_loaded = load_json(search_dir / "pending_candidates.json")
     pending: list = pending_loaded if isinstance(pending_loaded, list) else []
@@ -112,8 +104,8 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     # Resolve eval dir: prefer run_dir/eval, fall back to search_dir/../eval
     eval_dir = run_dir / "eval" if run_dir is not None else search_dir.parent / "eval"
 
-    # elite_set is the canonical unified field; population is a legacy SMS-EMOA state-file fallback
-    elite_entries = state_data.get("elite_set", state_data.get("population", []))  # legacy SMS-EMOA state-file fallback
+    # elite_set is the canonical unified field; population is a legacy state-file fallback
+    elite_entries = state_data.get("elite_set", state_data.get("population", []))  # legacy state-file fallback
     elite_versions = {c["prompt_version"] for c in elite_entries}
 
     # Build deduplicated candidate list from union of elite_set + archive + pending.
@@ -122,7 +114,14 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     elite_set_versions = [e["prompt_version"] for e in elite_entries]
     archive_versions = [e["prompt_version"] for e in archive]
     pending_versions = [p["prompt_version"] for p in pending if p.get("eval_status") == "scored"]
-    all_versions = list(dict.fromkeys(elite_set_versions + archive_versions + pending_versions))
+
+    # Ghost candidates: evaluated (eval/<v>/report.json exists) but not in
+    # elite_set, archive, or pending — recover from the eval directory.
+    # Lineage (parent_version) is lost for ghosts; they render as orphans.
+    eval_versions: list[str] = []
+    if eval_dir.exists():
+        eval_versions = sorted(p.name for p in eval_dir.iterdir() if (p / "report.json").exists())
+    all_versions = list(dict.fromkeys(elite_set_versions + archive_versions + pending_versions + eval_versions))
 
     reductions = _build_reduction_lookup_from_evals(eval_dir, all_versions)
 
@@ -133,6 +132,18 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
             v = e["prompt_version"]
             if v not in source_entries:
                 source_entries[v] = e
+
+    for v in eval_versions:
+        if v in source_entries:
+            continue
+        source_entries[v] = {
+            "prompt_version": v,
+            "parent_version": None,
+            "secondary_parent_version": None,
+            "quality_score": 0.0,
+            "iteration_introduced": 0,
+            "eval_status": "scored",
+        }
 
     candidates: list[dict] = []
     seen: set[str] = set()

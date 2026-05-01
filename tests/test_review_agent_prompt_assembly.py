@@ -18,25 +18,6 @@ class TestOverlayFilename:
     def test_hill_climb_cold_start(self):
         assert _overlay_filename("hill_climb", "cold_start") == "review_agent_cold_start_overlay_hillclimb"
 
-    def test_beam_iterative(self):
-        assert _overlay_filename("beam", "iterative") == "review_agent_iterative_overlay_beam"
-
-    def test_beam_cold_start(self):
-        assert _overlay_filename("beam", "cold_start") == "review_agent_cold_start_overlay_beam"
-
-    def test_sms_emoa_iterative(self):
-        assert _overlay_filename("sms_emoa", "iterative") == "review_agent_iterative_overlay_sms_emoa"
-
-    def test_sms_emoa_cold_start_uses_warmup_name(self):
-        """sms_emoa cold-start overlay uses 'warmup' in the filename."""
-        assert _overlay_filename("sms_emoa", "cold_start") == "review_agent_warmup_overlay_sms_emoa"
-
-    def test_emosa_iterative(self):
-        assert _overlay_filename("emosa", "iterative") == "review_agent_iterative_overlay_emosa"
-
-    def test_emosa_cold_start(self):
-        assert _overlay_filename("emosa", "cold_start") == "review_agent_cold_start_overlay_emosa"
-
     def test_unknown_algorithm_raises(self):
         with pytest.raises(ValueError, match="Unknown.*algorithm.*phase"):
             _overlay_filename("unknown_algo", "iterative")
@@ -47,7 +28,7 @@ class TestOverlayFilename:
 
     def test_unknown_combination_raises(self):
         with pytest.raises(ValueError, match="Unknown.*algorithm.*phase"):
-            _overlay_filename("beam", "warmup")  # type: ignore[arg-type]
+            _overlay_filename("unknown_strategy", "iterative")  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -59,73 +40,59 @@ _ITERATIVE_FLOW_HEADING = "Flow: identify failure mode"
 _COLD_START_FLOW_HEADING = "Flow: formulate diverse strategies"
 _BASE_HEADING = "Entry verification"
 
-_ITERATIVE_OVERLAY_MARKERS: dict[str, str] = {
-    "hill_climb": "Loop phase",
-    "beam": "Loop phase",
-    "sms_emoa": "Loop phase",
-    "emosa": "Loop phase",
-}
 
-_COLD_START_OVERLAY_MARKERS: dict[str, str] = {
-    "hill_climb": "Loop phase",
-    "beam": "Loop phase",
-    "sms_emoa": "Loop phase",
-    "emosa": "Loop phase",
-}
-
-
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_iterative_prompt_contains_base_heading(algorithm: str):
     """Assembled iterative prompt contains the base 'Entry verification' heading."""
     prompt = assemble_review_prompt(algorithm, "iterative")
     assert _BASE_HEADING in prompt, f"Base heading missing for {algorithm}/iterative"
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_iterative_prompt_contains_flow_heading(algorithm: str):
     """Assembled iterative prompt contains the iterative flow heading."""
     prompt = assemble_review_prompt(algorithm, "iterative")
     assert _ITERATIVE_FLOW_HEADING in prompt, f"Iterative flow heading missing for {algorithm}"
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_iterative_prompt_contains_loop_phase(algorithm: str):
     """Assembled iterative prompt contains 'Loop phase' from the overlay."""
     prompt = assemble_review_prompt(algorithm, "iterative")
     assert "Loop phase" in prompt, f"'Loop phase' missing from {algorithm}/iterative overlay"
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_iterative_prompt_nonempty(algorithm: str):
-    """assemble_review_prompt returns a non-empty string for all iterative combos."""
+    """assemble_review_prompt returns a non-empty string for the iterative combo."""
     prompt = assemble_review_prompt(algorithm, "iterative")
     assert len(prompt) > 100
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_cold_start_prompt_contains_base_heading(algorithm: str):
     """Assembled cold-start prompt contains the base 'Entry verification' heading."""
     prompt = assemble_review_prompt(algorithm, "cold_start")
     assert _BASE_HEADING in prompt, f"Base heading missing for {algorithm}/cold_start"
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_cold_start_prompt_contains_flow_heading(algorithm: str):
     """Assembled cold-start prompt contains the cold-start flow heading."""
     prompt = assemble_review_prompt(algorithm, "cold_start")
     assert _COLD_START_FLOW_HEADING in prompt, f"Cold-start flow heading missing for {algorithm}"
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_cold_start_prompt_contains_loop_phase(algorithm: str):
     """Assembled cold-start prompt contains 'Loop phase' from the overlay."""
     prompt = assemble_review_prompt(algorithm, "cold_start")
     assert "Loop phase" in prompt, f"'Loop phase' missing from {algorithm}/cold_start overlay"
 
 
-@pytest.mark.parametrize("algorithm", ["hill_climb", "beam", "sms_emoa", "emosa"])
+@pytest.mark.parametrize("algorithm", ["hill_climb"])
 def test_cold_start_prompt_nonempty(algorithm: str):
-    """assemble_review_prompt returns a non-empty string for all cold-start combos."""
+    """assemble_review_prompt returns a non-empty string for the cold-start combo."""
     prompt = assemble_review_prompt(algorithm, "cold_start")
     assert len(prompt) > 100
 
@@ -154,10 +121,6 @@ def test_unknown_phase_raises_value_error():
 _STRATEGY_NAMES = [
     "hill-climb",
     "hill_climb",
-    "beam",
-    "sms-emoa",
-    "sms_emoa",
-    "emosa",
     "trajectory",
     "weight_vector",
     "lambda",
@@ -166,7 +129,6 @@ _STRATEGY_NAMES = [
     "mutation_mode",
     "parent_a",
     "parent_b",
-    "beam_rank",
     "crowding_distance",
 ]
 

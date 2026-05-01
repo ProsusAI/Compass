@@ -1316,7 +1316,6 @@ def build_review_briefing(
         single_candidate_meets_all = False
 
     # 7. Build batch outcomes — match child variants to candidates via variant_id
-    beam_width = getattr(search_state, "beam_width", 2)
     batch_outcomes: list[BatchOutcome] = []
 
     if child_variants and pending_candidates is not None:
@@ -1452,7 +1451,6 @@ def build_review_briefing(
         oracle_metrics=oracle_metrics,
         routing_context=routing_context,
         directive_history=recent_directive_history,
-        beam_width=beam_width,
         batch_outcomes=batch_outcomes,
         target_progress=target_progress_list,
         single_candidate_meets_all=single_candidate_meets_all,

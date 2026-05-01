@@ -758,26 +758,6 @@ class TestAdvanceStepTool:
             assert result["round"] == 1
             assert result["new_elite_entries"] == num_traj  # all K seeds are Pareto-non-dominated
 
-    async def test_non_hill_climb_raises_not_implemented(self, tmp_path: Path) -> None:
-        """advance_step_tool raises NotImplementedError for algorithms not yet implemented."""
-        from odysseus.agents.prompt_builder.search_ops import _state_path, init_search_state
-        from odysseus.mcp import advance_step_tool
-
-        output_dir = tmp_path / "outputs"
-        with patch(_SEARCH_OPS_PATCH, return_value=tmp_path):
-            # Write a search state with algorithm="beam" directly to simulate a
-            # feature-branch state (the MCP tool no longer accepts an algorithm param).
-            # Use the same output_dir that advance_step_tool will resolve via
-            # get_project_dir() (patched to tmp_path) → tmp_path/outputs.
-            init_search_state(backend="test", run_id="run-st2", output_dir=output_dir)
-            path = _state_path("run-st2", output_dir)
-            patched = json.loads(path.read_text())
-            patched["algorithm"] = "beam"
-            path.write_text(json.dumps(patched))
-
-            with pytest.raises(NotImplementedError, match="beam"):
-                await advance_step_tool("run-st2")
-
 
 # ---------------------------------------------------------------------------
 # eval_status lifecycle (Commit 1 — A2)
