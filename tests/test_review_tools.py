@@ -216,9 +216,7 @@ class TestGetPromptTextTool:
         (project_prompts / "v1.txt").write_text("project content")
 
         with _patch_project_dir(tmp_path):
-            result = await get_prompt_text_tool(
-                ctx=None, version="v1", run_id=self._RUN_ID, output_dir="outputs"
-            )
+            result = await get_prompt_text_tool(ctx=None, version="v1", run_id=self._RUN_ID, output_dir="outputs")
 
         assert result == "run-specific content"
 
@@ -232,9 +230,7 @@ class TestGetPromptTextTool:
         (project_prompts / "v2.txt").write_text("project v2")
 
         with _patch_project_dir(tmp_path):
-            result = await get_prompt_text_tool(
-                ctx=None, version="v2", run_id=self._RUN_ID, output_dir="outputs"
-            )
+            result = await get_prompt_text_tool(ctx=None, version="v2", run_id=self._RUN_ID, output_dir="outputs")
 
         assert result == "project v2"
 
@@ -246,9 +242,7 @@ class TestGetPromptTextTool:
         project_prompts.mkdir()
 
         with _patch_project_dir(tmp_path):
-            result = await get_prompt_text_tool(
-                ctx=None, version="vX", run_id=self._RUN_ID, output_dir="outputs"
-            )
+            result = await get_prompt_text_tool(ctx=None, version="vX", run_id=self._RUN_ID, output_dir="outputs")
 
         parsed = json.loads(result)
         assert "error" in parsed
@@ -264,6 +258,111 @@ class TestGetPromptTextTool:
         assert param.default is inspect.Parameter.empty, "run_id must have no default (required)"
 
 
+class TestVariantIdSequentialCounter:
+    """variant_ids assigned by record_directive_outcomes_tool are sequential across calls."""
+
+    _RUN_ID = "test-run-seq"
+
+    _CHILD_VARIANT_RAW = {
+        "hypothesis": "Improve recall on route_a",
+        "directives": [
+            {
+                "directive_id": "d1",
+                "target_version": "v1",
+                "block_type": "rule",
+                "block_identifier": "Rule 1",
+                "granularity": "micro",
+                "directive": "Add rule",
+                "priority": "medium",
+            }
+        ],
+    }
+
+    def _make_search_state(self, tmp_path: Path, run_id: str, next_seq: int = 1) -> None:
+        """Write a minimal search_state.json with the given next_variant_seq."""
+        from odysseus.agents.prompt_builder.search import SearchState
+        from odysseus.agents.prompt_builder.search_ops import _save_state
+
+        state = SearchState(
+            search_state_id=run_id,
+            backend="anthropic",
+            next_variant_seq=next_seq,
+        )
+        out = tmp_path / "outputs"
+        _save_state(run_id, state, out)
+
+    async def test_first_call_assigns_v1_v2(self, tmp_path: Path) -> None:
+        """First call with two variants assigns v1 and v2."""
+        self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
+
+        two_variants = [self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="Variant 2")]
+
+        with _patch_project_dir(tmp_path):
+            result_json = await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=two_variants,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        ids = [v["variant_id"] for v in result["variants_summary"]]
+        assert ids == ["v1", "v2"]
+
+    async def test_second_call_continues_counter(self, tmp_path: Path) -> None:
+        """Second call picks up where the first left off (counter persisted in state)."""
+        self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
+
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[self._CHILD_VARIANT_RAW],
+                output_dir="outputs",
+            )
+            result_json = await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[
+                    dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant A"),
+                    dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant B"),
+                ],
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        ids = [v["variant_id"] for v in result["variants_summary"]]
+        assert ids == ["v2", "v3"]
+
+    async def test_state_next_variant_seq_updated(self, tmp_path: Path) -> None:
+        """After assigning 3 ids across two calls, next_variant_seq == 4."""
+        from odysseus.agents.prompt_builder.search_ops import _load_state
+
+        self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
+
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="V2")],
+                output_dir="outputs",
+            )
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=[dict(self._CHILD_VARIANT_RAW, hypothesis="V3")],
+                output_dir="outputs",
+            )
+
+        state = _load_state(self._RUN_ID, tmp_path / "outputs")
+        assert state.next_variant_seq == 4
+
+
 class TestQueryHoldoutExamplesPagination:
     """Smoke tests for offset pagination in query_holdout_examples_tool."""
 
@@ -277,13 +376,9 @@ class TestQueryHoldoutExamplesPagination:
         analysis_dir.mkdir(parents=True)
         rows = []
         for i in range(n_matching):
-            rows.append(
-                json.dumps({"id": f"m{i}", "input": f"text {i}", "expected": {"route": self._ROUTE}})
-            )
+            rows.append(json.dumps({"id": f"m{i}", "input": f"text {i}", "expected": {"route": self._ROUTE}}))
         for i in range(n_other):
-            rows.append(
-                json.dumps({"id": f"o{i}", "input": f"other {i}", "expected": {"route": self._OTHER_ROUTE}})
-            )
+            rows.append(json.dumps({"id": f"o{i}", "input": f"other {i}", "expected": {"route": self._OTHER_ROUTE}}))
         (analysis_dir / "holdout.jsonl").write_text("\n".join(rows))
 
     async def test_offset_returns_correct_slice(self, tmp_path: Path) -> None:
@@ -329,6 +424,7 @@ class TestQueryHoldoutExamplesPagination:
 # ---------------------------------------------------------------------------
 # Helpers for build_review_briefing_tool tests
 # ---------------------------------------------------------------------------
+
 
 def _write_state(tmp_path: Path, run_id: str, state_dict: dict) -> None:
     """Write a search_state.json for the given run."""
@@ -395,8 +491,7 @@ def _make_eval_result(example_id: str, route: str) -> dict:
 def _make_example(id_: str, true_route: str, routes: list[str] | None = None) -> dict:
     """Minimal Example dict."""
     route_names = routes or [true_route, "complex"]
-    routes_dict = {r: {"cost": 0.01 * (i + 1), "quality_score": 0.8 + 0.05 * i}
-                   for i, r in enumerate(route_names)}
+    routes_dict = {r: {"cost": 0.01 * (i + 1), "quality_score": 0.8 + 0.05 * i} for i, r in enumerate(route_names)}
     return {
         "id": id_,
         "input": f"query for {id_}",
@@ -409,9 +504,7 @@ class TestBuildReviewBriefingToolSelector:
 
     _RUN_ID = "test-run-confusion"
 
-    async def test_elite_set_two_candidates_yields_non_empty_confusion(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_elite_set_two_candidates_yields_non_empty_confusion(self, tmp_path: Path) -> None:
         """elite_set with two candidates: confusion_analysis is non-empty and deduped."""
         run_id = self._RUN_ID + "-two"
         # Two elite candidates
@@ -438,28 +531,49 @@ class TestBuildReviewBriefingToolSelector:
 
         # Both v1 and v2 misroute "e1" (simple→complex)
         # v2 additionally misroutes "e2"
-        _write_results_jsonl(tmp_path, run_id, "v1", [
-            _make_eval_result("e1", "complex"),  # misroute
-            _make_eval_result("e2", "simple"),   # correct
-        ])
-        _write_results_jsonl(tmp_path, run_id, "v2", [
-            _make_eval_result("e1", "complex"),  # same misroute as v1
-            _make_eval_result("e2", "complex"),  # additional misroute
-        ])
-        _write_dev_jsonl(tmp_path, run_id, [
-            _make_example("e1", "simple"),
-            _make_example("e2", "simple"),
-        ])
+        _write_results_jsonl(
+            tmp_path,
+            run_id,
+            "v1",
+            [
+                _make_eval_result("e1", "complex"),  # misroute
+                _make_eval_result("e2", "simple"),  # correct
+            ],
+        )
+        _write_results_jsonl(
+            tmp_path,
+            run_id,
+            "v2",
+            [
+                _make_eval_result("e1", "complex"),  # same misroute as v1
+                _make_eval_result("e2", "complex"),  # additional misroute
+            ],
+        )
+        _write_dev_jsonl(
+            tmp_path,
+            run_id,
+            [
+                _make_example("e1", "simple"),
+                _make_example("e2", "simple"),
+            ],
+        )
 
         # Write a dummy report for scoring (avoids empty score_reports)
         from datetime import UTC, datetime
+
         now = datetime.now(tz=UTC).isoformat()
         for v in ("v1", "v2"):
             report = {
                 "metrics": {"accuracy": 0.80},
-                "summary": {"total": 2, "succeeded": 2, "failed": 0,
-                             "total_cost": 0.01, "start_time": now, "end_time": now,
-                             "duration_seconds": 1.0},
+                "summary": {
+                    "total": 2,
+                    "succeeded": 2,
+                    "failed": 0,
+                    "total_cost": 0.01,
+                    "start_time": now,
+                    "end_time": now,
+                    "duration_seconds": 1.0,
+                },
                 "errors": [],
                 "diff": None,
                 "report_path": str(tmp_path / "outputs" / run_id / "eval" / v / "report.json"),
@@ -486,8 +600,7 @@ class TestBuildReviewBriefingToolSelector:
         # Count unique misrouted example IDs: e1 appears in both versions but
         # dedup should count it once. e2 appears in v2 only. So count == 2.
         simple_to_complex = next(
-            (c for c in confusion
-             if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
+            (c for c in confusion if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
             None,
         )
         assert simple_to_complex is not None
@@ -510,9 +623,7 @@ class TestBuildReviewBriefingToolSelector:
         briefing = json.loads(briefing_json)
         assert briefing.get("confusion_analysis") == []
 
-    async def test_monkey_patch_selector_limits_to_single_version(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_monkey_patch_selector_limits_to_single_version(self, tmp_path: Path) -> None:
         """Monkey-patching _select_confusion_candidates limits analysis to one version."""
         import odysseus.mcp.review_tools as _rt
 
@@ -539,27 +650,48 @@ class TestBuildReviewBriefingToolSelector:
         _write_state(tmp_path, run_id, state_dict)
 
         # va misroutes e1 only; vb misroutes both e1 and e2
-        _write_results_jsonl(tmp_path, run_id, "va", [
-            _make_eval_result("e1", "complex"),
-            _make_eval_result("e2", "simple"),  # correct
-        ])
-        _write_results_jsonl(tmp_path, run_id, "vb", [
-            _make_eval_result("e1", "complex"),
-            _make_eval_result("e2", "complex"),
-        ])
-        _write_dev_jsonl(tmp_path, run_id, [
-            _make_example("e1", "simple"),
-            _make_example("e2", "simple"),
-        ])
+        _write_results_jsonl(
+            tmp_path,
+            run_id,
+            "va",
+            [
+                _make_eval_result("e1", "complex"),
+                _make_eval_result("e2", "simple"),  # correct
+            ],
+        )
+        _write_results_jsonl(
+            tmp_path,
+            run_id,
+            "vb",
+            [
+                _make_eval_result("e1", "complex"),
+                _make_eval_result("e2", "complex"),
+            ],
+        )
+        _write_dev_jsonl(
+            tmp_path,
+            run_id,
+            [
+                _make_example("e1", "simple"),
+                _make_example("e2", "simple"),
+            ],
+        )
 
         from datetime import UTC, datetime
+
         now = datetime.now(tz=UTC).isoformat()
         for v in ("va", "vb"):
             report = {
                 "metrics": {"accuracy": 0.80},
-                "summary": {"total": 2, "succeeded": 2, "failed": 0,
-                             "total_cost": 0.01, "start_time": now, "end_time": now,
-                             "duration_seconds": 1.0},
+                "summary": {
+                    "total": 2,
+                    "succeeded": 2,
+                    "failed": 0,
+                    "total_cost": 0.01,
+                    "start_time": now,
+                    "end_time": now,
+                    "duration_seconds": 1.0,
+                },
                 "errors": [],
                 "diff": None,
                 "report_path": str(tmp_path / "outputs" / run_id / "eval" / v / "report.json"),
@@ -589,8 +721,7 @@ class TestBuildReviewBriefingToolSelector:
         confusion = briefing.get("confusion_analysis", [])
         # Only va's misroutes counted: e1 only → count == 1
         simple_to_complex = next(
-            (c for c in confusion
-             if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
+            (c for c in confusion if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
             None,
         )
         assert simple_to_complex is not None
@@ -684,9 +815,7 @@ class TestLoadScoreReportDict:
         assert score_report.report_path == str(report_path)
         assert score_report.results_path == str(results_path)
 
-    def test_load_score_report_dict_converts_runreport_derives_results_path(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_score_report_dict_converts_runreport_derives_results_path(self, tmp_path: Path) -> None:
         """When results_path is None, it is derived from report_path's parent dir."""
         from odysseus.eval.models import ScoreReport
         from odysseus.mcp.review_tools import _load_score_report_dict

@@ -418,14 +418,16 @@ async def record_directive_outcomes_tool(
     if child_variants is not None:
         parsed_variants = [ChildVariant.model_validate(v) for v in child_variants]
 
-        # Assign stable variant_ids so the Prompt Builder can reference them
-        # and batch_outcomes can link directives to eval results
-        current_round = 0
+        # Assign stable variant_ids using the global monotonic counter stored in
+        # SearchState so that ids are sequential across all rounds (v1, v2, …).
         with contextlib.suppress(FileNotFoundError):
-            current_round = _load_state(run_id, out).round
-        for i, v in enumerate(parsed_variants):
-            if v.variant_id is None:
-                parsed_variants[i] = v.model_copy(update={"variant_id": f"cv-{current_round}-{i}"})
+            state = _load_state(run_id, out)
+            next_seq = state.next_variant_seq
+            for i, v in enumerate(parsed_variants):
+                if v.variant_id is None:
+                    parsed_variants[i] = v.model_copy(update={"variant_id": f"v{next_seq}"})
+                    next_seq += 1
+            _save_state(run_id, state.model_copy(update={"next_variant_seq": next_seq}), out)
 
         save_child_variants(run_id, parsed_variants, output_dir=out)
         result["child_variants_saved"] = len(parsed_variants)
