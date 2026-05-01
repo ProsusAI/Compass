@@ -92,7 +92,7 @@ Present the `query_length` stats from the tool output: min, max, mean, and p95 c
 Synthesize a `routing_context` block for downstream annotation skills. Derive it from the dataset and the user's problem description:
 
 - **`domain`**: Two sentences. First: what the routing system decides (from the problem description and dataset structure). Second: what topics and domains the queries cover (sample queries across routes and summarize the topic clusters you observe).
-- **`routes`**: One entry per route found in the `consistent_model_set`. For each route, examine a few example queries assigned to it and write a one-sentence description of what that route typically handles.
+- **`routes`**: One entry per route found in the `consistent_model_set`. The `name` field MUST be one of the keys of `expected.routes` in the transformed dataset, verbatim — `save_routing_context` validates the route-name set against the canonical dataset key set and rejects any mismatch. For each route, examine a few example queries assigned to it and write a one-sentence description of what that route typically handles.
 - **`routing_dimensions`**: One entry per numeric field in `expected.routes` (e.g., `cost`, `quality_score`). Infer `direction` from the field semantics (`cost` → `lower_is_better`, `quality_score` → `higher_is_better`).
 - **`route_ordering`**: If routes have a natural ordering along one dimension (e.g., capability tiers), include it. If routes are unordered (e.g., specialized tools), omit this field.
 
@@ -125,7 +125,7 @@ Omit `route_ordering` if routes have no natural ordering.
 
 Use the `severity` field on each schema finding to determine how to present it:
 
-- **Critical** (`severity: "critical"`, checks: `required_keys`, `types`, `unique_ids`, `consistent_model_set`, `route_in_routes`): the dataset is **blocked**. These must be fixed before evaluation can proceed.
+- **Critical** (`severity: "critical"`, checks: `required_keys`, `types`, `unique_ids`, `consistent_model_set`, `route_in_routes`): the dataset is **blocked**. These must be fixed before evaluation can proceed. The pipeline orchestrator gates on this in code: any critical-severity failure leaves stage 2 incomplete with `detail = "data_quality_critical_fail"`, regardless of file presence.
 - **Warning** (`severity: "warning"`, checks: `non_empty_routes`, `null_fields`): flag in the report but do not block. The dataset can proceed with noted warnings.
 - If volume adequacy overall verdict is `"fail"`: flag as a **warning** — the dataset can proceed but results may be unreliable for under-covered tiers.
 - If label distribution has imbalanced tiers: flag as **informational** — note which tiers are underrepresented.
@@ -136,10 +136,10 @@ Use the `severity` field on each schema finding to determine how to present it:
 
 - `detect_and_parse_dataset` — detects format (CSV/JSON/JSONL) and returns columns, sample rows, nested paths.
 - `save_proposed_mapping` — persists the proposed field mapping for orchestrator-mediated user confirmation.
-- `transform_dataset` — applies a confirmed field mapping and writes canonical JSONL.
+- `transform_dataset` — applies a confirmed field mapping and writes canonical JSONL. Validates the `route_in_routes` invariant after applying the mapping: every row's `expected.route` must be a key of `expected.routes`, otherwise no output is written. The keys of `expected.routes` are the canonical route-label set used by every downstream stage.
 - `validate_dataset` — runs all validation checks against a canonical JSONL dataset file.
 - `add_ids_to_dataset` — adds sequential IDs to JSONL rows missing an `id` field. Use if validation reports missing IDs after transform.
-- `save_routing_context` — persists the synthesized routing context JSON for downstream agents. Call with `run_id` and the routing context as JSON.
+- `save_routing_context` — persists the synthesized routing context JSON for downstream agents. Call with `run_id` and the routing context as JSON. Validates that the `routes[].name` set equals the keys of `expected.routes` in `transformed.jsonl`; mismatches are rejected so the route-label namespace stays consistent across the pipeline.
 - `stratified_split_tool` — Splits the validated dataset into dev/holdout partitions using route-stratified sampling.
 
 ## Available resources

@@ -221,7 +221,9 @@ async def save_routing_context(ctx: Context, run_id: str, routing_context_json: 
 
     Call this after synthesizing the routing context from the data
     quality report and problem description. The JSON is validated
-    against the RoutingContext schema before writing.
+    against the RoutingContext schema, and the route names are validated
+    against the canonical key set of ``expected.routes`` in the
+    transformed dataset before writing.
 
     Args:
         run_id: The run identifier (e.g. "a1b2c3d4").
@@ -237,10 +239,66 @@ async def save_routing_context(ctx: Context, run_id: str, routing_context_json: 
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     validation_dir = project_dir / "outputs" / run_id / "validation"
+    transformed_path = validation_dir / "transformed.jsonl"
+    if not transformed_path.is_file():
+        raise ToolError(
+            f"Transformed dataset not found at {transformed_path}. "
+            "Run transform_dataset before save_routing_context so the "
+            "route names can be validated against the canonical "
+            "expected.routes key set."
+        )
+
+    try:
+        dataset_routes = _collect_dataset_route_keys(transformed_path)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+
+    context_routes = {r.name for r in routing_context.routes}
+    if context_routes != dataset_routes:
+        raise ToolError(
+            "RoutingContext route names do not match the canonical "
+            "expected.routes key set in the transformed dataset. "
+            "The keys of expected.routes are the single source of truth "
+            "for route labels — RoutingContext.routes[].name must equal "
+            "that set verbatim. "
+            f"RoutingContext names: {sorted(context_routes)}; "
+            f"dataset expected.routes keys: {sorted(dataset_routes)}; "
+            f"only-in-context: {sorted(context_routes - dataset_routes)}; "
+            f"only-in-dataset: {sorted(dataset_routes - context_routes)}."
+        )
+
     validation_dir.mkdir(parents=True, exist_ok=True)
     out_path = validation_dir / "routing_context.json"
     out_path.write_text(routing_context.model_dump_json(indent=2), encoding="utf-8")
     return f"Routing context saved to {out_path}"
+
+
+def _collect_dataset_route_keys(transformed_path: Path) -> set[str]:
+    """Collect the union of ``expected.routes`` keys across all rows.
+
+    This is the canonical route-label set every downstream consumer
+    (prompt builder, eval, metrics, reporting) reads verbatim.
+    """
+    keys: set[str] = set()
+    with transformed_path.open(encoding="utf-8") as f:
+        for line_num, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{transformed_path}: line {line_num}: invalid JSON — {exc}") from exc
+            expected = row.get("expected") if isinstance(row, dict) else None
+            routes = expected.get("routes") if isinstance(expected, dict) else None
+            if isinstance(routes, dict):
+                keys.update(routes.keys())
+    if not keys:
+        raise ValueError(
+            f"{transformed_path}: no expected.routes keys found across any row — "
+            "transformed dataset is empty or malformed."
+        )
+    return keys
 
 
 @mcp.tool()
@@ -276,6 +334,22 @@ async def stratified_split_tool(
         raise ToolError(f"Dataset file not found: {dataset_path}")
 
     examples = _load_examples(path)
+
+    misaligned: list[tuple[str, str, list[str]]] = []
+    for ex in examples:
+        if ex.expected.route not in ex.expected.routes:
+            misaligned.append((ex.id, ex.expected.route, sorted(ex.expected.routes.keys())))
+            if len(misaligned) >= 3:
+                break
+    if misaligned:
+        samples = "; ".join(f"id={eid!r}: route={route!r}, routes keys={keys}" for eid, route, keys in misaligned)
+        raise ToolError(
+            "Dataset contains rows where expected.route is not a key of "
+            "expected.routes. The keys of expected.routes are the canonical "
+            "route-label set used downstream — fix the field mapping and "
+            "re-run transform_dataset before splitting. "
+            f"Samples: {samples}"
+        )
 
     dev_examples, holdout_examples, split_report = stratified_split(examples, dev_ratio=dev_ratio)
 

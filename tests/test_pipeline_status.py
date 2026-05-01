@@ -83,6 +83,46 @@ class TestGetPipelineStatus:
         assert result["stages"][1]["status"] == "incomplete"
         assert result["current_stage"] == 2
 
+    def test_critical_schema_fail_blocks_stage_2(self, tmp_path: Path) -> None:
+        """Stage 2 is incomplete with detail 'data_quality_critical_fail' when the
+        data quality report has any critical-severity failure, even if all artifact
+        files exist."""
+        _setup_through_stage2(tmp_path, "abc12345")
+        report = {
+            "schema_findings": [
+                {
+                    "field": "route_in_routes",
+                    "status": "fail",
+                    "severity": "critical",
+                    "violation": "expected.route not found in expected.routes keys",
+                    "row_indices": [0, 1, 2],
+                }
+            ]
+        }
+        (tmp_path / "abc12345" / "validation" / "data_quality_report.json").write_text(json.dumps(report))
+        result = get_pipeline_status(tmp_path, "abc12345", project_dir=tmp_path)
+        assert result["stages"][1]["status"] == "incomplete"
+        assert result["stages"][1]["detail"] == "data_quality_critical_fail"
+        assert result["current_stage"] == 2
+
+    def test_warning_severity_does_not_block(self, tmp_path: Path) -> None:
+        """Warning-severity failures do not block stage completion."""
+        _setup_through_stage2(tmp_path, "abc12345")
+        report = {
+            "schema_findings": [
+                {
+                    "field": "non_empty_routes",
+                    "status": "fail",
+                    "severity": "warning",
+                    "violation": "expected.routes is empty",
+                    "row_indices": [0],
+                }
+            ]
+        }
+        (tmp_path / "abc12345" / "validation" / "data_quality_report.json").write_text(json.dumps(report))
+        result = get_pipeline_status(tmp_path, "abc12345", project_dir=tmp_path)
+        assert result["stages"][1]["status"] == "complete"
+
     def test_blocked_stages(self, tmp_path: Path) -> None:
         (tmp_path / "abc12345" / "input").mkdir(parents=True)
         (tmp_path / "abc12345" / "input" / "input_report.md").write_text("# Report")

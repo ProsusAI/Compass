@@ -135,7 +135,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) |
 | `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation/detect.py`](../odysseus/agents/data_validation/detect.py) |
-| `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; accepts `run_id` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
+| `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; rejects mappings whose output violates `expected.route ∈ expected.routes.keys()` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
 | `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
 | `build_review_briefing_tool` | Implemented | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `record_directive_outcomes_tool` | Implemented | Persist child variants + directive outcomes; apply the Review Agent's `loop_signal` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
