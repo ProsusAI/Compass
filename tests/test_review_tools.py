@@ -704,6 +704,128 @@ class TestBuildReviewBriefingToolSelector:
 
 
 # ---------------------------------------------------------------------------
+<<<<<<< feat/generalize-pipeline
+# Tests for _load_score_report_dict
+# ---------------------------------------------------------------------------
+
+
+class TestLoadScoreReportDict:
+    """Unit tests for the _load_score_report_dict helper."""
+
+    def _minimal_run_report_dict(self) -> dict:
+        """Return a minimal RunReport-shaped dict."""
+        from datetime import UTC, datetime
+
+        now = datetime.now(tz=UTC).isoformat()
+        return {
+            "config": {
+                "backend": "anthropic",
+                "prompt_version": "v1",
+                "data_source": "data/test.jsonl",
+                "metrics": [{"name": "accuracy"}],
+            },
+            "metrics": {"accuracy": 0.85},
+            "results": [
+                {
+                    "example_id": "e1",
+                    "model": "claude-test",
+                    "output": {"route": "simple"},
+                    "error": None,
+                    "latency_ms": 10.0,
+                    "retries": 0,
+                    "token_usage": None,
+                    "cost": 0.001,
+                }
+            ],
+            "summary": {
+                "total": 1,
+                "succeeded": 1,
+                "failed": 0,
+                "total_cost": 0.001,
+                "start_time": now,
+                "end_time": now,
+                "duration_seconds": 0.5,
+            },
+        }
+
+    def _minimal_score_report_dict(self, report_path: str, results_path: str) -> dict:
+        """Return a minimal ScoreReport-shaped dict."""
+        from datetime import UTC, datetime
+
+        now = datetime.now(tz=UTC).isoformat()
+        return {
+            "metrics": {"accuracy": 0.90},
+            "summary": {
+                "total": 1,
+                "succeeded": 1,
+                "failed": 0,
+                "total_cost": 0.001,
+                "start_time": now,
+                "end_time": now,
+                "duration_seconds": 0.5,
+            },
+            "errors": [],
+            "diff": None,
+            "report_path": report_path,
+            "results_path": results_path,
+        }
+
+    def test_load_score_report_dict_converts_runreport(self, tmp_path: Path) -> None:
+        """A RunReport-shaped JSON is converted to a ScoreReport-shaped dict without error."""
+        from odysseus.eval.models import ScoreReport
+        from odysseus.mcp.review_tools import _load_score_report_dict
+
+        report_path = tmp_path / "report.json"
+        results_path = tmp_path / "results.jsonl"
+        report_path.write_text(json.dumps(self._minimal_run_report_dict()), encoding="utf-8")
+
+        result = _load_score_report_dict(report_path, results_path)
+
+        # Must not raise — i.e., result is a valid ScoreReport
+        score_report = ScoreReport.model_validate(result)
+        assert score_report.metrics == {"accuracy": 0.85}
+        assert score_report.errors == []
+        assert score_report.diff is None
+        assert score_report.report_path == str(report_path)
+        assert score_report.results_path == str(results_path)
+
+    def test_load_score_report_dict_converts_runreport_derives_results_path(
+        self, tmp_path: Path
+    ) -> None:
+        """When results_path is None, it is derived from report_path's parent dir."""
+        from odysseus.eval.models import ScoreReport
+        from odysseus.mcp.review_tools import _load_score_report_dict
+
+        report_path = tmp_path / "report.json"
+        report_path.write_text(json.dumps(self._minimal_run_report_dict()), encoding="utf-8")
+
+        result = _load_score_report_dict(report_path)
+
+        score_report = ScoreReport.model_validate(result)
+        assert score_report.results_path == str(tmp_path / "results.jsonl")
+
+    def test_load_score_report_dict_idempotent_on_scorereport(self, tmp_path: Path) -> None:
+        """A ScoreReport-shaped JSON is returned as-is without double-conversion."""
+        from odysseus.eval.models import ScoreReport
+        from odysseus.mcp.review_tools import _load_score_report_dict
+
+        report_path = tmp_path / "report.json"
+        results_path = tmp_path / "results.jsonl"
+        original = self._minimal_score_report_dict(str(report_path), str(results_path))
+        report_path.write_text(json.dumps(original), encoding="utf-8")
+
+        result = _load_score_report_dict(report_path, results_path)
+
+        # Content must be identical to what was written
+        assert result["metrics"] == original["metrics"]
+        assert result["errors"] == original["errors"]
+        assert result["diff"] == original["diff"]
+        assert result["report_path"] == original["report_path"]
+        assert result["results_path"] == original["results_path"]
+
+        # Must still be a valid ScoreReport
+        ScoreReport.model_validate(result)
+=======
 # B2: build_review_briefing_tool auto-fires calibration for EMOSA
 # ---------------------------------------------------------------------------
 
@@ -867,3 +989,4 @@ class TestBuildReviewBriefingAutoFiresCalibration:
         assert post_state.round == 1, (
             "round should stay at 1 when elite_set is already populated"
         )
+>>>>>>> feat/generalize-emosa
