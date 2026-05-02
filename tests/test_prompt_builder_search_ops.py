@@ -743,7 +743,6 @@ class TestAdvanceStepTool:
             patched = state.model_copy(
                 update={
                     "algorithm_state": json.loads(annealing.model_dump_json()),
-                    "loop_phase": "calibration",
                 }
             )
             _save_state("run-st1", patched, output_dir)

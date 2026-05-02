@@ -331,33 +331,17 @@ def _advance_hill_climb(run_id: str) -> str:
 def _advance_emosa(run_id: str) -> str:
     """EMOSA arm of advance_step_tool.
 
-    Dispatches to ``advance_round_emosa`` when ``loop_phase == "calibration"``.
-    Raises :exc:`NotImplementedError` for ``"review"`` and ``"build"`` phases
-    (steady-state advance lands in C4).
-
-    Returns a JSON-serialized RoundSummary and clears the build-dispatch marker.
+    Delegates to ``advance_round_emosa``, which dispatches internally on
+    ``algorithm_state.phase`` (``"calibration"`` → seed K trajectories,
+    ``"search"`` → per-trajectory Metropolis step).  Returns a
+    JSON-serialized RoundSummary and clears the build-dispatch marker.
     """
-    from odysseus.agents.prompt_builder.search_ops import _default_output_dir, _load_state
-
-    output_dir = _default_output_dir()
     try:
-        state = _load_state(run_id, output_dir)
-    except FileNotFoundError as exc:
-        raise ToolError(str(exc)) from exc
-
-    loop_phase = state.loop_phase
-    try:
-        if loop_phase == "calibration":
-            summary = advance_round_emosa(run_id=run_id)
-        elif loop_phase in ("review", "build"):
-            raise NotImplementedError("EMOSA steady-state lands in C4")
-        else:
-            raise ValueError(f"unsupported loop_phase '{loop_phase}' for emosa")
+        summary = advance_round_emosa(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     except (ValueError, RuntimeError) as exc:
         raise ToolError(str(exc)) from exc
-
     clear_build_dispatched(run_id)
     return summary.model_dump_json(indent=2)
 

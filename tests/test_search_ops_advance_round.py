@@ -345,10 +345,10 @@ class TestAdvanceRoundEmosaCalibration:
             # The tool writes state to outputs/<run_id>/search/ under project_dir
             outputs_dir = tmp_path / "outputs"
 
-            # Overwrite algorithm_state with a proper K=3 calibration AnnealingState,
-            # and flip loop_phase to "calibration" (init defaults to "review").
+            # Overwrite algorithm_state with a proper K=3 calibration AnnealingState.
+            # loop_phase is not overridden — dispatch must work from the default ("review").
             state = _load_state("emosa-tool", outputs_dir)
-            updated = state.model_copy(update={"algorithm_state": annealing_dict, "loop_phase": "calibration"})
+            updated = state.model_copy(update={"algorithm_state": annealing_dict})
             _save_state("emosa-tool", updated, outputs_dir)
 
             # Populate pending in the outputs sub-path used by the tool
@@ -359,4 +359,46 @@ class TestAdvanceRoundEmosaCalibration:
             result = json.loads(result_json)
             assert result["phase"] == "search"
             # After calibration, all trajectories have step_count=0, so sum=0
+            assert result["step_count"] == 0
+
+    async def test_advance_step_tool_emosa_default_loop_phase(self, tmp_path: Path) -> None:
+        """Regression for C4 stub: dispatch must not depend on loop_phase.
+
+        Runs advance_step_tool with loop_phase at its SearchState default ("review") —
+        no override — and asserts that EMOSA calibration still completes successfully.
+        """
+        from odysseus.agents.prompt_builder.search_ops import _load_state, _save_state
+        from odysseus.mcp import advance_step_tool, init_search_state_tool
+
+        annealing = _make_annealing_state(num_trajectories=3)
+        annealing_dict = json.loads(annealing.model_dump_json())
+
+        with (
+            patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch(_SEARCH_OPS_PATCH, return_value=tmp_path),
+        ):
+            analysis_dir = tmp_path / "outputs" / "emosa-default-phase" / "analysis"
+            analysis_dir.mkdir(parents=True, exist_ok=True)
+            (analysis_dir / "dev.jsonl").write_text("")
+
+            await init_search_state_tool(
+                ctx=None,
+                run_id="emosa-default-phase",
+                backend="test",
+            )
+
+            outputs_dir = tmp_path / "outputs"
+
+            # Patch only algorithm_state — do NOT override loop_phase.
+            # The default SearchState.loop_phase is "review"; dispatch must work from it.
+            state = _load_state("emosa-default-phase", outputs_dir)
+            updated = state.model_copy(update={"algorithm_state": annealing_dict})
+            _save_state("emosa-default-phase", updated, outputs_dir)
+
+            scored = _build_scored_pending(3)
+            _save_pending("emosa-default-phase", scored, outputs_dir)
+
+            result_json = await advance_step_tool("emosa-default-phase")
+            result = json.loads(result_json)
+            assert result["phase"] == "search"
             assert result["step_count"] == 0
