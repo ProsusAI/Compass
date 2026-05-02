@@ -24,6 +24,14 @@ _STRATEGY_LABELS: dict[str | None, str] = {
     "emosa": "EMOSA",
 }
 
+TRAJECTORY_COLORS: list[str] = [
+    "#22d3ee",  # T0 — cyan
+    "#a78bfa",  # T1 — violet
+    "#34d399",  # T2 — emerald
+    "#fbbf24",  # T3 — amber
+    "#fb7185",  # T4 — rose
+]
+
 
 def _algorithm_chips(state_data: dict) -> list[dict]:
     """Return strategy-specific stat chips for the header. Adapters per algorithm."""
@@ -186,6 +194,7 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
                 "abs_cost": abs_cost,
                 "iteration": e.get("iteration_introduced", e.get("round_introduced", 0)),
                 "on_front": v in elite_versions,
+                "trajectory_id": e.get("trajectory_id"),
             }
         )
 
@@ -300,6 +309,11 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
         "oracle_ceiling": oracle_ceiling_dict,
         "iteration_currents": iteration_currents,
         "use_trajectory_highlight": use_trajectory_highlight,
+        "algorithm": state_data.get("algorithm"),
+        "trajectory_colors": TRAJECTORY_COLORS,
+        "trajectory_weights": [
+            t.get("weight_vector") for t in (state_data.get("algorithm_state", {}).get("trajectories") or [])
+        ],
     }
 
 
@@ -670,33 +684,7 @@ _HTML_TEMPLATE = """\
       <div class="panel-canvas-wrap" id="treeWrap">
         <canvas id="treeCanvas"></canvas>
       </div>
-      <div class="legend">
-        <div class="legend-item">
-          <div class="legend-swatch" style="background:var(--cyan);box-shadow:0 0 5px var(--cyan)"></div>
-          <span class="legend-elite-label">Elite set</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-swatch" style="background:var(--gold);box-shadow:0 0 5px var(--gold)"></div>
-          Best ever
-        </div>
-        <div class="legend-item">
-          <div class="legend-swatch" style="background:var(--amber);opacity:0.7"></div>
-          <span class="legend-dominated-label">Dominated</span>
-        </div>
-        <div class="legend-item">
-          <div class="legend-swatch" style="border:2px dashed rgba(118,255,3,0.7);
-            background:transparent;width:12px;height:12px"></div>
-          New this iteration
-        </div>
-        <div class="legend-item">
-          <div class="legend-line" style="background:rgba(0,229,255,0.6);height:2.5px"></div>
-          Elite parent &rarr; child
-        </div>
-        <div class="legend-item">
-          <div class="legend-line" style="background:rgba(100,116,139,0.5)"></div>
-          Known parent
-        </div>
-      </div>
+      <div id="treeLegend"></div>
       <!-- Info panel for selected node -->
       <div class="info-panel" id="infoPanel">
         <div class="info-version" id="infoPanelVersion"></div>
@@ -772,12 +760,83 @@ _HTML_TEMPLATE = """\
 const DATA = /*__DATA__*/;
 
 // ─────────────────────────────────────────────
-//  TRAJECTORY HIGHLIGHT MODE (EMOSA)
+//  TRAJECTORY COLORING HELPERS
 // ─────────────────────────────────────────────
-if (DATA.use_trajectory_highlight) {
-  document.querySelectorAll('.legend-elite-label').forEach(el => el.textContent = 'Trajectory current');
-  document.querySelectorAll('.legend-dominated-label').forEach(el => el.textContent = 'Not current');
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
 }
+
+function trajectoryColor(c) {
+  if (DATA.algorithm !== 'emosa') return null;
+  if (c.trajectory_id == null) return null;
+  const colors = DATA.trajectory_colors || [];
+  return colors[c.trajectory_id] || null;
+}
+
+// ─────────────────────────────────────────────
+//  TREE LEGEND (data-driven)
+// ─────────────────────────────────────────────
+function renderTreeLegend() {
+  const el = document.getElementById('treeLegend');
+  if (!el) return;
+  let html = '<div class="legend">';
+  if (DATA.algorithm === 'emosa') {
+    const weights = DATA.trajectory_weights || [];
+    const colors = DATA.trajectory_colors || [];
+    const count = weights.length || colors.length;
+    for (let i = 0; i < count; i++) {
+      const color = colors[i] || '#888';
+      const wv = weights[i];
+      let wLabel = '';
+      if (wv && Array.isArray(wv)) {
+        wLabel = ' (w=' + wv.map(function(v) { return v.toFixed(1); }).join(', ') + ')';
+      }
+      html += '<div class="legend-item">'
+        + '<div class="legend-swatch" style="background:' + color + ';box-shadow:0 0 5px ' + hexToRgba(color, 0.6) + '"></div>'
+        + 'T' + i + wLabel
+        + '</div>';
+    }
+    html += '<div class="legend-item">'
+      + '<div class="legend-swatch" style="background:rgba(100,116,139,0.45)"></div>'
+      + 'Dominated'
+      + '</div>';
+    html += '<div class="legend-item">'
+      + '<div class="legend-swatch" style="border:2px dashed rgba(118,255,3,0.7);background:transparent;width:12px;height:12px"></div>'
+      + 'New this iteration'
+      + '</div>';
+  } else {
+    html += '<div class="legend-item">'
+      + '<div class="legend-swatch" style="background:var(--cyan);box-shadow:0 0 5px var(--cyan)"></div>'
+      + '<span class="legend-elite-label">Elite set</span>'
+      + '</div>';
+    html += '<div class="legend-item">'
+      + '<div class="legend-swatch" style="background:var(--gold);box-shadow:0 0 5px var(--gold)"></div>'
+      + 'Best ever'
+      + '</div>';
+    html += '<div class="legend-item">'
+      + '<div class="legend-swatch" style="background:var(--amber);opacity:0.7"></div>'
+      + '<span class="legend-dominated-label">Dominated</span>'
+      + '</div>';
+    html += '<div class="legend-item">'
+      + '<div class="legend-swatch" style="border:2px dashed rgba(118,255,3,0.7);background:transparent;width:12px;height:12px"></div>'
+      + 'New this iteration'
+      + '</div>';
+    html += '<div class="legend-item">'
+      + '<div class="legend-line" style="background:rgba(0,229,255,0.6);height:2.5px"></div>'
+      + 'Elite parent &rarr; child'
+      + '</div>';
+    html += '<div class="legend-item">'
+      + '<div class="legend-line" style="background:rgba(100,116,139,0.5)"></div>'
+      + 'Known parent'
+      + '</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+renderTreeLegend();
 
 // ─────────────────────────────────────────────
 //  HEADER STATS (populated from DATA)
@@ -1026,6 +1085,8 @@ function drawTree(highlight) {
     const isNewThisRound = c.iteration === activeIteration && isFiltering;
     const isOnFront = frontAtIteration.has(c.version);
 
+    const tcolor = trajectoryColor(c);
+
     if (c.parent && nodePositions[c.parent] && visibleVersions.has(c.parent)) {
       const pPos = nodePositions[c.parent];
       const parentOnFront = frontAtIteration.has(c.parent);
@@ -1034,15 +1095,28 @@ function drawTree(highlight) {
       ctx.lineTo(pos.x, pos.y);
       ctx.setLineDash([]);
 
-      if (isNewThisRound && parentOnFront) {
-        ctx.strokeStyle = 'rgba(0,229,255,0.6)';
-        ctx.lineWidth = 2.5;
-      } else if (isNewThisRound) {
-        ctx.strokeStyle = 'rgba(148,163,184,0.55)';
-        ctx.lineWidth = 1.5;
+      if (tcolor) {
+        if (isNewThisRound && parentOnFront) {
+          ctx.strokeStyle = hexToRgba(tcolor, 0.7);
+          ctx.lineWidth = 2.5;
+        } else if (isNewThisRound) {
+          ctx.strokeStyle = hexToRgba(tcolor, 0.55);
+          ctx.lineWidth = 1.5;
+        } else {
+          ctx.strokeStyle = hexToRgba(tcolor, 0.28);
+          ctx.lineWidth = 1;
+        }
       } else {
-        ctx.strokeStyle = 'rgba(100,116,139,0.28)';
-        ctx.lineWidth = 1;
+        if (isNewThisRound && parentOnFront) {
+          ctx.strokeStyle = 'rgba(0,229,255,0.6)';
+          ctx.lineWidth = 2.5;
+        } else if (isNewThisRound) {
+          ctx.strokeStyle = 'rgba(148,163,184,0.55)';
+          ctx.lineWidth = 1.5;
+        } else {
+          ctx.strokeStyle = 'rgba(100,116,139,0.28)';
+          ctx.lineWidth = 1;
+        }
       }
       ctx.stroke();
     }
@@ -1055,15 +1129,28 @@ function drawTree(highlight) {
       ctx.lineTo(pos.x, pos.y);
       ctx.setLineDash([]);
 
-      if (isNewThisRound && secondaryParentOnFront) {
-        ctx.strokeStyle = 'rgba(0,229,255,0.6)';
-        ctx.lineWidth = 2.5;
-      } else if (isNewThisRound) {
-        ctx.strokeStyle = 'rgba(148,163,184,0.55)';
-        ctx.lineWidth = 1.5;
+      if (tcolor) {
+        if (isNewThisRound && secondaryParentOnFront) {
+          ctx.strokeStyle = hexToRgba(tcolor, 0.7);
+          ctx.lineWidth = 2.5;
+        } else if (isNewThisRound) {
+          ctx.strokeStyle = hexToRgba(tcolor, 0.55);
+          ctx.lineWidth = 1.5;
+        } else {
+          ctx.strokeStyle = hexToRgba(tcolor, 0.28);
+          ctx.lineWidth = 1;
+        }
       } else {
-        ctx.strokeStyle = 'rgba(100,116,139,0.28)';
-        ctx.lineWidth = 1;
+        if (isNewThisRound && secondaryParentOnFront) {
+          ctx.strokeStyle = 'rgba(0,229,255,0.6)';
+          ctx.lineWidth = 2.5;
+        } else if (isNewThisRound) {
+          ctx.strokeStyle = 'rgba(148,163,184,0.55)';
+          ctx.lineWidth = 1.5;
+        } else {
+          ctx.strokeStyle = 'rgba(100,116,139,0.28)';
+          ctx.lineWidth = 1;
+        }
       }
       ctx.stroke();
     }
@@ -1121,6 +1208,7 @@ function drawTree(highlight) {
     const isNewThisRound = c.iteration === activeIteration && isFiltering;
     const isOlder = isFiltering && c.iteration < activeIteration;
     const r = nodeRadius(c.score);
+    const nc = trajectoryColor(c);
 
     // "New this round" dashed ring
     if (isNewThisRound) {
@@ -1137,8 +1225,13 @@ function drawTree(highlight) {
     if (isOnFront) {
       const glowR = r + 5;
       const grad = ctx.createRadialGradient(pos.x, pos.y, r * 0.3, pos.x, pos.y, glowR);
-      grad.addColorStop(0, 'rgba(0,229,255,0.35)');
-      grad.addColorStop(1, 'rgba(0,229,255,0)');
+      if (nc) {
+        grad.addColorStop(0, hexToRgba(nc, 0.35));
+        grad.addColorStop(1, hexToRgba(nc, 0));
+      } else {
+        grad.addColorStop(0, 'rgba(0,229,255,0.35)');
+        grad.addColorStop(1, 'rgba(0,229,255,0)');
+      }
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, glowR, 0, Math.PI * 2);
       ctx.fillStyle = grad;
@@ -1151,7 +1244,11 @@ function drawTree(highlight) {
     if (isHighlighted || isSelected) {
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, r + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = isOnFront ? 'rgba(0,229,255,0.7)' : 'rgba(255,145,0,0.7)';
+      if (nc) {
+        ctx.strokeStyle = hexToRgba(nc, 0.7);
+      } else {
+        ctx.strokeStyle = isOnFront ? 'rgba(0,229,255,0.7)' : 'rgba(255,145,0,0.7)';
+      }
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
@@ -1159,7 +1256,10 @@ function drawTree(highlight) {
     // Node fill
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-    if (isOnFront) {
+    if (nc) {
+      ctx.fillStyle = nc;
+      ctx.globalAlpha = isOlder ? (isOnFront ? 0.5 : 0.25) : (isHighlighted || isSelected ? 1.0 : (isOnFront ? 0.85 : 0.42));
+    } else if (isOnFront) {
       ctx.fillStyle = '#00e5ff';
       ctx.globalAlpha = isOlder ? 0.5 : (isHighlighted || isSelected ? 1.0 : 0.85);
     } else {
@@ -1172,7 +1272,11 @@ function drawTree(highlight) {
     // Node border
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
-    ctx.strokeStyle = isOnFront ? '#00e5ff' : '#ff9100';
+    if (nc) {
+      ctx.strokeStyle = nc;
+    } else {
+      ctx.strokeStyle = isOnFront ? '#00e5ff' : '#ff9100';
+    }
     ctx.lineWidth = 1.5;
     ctx.globalAlpha = isOnFront ? (isOlder ? 0.5 : 0.9) : (isOlder ? 0.3 : 0.5);
     ctx.stroke();
@@ -1182,7 +1286,11 @@ function drawTree(highlight) {
     ctx.font = '500 8.5px "JetBrains Mono", monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillStyle = isOnFront ? 'rgba(0,229,255,0.75)' : 'rgba(255,145,0,0.6)';
+    if (nc) {
+      ctx.fillStyle = hexToRgba(nc, 0.75);
+    } else {
+      ctx.fillStyle = isOnFront ? 'rgba(0,229,255,0.75)' : 'rgba(255,145,0,0.6)';
+    }
     ctx.globalAlpha = isOlder ? 0.45 : (isHighlighted || isSelected ? 1.0 : 0.8);
     ctx.fillText(c.version, pos.x, pos.y + r + 3);
     ctx.globalAlpha = 1.0;

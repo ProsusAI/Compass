@@ -14,6 +14,7 @@ See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import uuid
@@ -33,6 +34,7 @@ from odysseus.agents.prompt_builder.annealing import (
     replace_if_better,
     update_archive,
 )
+from odysseus.agents.prompt_builder.emosa_trace import get_trace_logger
 from odysseus.agents.prompt_builder.search import (
     AlgorithmType,
     Candidate,
@@ -85,6 +87,10 @@ _BRANCH_ALGORITHM_STATE: dict[str, Any] = _build_emosa_initial_state()
 # ---------------------------------------------------------------------------
 # Private path / IO helpers
 # ---------------------------------------------------------------------------
+
+
+def _search_dir(run_id: str, output_dir: Path) -> Path:
+    return output_dir / run_id / "search"
 
 
 def _state_path(run_id: str, output_dir: Path) -> Path:
@@ -167,6 +173,31 @@ def _append_archive(run_id: str, candidates: list[Candidate], output_dir: Path) 
     seen = {e["prompt_version"] for e in archive}
     archive.extend(c.model_dump() for c in candidates if c.prompt_version not in seen)
     path.write_text(json.dumps(archive, indent=2), encoding="utf-8")
+
+
+def _derive_trajectory_id(prompt_version: str, run_id: str, output_dir: Path) -> int | None:
+    """Scan child_variants_t*.json files to find the trajectory_id for *prompt_version*.
+
+    Returns the trajectory id (integer) if found in any file, otherwise None.
+    Handles non-EMOSA runs and missing files gracefully.
+    """
+    sdir = _search_dir(run_id, output_dir)
+    for tfile in sdir.glob("child_variants_t*.json"):
+        stem = tfile.stem  # e.g. "child_variants_t0"
+        try:
+            traj_id = int(stem.split("_t")[-1])
+        except (ValueError, IndexError):
+            continue
+        try:
+            entries = json.loads(tfile.read_text(encoding="utf-8"))
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("variant_id") == prompt_version:
+                    return traj_id
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -293,6 +324,8 @@ def register_candidate(
             f"pending={prompt_version in pending_versions})"
         )
 
+    trajectory_id = _derive_trajectory_id(prompt_version, run_id, output_dir)
+
     candidate = Candidate(
         prompt_version=prompt_version,
         parent_version=parent_version,
@@ -301,6 +334,7 @@ def register_candidate(
         round_introduced=state.round + 1,
         example_ids=example_ids or [],
         eval_status=eval_status,
+        trajectory_id=trajectory_id,
     )
     pending.append(candidate)
     _save_pending(run_id, pending, output_dir)
@@ -597,6 +631,8 @@ def _calibration_complete(
     Raises:
         ValueError: If pending contains fewer scored candidates than ``num_trajectories``.
     """
+    tracer = get_trace_logger(run_id, _search_dir(run_id, output_dir))
+
     pocket = state.algorithm_state
     annealing = AnnealingState.model_validate(pocket)
     num_traj = annealing.num_trajectories
@@ -679,6 +715,23 @@ def _calibration_complete(
         update={"trajectory_history": [*new_annealing.trajectory_history, snapshot]}
     )
 
+    if tracer is not None:
+        with contextlib.suppress(Exception):
+            tracer.debug(
+                f"[round {new_round}][phase=calibration] start | trajectories={num_traj}"
+                f" | ideal={new_ideal} | nadir={new_nadir}"
+            )
+            for t in updated_trajectories:
+                e_str = f"{t.current_energy:.4f}" if t.current_energy is not None else "NA"
+                tracer.debug(
+                    f"[round {new_round}][phase=calibration][T{t.trajectory_id}]"
+                    f" seeded current={t.current_solution} energy={e_str}"
+                )
+            tracer.debug(
+                f"[round {new_round}][phase=calibration] end | currents="
+                f"{ {t.trajectory_id: t.current_solution for t in updated_trajectories} }"
+            )
+
     summary = RoundSummary(
         round=new_round,
         candidates_evaluated=[c.prompt_version for c in calibration_scored],
@@ -751,6 +804,8 @@ def _advance_emosa_search(
     if state.active_evals:
         raise ValueError(f"Cannot advance round while active_evals is non-empty: {state.active_evals}")
 
+    tracer = get_trace_logger(run_id, _search_dir(run_id, output_dir))
+
     sa_state = AnnealingState.model_validate(state.algorithm_state)
 
     pending = _load_pending(run_id, output_dir)
@@ -786,6 +841,13 @@ def _advance_emosa_search(
 
         new_ideal = (ideal_q, ideal_c)
         new_nadir = (nadir_q, nadir_c)
+
+    if tracer is not None:
+        with contextlib.suppress(Exception):
+            tracer.debug(
+                f"[round {new_round}] start | trajectories={len(sa_state.trajectories)}"
+                f" | total_evals={sa_state.total_evals} | ideal={new_ideal} | nadir={new_nadir}"
+            )
 
     # Drift-cache refresh (a15b608): recompute trajectory current_energy under new
     # ideal/nadir before Metropolis. Without this, trajectories holding solutions
@@ -849,9 +911,21 @@ def _advance_emosa_search(
             if calibration:
                 # First step after calibration: always accept
                 accepted = True
+                delta_e = None
             else:
                 delta_e = energy - traj.current_energy  # type: ignore[operator]
                 accepted = metropolis_accept(delta_e, traj.temperature)
+
+            if tracer is not None:
+                with contextlib.suppress(Exception):
+                    cur_e_str = f"{traj.current_energy:.4f}" if traj.current_energy is not None else "NA"
+                    de_str = f"{delta_e:.4f}" if delta_e is not None else "calib"
+                    tracer.debug(
+                        f"[round {new_round}][T{traj.trajectory_id}] metropolis"
+                        f" parent={traj.current_solution} cur_E={cur_e_str}"
+                        f" cand={cand.prompt_version} cand_E={energy:.4f}"
+                        f" dE={de_str} T={traj.temperature:.4e} accepted={accepted}"
+                    )
 
             if accepted and (best_accepted_energy is None or energy < best_accepted_energy):
                 best_accepted_cand = cand
@@ -906,6 +980,7 @@ def _advance_emosa_search(
         nbr_ids -= set(origins)  # don't override Metropolis on the originators
         for nbr_id in nbr_ids:
             nbr = traj_by_id[nbr_id]
+            prev_current = nbr.current_solution
             e_nbr = compute_tchebycheff_energy(
                 cand.quality_score,
                 cand.cost,
@@ -920,6 +995,15 @@ def _advance_emosa_search(
                 cand.quality_score,
                 cand.cost,
             )
+            if tracer is not None and traj_by_id[nbr_id].current_solution != prev_current:
+                with contextlib.suppress(Exception):
+                    orig_id = origins[0] if origins else -1
+                    tracer.debug(
+                        f"[round {new_round}] neighborhood-replace"
+                        f" donor=T{orig_id} recipient=T{nbr_id}"
+                        f" child={cand.prompt_version} prev={prev_current}"
+                        f" new_E={e_nbr:.4f}"
+                    )
 
     updated_trajectories = [traj_by_id[t.trajectory_id] for t in refreshed_trajectories]
 
@@ -983,6 +1067,14 @@ def _advance_emosa_search(
 
     old_versions = {c.prompt_version for c in state.elite_set}
     new_elite_entries = sum(1 for c in new_elite if c.prompt_version not in old_versions)
+
+    if tracer is not None:
+        with contextlib.suppress(Exception):
+            tracer.debug(
+                f"[round {new_round}] end | currents="
+                f"{ {t.trajectory_id: t.current_solution for t in updated_trajectories} }"
+                f" | hv={new_hv}"
+            )
 
     # Per-trajectory acceptance rates (last-5 ring)
     acceptance_rates_dict: dict[int, float] = {}
