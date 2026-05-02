@@ -447,8 +447,10 @@ async def record_directive_outcomes_tool(
 
         # Assign stable variant_ids using the global monotonic counter stored in
         # SearchState so that ids are sequential across all rounds (v1, v2, …).
+        current_round = 0
         with contextlib.suppress(FileNotFoundError):
             state = _load_state(run_id, out)
+            current_round = state.round
             next_seq = state.next_variant_seq
             for i, v in enumerate(parsed_variants):
                 if v.variant_id is None:
