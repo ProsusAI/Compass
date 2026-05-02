@@ -730,3 +730,89 @@ class TestEmosaAlgorithmChips:
         assert "T" not in chip_labels
         assert "step" not in chip_labels
         assert "evals" not in chip_labels
+
+
+class TestTrajectoryHighlight:
+    """collect_data emits iteration_currents and use_trajectory_highlight for EMOSA snapshots."""
+
+    def _make_state(self, tmp_path: Path, trajectory_history: list | None) -> dict:
+        search_dir = tmp_path / "search"
+        archive = [_make_candidate("v1", None, 1)]
+        pocket: dict = {
+            "t_min": 0.01,
+            "num_trajectories": 5,
+            "trajectories": [],
+            "total_evals": 10,
+            "max_evals": 50,
+            "phase": "search",
+        }
+        if trajectory_history is not None:
+            pocket["trajectory_history"] = trajectory_history
+        state = {
+            "search_state_id": "traj-snap-test",
+            "backend": "mock-echo",
+            "round": 2,
+            "algorithm": "emosa",
+            "algorithm_state": pocket,
+            "elite_set": archive,
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", archive)
+        _write_json(search_dir / "pending_candidates.json", [])
+        return collect_data(search_dir, run_dir=tmp_path)
+
+    def test_trajectory_history_populates_iteration_currents(self, tmp_path: Path) -> None:
+        """Two trajectory snapshots produce iteration_currents with correct dedup."""
+        history = [
+            {
+                "round": 1,
+                "currents": {"0": "v1", "1": "v2", "2": "v3", "3": "v4", "4": "v5"},
+            },
+            {
+                "round": 2,
+                # v6 appears twice (trajectories 0 and 1 converged on it)
+                "currents": {"0": "v6", "1": "v6", "2": "v8", "3": "v9", "4": "v10"},
+            },
+        ]
+        data = self._make_state(tmp_path, trajectory_history=history)
+
+        assert data["use_trajectory_highlight"] is True
+        ic = data["iteration_currents"]
+
+        assert set(ic[1]) == {"v1", "v2", "v3", "v4", "v5"}
+        # Round 2: v6 is deduplicated, so 4 unique versions
+        assert set(ic[2]) == {"v6", "v8", "v9", "v10"}
+        assert len(ic[2]) == 4
+
+    def test_no_trajectory_history_gives_false_flag(self, tmp_path: Path) -> None:
+        """When trajectory_history is absent, iteration_currents is empty and flag is False."""
+        data = self._make_state(tmp_path, trajectory_history=None)
+
+        assert data["iteration_currents"] == {}
+        assert data["use_trajectory_highlight"] is False
+
+    def test_non_emosa_run_gives_false_flag(self, tmp_path: Path) -> None:
+        """A non-EMOSA run (no algorithm_state) produces empty iteration_currents."""
+        search_dir = tmp_path / "search"
+        archive = [_make_candidate("v1", None, 0)]
+        state = {
+            "search_state_id": "hill-climb-traj-test",
+            "backend": "anthropic",
+            "round": 1,
+            "algorithm": "hill_climb",
+            "algorithm_state": {},
+            "elite_set": archive,
+            "converged": False,
+            "loop_phase": "review",
+            "active_evals": [],
+        }
+        _write_json(search_dir / "search_state.json", state)
+        _write_json(search_dir / "candidate_archive.json", archive)
+        _write_json(search_dir / "pending_candidates.json", [])
+        data = collect_data(search_dir, run_dir=tmp_path)
+
+        assert data["iteration_currents"] == {}
+        assert data["use_trajectory_highlight"] is False

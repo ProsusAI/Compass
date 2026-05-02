@@ -95,6 +95,21 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     if not isinstance(state_data, dict):
         raise FileNotFoundError(f"search_state.json not found in {search_dir}")
 
+    # Extract per-round trajectory snapshots (EMOSA only; absent for other algorithms).
+    algo_state = state_data.get("algorithm_state", {}) or {}
+    traj_history = algo_state.get("trajectory_history", []) if isinstance(algo_state, dict) else []
+    iteration_currents: dict[int, list[str]] = {}
+    for snap in traj_history:
+        if not isinstance(snap, dict):
+            continue
+        rnd = snap.get("round")
+        currents = snap.get("currents") or {}
+        if rnd is None or not isinstance(currents, dict):
+            continue
+        versions = sorted({v for v in currents.values() if isinstance(v, str)})
+        iteration_currents[int(rnd)] = versions
+    use_trajectory_highlight = bool(iteration_currents)
+
     archive_loaded = load_json(search_dir / "candidate_archive.json")
     archive: list = archive_loaded if isinstance(archive_loaded, list) else []
 
@@ -283,6 +298,8 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
         "algorithm_chips": _algorithm_chips(state_data),
         "user_targets": user_targets_dict,
         "oracle_ceiling": oracle_ceiling_dict,
+        "iteration_currents": iteration_currents,
+        "use_trajectory_highlight": use_trajectory_highlight,
     }
 
 
@@ -656,7 +673,7 @@ _HTML_TEMPLATE = """\
       <div class="legend">
         <div class="legend-item">
           <div class="legend-swatch" style="background:var(--cyan);box-shadow:0 0 5px var(--cyan)"></div>
-          Elite set
+          <span class="legend-elite-label">Elite set</span>
         </div>
         <div class="legend-item">
           <div class="legend-swatch" style="background:var(--gold);box-shadow:0 0 5px var(--gold)"></div>
@@ -664,7 +681,7 @@ _HTML_TEMPLATE = """\
         </div>
         <div class="legend-item">
           <div class="legend-swatch" style="background:var(--amber);opacity:0.7"></div>
-          Dominated
+          <span class="legend-dominated-label">Dominated</span>
         </div>
         <div class="legend-item">
           <div class="legend-swatch" style="border:2px dashed rgba(118,255,3,0.7);
@@ -709,11 +726,11 @@ _HTML_TEMPLATE = """\
       <div class="legend">
         <div class="legend-item">
           <div class="legend-swatch" style="background:var(--cyan);box-shadow:0 0 4px var(--cyan)"></div>
-          Elite set
+          <span class="legend-elite-label">Elite set</span>
         </div>
         <div class="legend-item">
           <div class="legend-swatch" style="background:var(--amber);opacity:0.55"></div>
-          Dominated
+          <span class="legend-dominated-label">Dominated</span>
         </div>
         <div class="legend-item">
           <div class="legend-swatch" style="border:2px dashed rgba(118,255,3,0.7);
@@ -753,6 +770,14 @@ _HTML_TEMPLATE = """\
 //  DATA
 // ─────────────────────────────────────────────
 const DATA = /*__DATA__*/;
+
+// ─────────────────────────────────────────────
+//  TRAJECTORY HIGHLIGHT MODE (EMOSA)
+// ─────────────────────────────────────────────
+if (DATA.use_trajectory_highlight) {
+  document.querySelectorAll('.legend-elite-label').forEach(el => el.textContent = 'Trajectory current');
+  document.querySelectorAll('.legend-dominated-label').forEach(el => el.textContent = 'Not current');
+}
 
 // ─────────────────────────────────────────────
 //  HEADER STATS (populated from DATA)
@@ -834,7 +859,22 @@ function computeParetoFront(candidates) {
 function updateIterationFilter(iteration) {
   activeIteration = iteration;
   filteredCandidates = DATA.candidates.filter(c => c.iteration <= iteration);
-  if (iteration >= maxIteration) {
+  if (DATA.use_trajectory_highlight) {
+    // EMOSA: highlight per-iteration trajectory current_solutions.
+    // For "all iterations" view, use the most recent snapshot.
+    const snapKey = iteration >= maxIteration ? maxIteration : iteration;
+    let versions = DATA.iteration_currents[snapKey];
+    if (!versions) {
+      // Fallback: walk down to the most recent snapshot at or before the active iteration.
+      const keys = Object.keys(DATA.iteration_currents).map(Number).sort((a, b) => a - b);
+      let pick = null;
+      for (const k of keys) {
+        if (k <= snapKey) pick = k;
+      }
+      versions = pick !== null ? DATA.iteration_currents[pick] : [];
+    }
+    frontAtIteration = new Set(versions);
+  } else if (iteration >= maxIteration) {
     // Use backend elite set (respects max_size pruning via crowding distance)
     frontAtIteration = new Set(filteredCandidates.filter(c => c.on_front).map(c => c.version));
   } else {
@@ -1669,7 +1709,9 @@ function showInfoPanel(ver) {
   infoPanelParent.textContent = formatParents(c);
   const isOnFront = frontAtIteration.has(c.version);
   const badgeClass = isOnFront ? 'badge-elite' : 'badge-dominated';
-  const badgeText = isOnFront ? 'elite set' : 'not in elite set';
+  const badgeText = DATA.use_trajectory_highlight
+    ? (isOnFront ? 'trajectory current' : 'not current')
+    : (isOnFront ? 'elite set' : 'not in elite set');
   const isNewThisRound = c.iteration === activeIteration && activeIteration < maxIteration;
   const newStyle = 'background:rgba(118,255,3,0.1);color:rgba(118,255,3,0.9);'
     + 'border:1px solid rgba(118,255,3,0.3);margin-left:4px';

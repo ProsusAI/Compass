@@ -42,6 +42,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+class TrajectorySnapshot(BaseModel):
+    """End-of-round snapshot of every trajectory's current_solution.
+
+    Used by the search viz to highlight per-trajectory live points across
+    iterations. Captured immediately after Metropolis + neighborhood
+    replacement + cooling, so it reflects each trajectory's adopted
+    working point for that round.
+    """
+
+    round: int
+    currents: dict[int, str]  # trajectory_id -> prompt_version
+
+
 class TrajectoryState(BaseModel):
     """State for a single SA trajectory (one weight vector / decomposition direction)."""
 
@@ -107,6 +120,11 @@ class AnnealingState(BaseModel):
     """Exponent used when rate > target_high: cool by alpha ** cooling_exp_fast."""
     cooling_exp_slow: float = 0.5
     """Exponent used when rate < target_low: cool by alpha ** cooling_exp_slow."""
+    trajectory_history: list[TrajectorySnapshot] = Field(default_factory=list)
+    """Per-round snapshots of trajectory current_solution.
+
+    Populated at calibration completion and each steady-state advance.
+    """
 
 
 # ---------------------------------------------------------------------------

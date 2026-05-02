@@ -17,6 +17,7 @@ import pytest
 
 from odysseus.agents.prompt_builder.annealing import (
     AnnealingState,
+    TrajectorySnapshot,
     TrajectoryState,
     compute_tchebycheff_energy,
     compute_weight_vectors,
@@ -1151,3 +1152,136 @@ class TestAdvanceRoundEmosaSearch:
             f"Expected T0 ({t0_after.temperature:.4f}) < T1 ({t1_after.temperature:.4f}) "
             f"(T0 had all-True history, T1 had all-False)"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestTrajectorySnapshotPersistence
+# ---------------------------------------------------------------------------
+
+
+class TestTrajectorySnapshotPersistence:
+    """trajectory_history is populated by _calibration_complete and _advance_emosa_search."""
+
+    def test_calibration_complete_adds_snapshot(self, tmp_path: Path) -> None:
+        """After _calibration_complete, trajectory_history has 1 entry with correct round and currents."""
+        run_id = "traj-snap-calib"
+        num_traj = 5
+        wvs = compute_weight_vectors(num_traj)
+        trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
+        annealing = AnnealingState(
+            num_trajectories=num_traj,
+            trajectories=trajs,
+            phase="calibration",
+            total_evals=0,
+        )
+        state = init_search_state(backend="test", run_id=run_id, output_dir=tmp_path)
+        patched = state.model_copy(
+            update={
+                "algorithm_state": json.loads(annealing.model_dump_json()),
+                "loop_phase": "review",
+                "round": 0,
+            }
+        )
+        _save_state(run_id, patched, tmp_path)
+
+        # Write K cold-start candidates as pending
+        versions = [f"cold_v{i}" for i in range(num_traj)]
+        pending = [
+            Candidate(
+                prompt_version=versions[i],
+                parent_version=None,
+                quality_score=0.7 + i * 0.05,
+                cost=0.09 - i * 0.01,
+                round_introduced=0,
+                eval_status="complete",
+            )
+            for i in range(num_traj)
+        ]
+        _save_pending(run_id, pending, tmp_path)
+
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        updated = get_search_state(run_id, output_dir=tmp_path)
+        pocket = AnnealingState.model_validate(updated.algorithm_state)
+
+        # Exactly 1 snapshot after calibration
+        assert len(pocket.trajectory_history) == 1
+        snap = pocket.trajectory_history[0]
+        assert isinstance(snap, TrajectorySnapshot)
+        assert snap.round == 1  # state.round was 0, advanced to 1
+        # Each trajectory seeded with its cold_v{i}
+        assert len(snap.currents) == num_traj
+        for i in range(num_traj):
+            assert snap.currents[i] == f"cold_v{i}"
+
+    def test_advance_emosa_search_adds_snapshot(self, tmp_path: Path) -> None:
+        """After calibration + 1 steady-state advance, trajectory_history has 2 entries."""
+        run_id = "traj-snap-search"
+        num_traj = 5
+        wvs = compute_weight_vectors(num_traj)
+        trajs = [TrajectoryState(trajectory_id=i, weight_vector=wvs[i]) for i in range(num_traj)]
+        annealing = AnnealingState(
+            num_trajectories=num_traj,
+            trajectories=trajs,
+            phase="calibration",
+            total_evals=0,
+        )
+        state = init_search_state(backend="test", run_id=run_id, output_dir=tmp_path)
+        patched = state.model_copy(
+            update={
+                "algorithm_state": json.loads(annealing.model_dump_json()),
+                "loop_phase": "review",
+                "round": 0,
+            }
+        )
+        _save_state(run_id, patched, tmp_path)
+
+        # Calibration round: K cold-start candidates
+        cold_versions = [f"cold_v{i}" for i in range(num_traj)]
+        cold_pending = [
+            Candidate(
+                prompt_version=cold_versions[i],
+                parent_version=None,
+                quality_score=0.7 + i * 0.05,
+                cost=0.09 - i * 0.01,
+                round_introduced=0,
+                eval_status="complete",
+            )
+            for i in range(num_traj)
+        ]
+        _save_pending(run_id, cold_pending, tmp_path)
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        # Steady-state round: each trajectory generates one child
+        after_calib = get_search_state(run_id, output_dir=tmp_path)
+        pocket_after_calib = AnnealingState.model_validate(after_calib.algorithm_state)
+        child_versions = [f"child_v{i}" for i in range(num_traj)]
+        child_pending = [
+            Candidate(
+                prompt_version=child_versions[i],
+                parent_version=pocket_after_calib.trajectories[i].current_solution,
+                quality_score=0.75 + i * 0.02,
+                cost=0.08 - i * 0.01,
+                round_introduced=2,
+                eval_status="complete",
+            )
+            for i in range(num_traj)
+        ]
+        _save_pending(run_id, child_pending, tmp_path)
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        updated = get_search_state(run_id, output_dir=tmp_path)
+        pocket = AnnealingState.model_validate(updated.algorithm_state)
+
+        # 2 snapshots total: round 1 (calibration) and round 2 (steady-state)
+        assert len(pocket.trajectory_history) == 2
+
+        snap1 = pocket.trajectory_history[0]
+        assert snap1.round == 1
+        assert set(snap1.currents.values()) == set(cold_versions)
+
+        snap2 = pocket.trajectory_history[1]
+        assert snap2.round == 2
+        # All currents are strings (either child_v* or cold_v* if rejected/replaced)
+        assert all(isinstance(v, str) for v in snap2.currents.values())
+        assert len(snap2.currents) == num_traj

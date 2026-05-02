@@ -22,6 +22,7 @@ from typing import Any, Literal
 
 from odysseus.agents.prompt_builder.annealing import (
     AnnealingState,
+    TrajectorySnapshot,
     TrajectoryState,
     adaptive_cool,
     compute_cooling_rate,
@@ -668,6 +669,16 @@ def _calibration_complete(
     )
 
     new_round = state.round + 1
+
+    # Snapshot: capture each trajectory's current_solution at end of calibration
+    snapshot = TrajectorySnapshot(
+        round=new_round,
+        currents={t.trajectory_id: t.current_solution for t in updated_trajectories if t.current_solution is not None},
+    )
+    new_annealing = new_annealing.model_copy(
+        update={"trajectory_history": [*new_annealing.trajectory_history, snapshot]}
+    )
+
     summary = RoundSummary(
         round=new_round,
         candidates_evaluated=[c.prompt_version for c in calibration_scored],
@@ -1000,6 +1011,12 @@ def _advance_emosa_search(
         phase="converged" if converged else "search",
     )
 
+    # Snapshot: capture each trajectory's current_solution at end of this round
+    snapshot = TrajectorySnapshot(
+        round=new_round,
+        currents={t.trajectory_id: t.current_solution for t in updated_trajectories if t.current_solution is not None},
+    )
+
     # Save updated AnnealingState back into algorithm_state pocket
     updated_sa = sa_state.model_copy(
         update={
@@ -1008,6 +1025,7 @@ def _advance_emosa_search(
             "nadir_point": new_nadir,
             "total_evals": new_total_evals,
             "phase": "converged" if converged else sa_state.phase,
+            "trajectory_history": [*sa_state.trajectory_history, snapshot],
         }
     )
 
