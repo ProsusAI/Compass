@@ -16,6 +16,7 @@ diagnostic file.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -49,3 +50,40 @@ def get_trace_logger(run_id: str, search_dir: Path) -> logging.Logger | None:
         logger.propagate = False
         _attached_runs.add(run_id)
     return logger
+
+
+def record_metropolis_decision(
+    search_dir: Path,
+    *,
+    round: int,
+    trajectory_id: int,
+    parent_version: str | None,
+    child_version: str,
+    parent_energy: float | None,
+    child_energy: float,
+    delta_e: float | None,
+    temperature: float,
+    p_accept: float | None,
+    accepted: bool,
+) -> None:
+    """Append one JSONL row to ``<search_dir>/emosa_trace.jsonl``.
+
+    No-op when ``EMOSA_TRACE_ENABLED`` is ``False``.
+    """
+    if not EMOSA_TRACE_ENABLED:
+        return
+    search_dir.mkdir(parents=True, exist_ok=True)
+    record = {
+        "round": round,
+        "trajectory_id": trajectory_id,
+        "parent_version": parent_version,
+        "child_version": child_version,
+        "parent_energy": parent_energy,
+        "child_energy": child_energy,
+        "delta_e": delta_e,
+        "temperature": temperature,
+        "p_accept": p_accept,
+        "accepted": accepted,
+    }
+    with (search_dir / "emosa_trace.jsonl").open("a", encoding="utf-8", buffering=1) as fh:
+        fh.write(json.dumps(record) + "\n")

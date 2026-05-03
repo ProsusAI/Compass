@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import math
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -34,7 +35,7 @@ from odysseus.agents.prompt_builder.annealing import (
     replace_if_better,
     update_archive,
 )
-from odysseus.agents.prompt_builder.emosa_trace import get_trace_logger
+from odysseus.agents.prompt_builder.emosa_trace import get_trace_logger, record_metropolis_decision
 from odysseus.agents.prompt_builder.search import (
     AlgorithmType,
     Candidate,
@@ -917,6 +918,28 @@ def _advance_emosa_search(
             else:
                 delta_e = energy - traj.current_energy  # type: ignore[operator]
                 accepted = metropolis_accept(delta_e, traj.temperature)
+
+            if calibration or delta_e is None:
+                p_accept: float | None = None
+            elif delta_e <= 0:
+                p_accept = 1.0
+            else:
+                p_accept = math.exp(-delta_e / traj.temperature)
+
+            with contextlib.suppress(Exception):
+                record_metropolis_decision(
+                    _search_dir(run_id, output_dir),
+                    round=new_round,
+                    trajectory_id=traj.trajectory_id,
+                    parent_version=traj.current_solution,
+                    child_version=cand.prompt_version,
+                    parent_energy=traj.current_energy,
+                    child_energy=energy,
+                    delta_e=delta_e,
+                    temperature=traj.temperature,
+                    p_accept=p_accept,
+                    accepted=accepted,
+                )
 
             if tracer is not None:
                 with contextlib.suppress(Exception):
