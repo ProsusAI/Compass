@@ -289,6 +289,33 @@ STAGE_4_CALIBRATION_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
+STAGE_4_CALIBRATION_INSTRUCTION: str = (
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='calibration') BEFORE spawning the sub-agent.\n\n"
+    "PRE-DISPATCH CHECK: Before spawning, verify that "
+    "outputs/{run_id}/search/build_dispatched.json does not exist. "
+    "If it does, a build sub-agent is already in-flight — wait for it to complete.\n\n"
+    "CALIBRATION MODE: No trajectories are seeded yet. The sub-agent must:\n"
+    "  1. Activate odysseus_review_agent_cold_start to emit K diverse candidate prompts.\n"
+    "  2. Call odysseus_prompt_builder to compile and register each candidate.\n"
+    "  3. Call run_batch_eval to score all K candidates.\n"
+    "  4. Call advance_step_tool to seed K trajectories from scored candidates and flip "
+    "loop_phase to 'review'.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
+    "odysseus_review_agent_cold_start, odysseus_prompt_builder, "
+    "run_batch_eval, advance_step_tool\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "After K calibration variants are scored, advance_step_tool seeds K trajectories "
+    "and flips loop_phase to 'review'. Re-dispatch the appropriate sub-agent for "
+    "subsequent phases. Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
 # ---------------------------------------------------------------------------
 # Stage 5 — Final Report
 # ---------------------------------------------------------------------------

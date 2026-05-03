@@ -1096,7 +1096,7 @@ def _synthesize_directive_outcomes(
     return synthesized
 
 
-def _populate_beam_review_fields(
+def _populate_emosa_review_fields(
     search_state: Any,
     elite_set: list[Candidate],
 ) -> dict[str, Any]:
@@ -1169,6 +1169,12 @@ def build_review_briefing(
     primary_metric: str = search_state.primary_metric_name or "accuracy"
     elite_set = search_state.elite_set
     elite_versions = [c.prompt_version for c in elite_set]
+
+    # EMOSA per-trajectory scoping: when a trajectory_id is pinned, restrict child_variants
+    # (and therefore the derived batch_outcomes / directive_history) to variants emitted by
+    # that trajectory in the prior round. Other strategies pass emosa_trajectory_id=None.
+    if emosa_trajectory_id is not None and child_variants:
+        child_variants = [cv for cv in child_variants if cv.trajectory_id == emosa_trajectory_id]
 
     # Mutation descriptions for current candidates
     mutation_descriptions: dict[str, str] = {v: "" for v in candidate_versions}
