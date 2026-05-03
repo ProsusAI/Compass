@@ -116,6 +116,7 @@ async def build_review_briefing_tool(
     """
     from odysseus.agents.prompt_builder.search_ops import get_search_state
     from odysseus.agents.review.ops import (
+        load_all_trajectory_child_variants,
         load_cell_attempt_history,
         load_child_variants,
         load_round_reports,
@@ -214,8 +215,13 @@ async def build_review_briefing_tool(
             except FileNotFoundError:
                 continue
 
-    # Load child variants for batch outcome tracking
-    child_variants = load_child_variants(run_id, output_dir=out) or None
+    # Load child variants for batch outcome tracking. Prefer per-trajectory files
+    # (EMOSA K-way fanout) when present; otherwise fall back to the single-slot sentinel.
+    search_dir_for_load = out / run_id / "search"
+    if search_dir_for_load.exists() and any(search_dir_for_load.glob("child_variants_t*.json")):
+        child_variants = load_all_trajectory_child_variants(run_id, output_dir=out) or None
+    else:
+        child_variants = load_child_variants(run_id, output_dir=out) or None
 
     # Load routing context
     routing_context = None
