@@ -334,7 +334,6 @@ def _advance_hill_climb(run_id: str) -> str:
 def _advance_beam(run_id: str) -> str:
     """Beam arm of advance_step_tool.
 
-<<<<<<< feat/generalize-pipeline
     Runs hypervolume-based elite-set management (with cold-start floor on
     round 1) and returns a JSON-serialized RoundSummary.
 
@@ -346,18 +345,6 @@ def _advance_beam(run_id: str) -> str:
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     except ValueError as exc:
-=======
-    Delegates to ``advance_round_emosa``, which dispatches internally on
-    ``algorithm_state.phase`` (``"calibration"`` → seed K trajectories,
-    ``"search"`` → per-trajectory Metropolis step).  Returns a
-    JSON-serialized RoundSummary and clears the build-dispatch marker.
-    """
-    try:
-        summary = advance_round_emosa(run_id=run_id)
-    except FileNotFoundError as exc:
-        raise ToolError(str(exc)) from exc
-    except (ValueError, RuntimeError) as exc:
->>>>>>> feat/generalize-emosa
         raise ToolError(str(exc)) from exc
     clear_build_dispatched(run_id)
     return summary.model_dump_json(indent=2)

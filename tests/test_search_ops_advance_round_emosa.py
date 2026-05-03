@@ -1247,16 +1247,8 @@ class TestRoundReportPersistenceEmosa:
         assert "child_a" in data, "round_0.json must contain child_a"
         assert "child_b" in data, "round_0.json must contain child_b"
 
-    def test_calibration_complete_writes_round_report(self, tmp_path: Path) -> None:
-        """_calibration_complete writes round_reports/round_0.json with calibration candidates."""
-        run_id = "emosa-rr-calib"
-        num_traj = 2
-        weight_vectors = compute_weight_vectors(num_traj)
-        trajectories = [TrajectoryState(trajectory_id=i, weight_vector=weight_vectors[i]) for i in range(num_traj)]
-        annealing = AnnealingState(
-            num_trajectories=num_traj,
-            trajectories=trajectories,
-# TestTrajectorySnapshotPersistence
+# ---------------------------------------------------------------------------
+# C.4: trajectory_history snapshot persistence
 # ---------------------------------------------------------------------------
 
 
