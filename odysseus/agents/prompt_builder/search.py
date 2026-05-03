@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 # Type alias for algorithm discriminator
 # ---------------------------------------------------------------------------
 
-AlgorithmType = Literal["beam"]
+# On the pipeline trunk no algorithm is active; leaf branches extend this Literal.
+# The sentinel value "__unset__" triggers a RuntimeError in init_search_state so
+# that any attempt to run the pipeline on trunk (without setting _BRANCH_ALGORITHM)
+# fails loudly rather than silently producing wrong output.
+AlgorithmType = Literal["__unset__"]
 
 # ---------------------------------------------------------------------------
 # Pydantic models
@@ -173,8 +177,12 @@ class SearchState(BaseModel):
     ] = "review"
     epsilon: float = 0.001
     total_routing_cost: float = 0.0
-    # Cross-branch generalization fields
-    algorithm: AlgorithmType = "hill_climb"
+    # Cross-branch generalization fields.
+    # ``algorithm`` is typed as ``str`` so persisted leaf-branch state files
+    # (which may carry values like "hill_climb", "beam", "emosa") load without
+    # Pydantic validation errors.  ``AlgorithmType`` constrains only the
+    # module-level ``_BRANCH_ALGORITHM`` constant in ``search_ops.py``.
+    algorithm: str = "__unset__"
     algorithm_state: dict[str, Any] = Field(default_factory=dict)
     # Batch eval tracking — versions currently in flight (pending or running).
     # Used by _detect_stage_4_phase to detect build_recovering and by
