@@ -391,4 +391,3 @@ class ReviewResult(BaseModel):
     promotion_decisions: list[PromotionDecision]
     loop_signal: LoopSignal
     regression_guards: list[RegressionFlag]
-    directive_history_update: list[DirectiveOutcome]

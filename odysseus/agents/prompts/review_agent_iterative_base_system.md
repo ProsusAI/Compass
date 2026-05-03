@@ -73,7 +73,7 @@ To inspect the full text of a candidate, call `get_prompt_text_tool(run_id=run_i
 
 ## Directive outcomes (round N≥2)
 
-For round N≥2 the briefing contains `directive_history` — a list of prior directive outcomes synthesized from the previous round's eval results. Each entry has:
+For round N≥2 the briefing contains `directive_history` — a list of prior directive outcomes synthesized in code from the previous round's `batch_outcomes`. Each entry has:
 
 | Field | Meaning |
 |-------|---------|
@@ -81,9 +81,7 @@ For round N≥2 the briefing contains `directive_history` — a list of prior di
 | `was_attempted` | `true` if the variant was evaluated; `false` if eval failed |
 | `outcome` | `"improved"` / `"no_effect"` / `"regressed"` — direction of quality_delta vs parent |
 
-For each entry in `directive_history`, emit one `DirectiveOutcome` in `outcomes` when calling `record_directive_outcomes_tool`. Copy `prior_directive_id`, `was_attempted`, and `outcome` directly from the briefing entry. Pass the full list as `outcomes=[...]` alongside `child_variants`.
-
-When `directive_history` is empty (round 1 or no prior variants), pass `outcomes=[]`.
+Use `directive_history` to inform which failure modes have already been attempted and what effect they had. Do **not** pass `outcomes` to `record_directive_outcomes_tool` — outcomes are computed automatically and do not need to be echoed back.
 
 ## What the overlay tells you
 

@@ -40,7 +40,9 @@ The orchestrator controls scoping via two tools:
 | `calibration` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `init_search_state_tool`, `register_candidate_tool`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `save_prompt_tool`, `get_child_variants_tool`, `get_edit_directives_tool`, `signal_eval_complete_tool`, `get_pipeline_status` | EMOSA-only — K-seed calibration phase; no `get_prompt_text_tool` / `query_holdout_examples_tool` |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` | |
 
-### `record_directive_outcomes_tool` — `trajectory_id` parameter (EMOSA)
+### `record_directive_outcomes_tool` — recording review result (variants, loop signal, ranking, promotions, regression guards)
+
+Records the Review Agent's output fields (`loop_signal`, `child_variants`, `candidate_ranking`, `promotion_decisions`, `regression_guards`). Directive outcomes (`directive_history_update`) are no longer passed here — they are synthesized wholly in code from `batch_outcomes` by `build_review_briefing_tool`. No `directive_history.json` file is persisted.
 
 When `trajectory_id: int` is passed (EMOSA K-way fanout), the tool writes per-trajectory child variant files (`child_variants_t<N>.json`) instead of the single-slot `child_variants.json` sentinel, and calls `record_trajectory_dispatched` to mark the slot as complete. Variant ids use the format `cv-{round}-t{trajectory_id}-{i}`. Passing `trajectory_id=None` (default) keeps the original single-slot behaviour for all other strategies.
 

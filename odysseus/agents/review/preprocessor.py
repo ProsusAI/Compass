@@ -1065,19 +1065,14 @@ def enrich_confusion_with_history(
     return enriched
 
 
-def _synthesize_directive_outcomes_from_batch(
+def _synthesize_directive_outcomes(
     batch_outcomes: list[BatchOutcome],
-    agent_recorded: list[DirectiveOutcome],
 ) -> list[DirectiveOutcome]:
     """Synthesize DirectiveOutcome entries from batch outcomes.
 
     For each directive_id referenced in a BatchOutcome, produce a
-    DirectiveOutcome derived from the candidate's eval result.  Agent-recorded
-    outcomes (from directive_history.json) take precedence: if the agent
-    already filed an outcome for a directive_id, the synthesized entry is
-    dropped in favour of the agent's version.
+    DirectiveOutcome derived from the candidate's eval result.
     """
-    already_recorded = {o.prior_directive_id for o in agent_recorded}
     synthesized: list[DirectiveOutcome] = []
     for bo in batch_outcomes:
         if not bo.directive_ids:
@@ -1091,8 +1086,6 @@ def _synthesize_directive_outcomes_from_batch(
         else:
             outcome_val = "regressed"
         for did in bo.directive_ids:
-            if did in already_recorded:
-                continue
             synthesized.append(
                 DirectiveOutcome(
                     prior_directive_id=did,
@@ -1210,7 +1203,6 @@ def build_review_briefing(
     score_reports: dict[str, dict[str, Any]],
     historical_reports: dict[int, dict[str, dict[str, Any]]],
     prompt_texts: dict[str, str],
-    directive_history: list[DirectiveOutcome],
     candidate_versions: list[str],
     parent_versions: dict[str, str | None],
     routing_context: RoutingContext | None = None,
@@ -1441,10 +1433,8 @@ def build_review_briefing(
                 )
 
     # Synthesize DirectiveOutcome entries from batch outcomes so round N≥2 briefings
-    # carry prior-directive feedback even when the Review Agent passed outcomes=[].
-    synthesized = _synthesize_directive_outcomes_from_batch(batch_outcomes, directive_history)
-    merged_directive_history = list(directive_history) + synthesized
-    recent_directive_history = merged_directive_history[-15:]
+    # carry prior-directive feedback, computed fully in code from batch_outcomes.
+    recent_directive_history = _synthesize_directive_outcomes(batch_outcomes)[-15:]
 
     backtracking = getattr(search_state, "stagnation_count", 0) >= getattr(
         search_state, "backtrack_threshold", float("inf")

@@ -265,13 +265,18 @@ def _make_run_dir(tmp_path: Path, run_id: str = "run1") -> Path:
     prompts_dir = run_dir / "prompts"
     prompts_dir.mkdir()
     (prompts_dir / "v1.txt").write_text("prompt")
-    (search_dir / "directive_history.json").write_text("[]")
+    (search_dir / "child_variants.json").write_text("[]")
     return run_dir
 
 
 class TestDefenseInDepthPhaseFlip:
-    def test_build_flips_to_review_when_no_artifacts(self, tmp_path: Path) -> None:
-        """If loop_phase='build' but no child_variants.json and no build marker → 'review'."""
+    def test_build_flips_to_cold_start_when_no_artifacts(self, tmp_path: Path) -> None:
+        """If loop_phase='build' but no child_variants.json and no build marker → 'cold_start'.
+
+        child_variants.json doubles as the cold-start sentinel, so its absence means
+        the Review Agent has never completed — _detect_stage_4_phase returns 'cold_start'
+        before reaching the defense-in-depth check.
+        """
         run_dir = _make_run_dir(tmp_path)
         state = {
             "search_state_id": "abc",
@@ -279,9 +284,11 @@ class TestDefenseInDepthPhaseFlip:
             "loop_phase": "build",
         }
         (run_dir / "search" / "search_state.json").write_text(json.dumps(state))
+        # Remove child_variants.json so cold-start sentinel is absent
+        (run_dir / "search" / "child_variants.json").unlink()
 
         phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "review"
+        assert phase == "cold_start"
 
     def test_build_retained_when_build_marker_present(self, tmp_path: Path) -> None:
         """If loop_phase='build' and build_dispatched.json exists → keep 'build'."""

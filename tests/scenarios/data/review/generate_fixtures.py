@@ -561,17 +561,19 @@ def gen_emosa_steady_state():
     trajectories = []
     for i, (wv, quality, cost) in enumerate(zip(weight_vectors, seed_qualities, seed_costs)):
         energy = _tchebycheff_energy(quality, cost, wv, ideal_point, nadir_point)
-        trajectories.append({
-            "trajectory_id": i,
-            "weight_vector": list(wv),
-            "current_solution": f"v_seed_{i}",
-            "current_energy": energy,
-            "current_quality": quality,
-            "current_cost": cost,
-            "acceptance_history": [True],
-            "quality_reference": None,
-            "cost_reference": None,
-        })
+        trajectories.append(
+            {
+                "trajectory_id": i,
+                "weight_vector": list(wv),
+                "current_solution": f"v_seed_{i}",
+                "current_energy": energy,
+                "current_quality": quality,
+                "current_cost": cost,
+                "acceptance_history": [True],
+                "quality_reference": None,
+                "cost_reference": None,
+            }
+        )
 
     # Pending child variants: one per trajectory, children of the seed solutions.
     # Format follows child_variants_t<N>.json pattern used by save_trajectory_child_variants.
@@ -642,6 +644,7 @@ if __name__ == "__main__":
     print("\nDone.")
     print("\nEMOSA calibration state (not written to disk — use gen_emosa_calibration() directly).")
     import json
+
     print(json.dumps(gen_emosa_calibration(), indent=2))
     print("\nEMOSA steady-state fixture (not written to disk — use gen_emosa_steady_state() directly).")
     print(json.dumps(gen_emosa_steady_state(), indent=2))
