@@ -1065,6 +1065,44 @@ def enrich_confusion_with_history(
     return enriched
 
 
+def _synthesize_directive_outcomes_from_batch(
+    batch_outcomes: list[BatchOutcome],
+    agent_recorded: list[DirectiveOutcome],
+) -> list[DirectiveOutcome]:
+    """Synthesize DirectiveOutcome entries from batch outcomes.
+
+    For each directive_id referenced in a BatchOutcome, produce a
+    DirectiveOutcome derived from the candidate's eval result.  Agent-recorded
+    outcomes (from directive_history.json) take precedence: if the agent
+    already filed an outcome for a directive_id, the synthesized entry is
+    dropped in favour of the agent's version.
+    """
+    already_recorded = {o.prior_directive_id for o in agent_recorded}
+    synthesized: list[DirectiveOutcome] = []
+    for bo in batch_outcomes:
+        if not bo.directive_ids:
+            continue
+        was_attempted = bo.eval_status == "scored"
+        delta = bo.quality_delta_vs_parent
+        if delta is None or delta == 0.0:
+            outcome_val: str = "no_effect"
+        elif delta > 0.0:
+            outcome_val = "improved"
+        else:
+            outcome_val = "regressed"
+        for did in bo.directive_ids:
+            if did in already_recorded:
+                continue
+            synthesized.append(
+                DirectiveOutcome(
+                    prior_directive_id=did,
+                    was_attempted=was_attempted,
+                    outcome=outcome_val,  # type: ignore[arg-type]
+                )
+            )
+    return synthesized
+
+
 def _populate_emosa_review_fields(
     search_state: Any,
     elite_set: list[Candidate],
@@ -1402,7 +1440,11 @@ def build_review_briefing(
                     )
                 )
 
-    recent_directive_history = directive_history[-15:]
+    # Synthesize DirectiveOutcome entries from batch outcomes so round N≥2 briefings
+    # carry prior-directive feedback even when the Review Agent passed outcomes=[].
+    synthesized = _synthesize_directive_outcomes_from_batch(batch_outcomes, directive_history)
+    merged_directive_history = list(directive_history) + synthesized
+    recent_directive_history = merged_directive_history[-15:]
 
     backtracking = getattr(search_state, "stagnation_count", 0) >= getattr(
         search_state, "backtrack_threshold", float("inf")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from odysseus.mcp import (
@@ -1145,3 +1146,83 @@ class TestLoadScoreReportDict:
 
         # Must still be a valid ScoreReport
         ScoreReport.model_validate(result)
+
+
+class TestEmptyOutcomeGuardrail:
+    """Tests for the B.3 guardrail: warn when round N≥2 has empty outcomes with prior directives."""
+
+    _RUN_ID = "test-run-guardrail"
+
+    def _write_search_state(self, tmp_path: Path, run_id: str, round_num: int) -> None:
+        search_dir = tmp_path / "outputs" / run_id / "search"
+        search_dir.mkdir(parents=True, exist_ok=True)
+        state_dict = {
+            "search_state_id": run_id,
+            "backend": "anthropic",
+            "algorithm": "emosa",
+            "round": round_num,
+            "elite_set": [],
+            "round_history": [],
+            "stagnation_count": 0,
+            "stagnation_limit": 3,
+            "convergence_limit": 5,
+            "max_rounds": 50,
+            "mutation_mode": "targeted",
+            "converged": False,
+            "next_variant_seq": 1,
+        }
+        (search_dir / "search_state.json").write_text(json.dumps(state_dict), encoding="utf-8")
+
+    def _write_prior_child_variants(self, tmp_path: Path, run_id: str) -> None:
+        search_dir = tmp_path / "outputs" / run_id / "search"
+        search_dir.mkdir(parents=True, exist_ok=True)
+        (search_dir / "child_variants.json").write_text("[]", encoding="utf-8")
+
+    async def test_warns_when_round2_empty_outcomes_with_prior_directives(self, tmp_path: Path, capsys: Any) -> None:
+        """round=2 + outcomes=[] + child_variants.json present → warning on stderr."""
+        self._write_search_state(tmp_path, self._RUN_ID, round_num=2)
+        self._write_prior_child_variants(tmp_path, self._RUN_ID)
+
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                output_dir="outputs",
+            )
+
+        captured = capsys.readouterr()
+        assert "Warning" in captured.err
+        assert "round 2" in captured.err
+        assert "empty outcomes" in captured.err
+
+    async def test_no_warning_for_round1_empty_outcomes(self, tmp_path: Path, capsys: Any) -> None:
+        """round=1 + outcomes=[] → no warning (no prior directives)."""
+        self._write_search_state(tmp_path, self._RUN_ID + "-r1", round_num=1)
+
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID + "-r1",
+                outcomes=[],
+                output_dir="outputs",
+            )
+
+        captured = capsys.readouterr()
+        assert "Warning" not in captured.err
+
+    async def test_no_warning_when_outcomes_non_empty(self, tmp_path: Path, capsys: Any) -> None:
+        """round=2 + non-empty outcomes → no warning."""
+        self._write_search_state(tmp_path, self._RUN_ID + "-nonempty", round_num=2)
+        self._write_prior_child_variants(tmp_path, self._RUN_ID + "-nonempty")
+
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID + "-nonempty",
+                outcomes=[_OUTCOME],
+                output_dir="outputs",
+            )
+
+        captured = capsys.readouterr()
+        assert "Warning" not in captured.err

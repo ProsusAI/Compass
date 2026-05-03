@@ -413,6 +413,24 @@ async def record_directive_outcomes_tool(
     existing = load_directive_history(run_id, output_dir=out)
     save_directive_history(run_id, existing + parsed, output_dir=out)
 
+    # Guardrail: warn when round N≥2 outcomes are empty despite prior-round directives.
+    if not parsed:
+        with contextlib.suppress(Exception):
+            state = _load_state(run_id, out)
+            if state.round >= 2:
+                search_dir = out / run_id / "search"
+                has_prior_directives = any(search_dir.glob("child_variants*.json"))
+                if has_prior_directives:
+                    import sys
+
+                    prior_count = sum(1 for _ in search_dir.glob("child_variants*.json"))
+                    print(
+                        f"Warning: round {state.round} record_directive_outcomes called with"
+                        f" empty outcomes despite {prior_count} prior-round directives"
+                        " — feedback loop may be broken",
+                        file=sys.stderr,
+                    )
+
     # When decomposed params are provided, assemble and persist an audit ReviewResult.
     # When only review_result is provided, persist it as-is (legacy path).
     if review_result is None and any([candidate_ranking, promotion_decisions, regression_guards]):
