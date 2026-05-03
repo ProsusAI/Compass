@@ -314,6 +314,8 @@ class ChildVariant(BaseModel):
     hypothesis: str
     directives: list[EditDirective]
     target_confusion_cell: str | None = None  # Format: "true_route/predicted_route"
+    # EMOSA: which trajectory produced this variant; stamped by record_directive_outcomes_tool
+    trajectory_id: int | None = None
 
 
 class PromotionDecision(BaseModel):

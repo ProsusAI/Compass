@@ -144,7 +144,7 @@ Execute on round 2 and every subsequent round.
 
 5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="<variant_id>", content=<child prompt text>)` for each child. Search state is persisted under `outputs/<run_id>/search/`.
 6. **Evaluate each child.** For each child prompt:
-   - Call `register_candidate_tool(run_id=run_id, prompt_version="<variant_id>", parent_version=variant.parent_version, example_ids=[<complete list of example IDs in this child>])`. The `example_ids` list must contain every example ID in the child — the full set, not just changed examples.
+   - Call `register_candidate_tool(run_id=run_id, prompt_version="<variant_id>", parent_version=variant.parent_version, example_ids=[<complete list of example IDs in this child>])`. The `example_ids` list must contain every example ID in the child — the full set, not just changed examples. Each variant carries a `trajectory_id` field (EMOSA only); forward it unchanged into `run_batch_eval` candidates and `register_candidate_tool` so the trajectory ownership is preserved through registration.
    - Call `run_eval(prompt_version="<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
    - Extract `quality_score` and `cost` from the ScoreReport.
    - Call `record_eval_result_tool(run_id, "<variant_id>", quality_score, cost)`.

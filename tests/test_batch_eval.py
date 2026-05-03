@@ -332,6 +332,58 @@ async def test_active_evals_populated_before_gather(tmp_run: tuple[str, Path]) -
     for captured in captured_states:
         assert len(captured) >= 1
 
+
+# ---------------------------------------------------------------------------
+# trajectory_id plumbing through BatchEvalCandidate → register_candidate
+# ---------------------------------------------------------------------------
+
+
+def test_batch_eval_candidate_has_trajectory_id_field() -> None:
+    """BatchEvalCandidate has a trajectory_id field defaulting to None."""
+    c = BatchEvalCandidate(prompt_version="v1")
+    assert hasattr(c, "trajectory_id")
+    assert c.trajectory_id is None
+
+
+def test_batch_eval_candidate_trajectory_id_roundtrips() -> None:
+    """BatchEvalCandidate.model_validate with trajectory_id=1 round-trips correctly."""
+    data = {"prompt_version": "v1", "parent_version": None, "example_ids": [], "trajectory_id": 1}
+    c = BatchEvalCandidate.model_validate(data)
+    assert c.trajectory_id == 1
+    dumped = c.model_dump()
+    assert dumped["trajectory_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_batch_eval_forwards_trajectory_id_to_register_candidate(tmp_run: tuple[str, Path]) -> None:
+    """run_batch_eval_impl forwards trajectory_id from BatchEvalCandidate to register_candidate."""
+    run_id, tmp_path = tmp_run
+    candidates = [
+        BatchEvalCandidate(
+            prompt_version="v2",
+            parent_version="v1",
+            example_ids=["e1"],
+            trajectory_id=3,
+        )
+    ]
+    mock_report = _make_mock_run_report(quality_score=0.9)
+
+    with patch(_SINGLE_EVAL, new=AsyncMock(return_value=mock_report)):
+        await run_batch_eval_impl(run_id, candidates, output_dir=tmp_path)
+
+    # After run, candidate should have trajectory_id=3 in pending/archive
+    pending = _load_pending(run_id, tmp_path)
+    # If candidate has moved to complete, check archive instead
+    from odysseus.agents.prompt_builder.search_ops import _load_archive
+    archive = _load_archive(run_id, tmp_path)
+    all_candidates = pending + [
+        type("C", (), {"prompt_version": e["prompt_version"], "trajectory_id": e.get("trajectory_id")})()
+        for e in archive
+    ]
+    v2 = next((c for c in all_candidates if c.prompt_version == "v2"), None)
+    assert v2 is not None
+    assert v2.trajectory_id == 3
+
     state = _load_state(run_id, tmp_path)
     assert state.active_evals == []
 

@@ -282,6 +282,7 @@ def register_candidate(
     example_ids: list[str] | None = None,
     output_dir: Path | None = None,
     eval_status: Literal["pending", "running", "complete", "failed"] | None = "pending",
+    trajectory_id: int | None = None,
 ) -> SearchState:
     """Register a new candidate for the current round.
 
@@ -324,7 +325,8 @@ def register_candidate(
             f"pending={prompt_version in pending_versions})"
         )
 
-    trajectory_id = _derive_trajectory_id(prompt_version, run_id, output_dir)
+    if trajectory_id is None:
+        trajectory_id = _derive_trajectory_id(prompt_version, run_id, output_dir)
 
     candidate = Candidate(
         prompt_version=prompt_version,

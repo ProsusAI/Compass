@@ -168,6 +168,7 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
             "quality_score": 0.0,
             "iteration_introduced": 0,
             "eval_status": "scored",
+            "trajectory_id": None,
         }
 
     candidates: list[dict] = []

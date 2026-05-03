@@ -115,6 +115,7 @@ async def register_candidate_tool(
     prompt_version: str,
     parent_version: str | None = None,
     example_ids: list[str] | None = None,
+    trajectory_id: int | None = None,
 ) -> str:
     """[Stage 4: Refinement Loop] Register a new candidate prompt version for the current search round.
 
@@ -128,6 +129,7 @@ async def register_candidate_tool(
         parent_version: Parent prompt version, if any. Round-1 / cold-start candidates
             use the canonical "base" (matches ReviewBriefing.initial_parent_version).
         example_ids: Holdout example IDs used as few-shots in this prompt version (backend tracking only).
+        trajectory_id: EMOSA trajectory id; when omitted, derived from per-trajectory variant files.
 
     Returns:
         JSON object confirming the registered prompt version.
@@ -138,6 +140,7 @@ async def register_candidate_tool(
             prompt_version=prompt_version,
             parent_version=parent_version,
             example_ids=example_ids,
+            trajectory_id=trajectory_id,
         )
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
