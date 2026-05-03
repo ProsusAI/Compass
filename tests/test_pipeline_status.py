@@ -4,8 +4,6 @@ from pathlib import Path
 
 from odysseus.agents.pipeline.status import (
     _detect_stage_4_phase,
-    _ensure_stage4_search_state,
-    _next_action_for_stage_4,
     _read_rerun_config,
     discover_runs,
     get_pipeline_status,
@@ -248,15 +246,14 @@ class TestSubagentInstruction:
         assert "stratified_split_tool" in instr
 
     def test_stage4_has_subagent_instruction(self, tmp_path: Path) -> None:
-        """Stage 4 initial dispatch has a subagent instruction.
-        On EMOSA branch, pre-init routes through the EMOSA path (review phase)."""
+        """Stage 4 initial dispatch has a subagent instruction (cold-start on trunk)."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "<HARD_STOP>" in instr
         assert "<stage_system_prompt>" in instr
-        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
     def test_stage4_available_tools_correct(self, tmp_path: Path) -> None:
         """Stage 4 cold-start available_tools should include review tools."""
@@ -298,25 +295,23 @@ class TestSubagentInstruction:
 
 
 class TestStage4ThreePhaseDetection:
-    """Stage 4 phase detection: EMOSA branch routes all fresh state through EMOSA sub-routine."""
+    """Stage 4 phase detection: trunk uses hill-climb three-phase logic."""
 
     def test_cold_start_when_no_files(self, tmp_path: Path) -> None:
-        # On EMOSA branch, _ensure_stage4_search_state pre-inits search_state.json
-        # with algorithm='emosa' and loop_phase='review'. The EMOSA sub-routine
-        # then returns 'review' rather than hill-climb's 'cold_start'.
+        # On trunk, _ensure_stage4_search_state fails (RuntimeError, caught and logged),
+        # so no search_state.json is created → phase detector returns 'cold_start'.
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
     def test_build_v1_after_cold_start(self, tmp_path: Path) -> None:
-        # On EMOSA branch there is no 'build_v1' phase. After directive_history
-        # exists and pre-init runs, the EMOSA sub-routine reads loop_phase='review'
-        # from the freshly created search_state.json and returns 'review'.
+        # After cold-start: child_variants.json exists but no v1 prompt.
+        # Phase detector returns 'build_v1' → prompt builder is dispatched.
         _setup_stage4_cold_start_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
+        assert result["activate_prompt"] == "odysseus_prompt_builder"
 
     def test_normal_loop_review_phase(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
@@ -541,11 +536,10 @@ class TestStage4RerunMode:
         assert "build_review_briefing_tool" not in tools
 
     def test_normal_stage4_unaffected_without_rerun_config(self, tmp_path: Path) -> None:
-        """Without rerun_config.json, Stage 4 uses EMOSA phase detection.
-        Pre-init creates search_state.json with algorithm='emosa', loop_phase='review'."""
+        """Without rerun_config.json, Stage 4 uses normal cold-start detection on trunk."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
+        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
 
 class TestStage5FinalReport:
@@ -730,13 +724,7 @@ def _setup_phase3_run(
 
 
 class TestDetectStage4PhasePostColdstart:
-    """_detect_stage_4_phase returns 'review_post_coldstart' for beam round-1 review."""
-
-    def test_beam_round1_review_returns_post_coldstart(self, tmp_path: Path) -> None:
-        """loop_phase='review', round=1, algorithm='beam' → 'review_post_coldstart'."""
-        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
-        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "review_post_coldstart"
+    """_detect_stage_4_phase post-coldstart phase detection."""
 
     def test_hill_climb_round1_review_returns_review(self, tmp_path: Path) -> None:
         """Gate: algorithm != 'beam' → returns 'review', not 'review_post_coldstart'."""
@@ -759,142 +747,7 @@ class TestDetectStage4PhasePostColdstart:
         assert phase == "build"
 
 
-class TestNextActionForStage4PostColdstart:
-    """_next_action_for_stage_4 returns correct values for 'review_post_coldstart' phase."""
-
-    def test_post_coldstart_prompt_name(self, tmp_path: Path) -> None:
-        """review_post_coldstart phase returns 'odysseus_review_agent_post_coldstart' prompt."""
-        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
-        _action, _tools, prompts, _instr, _algo = _next_action_for_stage_4(run_dir)
-        assert "odysseus_review_agent_post_coldstart" in prompts
-
-    def test_post_coldstart_instruction_contains_hard_stop(self, tmp_path: Path) -> None:
-        """review_post_coldstart instruction contains HARD_STOP and POST-COLDSTART MODE."""
-        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
-        _action, _tools, _prompts, instr, _algo = _next_action_for_stage_4(run_dir)
-        assert "<HARD_STOP>" in instr
-        assert "POST-COLDSTART MODE" in instr
-
-    def test_post_coldstart_action_text(self, tmp_path: Path) -> None:
-        """review_post_coldstart action text mentions protected parent."""
-        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
-        action, _tools, _prompts, _instr, _algo = _next_action_for_stage_4(run_dir)
-        assert "protected parent" in action
-
-
-# ---------------------------------------------------------------------------
-# _ensure_stage4_search_state tests
-# ---------------------------------------------------------------------------
-
-_MOCK_BACKEND_YAML = (
-    "model: mock-model\n"
-    "provider: mock_echo\n"
-    "requests_per_minute: 100\n"
-    "tokens_per_minute: 100000\n"
-    "pricing:\n"
-    "  input_cost_per_million_tokens: 0.0\n"
-    "  cached_cost_per_million_tokens: 0.0\n"
-    "  output_cost_per_million_tokens: 0.0\n"
-)
-
-
-class TestEnsureStage4SearchState:
-    """_ensure_stage4_search_state creates search_state.json when absent, is a no-op otherwise."""
-
-    def _make_run_dir(self, base: Path, run_id: str = "r1") -> Path:
-        run_dir = base / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
-        return run_dir
-
-    def _make_project_dir_with_backend(self, base: Path) -> Path:
-        """Create a minimal project dir with a priced mock backend."""
-        (base / "backends").mkdir(parents=True, exist_ok=True)
-        (base / "backends" / "mock.yaml").write_text(_MOCK_BACKEND_YAML)
-        return base
-
-    def test_noop_when_search_state_exists(self, tmp_path: Path) -> None:
-        """If search_state.json already exists, the function must not overwrite it."""
-        run_dir = self._make_run_dir(tmp_path)
-        search = run_dir / "search"
-        search.mkdir(parents=True, exist_ok=True)
-        existing = {"algorithm": "hill_climb", "backend": "custom", "round": 3}
-        (search / "search_state.json").write_text(json.dumps(existing))
-
-        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
-
-        data = json.loads((search / "search_state.json").read_text())
-        assert data["algorithm"] == "hill_climb"
-        assert data["backend"] == "custom"
-        assert data["round"] == 3
-
-    def test_creates_search_state_when_absent(self, tmp_path: Path) -> None:
-        """First call should write search_state.json with beam algorithm."""
-        run_dir = self._make_run_dir(tmp_path)
-        self._make_project_dir_with_backend(tmp_path)
-
-        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
-
-        search_state_path = run_dir / "search" / "search_state.json"
-        assert search_state_path.is_file()
-        data = json.loads(search_state_path.read_text())
-        assert data["algorithm"] == "beam"
-        assert data["algorithm_state"] == {"beam_width": 3}
-
-    def test_created_state_uses_priced_backend(self, tmp_path: Path) -> None:
-        """Backend is resolved from backends/*.yaml (first priced one)."""
-        run_dir = self._make_run_dir(tmp_path)
-        self._make_project_dir_with_backend(tmp_path)
-
-        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
-
-        data = json.loads((run_dir / "search" / "search_state.json").read_text())
-        assert data["backend"] == "mock"
-
-    def test_created_state_backend_empty_when_no_backends(self, tmp_path: Path) -> None:
-        """When backends/ dir is absent, backend falls back to empty string."""
-        run_dir = self._make_run_dir(tmp_path)
-        # No backends dir created
-
-        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
-
-        data = json.loads((run_dir / "search" / "search_state.json").read_text())
-        assert data["backend"] == ""
-
-    def test_reads_primary_metric_name_from_routing_context(self, tmp_path: Path) -> None:
-        """primary_metric_name is read from routing_context.json when available."""
-        run_dir = self._make_run_dir(tmp_path)
-        validation = run_dir / "validation"
-        validation.mkdir(parents=True, exist_ok=True)
-        (validation / "routing_context.json").write_text(json.dumps({"primary_metric_name": "f1_macro"}))
-
-        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
-
-        data = json.loads((run_dir / "search" / "search_state.json").read_text())
-        assert data["primary_metric_name"] == "f1_macro"
-
-    def test_primary_metric_name_none_when_not_in_routing_context(self, tmp_path: Path) -> None:
-        """primary_metric_name is None when routing_context.json lacks the field."""
-        run_dir = self._make_run_dir(tmp_path)
-        validation = run_dir / "validation"
-        validation.mkdir(parents=True, exist_ok=True)
-        # routing_context.json exists but has no primary_metric_name
-        (validation / "routing_context.json").write_text(json.dumps({"domain": "routing"}))
-
-        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
-
-        data = json.loads((run_dir / "search" / "search_state.json").read_text())
-        assert data["primary_metric_name"] is None
-
-    def test_detect_stage_4_phase_uses_emosa_path_after_pre_init(self, tmp_path: Path) -> None:
-        """After pre-init on the EMOSA branch, _detect_stage_4_phase routes through the EMOSA
-        sub-routine (algorithm='emosa' in search_state.json), not the hill-climb cold_start path."""
-        run_dir = self._make_run_dir(tmp_path)
-        self._make_project_dir_with_backend(tmp_path)
-
-        # Pre-init creates search_state.json with algorithm='emosa', loop_phase='review'
-        _ensure_stage4_search_state(run_dir, project_dir=tmp_path)
-        assert (run_dir / "search" / "search_state.json").is_file()
-
-        # EMOSA sub-routine trusts loop_phase directly; fresh state has loop_phase='review'
-        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "review"  # not 'cold_start' — EMOSA path is taken
+# TestNextActionForStage4PostColdstart removed — post-coldstart is a leaf-branch feature.
+# TestEnsureStage4SearchState removed — _ensure_stage4_search_state calls init_search_state
+# which raises RuntimeError on the pipeline trunk (_BRANCH_ALGORITHM == "__unset__").
+# These tests live on the leaf branches (feat/generalize-{hill_climb,beam,emosa,sms_emoa}).
