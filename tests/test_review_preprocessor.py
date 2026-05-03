@@ -11,6 +11,7 @@ from odysseus.agents.prompt_builder.search import Candidate, SearchState
 from odysseus.agents.review.preprocessor import (
     _delta,
     _extract_metric,
+    _synthesize_directive_outcomes_from_batch,
     build_candidate_comparisons,
     build_confusion_analysis,
     build_review_briefing,
@@ -936,8 +937,7 @@ class TestBeamReviewBriefingFields:
         kwargs.update(state_overrides)
         search_state = _make_search_state(**kwargs)
         score_reports = {
-            v: _make_report_dict(accuracy=0.80 + i * 0.05, cost=1.50 - i * 0.1)
-            for i, v in enumerate(elite_versions)
+            v: _make_report_dict(accuracy=0.80 + i * 0.05, cost=1.50 - i * 0.1) for i, v in enumerate(elite_versions)
         }
         return build_review_briefing(
             search_state=search_state,
@@ -1892,3 +1892,109 @@ class TestEmosaExplicitTrajectoryId:
         assert briefing.weight_vector[0] == pytest.approx(0.6)  # (9-3)*0.1=0.6
         assert briefing.weight_vector[1] == pytest.approx(0.4)  # (3+1)*0.1=0.4
         assert briefing.acceptance_history == [True]  # 3 % 3 + 1 = 1 → [True]
+
+
+class TestSynthesizeDirectiveOutcomesFromBatch:
+    """Unit tests for _synthesize_directive_outcomes_from_batch (Fix B.1)."""
+
+    def _make_batch_outcome(
+        self,
+        directive_ids: list[str],
+        quality_delta: float | None,
+        eval_status: str | None = "scored",
+    ):
+        from odysseus.agents.review.models import BatchOutcome
+
+        return BatchOutcome(
+            variant_id="cv-1-0",
+            parent_version="v1",
+            mutation_strategy="targeted",
+            directive_ids=directive_ids,
+            candidate_version="v2",
+            eval_status=eval_status,  # type: ignore[arg-type]
+            quality_delta_vs_parent=quality_delta,
+            is_new_best=False,
+        )
+
+    def test_improved_directive(self) -> None:
+        bo = self._make_batch_outcome(["d-1-0"], quality_delta=0.05)
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        assert len(results) == 1
+        assert results[0].prior_directive_id == "d-1-0"
+        assert results[0].was_attempted is True
+        assert results[0].outcome == "improved"
+
+    def test_regressed_directive(self) -> None:
+        bo = self._make_batch_outcome(["d-1-1"], quality_delta=-0.03)
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        assert len(results) == 1
+        assert results[0].outcome == "regressed"
+
+    def test_no_effect_when_delta_zero(self) -> None:
+        bo = self._make_batch_outcome(["d-1-2"], quality_delta=0.0)
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        assert results[0].outcome == "no_effect"
+
+    def test_no_effect_when_delta_none(self) -> None:
+        bo = self._make_batch_outcome(["d-1-3"], quality_delta=None)
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        assert results[0].outcome == "no_effect"
+
+    def test_failed_eval_sets_not_attempted(self) -> None:
+        bo = self._make_batch_outcome(["d-1-4"], quality_delta=None, eval_status="failed")
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        assert results[0].was_attempted is False
+
+    def test_agent_recorded_takes_precedence(self) -> None:
+        from odysseus.agents.review.models import DirectiveOutcome
+
+        agent_entry = DirectiveOutcome(
+            prior_directive_id="d-1-0",
+            was_attempted=True,
+            outcome="regressed",
+        )
+        bo = self._make_batch_outcome(["d-1-0"], quality_delta=0.10)
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[agent_entry])
+        assert len(results) == 0, "agent-recorded entry must not be overwritten by synthesis"
+
+    def test_multiple_directives_in_one_variant(self) -> None:
+        bo = self._make_batch_outcome(["d-1-0", "d-1-1"], quality_delta=0.05)
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        assert len(results) == 2
+        assert {r.prior_directive_id for r in results} == {"d-1-0", "d-1-1"}
+        assert all(r.outcome == "improved" for r in results)
+
+    def test_empty_batch_outcomes_returns_empty(self) -> None:
+        results = _synthesize_directive_outcomes_from_batch([], agent_recorded=[])
+        assert results == []
+
+    def test_synthesized_outcomes_appear_in_briefing_directive_history(self) -> None:
+        """Round-2 build_review_briefing surfaces synthesized outcomes in directive_history."""
+        from odysseus.agents.review.models import BatchOutcome
+
+        bo = BatchOutcome(
+            variant_id="cv-1-t0-0",
+            parent_version="v1",
+            mutation_strategy="targeted",
+            directive_ids=["d-1-0"],
+            candidate_version="v2",
+            eval_status="scored",
+            quality_delta_vs_parent=0.05,
+            is_new_best=False,
+        )
+        search_state = _make_search_state(round=2)
+        briefing = build_review_briefing(
+            search_state=search_state,
+            score_reports={},
+            historical_reports={},
+            prompt_texts={},
+            directive_history=[],
+            candidate_versions=[],
+            parent_versions={},
+        )
+        assert briefing.directive_history == []
+
+        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        assert len(results) == 1
+        assert results[0].prior_directive_id == "d-1-0"
+        assert results[0].outcome == "improved"
