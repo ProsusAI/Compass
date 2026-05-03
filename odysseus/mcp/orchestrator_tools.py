@@ -144,12 +144,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
                     # Strategy-aware assembly: base + phase-base + strategy overlay
                     from odysseus.mcp.prompts import assemble_review_prompt
 
-                    if activate_prompt == "odysseus_review_agent_cold_start":
-                        phase = "cold_start"
-                    elif activate_prompt == "odysseus_review_agent_post_coldstart":
-                        phase = "post_coldstart"
-                    else:
-                        phase = "iterative"
+                    phase = "cold_start" if activate_prompt == "odysseus_review_agent_cold_start" else "iterative"
                     system_prompt = assemble_review_prompt(algorithm, phase)
                 elif lookup_key in _STAGE_PROMPT_MAP:
                     system_prompt = _load_text(_STAGE_PROMPT_MAP[lookup_key])

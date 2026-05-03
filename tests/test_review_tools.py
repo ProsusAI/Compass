@@ -66,7 +66,6 @@ class TestRecordDirectiveOutcomesDecomposed:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[_OUTCOME],
                 loop_signal=_LOOP_SIGNAL,
                 child_variants=_CHILD_VARIANTS,
                 candidate_ranking=_CANDIDATE_RANKING,
@@ -76,7 +75,8 @@ class TestRecordDirectiveOutcomesDecomposed:
             )
 
         result = json.loads(result_json)
-        assert result["recorded"] == 1
+        # No "recorded" key — outcomes are synthesized in code, not passed by agent
+        assert "recorded" not in result
 
         review_result_path = tmp_path / "outputs" / _RUN_ID / "search" / "review_result.json"
         assert review_result_path.exists(), "review_result.json should be written for decomposed params"
@@ -86,7 +86,8 @@ class TestRecordDirectiveOutcomesDecomposed:
         assert saved["regression_guards"] == _REGRESSION_GUARDS
         assert saved["loop_signal"] == _LOOP_SIGNAL
         assert saved["child_variants"] == _CHILD_VARIANTS
-        assert len(saved["directive_history_update"]) == 1
+        # directive_history_update is no longer written to the audit record
+        assert "directive_history_update" not in saved
 
     async def test_legacy_review_result_path_persists(self, tmp_path: Path) -> None:
         """Passing review_result blob (legacy) also writes review_result.json."""
@@ -96,13 +97,11 @@ class TestRecordDirectiveOutcomesDecomposed:
             "regression_guards": _REGRESSION_GUARDS,
             "loop_signal": _LOOP_SIGNAL,
             "child_variants": _CHILD_VARIANTS,
-            "directive_history_update": [_OUTCOME],
         }
         with _patch_project_dir(tmp_path):
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[_OUTCOME],
                 loop_signal=_LOOP_SIGNAL,
                 child_variants=_CHILD_VARIANTS,
                 review_result=legacy_blob,
@@ -110,7 +109,7 @@ class TestRecordDirectiveOutcomesDecomposed:
             )
 
         result = json.loads(result_json)
-        assert result["recorded"] == 1
+        assert "recorded" not in result
 
         review_result_path = tmp_path / "outputs" / _RUN_ID / "search" / "review_result.json"
         assert review_result_path.exists()
@@ -126,14 +125,12 @@ class TestRecordDirectiveOutcomesDecomposed:
             "candidate_ranking": _CANDIDATE_RANKING,
             "promotion_decisions": _PROMOTION_DECISIONS,
             "regression_guards": _REGRESSION_GUARDS,
-            "directive_history_update": [],
         }
 
         with _patch_project_dir(tmp_path):
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=run_decomposed,
-                outcomes=[],
                 candidate_ranking=_CANDIDATE_RANKING,
                 promotion_decisions=_PROMOTION_DECISIONS,
                 regression_guards=_REGRESSION_GUARDS,
@@ -142,7 +139,6 @@ class TestRecordDirectiveOutcomesDecomposed:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=run_legacy,
-                outcomes=[],
                 review_result=legacy_blob,
                 output_dir="outputs",
             )
@@ -163,7 +159,6 @@ class TestRecordDirectiveOutcomesDecomposed:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[_OUTCOME],
                 output_dir="outputs",
             )
 
@@ -182,7 +177,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[_OUTCOME],
                 child_variants=_CHILD_VARIANTS,
                 trajectory_id=2,
                 output_dir="outputs",
@@ -205,7 +199,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[_OUTCOME],
                 child_variants=_CHILD_VARIANTS,
                 trajectory_id=2,
                 output_dir="outputs",
@@ -222,7 +215,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[_OUTCOME],
                 child_variants=[{**_CHILD_VARIANTS[0]}],  # no variant_id set
                 trajectory_id=2,
                 output_dir="outputs",
@@ -240,13 +232,67 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID + "-single",
-                outcomes=[_OUTCOME],
                 child_variants=_CHILD_VARIANTS,
                 output_dir="outputs",
             )
 
         single_slot = tmp_path / "outputs" / (self._RUN_ID + "-single") / "search" / "child_variants.json"
         assert single_slot.exists(), "child_variants.json must be written for single-slot path"
+
+    async def test_trajectory_id_stamped_on_persisted_variants(self, tmp_path: Path) -> None:
+        """record_directive_outcomes_tool with trajectory_id=3 persists variants each carrying trajectory_id=3."""
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                child_variants=_CHILD_VARIANTS,
+                trajectory_id=3,
+                output_dir="outputs",
+            )
+
+        per_traj = tmp_path / "outputs" / self._RUN_ID / "search" / "child_variants_t3.json"
+        assert per_traj.exists(), "child_variants_t3.json must exist"
+        entries = json.loads(per_traj.read_text())
+        assert len(entries) == 1
+        assert entries[0]["trajectory_id"] == 3, f"Expected trajectory_id=3, got {entries[0].get('trajectory_id')}"
+
+
+class TestChildVariantTrajectoryIdField:
+    """Tests for the trajectory_id field on ChildVariant model."""
+
+    def test_child_variant_has_trajectory_id_field_defaulting_none(self) -> None:
+        """ChildVariant has trajectory_id field defaulting to None."""
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(
+            hypothesis="test",
+            directives=[],
+        )
+        assert hasattr(cv, "trajectory_id")
+        assert cv.trajectory_id is None
+
+    def test_child_variant_trajectory_id_roundtrips(self) -> None:
+        """ChildVariant.model_dump includes trajectory_id and round-trips via model_validate."""
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(
+            hypothesis="test",
+            directives=[],
+            trajectory_id=4,
+        )
+        dumped = cv.model_dump(mode="json")
+        assert dumped["trajectory_id"] == 4
+        loaded = ChildVariant.model_validate(dumped)
+        assert loaded.trajectory_id == 4
+
+    def test_child_variant_model_copy_with_trajectory_id(self) -> None:
+        """model_copy(update={'trajectory_id': N}) stamps trajectory_id correctly."""
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(hypothesis="test", directives=[])
+        stamped = cv.model_copy(update={"trajectory_id": 2})
+        assert stamped.trajectory_id == 2
+        assert cv.trajectory_id is None  # original unchanged
 
 
 class TestChildVariantNoParentPreference:
@@ -379,7 +425,6 @@ class TestVariantIdSequentialCounter:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=two_variants,
                 output_dir="outputs",
             )
@@ -396,14 +441,12 @@ class TestVariantIdSequentialCounter:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[self._CHILD_VARIANT_RAW],
                 output_dir="outputs",
             )
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[
                     dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant A"),
                     dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant B"),
@@ -425,14 +468,12 @@ class TestVariantIdSequentialCounter:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="V2")],
                 output_dir="outputs",
             )
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[dict(self._CHILD_VARIANT_RAW, hypothesis="V3")],
                 output_dir="outputs",
             )
@@ -809,168 +850,6 @@ class TestBuildReviewBriefingToolSelector:
 
 
 # ---------------------------------------------------------------------------
-# B2: build_review_briefing_tool auto-fires calibration for EMOSA
-# ---------------------------------------------------------------------------
-
-
-def _make_emosa_state_dict(run_id: str, annealing_state: dict) -> dict:
-    """Build a minimal SearchState dict for an EMOSA run."""
-    return {
-        "search_state_id": run_id,
-        "backend": "anthropic",
-        "round": 0,
-        "elite_set": [],
-        "round_history": [],
-        "stagnation_count": 0,
-        "stagnation_limit": 3,
-        "convergence_limit": 5,
-        "max_rounds": 50,
-        "mutation_mode": "targeted",
-        "converged": False,
-        "algorithm": "emosa",
-        "algorithm_state": annealing_state,
-        "loop_phase": "review",
-    }
-
-
-def _write_pending_candidates(tmp_path: Path, run_id: str, candidates: list[dict]) -> None:
-    """Write pending_candidates.json for the given run."""
-    search_dir = tmp_path / "outputs" / run_id / "search"
-    search_dir.mkdir(parents=True, exist_ok=True)
-    (search_dir / "pending_candidates.json").write_text(json.dumps(candidates), encoding="utf-8")
-
-
-class TestBuildReviewBriefingAutoFiresCalibration:
-    """B2: build_review_briefing_tool auto-fires _calibration_complete on first review entry."""
-
-    _RUN_ID = "test-emosa-autocalib"
-
-    def _make_scored_candidates(self, run_id: str, num: int = 5) -> list[dict]:
-        """Build K scored pending candidates that form a Pareto front (none dominated).
-
-        Trade-off: higher quality → higher cost, so no single candidate dominates another.
-        """
-        return [
-            {
-                "prompt_version": f"v{i + 1}",
-                "parent_version": None,
-                "quality_score": 0.7 + i * 0.03,  # higher quality …
-                "cost": 0.01 + i * 0.02,  # … but also higher cost
-                "round_introduced": 1,
-                "eval_status": "complete",
-                "example_ids": [],
-            }
-            for i in range(num)
-        ]
-
-    async def test_build_review_briefing_auto_fires_calibration(self, tmp_path: Path) -> None:
-        """With K=5 scored pending and empty elite_set, calibration fires automatically.
-
-        Post-call state must have round==1, len(elite_set)==5, algorithm_state["phase"]=="search".
-        """
-        from odysseus.agents.prompt_builder.annealing import AnnealingState
-        from odysseus.agents.prompt_builder.search_ops import (
-            _build_emosa_initial_state,
-            get_search_state,
-        )
-
-        run_id = self._RUN_ID + "-fires"
-        annealing_state = _build_emosa_initial_state(num_trajectories=5)
-        state_dict = _make_emosa_state_dict(run_id, annealing_state)
-        _write_state(tmp_path, run_id, state_dict)
-        candidates = self._make_scored_candidates(run_id, num=5)
-        _write_pending_candidates(tmp_path, run_id, candidates)
-
-        with _patch_project_dir(tmp_path):
-            await build_review_briefing_tool(
-                ctx=None,
-                run_id=run_id,
-                output_dir="outputs",
-            )
-
-        post_state = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
-        assert post_state.round == 1, f"Expected round==1, got {post_state.round}"
-        assert len(post_state.elite_set) == 5, f"Expected 5 elite entries, got {len(post_state.elite_set)}"
-        annealing = AnnealingState.model_validate(post_state.algorithm_state)
-        assert annealing.phase == "search", f"Expected phase=='search', got {annealing.phase}"
-
-    async def test_build_review_briefing_auto_fire_idempotent(self, tmp_path: Path) -> None:
-        """After first call seeds elite_set, calling again does NOT re-trigger calibration.
-
-        round stays at 1 and elite_set stays at 5 entries after the second call.
-        """
-        from odysseus.agents.prompt_builder.search_ops import (
-            _build_emosa_initial_state,
-            get_search_state,
-        )
-
-        run_id = self._RUN_ID + "-idempotent"
-        annealing_state = _build_emosa_initial_state(num_trajectories=5)
-        state_dict = _make_emosa_state_dict(run_id, annealing_state)
-        _write_state(tmp_path, run_id, state_dict)
-        candidates = self._make_scored_candidates(run_id, num=5)
-        _write_pending_candidates(tmp_path, run_id, candidates)
-
-        with _patch_project_dir(tmp_path):
-            # First call: should auto-fire calibration
-            await build_review_briefing_tool(
-                ctx=None,
-                run_id=run_id,
-                output_dir="outputs",
-            )
-
-            post_first = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
-            assert post_first.round == 1
-            assert len(post_first.elite_set) == 5
-
-            # Second call: elite_set is non-empty → guard short-circuits, round stays at 1
-            await build_review_briefing_tool(
-                ctx=None,
-                run_id=run_id,
-                output_dir="outputs",
-            )
-
-        post_second = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
-        assert post_second.round == 1, f"Expected round to stay at 1, got {post_second.round}"
-        assert len(post_second.elite_set) == 5, (
-            f"Expected elite_set to stay at 5 entries, got {len(post_second.elite_set)}"
-        )
-
-    async def test_build_review_briefing_skips_calibration_when_elite_set_populated(self, tmp_path: Path) -> None:
-        """If elite_set is already populated, calibration guard is skipped (non-EMOSA path)."""
-        from odysseus.agents.prompt_builder.search_ops import get_search_state
-
-        run_id = self._RUN_ID + "-skip"
-        # State already has elite_set entries (post-calibration shape)
-        state_dict = _make_state_dict(
-            run_id,
-            elite_set=[
-                {
-                    "prompt_version": "v1",
-                    "parent_version": None,
-                    "quality_score": 0.80,
-                    "cost": 1.0,
-                    "round_introduced": 1,
-                }
-            ],
-            round_=1,
-        )
-        state_dict["algorithm"] = "emosa"
-        _write_state(tmp_path, run_id, state_dict)
-
-        with _patch_project_dir(tmp_path):
-            await build_review_briefing_tool(
-                ctx=None,
-                run_id=run_id,
-                output_dir="outputs",
-            )
-
-        post_state = get_search_state(run_id=run_id, output_dir=tmp_path / "outputs")
-        # round should NOT have advanced beyond what calibration would do
-        assert post_state.round == 1, "round should stay at 1 when elite_set is already populated"
-
-
-# ---------------------------------------------------------------------------
 # Tests for _load_score_report_dict
 # ---------------------------------------------------------------------------
 
@@ -1089,3 +968,48 @@ class TestLoadScoreReportDict:
 
         # Must still be a valid ScoreReport
         ScoreReport.model_validate(result)
+
+
+class TestBuildReviewBriefingDoesNotWriteRoundReport:
+    """C.2: build_review_briefing_tool must NOT write round_reports/round_N.json."""
+
+    _RUN_ID = "test-run-no-rr-write"
+
+    async def test_briefing_does_not_write_round_report(self, tmp_path: Path) -> None:
+        """build_review_briefing_tool leaves round_reports/ untouched (no racy write)."""
+        run_id = self._RUN_ID
+        state_dict = _make_state_dict(run_id, elite_set=[], round_=2)
+        _write_state(tmp_path, run_id, state_dict)
+
+        round_reports_dir = tmp_path / "outputs" / run_id / "search" / "round_reports"
+
+        with _patch_project_dir(tmp_path):
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        assert not round_reports_dir.exists(), "build_review_briefing_tool must not create round_reports/ directory"
+
+    async def test_briefing_does_not_clobber_existing_round_report(self, tmp_path: Path) -> None:
+        """If round_reports/round_2.json was pre-written by advance_round, briefing leaves it intact."""
+        run_id = self._RUN_ID + "-clobber"
+        state_dict = _make_state_dict(run_id, elite_set=[], round_=2)
+        _write_state(tmp_path, run_id, state_dict)
+
+        # Pre-write a round report (as advance_round would do)
+        round_reports_dir = tmp_path / "outputs" / run_id / "search" / "round_reports"
+        round_reports_dir.mkdir(parents=True, exist_ok=True)
+        sentinel = {"pre_written_candidate": {"metrics": {"accuracy": 0.9}}}
+        (round_reports_dir / "round_2.json").write_text(json.dumps(sentinel), encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        on_disk = json.loads((round_reports_dir / "round_2.json").read_text(encoding="utf-8"))
+        assert on_disk == sentinel, "build_review_briefing_tool must not overwrite existing round_reports/round_2.json"

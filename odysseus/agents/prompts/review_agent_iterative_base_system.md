@@ -71,6 +71,18 @@ To inspect the full text of a candidate, call `get_prompt_text_tool(run_id=run_i
 
 `single_candidate_meets_all` is `true` when every entry in `target_progress` has `met == true` for the same `source_version`. This is the **only** safe condition for `LoopSignal{action="exit"}`. When `false`, prefer `LoopSignal{action="refine"}` and explain in `reason` which targets remain unmet.
 
+## Directive outcomes (round N≥2)
+
+For round N≥2 the briefing contains `directive_history` — a list of prior directive outcomes synthesized in code from the previous round's `batch_outcomes`. Each entry has:
+
+| Field | Meaning |
+|-------|---------|
+| `prior_directive_id` | The directive id you assigned (e.g. `d-<round>-<n>`) |
+| `was_attempted` | `true` if the variant was evaluated; `false` if eval failed |
+| `outcome` | `"improved"` / `"no_effect"` / `"regressed"` — direction of quality_delta vs parent |
+
+Use `directive_history` to inform which failure modes have already been attempted and what effect they had. Do **not** pass `outcomes` to `record_directive_outcomes_tool` — outcomes are computed automatically and do not need to be echoed back.
+
 ## What the overlay tells you
 
 Before running this flow, your overlay specifies:

@@ -11,6 +11,7 @@ from odysseus.agents.prompt_builder.search import Candidate, SearchState
 from odysseus.agents.review.preprocessor import (
     _delta,
     _extract_metric,
+    _synthesize_directive_outcomes,
     build_candidate_comparisons,
     build_confusion_analysis,
     build_review_briefing,
@@ -482,7 +483,6 @@ class TestBuildReviewBriefing:
             score_reports=score_reports,
             historical_reports=historical_reports,
             prompt_texts=prompt_texts,
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -607,7 +607,6 @@ class TestMissingMetricBehavior:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -664,7 +663,6 @@ class TestMissingMetricBehavior:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "p1", "v2": "p2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
             eval_results=eval_results,
@@ -690,7 +688,6 @@ class TestMissingMetricBehavior:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "p1", "v2": "p2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -851,11 +848,20 @@ class TestExampleSummaryInputText:
 
 
 class TestBuildReviewBriefingStagnationSignal:
-    """Tests that build_review_briefing populates stagnation_signal for hill-climb."""
+    """Tests that build_review_briefing populates stagnation_signal for beam."""
 
-    def _make_hillclimb_briefing(self, **state_overrides: Any) -> Any:
+    def _make_beam_briefing(self, **state_overrides: Any) -> Any:
+        algorithm_state: dict[str, Any] = {
+            "beam_width": 3,
+            "hypervolume": 0.5,
+            "prev_hypervolume": 0.4,
+            "backtrack_threshold": 2,
+            "reference_point": [0.6, 2.0],
+        }
         base_state_kwargs: dict[str, Any] = dict(
             round=3,
+            algorithm="beam",
+            algorithm_state=algorithm_state,
             elite_set=[
                 Candidate(
                     prompt_version="v1",
@@ -880,120 +886,40 @@ class TestBuildReviewBriefingStagnationSignal:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
 
     def test_stagnation_signal_present(self) -> None:
-        """build_review_briefing populates stagnation_signal for hill-climb."""
-        briefing = self._make_hillclimb_briefing()
+        """build_review_briefing populates stagnation_signal for beam."""
+        briefing = self._make_beam_briefing()
         assert briefing.stagnation_signal is not None
 
     def test_stagnation_signal_has_three_keys(self) -> None:
-        """Hill-climb stagnation_signal has count, limit, and mutation_mode."""
-        briefing = self._make_hillclimb_briefing()
+        """Beam stagnation_signal has hypervolume_delta and backtrack_threshold."""
+        briefing = self._make_beam_briefing()
         sig = briefing.stagnation_signal
-        assert "count" in sig
-        assert "limit" in sig
-        assert "mutation_mode" in sig
+        assert "hypervolume_delta" in sig
+        assert "backtrack_threshold" in sig
 
     def test_stagnation_signal_values_match_state(self) -> None:
-        """Stagnation signal values reflect SearchState fields."""
-        briefing = self._make_hillclimb_briefing()
+        """Beam stagnation signal values reflect algorithm_state pocket."""
+        briefing = self._make_beam_briefing()
         sig = briefing.stagnation_signal
-        assert sig["count"] == 2
-        assert sig["limit"] == 3
-        assert sig["mutation_mode"] == "exploratory"
-
-    def test_stagnation_signal_targeted_mode(self) -> None:
-        briefing = self._make_hillclimb_briefing(stagnation_count=0, mutation_mode="targeted")
-        sig = briefing.stagnation_signal
-        assert sig["count"] == 0
-        assert sig["mutation_mode"] == "targeted"
-
-    def test_strategy_specific_fields_are_none_for_hillclimb(self) -> None:
-        """Strategy-specific optional fields are absent / None on hill-climb output."""
-        briefing = self._make_hillclimb_briefing()
-        assert briefing.parent_a_version is None
-
-
-class TestBeamReviewBriefingFields:
-    """beam algorithm populates beam-specific ReviewBriefing fields."""
-
-    def _make_beam_briefing(self, elite_versions: list[str], **state_overrides: Any) -> Any:
-        elite_set = [
-            Candidate(
-                prompt_version=v,
-                parent_version=None,
-                quality_score=0.80 + i * 0.05,
-                cost=1.50 - i * 0.1,
-                round_introduced=1,
-            )
-            for i, v in enumerate(elite_versions)
-        ]
-        kwargs: dict[str, Any] = {"round": 2, "algorithm": "beam", "elite_set": elite_set}
-        kwargs.update(state_overrides)
-        search_state = _make_search_state(**kwargs)
-        score_reports = {
-            v: _make_report_dict(accuracy=0.80 + i * 0.05, cost=1.50 - i * 0.1)
-            for i, v in enumerate(elite_versions)
-        }
-        return build_review_briefing(
-            search_state=search_state,
-            score_reports=score_reports,
-            historical_reports={1: {v: score_reports[v] for v in elite_versions}},
-            prompt_texts={v: f"prompt {v}" for v in elite_versions},
-            directive_history=[],
-            candidate_versions=list(elite_versions),
-            parent_versions={v: None for v in elite_versions},
-        )
-
-    def test_beam_run_populates_beam_rank_and_crowding(self) -> None:
-        """Beam run fills beam_rank, crowding_distance, hypervolume, reference_point, stagnation_signal."""
-        briefing = self._make_beam_briefing(
-            ["v1", "v2", "v3"],
-            algorithm_state={
-                "hypervolume": 0.42,
-                "prev_hypervolume": 0.40,
-                "backtrack_threshold": 2,
-                "reference_point": [0.0, 1.0],
-            },
-        )
-        assert briefing.beam_rank is not None
-        assert set(briefing.beam_rank.keys()) == {"v1", "v2", "v3"}
-        assert all(r == 0 for r in briefing.beam_rank.values())
-
-        assert briefing.crowding_distance is not None
-        assert set(briefing.crowding_distance.keys()) == {"v1", "v2", "v3"}
-
-        assert briefing.hypervolume == pytest.approx(0.42)
-        assert briefing.reference_point == (0.0, 1.0)
-
-        sig = briefing.stagnation_signal
-        assert sig is not None
-        assert sig["hypervolume_delta"] == pytest.approx(0.02, abs=1e-9)
+        # hypervolume - prev_hypervolume = 0.5 - 0.4 = 0.1
+        assert abs(sig["hypervolume_delta"] - 0.1) < 1e-9
         assert sig["backtrack_threshold"] == 2
 
-    def test_hill_climb_run_leaves_beam_fields_none(self) -> None:
-        """Non-beam run leaves beam_rank, crowding_distance, hypervolume, reference_point as None."""
-        briefing = self._make_beam_briefing(
-            ["v1"],
-            algorithm="hill_climb",
-            stagnation_count=1,
-            stagnation_limit=3,
-            mutation_mode="targeted",
-        )
-        assert briefing.beam_rank is None
-        assert briefing.crowding_distance is None
-        assert briefing.hypervolume is None
-        assert briefing.reference_point is None
-        # Hill-climb stagnation signal still present with its three keys
+    def test_stagnation_signal_targeted_mode(self) -> None:
+        """Beam stagnation signal is unaffected by mutation_mode (beam-specific)."""
+        briefing = self._make_beam_briefing(stagnation_count=0, mutation_mode="targeted")
         sig = briefing.stagnation_signal
-        assert sig is not None
-        assert "count" in sig
-        assert "limit" in sig
-        assert "mutation_mode" in sig
+        assert "hypervolume_delta" in sig
+
+    def test_strategy_specific_fields_are_none_for_no_parent_versions(self) -> None:
+        """Strategy-specific optional fields are absent / None when not set."""
+        briefing = self._make_beam_briefing()
+        assert briefing.parent_a_version is None
 
 
 class TestBuildConfusionAnalysis:
@@ -1434,7 +1360,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v_a": score_reports["v_a"]}},
             prompt_texts={"v_a": "## Rules\n1. foo", "v_b": "## Rules\n1. bar"},
-            directive_history=[],
             candidate_versions=["v_a", "v_b"],
             parent_versions={"v_a": None, "v_b": None},
             user_targets=user_targets,
@@ -1468,7 +1393,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "## Rules\n1. foo"},
-            directive_history=[],
             candidate_versions=["v1"],
             parent_versions={"v1": None},
             user_targets=user_targets,
@@ -1499,7 +1423,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "## Rules\n1. foo"},
-            directive_history=[],
             candidate_versions=["v1"],
             parent_versions={"v1": None},
             user_targets=user_targets,
@@ -1541,7 +1464,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "## Rules\n1. foo", "v2": "## Rules\n1. bar"},
-            directive_history=[],
             candidate_versions=["v1", "v2"],
             parent_versions={"v1": None, "v2": None},
             user_targets=user_targets,
@@ -1553,342 +1475,94 @@ class TestHolisticVersionSelection:
         assert source_versions.pop() is not None
 
 
-# ---------------------------------------------------------------------------
-# EMOSA preprocessor tests
-# ---------------------------------------------------------------------------
+class TestSynthesizeDirectiveOutcomes:
+    """Unit tests for _synthesize_directive_outcomes."""
 
-
-def _make_emosa_trajectory(
-    trajectory_id: int,
-    weight_vector: tuple[float, float],
-    current_solution: str | None = None,
-    current_quality: float | None = None,
-    current_cost: float | None = None,
-    acceptance_history: list[bool] | None = None,
-    step_count: int = 0,
-    temperature: float = 1.0,
-) -> dict[str, Any]:
-    return {
-        "trajectory_id": trajectory_id,
-        "weight_vector": list(weight_vector),
-        "current_solution": current_solution,
-        "current_energy": None,
-        "current_quality": current_quality,
-        "current_cost": current_cost,
-        "acceptance_history": acceptance_history or [],
-        "quality_reference": None,
-        "cost_reference": None,
-        "step_count": step_count,
-        "temperature": temperature,
-        "alpha": 0.95,
-    }
-
-
-def _make_emosa_pocket(
-    trajectories: list[dict[str, Any]],
-    step_count: int = 0,
-    temperature: float = 1.0,
-    t_min: float = 0.01,
-    ideal_point: tuple[float, float] = (1.0, 0.0),
-    nadir_point: tuple[float, float] = (0.0, 1.0),
-) -> dict[str, Any]:
-    """Build an EMOSA algorithm_state pocket.
-
-    ``step_count`` is distributed as per-trajectory: the desired total is placed on
-    the first trajectory (others remain 0), so ``sum(t["step_count"])`` equals the
-    requested value. ``temperature`` is placed on every trajectory.
-    """
-    # Distribute step_count to first trajectory; apply temperature to all
-    distributed: list[dict[str, Any]] = []
-    for idx, traj in enumerate(trajectories):
-        t = dict(traj)
-        if idx == 0:
-            t.setdefault("step_count", 0)
-            t["step_count"] = t["step_count"] + step_count
-        t.setdefault("temperature", temperature)
-        t.setdefault("alpha", 0.95)
-        distributed.append(t)
-
-    return {
-        "t_initial": 0.2,
-        "t_min": t_min,
-        "num_trajectories": len(trajectories),
-        "children_per_trajectory": 1,
-        "trajectories": distributed,
-        "neighborhood_size": 4,
-        "ideal_point": list(ideal_point),
-        "nadir_point": list(nadir_point),
-        "max_evals": 50,
-        "total_evals": 0,
-        "convergence_limit": 4,
-        "epsilon": 0.003,
-        "phase": "calibration",
-        "rho": 1e-3,
-    }
-
-
-class TestEmosaPreprocessorDispatch:
-    """Tests for _populate_emosa_review_fields and build_review_briefing emosa dispatch."""
-
-    def _make_emosa_briefing(
+    def _make_batch_outcome(
         self,
-        trajectories: list[dict[str, Any]],
-        step_count: int = 1,
-        temperature: float = 0.5,
-        t_min: float = 0.01,
-        ideal_point: tuple[float, float] = (1.0, 0.0),
-        nadir_point: tuple[float, float] = (0.0, 1.0),
-    ) -> Any:
-        pocket = _make_emosa_pocket(
-            trajectories=trajectories,
-            step_count=step_count,
-            temperature=temperature,
-            t_min=t_min,
-            ideal_point=ideal_point,
-            nadir_point=nadir_point,
-        )
-        search_state = _make_search_state(
-            round=1,
-            algorithm="emosa",
-            algorithm_state=pocket,
-            elite_set=[],
-        )
-        score_reports: dict[str, Any] = {}
-        return build_review_briefing(
-            search_state=search_state,
-            score_reports=score_reports,
-            historical_reports={},
-            prompt_texts={},
-            directive_history=[],
-            candidate_versions=[],
-            parent_versions={},
+        directive_ids: list[str],
+        quality_delta: float | None,
+        eval_status: str | None = "scored",
+    ):
+        from odysseus.agents.review.models import BatchOutcome
+
+        return BatchOutcome(
+            variant_id="cv-1-0",
+            parent_version="v1",
+            mutation_strategy="targeted",
+            directive_ids=directive_ids,
+            candidate_version="v2",
+            eval_status=eval_status,  # type: ignore[arg-type]
+            quality_delta_vs_parent=quality_delta,
+            is_new_best=False,
         )
 
-    def test_emosa_dispatch_populates_all_required_fields(self) -> None:
-        """build_review_briefing dispatches to emosa and populates all required fields."""
-        trajectories = [
-            _make_emosa_trajectory(0, (0.9, 0.1), "v1", 0.75, 0.002, [True]),
-            _make_emosa_trajectory(1, (0.5, 0.5), "v2", 0.70, 0.003, [True, False]),
-        ]
-        briefing = self._make_emosa_briefing(trajectories=trajectories, step_count=1)
+    def test_improved_directive(self) -> None:
+        bo = self._make_batch_outcome(["d-1-0"], quality_delta=0.05)
+        results = _synthesize_directive_outcomes([bo])
+        assert len(results) == 1
+        assert results[0].prior_directive_id == "d-1-0"
+        assert results[0].was_attempted is True
+        assert results[0].outcome == "improved"
 
-        # Round-robin: step_count=1, num_trajectories=2 → index 1
-        assert briefing.trajectory_id == 1
-        assert briefing.weight_vector == (0.5, 0.5)
-        assert briefing.binding_axis is not None
-        assert briefing.acceptance_history == [True, False]
-        assert briefing.stagnation_signal is not None
-        assert "temperature" in briefing.stagnation_signal
-        assert "t_min" in briefing.stagnation_signal
-        assert "review_exit" in briefing.stagnation_signal
+    def test_regressed_directive(self) -> None:
+        bo = self._make_batch_outcome(["d-1-1"], quality_delta=-0.03)
+        results = _synthesize_directive_outcomes([bo])
+        assert len(results) == 1
+        assert results[0].outcome == "regressed"
 
-    def test_binding_axis_quality_when_quality_term_dominates(self) -> None:
-        """binding_axis='quality' when lambda_q * norm_q > lambda_c * norm_c."""
-        # ideal=(1.0, 0.0), nadir=(0.0, 1.0)
-        # quality=0.9 → norm_q = (1.0 - 0.9) / (1.0 - 0.0) = 0.1
-        # cost=0.1   → norm_c = (0.1 - 0.0) / (1.0 - 0.0) = 0.1
-        # weight_vector=(0.9, 0.1): weighted_q = 0.9 * 0.1 = 0.09
-        #                           weighted_c = 0.1 * 0.1 = 0.01 → quality wins
-        trajectories = [
-            _make_emosa_trajectory(0, (0.9, 0.1), "v1", 0.9, 0.1, [True]),
-        ]
-        briefing = self._make_emosa_briefing(
-            trajectories=trajectories,
-            step_count=1,
-            ideal_point=(1.0, 0.0),
-            nadir_point=(0.0, 1.0),
+    def test_no_effect_when_delta_zero(self) -> None:
+        bo = self._make_batch_outcome(["d-1-2"], quality_delta=0.0)
+        results = _synthesize_directive_outcomes([bo])
+        assert results[0].outcome == "no_effect"
+
+    def test_no_effect_when_delta_none(self) -> None:
+        bo = self._make_batch_outcome(["d-1-3"], quality_delta=None)
+        results = _synthesize_directive_outcomes([bo])
+        assert results[0].outcome == "no_effect"
+
+    def test_failed_eval_sets_not_attempted(self) -> None:
+        bo = self._make_batch_outcome(["d-1-4"], quality_delta=None, eval_status="failed")
+        results = _synthesize_directive_outcomes([bo])
+        assert results[0].was_attempted is False
+
+    def test_multiple_directives_in_one_variant(self) -> None:
+        bo = self._make_batch_outcome(["d-1-0", "d-1-1"], quality_delta=0.05)
+        results = _synthesize_directive_outcomes([bo])
+        assert len(results) == 2
+        assert {r.prior_directive_id for r in results} == {"d-1-0", "d-1-1"}
+        assert all(r.outcome == "improved" for r in results)
+
+    def test_empty_batch_outcomes_returns_empty(self) -> None:
+        results = _synthesize_directive_outcomes([])
+        assert results == []
+
+    def test_synthesized_outcomes_appear_in_briefing_directive_history(self) -> None:
+        """Round-2 build_review_briefing surfaces synthesized outcomes in directive_history."""
+        from odysseus.agents.review.models import BatchOutcome
+
+        bo = BatchOutcome(
+            variant_id="cv-1-t0-0",
+            parent_version="v1",
+            mutation_strategy="targeted",
+            directive_ids=["d-1-0"],
+            candidate_version="v2",
+            eval_status="scored",
+            quality_delta_vs_parent=0.05,
+            is_new_best=False,
         )
-        assert briefing.binding_axis == "quality"
-
-    def test_binding_axis_cost_when_cost_term_dominates(self) -> None:
-        """binding_axis='cost' when lambda_c * norm_c > lambda_q * norm_q."""
-        # ideal=(1.0, 0.0), nadir=(0.0, 1.0)
-        # quality=0.1 → norm_q = (1.0 - 0.1) / 1.0 = 0.9
-        # cost=0.9   → norm_c = (0.9 - 0.0) / 1.0 = 0.9
-        # weight_vector=(0.1, 0.9): weighted_q = 0.1 * 0.9 = 0.09
-        #                           weighted_c = 0.9 * 0.9 = 0.81 → cost wins
-        trajectories = [
-            _make_emosa_trajectory(0, (0.1, 0.9), "v1", 0.1, 0.9, [True]),
-        ]
-        briefing = self._make_emosa_briefing(
-            trajectories=trajectories,
-            step_count=1,
-            ideal_point=(1.0, 0.0),
-            nadir_point=(0.0, 1.0),
-        )
-        assert briefing.binding_axis == "cost"
-
-    def test_binding_axis_none_for_unseeded_trajectory(self) -> None:
-        """Unseeded trajectory (no current_quality/current_cost) returns binding_axis=None."""
-        trajectories = [
-            _make_emosa_trajectory(0, (0.5, 0.5)),  # no current_quality/cost
-        ]
-        briefing = self._make_emosa_briefing(trajectories=trajectories, step_count=0)
-        assert briefing.binding_axis is None
-
-
-# ---------------------------------------------------------------------------
-# EMOSA preprocessor — explicit trajectory_id parameter (K-way fork support)
-# ---------------------------------------------------------------------------
-
-
-class TestEmosaExplicitTrajectoryId:
-    """Tests for _populate_emosa_review_fields with explicit trajectory_id override.
-
-    When trajectory_id is provided, the matching trajectory is selected directly
-    (not round-robin). Default (None) preserves the existing calibration / round-robin
-    behavior.
-    """
-
-    def _make_emosa_briefing_with_traj_id(
-        self,
-        trajectories: list[dict[str, Any]],
-        step_count: int = 1,
-        trajectory_id: int | None = None,
-        temperature: float = 0.95,
-        t_min: float = 0.01,
-        ideal_point: tuple[float, float] = (0.9, 0.001),
-        nadir_point: tuple[float, float] = (0.5, 0.01),
-    ) -> Any:
-        from odysseus.agents.review.preprocessor import build_review_briefing
-
-        pocket = _make_emosa_pocket(
-            trajectories=trajectories,
-            step_count=step_count,
-            temperature=temperature,
-            t_min=t_min,
-            ideal_point=ideal_point,
-            nadir_point=nadir_point,
-        )
-        search_state = _make_search_state(
-            round=1,
-            algorithm="emosa",
-            algorithm_state=pocket,
-            elite_set=[],
-        )
-        return build_review_briefing(
-            search_state=search_state,
-            score_reports={},
-            historical_reports={},
-            prompt_texts={},
-            directive_history=[],
-            candidate_versions=[],
-            parent_versions={},
-            emosa_trajectory_id=trajectory_id,
-        )
-
-    def test_explicit_trajectory_id_selects_named_slot(self) -> None:
-        """trajectory_id=2 picks the third trajectory, not round-robin index."""
-        trajectories = [
-            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
-            _make_emosa_trajectory(1, (0.7, 0.3), "v1", 0.75, 0.003, [True, True]),
-            _make_emosa_trajectory(2, (0.5, 0.5), "v2", 0.70, 0.004, [True, False, True]),
-            _make_emosa_trajectory(3, (0.3, 0.7), "v3", 0.65, 0.005, [False]),
-            _make_emosa_trajectory(4, (0.1, 0.9), "v4", 0.60, 0.006, [True]),
-        ]
-        # step_count=1, num_trajectories=5 → round-robin would pick index 1.
-        # explicit trajectory_id=2 must override and pick trajectory 2 instead.
-        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=2)
-
-        assert briefing.trajectory_id == 2
-        assert briefing.weight_vector == (0.5, 0.5)
-        assert briefing.acceptance_history == [True, False, True]
-
-    def test_explicit_trajectory_id_zero(self) -> None:
-        """trajectory_id=0 selects trajectory 0 even when round-robin would not."""
-        trajectories = [
-            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.85, 0.001, [True, True, True]),
-            _make_emosa_trajectory(1, (0.5, 0.5), "v1", 0.70, 0.005, [False]),
-            _make_emosa_trajectory(2, (0.1, 0.9), "v2", 0.60, 0.008, [True, False]),
-        ]
-        # step_count=3, num_trajectories=3 → round-robin would pick index 0 by coincidence.
-        # Use step_count=1 to make round-robin pick index 1, but explicit override selects 0.
-        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=0)
-
-        assert briefing.trajectory_id == 0
-        assert briefing.weight_vector == (0.9, 0.1)
-        assert briefing.acceptance_history == [True, True, True]
-
-    def test_explicit_trajectory_id_last_slot(self) -> None:
-        """trajectory_id=4 (last) works for K=5."""
-        trajectories = [
-            _make_emosa_trajectory(
-                i,
-                (0.1 * (5 - i), 0.1 * (i + 5)),
-                f"v{i}",
-                0.5 + i * 0.05,
-                0.001 * (i + 1),
-                [True] * i,
-            )
-            for i in range(5)
-        ]
-        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=2, trajectory_id=4)
-
-        assert briefing.trajectory_id == 4
-        assert briefing.weight_vector == (0.1, 0.9)
-        assert briefing.acceptance_history == [True, True, True, True]
-
-    def test_explicit_id_absent_from_trajectories_returns_empty_traj(self) -> None:
-        """trajectory_id not in trajectories list returns safe empty defaults."""
-        trajectories = [
-            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
-        ]
-        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=1, trajectory_id=99)
-        # Safe fallback: trajectory_id=0 (default from empty dict), empty history, no binding_axis
-        assert briefing.trajectory_id == 0
-        assert briefing.acceptance_history == []
-        assert briefing.binding_axis is None
-
-    def test_none_trajectory_id_uses_round_robin(self) -> None:
-        """Default (trajectory_id=None) preserves round-robin behavior."""
-        trajectories = [
-            _make_emosa_trajectory(0, (0.9, 0.1), "v0", 0.80, 0.002, [True]),
-            _make_emosa_trajectory(1, (0.5, 0.5), "v1", 0.75, 0.003, [False]),
-            _make_emosa_trajectory(2, (0.1, 0.9), "v2", 0.70, 0.004, [True, False]),
-        ]
-        # step_count=2, K=3 → round-robin index = 2 % 3 = 2
-        briefing = self._make_emosa_briefing_with_traj_id(trajectories=trajectories, step_count=2, trajectory_id=None)
-
-        assert briefing.trajectory_id == 2
-        assert briefing.weight_vector == (0.1, 0.9)
-        assert briefing.acceptance_history == [True, False]
-
-    def test_build_review_briefing_threads_trajectory_id(self) -> None:
-        """build_review_briefing(emosa_trajectory_id=3) routes to trajectory 3."""
-        from odysseus.agents.review.preprocessor import build_review_briefing
-
-        trajectories = [
-            _make_emosa_trajectory(
-                t,
-                ((9 - t) * 0.1, (t + 1) * 0.1),
-                f"sol{t}",
-                0.6 + t * 0.05,
-                0.001 * (t + 1),
-                [True] * (t % 3 + 1),
-            )
-            for t in range(5)
-        ]
-        pocket = _make_emosa_pocket(trajectories=trajectories, step_count=1)
-        search_state = _make_search_state(
-            round=2,
-            algorithm="emosa",
-            algorithm_state=pocket,
-            elite_set=[],
-        )
-
+        search_state = _make_search_state(round=2)
         briefing = build_review_briefing(
             search_state=search_state,
             score_reports={},
             historical_reports={},
             prompt_texts={},
-            directive_history=[],
             candidate_versions=[],
             parent_versions={},
-            emosa_trajectory_id=3,
         )
+        assert briefing.directive_history == []
 
-        assert briefing.trajectory_id == 3
-        assert briefing.weight_vector is not None
-        assert briefing.weight_vector[0] == pytest.approx(0.6)  # (9-3)*0.1=0.6
-        assert briefing.weight_vector[1] == pytest.approx(0.4)  # (3+1)*0.1=0.4
-        assert briefing.acceptance_history == [True]  # 3 % 3 + 1 = 1 → [True]
+        results = _synthesize_directive_outcomes([bo])
+        assert len(results) == 1
+        assert results[0].prior_directive_id == "d-1-0"
+        assert results[0].outcome == "improved"

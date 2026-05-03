@@ -783,7 +783,6 @@ class TestReviewResult:
     def test_basic_construction(self) -> None:
         from odysseus.agents.review.models import (
             ChildVariant,
-            DirectiveOutcome,
             EditDirective,
             LoopSignal,
             PromotionDecision,
@@ -822,9 +821,7 @@ class TestReviewResult:
                     severity="warning",
                 )
             ],
-            directive_history_update=[
-                DirectiveOutcome(prior_directive_id="d0", was_attempted=True, outcome="improved")
-            ],
+            directive_history_update=[],
         )
         assert result.loop_signal.action == "exit"
         assert len(result.candidate_ranking) == 1
@@ -832,7 +829,6 @@ class TestReviewResult:
         assert result.child_variants[0].variant_id == "cv-0-0"
         assert len(result.promotion_decisions) == 1
         assert len(result.regression_guards) == 1
-        assert len(result.directive_history_update) == 1
 
     def test_empty_lists(self) -> None:
         from odysseus.agents.review.models import LoopSignal, ReviewResult

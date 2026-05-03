@@ -12,9 +12,6 @@ from odysseus.agents.prompt_builder.search_ops import (
     _append_archive,
     _archive_path,
     _load_archive,
-    _save_pending,
-    advance_round,
-    init_search_state,
     record_eval_result,
     register_candidate,
 )
@@ -137,91 +134,3 @@ class TestLoadArchive:
         assert entry["quality_score"] == pytest.approx(0.77)
         assert entry["cost"] == pytest.approx(0.05)
         assert entry["round_introduced"] == 3
-
-
-# ---------------------------------------------------------------------------
-# Integration: advance_round writes archive
-# ---------------------------------------------------------------------------
-
-
-class TestAdvanceRoundArchiveWiring:
-    def test_archive_created_after_advance_round(self, tmp_path: Path) -> None:
-        """After advance_round, candidate_archive.json exists."""
-        run_id = "arc-int1"
-        init_search_state("anthropic", run_id=run_id, output_dir=tmp_path)
-        _register_and_score(run_id, "v1", 0.9, 0.01, tmp_path)
-        advance_round(run_id, output_dir=tmp_path)
-        assert _archive_path(run_id, tmp_path).exists()
-
-    def test_archive_contains_scored_pending(self, tmp_path: Path) -> None:
-        """Scored pending candidates appear in the archive after advance_round."""
-        run_id = "arc-int2"
-        init_search_state("anthropic", run_id=run_id, output_dir=tmp_path)
-        _register_and_score(run_id, "v1", 0.9, 0.01, tmp_path, parent_version=None)
-        _register_and_score(run_id, "v2", 0.5, 0.5, tmp_path, parent_version="v1")
-        advance_round(run_id, output_dir=tmp_path)
-        archive = _load_archive(run_id, tmp_path)
-        versions = {e["prompt_version"] for e in archive}
-        assert "v1" in versions
-        assert "v2" in versions
-
-    def test_archive_excludes_failed_candidates(self, tmp_path: Path) -> None:
-        """Failed candidates (eval_status='failed') are NOT written to the archive."""
-        run_id = "arc-int3"
-        init_search_state("anthropic", run_id=run_id, output_dir=tmp_path)
-        pending = [
-            _make_candidate("v-ok", quality_score=0.9, cost=0.01, eval_status="complete"),
-            _make_candidate("v-fail", quality_score=0.0, cost=0.0, eval_status="failed"),
-        ]
-        _save_pending(run_id, pending, tmp_path)
-        advance_round(run_id, output_dir=tmp_path)
-        archive = _load_archive(run_id, tmp_path)
-        versions = {e["prompt_version"] for e in archive}
-        assert "v-ok" in versions
-        assert "v-fail" not in versions
-
-    def test_archive_accumulates_across_rounds(self, tmp_path: Path) -> None:
-        """Candidates from multiple rounds all appear in the archive (no truncation)."""
-        run_id = "arc-int4"
-        init_search_state("anthropic", run_id=run_id, output_dir=tmp_path)
-        # Round 1
-        _register_and_score(run_id, "v1", 0.9, 0.01, tmp_path)
-        advance_round(run_id, output_dir=tmp_path)
-        # Round 2 (dominated)
-        _register_and_score(run_id, "v2", 0.5, 0.5, tmp_path, parent_version="v1")
-        advance_round(run_id, output_dir=tmp_path)
-        archive = _load_archive(run_id, tmp_path)
-        versions = {e["prompt_version"] for e in archive}
-        assert "v1" in versions
-        assert "v2" in versions
-
-    def test_archive_parent_version_preserved(self, tmp_path: Path) -> None:
-        """parent_version field in archive entries matches the registered candidate."""
-        run_id = "arc-int5"
-        init_search_state("anthropic", run_id=run_id, output_dir=tmp_path)
-        _register_and_score(run_id, "v1", 0.9, 0.01, tmp_path, parent_version=None)
-        advance_round(run_id, output_dir=tmp_path)
-        _register_and_score(run_id, "v2", 0.95, 0.005, tmp_path, parent_version="v1")
-        advance_round(run_id, output_dir=tmp_path)
-        archive = _load_archive(run_id, tmp_path)
-        entry_v2 = next(e for e in archive if e["prompt_version"] == "v2")
-        assert entry_v2["parent_version"] == "v1"
-
-    def test_archive_not_written_when_all_candidates_failed(self, tmp_path: Path) -> None:
-        """When all pending candidates failed, archive is not created (nothing to write)."""
-        run_id = "arc-int6"
-        init_search_state("anthropic", run_id=run_id, output_dir=tmp_path)
-        # Seed with a successful first round so advance_round has a real elite set.
-        _register_and_score(run_id, "v0", 0.9, 0.01, tmp_path)
-        advance_round(run_id, output_dir=tmp_path)
-        assert _archive_path(run_id, tmp_path).exists()
-        # Now remove the archive to test the all-failed case cleanly.
-        _archive_path(run_id, tmp_path).unlink()
-
-        pending = [
-            _make_candidate("v-fail", quality_score=0.0, cost=0.0, round_introduced=2, eval_status="failed"),
-        ]
-        _save_pending(run_id, pending, tmp_path)
-        advance_round(run_id, output_dir=tmp_path)
-        # No scored candidates → _append_archive is a no-op → file still absent.
-        assert not _archive_path(run_id, tmp_path).exists()

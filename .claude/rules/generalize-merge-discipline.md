@@ -1,8 +1,8 @@
 ## Generalize Merge Discipline
 
-The four `feat/generalize-*` branches form a star: `feat/generalize-pipeline` is the
-shared trunk; `feat/generalize-{beam,emosa,sms-emoa}` are algorithm leaves that
-periodically pull from pipeline. Algorithm code MUST NOT live on pipeline; if it
+The `feat/generalize-*` branches form a star: `feat/generalize-pipeline` is the
+shared trunk; `feat/generalize-{hill_climb,beam,emosa,sms-emoa}` are algorithm leaves
+that periodically pull from pipeline. Algorithm code MUST NOT live on pipeline; if it
 does, every propagation merge silently overwrites the recipient branch's
 algorithm with whatever was on pipeline.
 
@@ -10,10 +10,10 @@ algorithm with whatever was on pipeline.
 
 | Pattern | Why |
 |---|---|
-| `_BRANCH_ALGORITHM = "beam" \| "emosa" \| "sms_emoa"` (any non-`"hill_climb"` value) | Pipeline is the shared base; the algorithm constant is set on the leaf branches |
-| Files matching `odysseus/agents/prompts/*_overlay_{beam,emosa,sms_emoa,sms-emoa}.md` | Algorithm-specific overlays belong on their leaf branch |
-| `def _populate_{beam,emosa,sms_emoa}_review_fields` in `preprocessor.py` | Algorithm-specific briefing population belongs on its leaf branch |
-| `("beam", *), ("emosa", *), ("sms_emoa", *)` keys in `_overlay_map` (`odysseus/mcp/prompts.py`) | Only `hill_climb` keys live on pipeline; leaves add their own |
+| `_BRANCH_ALGORITHM = "hill_climb" \| "beam" \| "emosa" \| "sms_emoa"` (any non-`"__unset__"` value) | Pipeline trunk uses the `"__unset__"` sentinel; leaf branches set the concrete value |
+| Files matching `odysseus/agents/prompts/*_overlay_{hill_climb,beam,emosa,sms_emoa,sms-emoa}.md` | Algorithm-specific overlays belong on their leaf branch |
+| `def _populate_{hill_climb,beam,emosa,sms_emoa}_review_fields` in `preprocessor.py` | Algorithm-specific briefing population belongs on its leaf branch |
+| `("hill_climb", *), ("beam", *), ("emosa", *), ("sms_emoa", *)` keys in `_overlay_map` (`odysseus/mcp/prompts.py`) | Leaf branches add their own overlay keys; pipeline has none |
 
 If a commit on pipeline introduces any of the above, revert it before merging
 to any leaf. Use `git log feat/generalize-pipeline -- 'odysseus/agents/prompts/*_overlay_*.md' odysseus/agents/prompt_builder/search_ops.py` to audit.

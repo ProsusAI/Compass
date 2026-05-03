@@ -63,10 +63,10 @@ graph TD
 | Field | Type | Description |
 |---|---|---|
 | `elite_set` | `list[Candidate]` | Current non-dominated candidate set (formerly `pareto_front`; old files with `pareto_front` key are migrated on load) |
-| `algorithm` | `Literal["hill_climb"]` | Discriminator hardcoded per branch via `_BRANCH_ALGORITHM` in `search_ops.py`; written at `init_search_state` time |
-| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket; hardcoded per branch via `_BRANCH_ALGORITHM_STATE` in `search_ops.py` (empty for hill_climb) |
-| `round`, `stagnation_count`, `mutation_mode` | — | Hill-climb bookkeeping fields |
-| `converged`, `loop_phase` | — | Convergence flag and current sub-phase; widened enum: `"build"`, `"review"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`, `"calibration"`, `"build_recovering"` (hill-climb only uses `"build"` / `"review"`) |
+| `algorithm` | `str` | Discriminator set from `_BRANCH_ALGORITHM` at `init_search_state` time; trunk default is `"__unset__"`, leaf branches set a concrete value (e.g. `"hill_climb"`) |
+| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket; hardcoded per branch via `_BRANCH_ALGORITHM_STATE` in `search_ops.py` (empty `{}` on trunk) |
+| `round`, `stagnation_count`, `mutation_mode` | — | Bookkeeping fields (semantics may vary by algorithm) |
+| `converged`, `loop_phase` | — | Convergence flag and current sub-phase; base phases on trunk: `"build"`, `"review"`, `"build_recovering"`; leaf branches extend with algorithm-specific phases (e.g. `"calibration"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`) |
 | `active_evals` | `list[str]` | Prompt versions currently being evaluated (pending or running). Invariant: non-empty iff `loop_phase == "build"` and a concurrent batch eval was interrupted. `_detect_stage_4_phase` returns `"build_recovering"` when this field is non-empty. |
 
 `RoundSummary` is the per-round progress record. Field names follow the unified cross-branch schema:
@@ -87,20 +87,20 @@ Top-level report from the Data Validation agent containing `SchemaFinding` list,
 Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Prompt Builder Agent.
 
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
-`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, `regression_guards`, and `directive_history_update`. Persistence (directive history, child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_child_variants_tool`. `get_edit_directives_tool` is a back-compat helper that flattens all directives across variants into a single list.
+`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `directive_history` list (`DirectiveOutcome` entries for prior-round directives — synthesized wholly in code by `_synthesize_directive_outcomes` inside `build_review_briefing` from `batch_outcomes`; no `directive_history.json` file is persisted and the agent no longer writes outcomes), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, and `regression_guards`. Persistence (child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_child_variants_tool`. `get_edit_directives_tool` is a back-compat helper that flattens all directives across variants into a single list.
 
-Strategy-specific optional fields pre-provisioned by Increment 4 and populated by each algorithm's preprocessor function:
+Strategy-specific optional fields pre-provisioned as `None`-default slots in the model; each leaf branch's preprocessor function populates the slots relevant to its algorithm:
 
 | Field | Type | Algorithm | Populated by |
 |---|---|---|---|
 | `parent_a_version`, `parent_b_version` | `str \| None` | all | `build_review_briefing` |
-| `trajectory_id` | `int \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
-| `weight_vector` | `tuple[float, float] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
-| `binding_axis` | `"quality" \| "cost" \| None` | EMOSA | `_populate_emosa_review_fields` (C3) — `argmax_i (λ_i · norm_i)` against active trajectory's current quality/cost vs ideal/nadir |
-| `acceptance_history` | `list[bool] \| None` | EMOSA | `_populate_emosa_review_fields` (C3) |
-| `stagnation_signal` | `dict \| None` | all | hill-climb: `{count, limit, mutation_mode}`; emosa: `{temperature, t_min, review_exit}` |
+| `trajectory_id` | `int \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
+| `weight_vector` | `tuple[float, float] \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
+| `binding_axis` | `"quality" \| "cost" \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
+| `acceptance_history` | `list[bool] \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
+| `stagnation_signal` | `dict \| None` | all | algorithm-specific `_populate_*_review_fields` on the leaf branch |
 
-EMOSA steady-state advance ([`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) — `_advance_emosa_search`) executes per round when `algorithm_state.phase == "search"`: drift-cache refresh (recompute each trajectory's `current_energy` under updated `ideal_point`/`nadir_point`), per-trajectory Metropolis-then-best-of-accepted, EMOSA neighborhood replacement (B=4 nearest weight-vector neighbors via `compute_neighborhood` + `replace_if_better`), archive update, hypervolume computation, geometric cooling. Convergence exits (`temperature_floor`, `eval_budget`, `review_exit`) set `algorithm_state.phase = "converged"` and `SearchState.converged = True` in the same atomic state write; `SearchState.loop_phase` is always written `"review"` to advance to the next dispatch cycle. The top-level `converged` flag is checked by `_check_stage_4` before `_detect_stage_4_phase_emosa` is reached, so no converged short-circuit is needed inside the EMOSA phase detector.
+Algorithm-specific advance logic (e.g. EMOSA steady-state advance, beam step) lives entirely on the leaf branches' `search_ops.py`.
 
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
@@ -148,7 +148,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run; algorithm is hardcoded per branch — no `algorithm`/`algorithm_state` params | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `record_eval_result_tool` | Implemented | Record evaluation results for Pareto tracking | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
-| `advance_step_tool` | Implemented | Strategy-dispatched step advance; `"hill_climb"` arm closes round, updates elite set, checks convergence | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
+| `advance_step_tool` | Implemented | Strategy-dispatched step advance; implementation provided by the leaf branch's `advance_round` in `search_ops.py` | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `get_search_state_tool` | Implemented | Load current search state | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `filter_holdout_dataset_tool` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder/holdout_filter.py`](../odysseus/agents/prompt_builder/holdout_filter.py) |
 | `get_child_variants_tool` | Implemented | Retrieve the current round's child variants (grouped directives per child prompt) for the Prompt Builder | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
@@ -171,7 +171,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `get_child_variants_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
 | `review_cold` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `get_pipeline_status` |
 | `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
-| `calibration` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `init_search_state_tool`, `register_candidate_tool`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `save_prompt_tool`, `get_edit_directives_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
+| `calibration` | Algorithm-specific phase — tool set defined by the leaf branch |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
 #### Sub-Agent Guard Pattern
@@ -202,9 +202,9 @@ The shared guard layer lives in [`odysseus/agents/pipeline/dispatch.py`](../odys
 | `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"` | reserved — strategy-branch warmup phases |
 | `"calibration"` | reserved — strategy-branch cold-start calibration phase |
 | `"build_recovering"` | All strategies — entered when `active_evals` is non-empty (interrupted batch eval). Recovery sub-agent calls `run_batch_eval(candidates=[])` to resume. |
-| `"review_post_coldstart"` | Beam only — derived phase (not stored on disk); `_detect_stage_4_phase` returns this when `algorithm == "beam"`, `round == 1`, and `loop_phase == "review"`. Triggers `odysseus_review_agent_post_coldstart` dispatch. |
+| `"review_post_coldstart"` | Leaf-branch-specific derived phase (not stored on disk); leaf branch `_detect_stage_4_phase` logic returns this for algorithm-specific post-cold-start handling. |
 
-Hill-climb only ever enters `"build"` and `"review"`. The other values are reserved for strategy branches; unknown values encountered in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
+The trunk pipeline uses only `"build"`, `"review"`, and `"build_recovering"`. Other values are reserved for leaf branches; unknown values encountered in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
 
 **Dispatch markers**
 
@@ -215,11 +215,11 @@ Two JSON sentinel files signal that a sub-agent is in-flight for the current rou
 | `search/build_dispatched.json` | `register_candidate_tool` (first builder action) | `advance_step_tool` (round complete); `run_batch_eval_impl` (when `active_evals` drains after batch eval) | `complete_stage("prompt_building")` rejects while present |
 | `search/review_dispatched.json` | `build_review_briefing_tool` (reviewer dispatch) | `record_directive_outcomes_tool` (directives saved) | `complete_stage("review")` checks fanout |
 
-`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is dual-format: `{"round": N}` for hill-climb; `{"round": N, "trajectory_ids": [...]}` for EMOSA (tracks per-trajectory dispatch within the round).
+`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is `{"round": N}` for single-slot algorithms; multi-slot leaf branches (e.g. EMOSA) extend this to `{"round": N, "trajectory_ids": [...]}` to track per-trajectory dispatch within the round.
 
-**EMOSA review instruction — K-way fanout**
+**Multi-trajectory review fanout (leaf-branch feature)**
 
-When `phase == "review"` and `algorithm == "emosa"`, `_next_action_for_stage_4` formats `STAGE_4_REVIEW_INSTRUCTION_EMOSA` (in [`odysseus/agents/pipeline/instructions.py`](../odysseus/agents/pipeline/instructions.py)) with `{num_trajectories}` and `{max_trajectory_id}`.  The instruction directs the orchestrator to spawn N independent Review Agent sub-agents in a single parallel batch (one per trajectory ID 0..N-1), each told its `trajectory_id` and required to call `record_directive_outcomes_tool(run_id='{run_id}', trajectory_id=<N>, child_variants=[...])`.  The tool routes per-trajectory writes through `save_trajectory_child_variants` + `record_trajectory_dispatched`, writing `child_variants_t<N>.json` for each slot.  The orchestrator must wait for all N completions before calling `complete_stage`.
+Algorithms with multiple parallel trajectories (e.g. EMOSA on `feat/generalize-emosa`) extend `_next_action_for_stage_4` to dispatch N Review Agent sub-agents in parallel — one per trajectory ID.  Each sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, writing `child_variants_t<N>.json` for slot N.  The trunk pipeline uses a single-slot (`expected=1`) fanout; `complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` and checks `is_complete`.
 
 **`DispatchFanout` and `review_fanout_status`**
 
@@ -234,11 +234,11 @@ When `phase == "review"` and `algorithm == "emosa"`, `_next_action_for_stage_4` 
 | `is_complete` | `bool` | `len(completed) >= expected` |
 | `missing` | `list[int]` | `in_flight + not_dispatched` |
 
-For `expected=1` (hill-climb), fanout is complete when `search/child_variants.json` exists.  For `algorithm="emosa"`, `review_fanout_status` delegates to `trajectory_fanout_missing` (see `odysseus/agents/review/ops.py`) which checks per-slot `child_variants_t<N>.json` files; each slot maps to one EMOSA trajectory.  Dispatch state for EMOSA is tracked in `review_dispatched.json` as a round-keyed list of trajectory_ids rather than the simple `{"round": N}` marker used by other algorithms.
+For `expected=1` (single-slot algorithms like hill-climb), fanout is complete when `search/child_variants.json` exists.  For multi-slot algorithms (e.g. EMOSA), `review_fanout_status` delegates to `trajectory_fanout_missing` (see `odysseus/agents/review/ops.py`) which checks per-slot `child_variants_t<N>.json` files; each slot maps to one trajectory.  Multi-slot dispatch state is tracked in `review_dispatched.json` as a round-keyed list of trajectory_ids rather than the simple `{"round": N}` marker used by single-slot algorithms.
 
 **`child_variants.json` / `child_variants_t<N>.json`**
 
-Written by `record_directive_outcomes_tool` for the single-slot algorithm (hill-climb); acts as the canonical review-completion sentinel.  For EMOSA, each trajectory's Review Agent sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, which internally calls `save_trajectory_child_variants` (in [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py)) to write `child_variants_t<N>.json` for slot N, and `record_trajectory_dispatched` to mark the slot complete.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
+Written by `record_directive_outcomes_tool` for single-slot algorithms; acts as the canonical review-completion sentinel.  For multi-slot algorithms (e.g. EMOSA on its leaf branch), each trajectory's Review Agent sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, writing `child_variants_t<N>.json` for slot N and recording the slot as complete.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
 
 **Defense-in-depth phase flip**
 
@@ -256,23 +256,23 @@ Retained as a back-compat shim for runs paused before automated marker clearing 
 | `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
 | `odysseus_review_agent_iterative(algorithm)` | Review Agent — iterative phase (round ≥ 2); assembled from three-tier prompt: base + iterative phase base + strategy overlay | see Review Agent prompt files below |
 | `odysseus_review_agent_cold_start(algorithm)` | Review Agent — cold-start / seeding phase; assembled from three-tier prompt: base + cold-start phase base + strategy overlay | see Review Agent prompt files below |
-| `odysseus_review_agent_post_coldstart(algorithm)` | Review Agent — round-2 post-cold-start phase (beam only); assembled from four-tier prompt: base + iterative phase base + post-coldstart override + strategy overlay | see Review Agent prompt files below |
+| `odysseus_review_agent_post_coldstart(algorithm)` | Review Agent — round-2 post-cold-start phase (leaf-branch-specific); assembled from four-tier prompt: base + iterative phase base + post-coldstart override + strategy overlay | see Review Agent prompt files below |
 | `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
 | `odysseus_final_report` | Final Report agent — holdout eval + report generation | [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) |
 | `odysseus_prompt_builder_rerun` | Prompt Builder Rerun agent — format-only restructure for a different backend (single eval round) | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) |
 
-**Review Agent prompt files — three-tier and four-tier structure**
+**Review Agent prompt files — three-tier structure (trunk)**
 
-The Review Agent prompt is assembled at dispatch time from three layers (iterative / cold-start) or four layers (post-coldstart): a shared base, phase-specific base(s), an optional post-coldstart override, and a strategy overlay. The `algorithm` argument on the MCP prompt selects the overlay. Strategy branches contribute additional overlay files and keep only those diffs.
+The Review Agent prompt is assembled at dispatch time from three layers (iterative / cold-start): a shared base, a phase-specific base, and a strategy overlay. The `algorithm` argument on the MCP prompt selects the overlay. Leaf branches may extend this to four layers by adding a post-coldstart override and their own overlay files.
 
 | File | Role |
 |---|---|
 | [`odysseus/agents/prompts/review_agent_base_system.md`](../odysseus/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
 | [`odysseus/agents/prompts/review_agent_iterative_base_system.md`](../odysseus/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
 | [`odysseus/agents/prompts/review_agent_cold_start_base_system.md`](../odysseus/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
-| [`odysseus/agents/prompts/review_agent_post_coldstart_base_system.md`](../odysseus/agents/prompts/review_agent_post_coldstart_base_system.md) | Post-cold-start override (beam round 2) — one child per protected parent, no two-parent merges, unconditional `continue_search` |
-| [`odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md`](../odysseus/agents/prompts/review_agent_iterative_overlay_hillclimb.md) | Iterative overlay for `hill_climb` — mutation-mode toggle, single parent, 1 child |
-| [`odysseus/agents/prompts/review_agent_cold_start_overlay_hillclimb.md`](../odysseus/agents/prompts/review_agent_cold_start_overlay_hillclimb.md) | Cold-start overlay for `hill_climb` — round-1 batch, initial prompt parent |
+| [`odysseus/agents/prompts/review_agent_post_coldstart_base_system.md`](../odysseus/agents/prompts/review_agent_post_coldstart_base_system.md) | Post-cold-start override (leaf-branch-specific) — present on trunk for leaf branches to compose against |
+| `review_agent_iterative_overlay_<algorithm>.md` | Algorithm-specific iterative overlay — lives on the leaf branch, not the trunk |
+| `review_agent_cold_start_overlay_<algorithm>.md` | Algorithm-specific cold-start overlay — lives on the leaf branch, not the trunk |
 
 ### Resources
 
@@ -295,13 +295,13 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 
 ## 6. Strategy Extension Points
 
-`feat/generalize-pipeline` is the integration branch carrying all strategy-neutral pipeline code plus the `hill_climb` default. Strategy-specific implementations live on dedicated branches cut from this branch.
+`feat/generalize-pipeline` is the algorithm-agnostic trunk. Strategy-specific implementations live on dedicated leaf branches cut from this branch. Leaf branches override exactly two module-level constants in `search_ops.py` to activate their algorithm.
 
-**Algorithm is hardcoded per branch.** `search_ops.py` exposes two module-level constants (`_BRANCH_ALGORITHM`, `_BRANCH_ALGORITHM_STATE`) that strategy branches flip. `init_search_state` always uses these constants — agents do not pass `algorithm` or `algorithm_state`. `search_state.json` is **auto-created at Stage 4 entry** by `_ensure_stage4_search_state` (called from `_next_action_for_stage_4` in `status.py`) before `_detect_stage_4_phase` runs, so cold-start sub-agents always find a real `SearchState` on disk.
+**Algorithm is hardcoded per branch.** `search_ops.py` exposes two module-level constants (`_BRANCH_ALGORITHM`, `_BRANCH_ALGORITHM_STATE`) that strategy branches flip. On the trunk `_BRANCH_ALGORITHM = "__unset__"` — `init_search_state` raises `RuntimeError` if called on trunk. `search_state.json` is **auto-created at Stage 4 entry** by `_ensure_stage4_search_state` (called from `_next_action_for_stage_4` in `status.py`) before `_detect_stage_4_phase` runs, so cold-start sub-agents always find a real `SearchState` on disk.
 
 | Strategy | Branch | Algorithm module | Dispatcher arm | Preprocessor populate fn | Prompt overlays |
 |---|---|---|---|---|---|
-| `hill_climb` | `feat/generalize-pipeline` | [`prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py), [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) | `_advance_hill_climb` ([`prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py)) | (default — no per-strategy fields) | `review_agent_iterative_overlay_hillclimb.md`, `review_agent_cold_start_overlay_hillclimb.md` |
+| `hill_climb` | `feat/generalize-hill_climb` | `prompt_builder/search.py`, `search_ops.py` | `_advance_hill_climb` | (none — default fields) | `review_agent_iterative_overlay_hillclimb.md`, `review_agent_cold_start_overlay_hillclimb.md` |
 
 ## 7. Directory Guide
 
@@ -323,7 +323,7 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
-| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
+| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py). For EMOSA runs, node coloring reflects per-iteration trajectory `current_solution` (from `AnnealingState.trajectory_history: list[TrajectorySnapshot]`) rather than Pareto elite-set membership; legend labels change to "Trajectory current" / "Not current". Non-EMOSA runs retain legacy `on_front` coloring. |
 | `outputs/<run_id>/search/child_variants.json` | `ChildVariant[]` — Review Agent output: grouped directives with parent preferences and hypotheses (canonical directive storage; retrieved via `get_child_variants_tool`) |
 | `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |
 | `outputs/<run_id>/search/search_state_original.json` | Preserved original search state from before rerun initiation |

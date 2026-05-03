@@ -1065,6 +1065,37 @@ def enrich_confusion_with_history(
     return enriched
 
 
+def _synthesize_directive_outcomes(
+    batch_outcomes: list[BatchOutcome],
+) -> list[DirectiveOutcome]:
+    """Synthesize DirectiveOutcome entries from batch outcomes.
+
+    For each directive_id referenced in a BatchOutcome, produce a
+    DirectiveOutcome derived from the candidate's eval result.
+    """
+    synthesized: list[DirectiveOutcome] = []
+    for bo in batch_outcomes:
+        if not bo.directive_ids:
+            continue
+        was_attempted = bo.eval_status == "scored"
+        delta = bo.quality_delta_vs_parent
+        if delta is None or delta == 0.0:
+            outcome_val: str = "no_effect"
+        elif delta > 0.0:
+            outcome_val = "improved"
+        else:
+            outcome_val = "regressed"
+        for did in bo.directive_ids:
+            synthesized.append(
+                DirectiveOutcome(
+                    prior_directive_id=did,
+                    was_attempted=was_attempted,
+                    outcome=outcome_val,  # type: ignore[arg-type]
+                )
+            )
+    return synthesized
+
+
 def _populate_beam_review_fields(
     search_state: Any,
     elite_set: list[Candidate],
@@ -1093,9 +1124,7 @@ def _populate_beam_review_fields(
     beam_rank: dict[str, int] = {c.prompt_version: 0 for c in elite_set}
     crowding = _crowding_distance(elite_set) if elite_set else {}
     # Replace inf with a JSON-friendly large sentinel for serialization.
-    crowding_serializable: dict[str, float] = {
-        v: (1e308 if d == float("inf") else d) for v, d in crowding.items()
-    }
+    crowding_serializable: dict[str, float] = {v: (1e308 if d == float("inf") else d) for v, d in crowding.items()}
 
     hypervolume_delta = hypervolume - prev_hv
     stagnation_signal = {
@@ -1118,8 +1147,8 @@ def build_review_briefing(
     score_reports: dict[str, dict[str, Any]],
     historical_reports: dict[int, dict[str, dict[str, Any]]],
     prompt_texts: dict[str, str],
-    directive_history: list[DirectiveOutcome],
-    candidate_versions: list[str],
+    directive_history: list[DirectiveOutcome] | None = None,
+    candidate_versions: list[str] | None = None,
     parent_versions: dict[str, str | None],
     routing_context: RoutingContext | None = None,
     child_variants: list[ChildVariant] | None = None,
@@ -1141,6 +1170,7 @@ def build_review_briefing(
     primary_metric: str = search_state.primary_metric_name or "accuracy"
     elite_set = search_state.elite_set
     elite_versions = [c.prompt_version for c in elite_set]
+    candidate_versions = candidate_versions or []
 
     # Mutation descriptions for current candidates
     mutation_descriptions: dict[str, str] = {v: "" for v in candidate_versions}
@@ -1348,7 +1378,11 @@ def build_review_briefing(
                     )
                 )
 
-    recent_directive_history = directive_history[-15:]
+    # Use provided directive_history or synthesize from batch_outcomes
+    if directive_history is not None:
+        recent_directive_history = directive_history[-15:]
+    else:
+        recent_directive_history = _synthesize_directive_outcomes(batch_outcomes)[-15:]
 
     backtracking = getattr(search_state, "stagnation_count", 0) >= getattr(
         search_state, "backtrack_threshold", float("inf")

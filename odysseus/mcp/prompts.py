@@ -25,18 +25,15 @@ def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start", 
         ValueError: When the (algorithm, phase) combination is not recognised.
     """
     _overlay_map: dict[tuple[str, str], str] = {
-        ("hill_climb", "iterative"): "review_agent_iterative_overlay_hillclimb",
-        ("hill_climb", "cold_start"): "review_agent_cold_start_overlay_hillclimb",
         ("beam", "iterative"): "review_agent_iterative_overlay_beam",
         ("beam", "cold_start"): "review_agent_cold_start_overlay_beam",
-        ("hill_climb", "post_coldstart"): "review_agent_iterative_overlay_hillclimb",
         ("beam", "post_coldstart"): "review_agent_iterative_overlay_beam",
     }
     key = (algorithm, phase)
     if key not in _overlay_map:
         raise ValueError(
             f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
-            f"Valid algorithms: hill_climb, beam. "
+            f"Valid algorithms: beam. "
             f"Valid phases: iterative, cold_start, post_coldstart."
         )
     return _overlay_map[key]
@@ -57,7 +54,7 @@ def assemble_review_prompt(
     override mandates exactly one child per protected parent for round 2.
 
     Args:
-        algorithm: Strategy discriminator — one of ``hill_climb``, ``beam``.
+        algorithm: Strategy discriminator — ``"beam"`` on this leaf.
         phase: ``"iterative"`` for rounds ≥ 2; ``"cold_start"`` for the seeding
             round; ``"post_coldstart"`` for round 2 of beam search after cold-start.
 
@@ -118,45 +115,45 @@ async def odysseus_backend_setup() -> list[Message]:
 
 
 @mcp.prompt()
-async def odysseus_review_agent_iterative(algorithm: str = "hill_climb") -> list[Message]:
+async def odysseus_review_agent_iterative(algorithm: str = "beam") -> list[Message]:
     """System prompt for the Review Agent — iterative phase (rounds ≥ 2).
 
     Assembles a three-tier prompt: shared base + iterative phase base +
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
-            Defaults to ``hill_climb``.
+        algorithm: Search strategy in use — ``"beam"`` on this leaf.
+            Defaults to ``beam``.
     """
     content = assemble_review_prompt(algorithm, "iterative")
     return [UserMessage(content=content)]
 
 
 @mcp.prompt()
-async def odysseus_review_agent_cold_start(algorithm: str = "hill_climb") -> list[Message]:
+async def odysseus_review_agent_cold_start(algorithm: str = "beam") -> list[Message]:
     """System prompt for the Review Agent — cold-start / seeding phase.
 
     Assembles a three-tier prompt: shared base + cold-start phase base +
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
-            Defaults to ``hill_climb``.
+        algorithm: Search strategy in use — ``"beam"`` on this leaf.
+            Defaults to ``beam``.
     """
     content = assemble_review_prompt(algorithm, "cold_start")
     return [UserMessage(content=content)]
 
 
 @mcp.prompt()
-async def odysseus_review_agent_post_coldstart(algorithm: str = "hill_climb") -> list[Message]:
+async def odysseus_review_agent_post_coldstart(algorithm: str = "beam") -> list[Message]:
     """System prompt for the Review Agent — round-2 post-cold-start phase.
 
     Assembles a four-tier prompt: shared base + iterative phase base +
     post-coldstart override + iterative strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
-            Defaults to ``hill_climb``.
+        algorithm: Search strategy in use — ``"beam"`` on this leaf.
+            Defaults to ``beam``.
     """
     content = assemble_review_prompt(algorithm, "post_coldstart")
     return [UserMessage(content=content)]

@@ -5,8 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.pipeline.status import get_pipeline_status
-
 
 def _setup_stage4_converged_with_pareto(base: Path, run_id: str) -> None:
     """Stage 4 complete: converged=True, pareto_front has one candidate."""
@@ -28,7 +26,7 @@ def _setup_stage4_converged_with_pareto(base: Path, run_id: str) -> None:
         "  output_cost_per_million_tokens: 0.0\n"
     )
     (base / run_id / "search").mkdir(parents=True, exist_ok=True)
-    (base / run_id / "search" / "directive_history.json").write_text("[]")
+    (base / run_id / "search" / "child_variants.json").write_text("[]")
     (base / run_id / "prompts").mkdir(parents=True, exist_ok=True)
     (base / run_id / "prompts" / "v1.txt").write_text("prompt text")
     (base / run_id / "prompts" / "v3.txt").write_text("best prompt text")

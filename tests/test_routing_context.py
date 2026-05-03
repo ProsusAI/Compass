@@ -1,12 +1,11 @@
 # tests/test_routing_context.py
 """Tests for relocated RoutingContext models."""
 
-import pytest
 from odysseus.agents.routing_context import (
     RouteDefinition,
+    RouteOrdering,
     RoutingContext,
     RoutingDimension,
-    RouteOrdering,
 )
 
 

@@ -20,27 +20,13 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
-from odysseus.agents.prompt_builder.annealing import (
-    AnnealingState,
-    TrajectoryState,
-    adaptive_cool,
-    compute_cooling_rate,
-    compute_neighborhood,
-    compute_tchebycheff_energy,
-    compute_weight_vectors,
-    metropolis_accept,
-    replace_if_better,
-    update_archive,
-)
 from odysseus.agents.prompt_builder.search import (
     AlgorithmType,
     Candidate,
     RoundSummary,
     SearchState,
-    compute_front_improvement,
     compute_hypervolume,
     update_elite_set,
-    update_pareto_front,
     validate_elite_set,
 )
 from odysseus.agents.prompt_builder.viz import _try_write_viz
@@ -59,7 +45,7 @@ def _default_output_dir() -> Path:
 
 
 # Branch-level algorithm constants.  On feat/generalize-pipeline (and main)
-# these default to hill_climb / {}.  Search-specific branches (Wave 2) flip
+# these default to "__unset__".  Search-specific branches (Wave 2) flip
 # exactly these two lines and nothing else.
 _BRANCH_ALGORITHM: AlgorithmType = "beam"
 _BRANCH_ALGORITHM_STATE: dict[str, Any] = {"beam_width": 3}
@@ -68,6 +54,10 @@ _BRANCH_ALGORITHM_STATE: dict[str, Any] = {"beam_width": 3}
 # ---------------------------------------------------------------------------
 # Private path / IO helpers
 # ---------------------------------------------------------------------------
+
+
+def _search_dir(run_id: str, output_dir: Path) -> Path:
+    return output_dir / run_id / "search"
 
 
 def _state_path(run_id: str, output_dir: Path) -> Path:
@@ -250,6 +240,12 @@ def init_search_state(
     Returns:
         The newly created :class:`SearchState`.
     """
+    if _BRANCH_ALGORITHM == "__unset__":
+        raise RuntimeError(
+            "init_search_state called on the pipeline trunk where _BRANCH_ALGORITHM is '__unset__'. "
+            "Run on a leaf branch (feat/generalize-{hill_climb,beam,emosa,sms_emoa}) that sets "
+            "_BRANCH_ALGORITHM to a concrete algorithm."
+        )
     if output_dir is None:
         output_dir = _default_output_dir()
     search_state_id = uuid.uuid4().hex[:12]
@@ -301,6 +297,7 @@ def register_candidate(
     example_ids: list[str] | None = None,
     output_dir: Path | None = None,
     eval_status: Literal["pending", "running", "complete", "failed"] | None = "pending",
+    trajectory_id: int | None = None,
 ) -> SearchState:
     """Register a new candidate for the current round.
 
@@ -351,6 +348,7 @@ def register_candidate(
         round_introduced=state.round + 1,
         example_ids=example_ids or [],
         eval_status=eval_status,
+        trajectory_id=trajectory_id,
     )
     pending.append(candidate)
     _save_pending(run_id, pending, output_dir)
@@ -452,8 +450,9 @@ def advance_round(
 ) -> RoundSummary:
     """Advance the search loop by one round.
 
-    Processes all pending candidates: updates the Pareto front, adjusts
-    stagnation tracking, switches mutation mode, and checks for convergence.
+    This is an algorithm-specific operation. On the pipeline trunk this function
+    raises :exc:`NotImplementedError` — leaf branches supply the implementation
+    that matches their search strategy.
 
     Args:
         run_id: Run identifier used to locate the state on disk.
@@ -463,131 +462,13 @@ def advance_round(
         A :class:`RoundSummary` for the completed round.
 
     Raises:
-        FileNotFoundError: If the search state does not exist.
-        ValueError: If there are no pending candidates.
+        NotImplementedError: Always on the pipeline trunk.
     """
-    if output_dir is None:
-        output_dir = _default_output_dir()
-    state = _load_state(run_id, output_dir)
-
-    # Guard: do not advance while batch evals are still in flight.
-    if state.active_evals:
-        raise ValueError(f"Cannot advance round while active_evals is non-empty: {state.active_evals}")
-
-    pending = _load_pending(run_id, output_dir)
-
-    if not pending:
-        raise ValueError("No pending candidates to advance round with")
-
-    new_round = state.round + 1
-
-    # Split pending into scored and failed candidates.
-    # Backward-compat: candidates from old state files have eval_status=None
-    # (the field didn't exist); treat None as "complete" since we have no
-    # evidence they failed.
-    scored = [c for c in pending if c.eval_status in ("complete", None)]
-    failed_evals = [c for c in pending if c.eval_status == "failed"]
-
-    for c in failed_evals:
-        logger.warning(
-            "Candidate %s has eval_status='failed' and will be excluded from elite-set update",
-            c.prompt_version,
-        )
-
-    candidates_evaluated = [c.prompt_version for c in pending]
-
-    if not scored:
-        # All candidates failed — carry elite set forward unchanged, increment stagnation.
-        new_front = state.elite_set
-        new_elite_entries = 0
-        improvement = 0.0
-        new_stagnation_count = state.stagnation_count + 1
-        round_routing_cost = 0.0
-        new_mutation_mode = "exploratory" if new_stagnation_count >= state.stagnation_limit else state.mutation_mode
-    else:
-        # Normal path — use only scored candidates.
-        new_front, new_elite_entries = update_pareto_front(state.elite_set, scored)
-
-        # Update stagnation
-        improvement = compute_front_improvement(state.elite_set, new_front)
-        new_stagnation_count = 0 if improvement > state.epsilon else state.stagnation_count + 1
-
-        # Determine mutation mode
-        if new_stagnation_count == 0 and state.stagnation_count > 0:
-            # Improvement after stagnation — reset to targeted
-            new_mutation_mode = "targeted"
-        elif new_stagnation_count >= state.stagnation_limit:
-            new_mutation_mode = "exploratory"
-        else:
-            new_mutation_mode = state.mutation_mode
-
-        round_routing_cost = sum(c.cost for c in scored)
-
-    # Check convergence
-    converged = new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
-    new_convergence_limit = state.convergence_limit
-
-    # Apply Review Agent loop signal (if present)
-    signal = _consume_loop_signal(run_id, output_dir)
-    if signal is not None and signal.action == "refine":
-        if signal.suggested_budget is not None and signal.suggested_budget > 0:
-            new_stagnation_count = 0
-            new_convergence_limit = max(
-                state.convergence_limit + signal.suggested_budget,
-                state.stagnation_limit + 1,
-            )
-            # Re-check: only max_rounds is a hard cap
-            converged = new_round >= state.max_rounds
-        if signal.suggested_mutation_mode is not None:
-            new_mutation_mode = signal.suggested_mutation_mode
-
-    qualities = [c.quality_score for c in new_front]
-    front_quality_spread = max(qualities) - min(qualities) if len(new_front) > 1 else 0.0
-    convergence_reason: str | None = None
-    if converged:
-        if new_round >= state.max_rounds:
-            convergence_reason = "max_rounds"
-        elif new_stagnation_count >= new_convergence_limit:
-            convergence_reason = "stagnation"
-
-    summary = RoundSummary(
-        round=new_round,
-        candidates_evaluated=candidates_evaluated,
-        new_elite_entries=new_elite_entries,
-        elite_size=len(new_front),
-        mutation_mode=new_mutation_mode,
-        stagnation_count=new_stagnation_count,
-        converged=converged,
-        target_improvement=improvement,
-        front_quality_spread=front_quality_spread,
-        round_routing_cost=round_routing_cost,
-        convergence_reason=convergence_reason,
+    raise NotImplementedError(
+        "advance_round has no implementation on the pipeline trunk. "
+        "Run on a leaf branch (feat/generalize-{hill_climb,beam,emosa,sms_emoa}) "
+        "that provides the algorithm-specific advance_round body."
     )
-
-    # Persist updated state
-    updated_state = state.model_copy(
-        update={
-            "round": new_round,
-            "elite_set": new_front,
-            "round_history": [*state.round_history, summary],
-            "stagnation_count": new_stagnation_count,
-            "convergence_limit": new_convergence_limit,
-            "mutation_mode": new_mutation_mode,
-            "converged": converged,
-            "loop_phase": "build" if converged else "review",
-            "total_routing_cost": state.total_routing_cost + round_routing_cost,
-        }
-    )
-    _save_state(run_id, updated_state, output_dir)
-    _try_write_viz(run_id, output_dir)
-
-    # Persist scored candidates to archive before clearing pending.
-    _append_archive(run_id, scored, output_dir)
-
-    # Clear pending
-    _save_pending(run_id, [], output_dir)
-
-    return summary
 
 
 # ---------------------------------------------------------------------------
