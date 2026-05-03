@@ -1226,3 +1226,52 @@ class TestEmptyOutcomeGuardrail:
 
         captured = capsys.readouterr()
         assert "Warning" not in captured.err
+
+
+class TestBuildReviewBriefingDoesNotWriteRoundReport:
+    """C.2: build_review_briefing_tool must NOT write round_reports/round_N.json."""
+
+    _RUN_ID = "test-run-no-rr-write"
+
+    async def test_briefing_does_not_write_round_report(self, tmp_path: Path) -> None:
+        """build_review_briefing_tool leaves round_reports/ untouched (no racy write)."""
+        run_id = self._RUN_ID
+        state_dict = _make_state_dict(run_id, elite_set=[], round_=2)
+        _write_state(tmp_path, run_id, state_dict)
+
+        round_reports_dir = tmp_path / "outputs" / run_id / "search" / "round_reports"
+
+        with _patch_project_dir(tmp_path):
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        assert not round_reports_dir.exists(), (
+            "build_review_briefing_tool must not create round_reports/ directory"
+        )
+
+    async def test_briefing_does_not_clobber_existing_round_report(self, tmp_path: Path) -> None:
+        """If round_reports/round_2.json was pre-written by advance_round, briefing leaves it intact."""
+        run_id = self._RUN_ID + "-clobber"
+        state_dict = _make_state_dict(run_id, elite_set=[], round_=2)
+        _write_state(tmp_path, run_id, state_dict)
+
+        # Pre-write a round report (as advance_round would do)
+        round_reports_dir = tmp_path / "outputs" / run_id / "search" / "round_reports"
+        round_reports_dir.mkdir(parents=True, exist_ok=True)
+        sentinel = {"pre_written_candidate": {"metrics": {"accuracy": 0.9}}}
+        (round_reports_dir / "round_2.json").write_text(json.dumps(sentinel), encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            await build_review_briefing_tool(
+                ctx=None,
+                run_id=run_id,
+                output_dir="outputs",
+            )
+
+        on_disk = json.loads((round_reports_dir / "round_2.json").read_text(encoding="utf-8"))
+        assert on_disk == sentinel, (
+            "build_review_briefing_tool must not overwrite existing round_reports/round_2.json"
+        )

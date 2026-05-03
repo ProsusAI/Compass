@@ -120,7 +120,6 @@ async def build_review_briefing_tool(
         load_child_variants,
         load_directive_history,
         load_round_reports,
-        save_round_report,
         update_cell_attempt_history,
     )
     from odysseus.agents.review.preprocessor import build_review_briefing, parse_user_targets
@@ -316,10 +315,6 @@ async def build_review_briefing_tool(
         cell_attempt_history=cell_attempt_history or None,
         emosa_trajectory_id=trajectory_id,
     )
-
-    # Save current round's reports for future historical access
-    current_round_reports = {v: score_reports[v] for v in candidate_versions if v in score_reports}
-    save_round_report(run_id, state.round, current_round_reports, output_dir=out)
 
     # Update cell attempt history from batch outcomes (links prior child variants to outcomes)
     if briefing.batch_outcomes and child_variants:

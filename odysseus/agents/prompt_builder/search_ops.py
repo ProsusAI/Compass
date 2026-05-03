@@ -759,6 +759,18 @@ def _calibration_complete(
     _save_state(run_id, updated_state, output_dir)
     _try_write_viz(run_id, output_dir)
 
+    # Save round report from each calibration candidate's eval report on disk
+    from odysseus.agents.review.ops import save_round_report
+
+    round_reports: dict[str, dict] = {}
+    eval_dir = output_dir / run_id / "eval"
+    for candidate in calibration_scored:
+        report_path = eval_dir / candidate.prompt_version / "report.json"
+        if report_path.exists():
+            round_reports[candidate.prompt_version] = json.loads(report_path.read_text(encoding="utf-8"))
+    if round_reports:
+        save_round_report(run_id, state.round, round_reports, output_dir=output_dir)
+
     # Persist scored candidates to archive before clearing pending.
     _append_archive(run_id, scored, output_dir)
 
@@ -1160,6 +1172,18 @@ def _advance_emosa_search(
 
     _save_state(run_id, updated_state, output_dir)
     _try_write_viz(run_id, output_dir)
+
+    # Save round report from each pending candidate's eval report on disk
+    from odysseus.agents.review.ops import save_round_report
+
+    round_reports: dict[str, dict] = {}
+    eval_dir = output_dir / run_id / "eval"
+    for candidate in pending:
+        report_path = eval_dir / candidate.prompt_version / "report.json"
+        if report_path.exists():
+            round_reports[candidate.prompt_version] = json.loads(report_path.read_text(encoding="utf-8"))
+    if round_reports:
+        save_round_report(run_id, state.round, round_reports, output_dir=output_dir)
 
     # Persist scored candidates to archive before clearing pending.
     _append_archive(run_id, scored_pending, output_dir)
