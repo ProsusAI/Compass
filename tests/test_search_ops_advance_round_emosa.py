@@ -1151,3 +1151,144 @@ class TestAdvanceRoundEmosaSearch:
             f"Expected T0 ({t0_after.temperature:.4f}) < T1 ({t1_after.temperature:.4f}) "
             f"(T0 had all-True history, T1 had all-False)"
         )
+
+
+# ---------------------------------------------------------------------------
+# C.3: round_report persistence tests
+# ---------------------------------------------------------------------------
+
+
+class TestRoundReportPersistenceEmosa:
+    """_advance_emosa_search and _calibration_complete must write round_N.json."""
+
+    def _make_report(self, version: str) -> dict:
+        return {
+            "metrics": {"accuracy": 0.8},
+            "errors": [],
+            "diff": None,
+            "report_path": f"/fake/{version}/report.json",
+            "results_path": f"/fake/{version}/results.jsonl",
+        }
+
+    def _write_report(self, tmp_path: Path, run_id: str, version: str) -> None:
+        eval_dir = tmp_path / run_id / "eval" / version
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        (eval_dir / "report.json").write_text(
+            json.dumps(self._make_report(version)), encoding="utf-8"
+        )
+
+    def test_advance_emosa_search_writes_round_report(self, tmp_path: Path) -> None:
+        """_advance_emosa_search writes round_reports/round_2.json with both candidates."""
+        run_id = "emosa-rr-search"
+        ideal = (0.9, 0.01)
+        nadir = (0.5, 0.09)
+        weight_vectors = compute_weight_vectors(2)
+
+        trajectories = [
+            TrajectoryState(
+                trajectory_id=i,
+                weight_vector=weight_vectors[i],
+                current_solution=f"seed_v{i}",
+                current_quality=0.7 - i * 0.05,
+                current_cost=0.05 + i * 0.02,
+                current_energy=compute_tchebycheff_energy(
+                    0.7 - i * 0.05, 0.05 + i * 0.02, weight_vectors[i], ideal, nadir
+                ),
+                acceptance_history=[True],
+                temperature=10.0,
+                alpha=0.95,
+                step_count=1,
+            )
+            for i in range(2)
+        ]
+        annealing = AnnealingState(
+            t_min=0.01,
+            num_trajectories=2,
+            trajectories=trajectories,
+            phase="search",
+            total_evals=2,
+            ideal_point=ideal,
+            nadir_point=nadir,
+        )
+        state = _init_emosa_with_annealing(run_id=run_id, output_dir=tmp_path, annealing=annealing)
+        # round starts at 0; advance_round uses state.round as the key before incrementing
+        assert state.round == 0
+
+        children = [
+            Candidate(
+                prompt_version="child_a",
+                parent_version="seed_v0",
+                quality_score=0.82,
+                cost=0.03,
+                round_introduced=2,
+                eval_status="complete",
+            ),
+            Candidate(
+                prompt_version="child_b",
+                parent_version="seed_v1",
+                quality_score=0.68,
+                cost=0.06,
+                round_introduced=2,
+                eval_status="complete",
+            ),
+        ]
+        _save_pending(run_id, children, tmp_path)
+
+        # Write eval reports for both candidates
+        for v in ("child_a", "child_b"):
+            self._write_report(tmp_path, run_id, v)
+
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        round_report_path = tmp_path / run_id / "search" / "round_reports" / "round_0.json"
+        assert round_report_path.exists(), "round_0.json must be written by _advance_emosa_search"
+        data = json.loads(round_report_path.read_text(encoding="utf-8"))
+        assert "child_a" in data, "round_0.json must contain child_a"
+        assert "child_b" in data, "round_0.json must contain child_b"
+
+    def test_calibration_complete_writes_round_report(self, tmp_path: Path) -> None:
+        """_calibration_complete writes round_reports/round_0.json with calibration candidates."""
+        run_id = "emosa-rr-calib"
+        num_traj = 2
+        weight_vectors = compute_weight_vectors(num_traj)
+        trajectories = [TrajectoryState(trajectory_id=i, weight_vector=weight_vectors[i]) for i in range(num_traj)]
+        annealing = AnnealingState(
+            num_trajectories=num_traj,
+            trajectories=trajectories,
+            phase="calibration",
+            total_evals=0,
+        )
+        state = init_search_state(backend="test", run_id=run_id, output_dir=tmp_path)
+        patched = state.model_copy(
+            update={
+                "algorithm_state": json.loads(annealing.model_dump_json()),
+                "loop_phase": "calibration",
+            }
+        )
+        _save_state(run_id, patched, tmp_path)
+
+        calib_candidates = [
+            Candidate(
+                prompt_version=f"seed_v{i}",
+                parent_version=None,
+                quality_score=0.5 + i * 0.1,
+                cost=0.1 + i * 0.05,
+                round_introduced=1,
+                eval_status="complete",
+            )
+            for i in range(num_traj)
+        ]
+        _save_pending(run_id, calib_candidates, tmp_path)
+
+        # Write eval reports for calibration candidates
+        for c in calib_candidates:
+            self._write_report(tmp_path, run_id, c.prompt_version)
+
+        advance_round_emosa(run_id=run_id, output_dir=tmp_path)
+
+        # _calibration_complete uses state.round (which is 0 before increment) as key
+        round_report_path = tmp_path / run_id / "search" / "round_reports" / "round_0.json"
+        assert round_report_path.exists(), "round_0.json must be written by _calibration_complete"
+        data = json.loads(round_report_path.read_text(encoding="utf-8"))
+        assert "seed_v0" in data, "round_0.json must contain seed_v0"
+        assert "seed_v1" in data, "round_0.json must contain seed_v1"
