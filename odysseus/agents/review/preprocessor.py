@@ -1096,51 +1096,6 @@ def _synthesize_directive_outcomes(
     return synthesized
 
 
-def _populate_emosa_review_fields(
-    search_state: Any,
-    elite_set: list[Candidate],
-) -> dict[str, Any]:
-    """Compute beam-specific ReviewBriefing fields.
-
-    Returns a dict with keys ``beam_rank``, ``crowding_distance``,
-    ``hypervolume``, ``reference_point``, ``stagnation_signal``.
-    """
-    from odysseus.agents.prompt_builder.search import (
-        crowding_distance as _crowding_distance,
-    )
-
-    pocket = getattr(search_state, "algorithm_state", {}) or {}
-    hypervolume = float(pocket.get("hypervolume", 0.0))
-    prev_hv = float(pocket.get("prev_hypervolume", 0.0))
-    backtrack_threshold = int(pocket.get("backtrack_threshold", 2))
-    reference_point_raw = pocket.get("reference_point", (0.0, 0.0))
-    reference_point: tuple[float, float] = (
-        float(reference_point_raw[0]),
-        float(reference_point_raw[1]),
-    )
-
-    # Beam keeps a single Pareto front in the elite set; every member has
-    # non-dominated rank 0.
-    beam_rank: dict[str, int] = {c.prompt_version: 0 for c in elite_set}
-    crowding = _crowding_distance(elite_set) if elite_set else {}
-    # Replace inf with a JSON-friendly large sentinel for serialization.
-    crowding_serializable: dict[str, float] = {v: (1e308 if d == float("inf") else d) for v, d in crowding.items()}
-
-    hypervolume_delta = hypervolume - prev_hv
-    stagnation_signal = {
-        "hypervolume_delta": hypervolume_delta,
-        "backtrack_threshold": backtrack_threshold,
-    }
-
-    return {
-        "beam_rank": beam_rank,
-        "crowding_distance": crowding_serializable,
-        "hypervolume": hypervolume,
-        "reference_point": reference_point,
-        "stagnation_signal": stagnation_signal,
-    }
-
-
 def build_review_briefing(
     *,
     search_state: Any,
@@ -1159,7 +1114,6 @@ def build_review_briefing(
     examples: list[Example] | None = None,
     run_dir: Path | None = None,
     cell_attempt_history: dict[str, list[dict[str, Any]]] | None = None,
-    emosa_trajectory_id: int | None = None,
 ) -> ReviewBriefing:
     """Assemble a complete ReviewBriefing from raw pipeline data.
 
@@ -1169,12 +1123,6 @@ def build_review_briefing(
     primary_metric: str = search_state.primary_metric_name or "accuracy"
     elite_set = search_state.elite_set
     elite_versions = [c.prompt_version for c in elite_set]
-
-    # EMOSA per-trajectory scoping: when a trajectory_id is pinned, restrict child_variants
-    # (and therefore the derived batch_outcomes / directive_history) to variants emitted by
-    # that trajectory in the prior round. Other strategies pass emosa_trajectory_id=None.
-    if emosa_trajectory_id is not None and child_variants:
-        child_variants = [cv for cv in child_variants if cv.trajectory_id == emosa_trajectory_id]
 
     # Mutation descriptions for current candidates
     mutation_descriptions: dict[str, str] = {v: "" for v in candidate_versions}
@@ -1418,11 +1366,6 @@ def build_review_briefing(
     if confusion_analysis and cell_attempt_history:
         confusion_analysis = enrich_confusion_with_history(confusion_analysis, cell_attempt_history)
 
-    algorithm = getattr(search_state, "algorithm", "hill_climb")
-    beam_overrides: dict[str, Any] = {}
-    if algorithm == "beam":
-        beam_overrides = _populate_beam_review_fields(search_state, elite_set)
-
     briefing = ReviewBriefing(
         round=current_round,
         candidates=candidates,
@@ -1438,12 +1381,8 @@ def build_review_briefing(
         single_candidate_meets_all=single_candidate_meets_all,
         backtracking=backtracking,
         child_variants=child_variants or [],
-        stagnation_signal=beam_overrides.get("stagnation_signal", stagnation_signal),
+        stagnation_signal=stagnation_signal,
         confusion_analysis=confusion_analysis,
-        beam_rank=beam_overrides.get("beam_rank"),
-        crowding_distance=beam_overrides.get("crowding_distance"),
-        hypervolume=beam_overrides.get("hypervolume"),
-        reference_point=beam_overrides.get("reference_point"),
         initial_parent_version=INITIAL_PARENT_VERSION,
     )
     return briefing.model_copy(
