@@ -341,7 +341,6 @@ async def test_active_evals_populated_before_gather(tmp_run: tuple[str, Path]) -
 def test_batch_eval_candidate_has_trajectory_id_field() -> None:
     """BatchEvalCandidate has a trajectory_id field defaulting to None."""
     c = BatchEvalCandidate(prompt_version="v1")
-    assert hasattr(c, "trajectory_id")
     assert c.trajectory_id is None
 
 
@@ -371,16 +370,9 @@ async def test_batch_eval_forwards_trajectory_id_to_register_candidate(tmp_run: 
     with patch(_SINGLE_EVAL, new=AsyncMock(return_value=mock_report)):
         await run_batch_eval_impl(run_id, candidates, output_dir=tmp_path)
 
-    # After run, candidate should have trajectory_id=3 in pending/archive
+    # After run, candidate should have trajectory_id=3 in pending (archive is populated later by advance_round)
     pending = _load_pending(run_id, tmp_path)
-    # If candidate has moved to complete, check archive instead
-    from odysseus.agents.prompt_builder.search_ops import _load_archive
-    archive = _load_archive(run_id, tmp_path)
-    all_candidates = pending + [
-        type("C", (), {"prompt_version": e["prompt_version"], "trajectory_id": e.get("trajectory_id")})()
-        for e in archive
-    ]
-    v2 = next((c for c in all_candidates if c.prompt_version == "v2"), None)
+    v2 = next((c for c in pending if c.prompt_version == "v2"), None)
     assert v2 is not None
     assert v2.trajectory_id == 3
 

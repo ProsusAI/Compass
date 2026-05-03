@@ -289,14 +289,12 @@ class TestRegisterCandidate:
 
     def test_trajectory_id_none_falls_back_to_derive(self, tmp_path) -> None:
         """When trajectory_id is not supplied, fallback to _derive_trajectory_id still works."""
-        import json as _json
-
         init_search_state("anthropic", run_id="run-tid3", output_dir=tmp_path)
         # Pre-create a child_variants_t7.json so _derive can find the version
         search_dir = tmp_path / "run-tid3" / "search"
         search_dir.mkdir(parents=True, exist_ok=True)
         (search_dir / "child_variants_t7.json").write_text(
-            _json.dumps([{"variant_id": "v1", "hypothesis": "h", "directives": []}]),
+            json.dumps([{"variant_id": "v1", "hypothesis": "h", "directives": []}]),
             encoding="utf-8",
         )
         register_candidate("run-tid3", "v1", output_dir=tmp_path)
