@@ -18,7 +18,6 @@ from odysseus.eval.batch_eval import (
     _extract_quality_score_from_dict,
 )
 
-
 # ---------------------------------------------------------------------------
 # BatchEvalCandidate / BatchEvalResult model tests
 # ---------------------------------------------------------------------------
