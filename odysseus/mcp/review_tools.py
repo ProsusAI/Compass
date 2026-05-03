@@ -135,19 +135,6 @@ async def build_review_briefing_tool(
     except FileNotFoundError as exc:
         raise ToolError("search_state.json missing — Stage 4 not initialised") from exc
 
-    # EMOSA-specific: auto-fire calibration on first review entry.
-    # Calibration is pure computation (no LLM), so it lives in the backend
-    # transition rather than as a separate user-facing step.
-    if state.algorithm == "emosa" and not state.elite_set:
-        pending_for_calib = _load_pending(run_id, out)
-        scored_for_calib = [c for c in pending_for_calib if c.eval_status in ("complete", None)]
-        num_traj = state.algorithm_state.get("num_trajectories", 0)
-        if num_traj and len(scored_for_calib) >= num_traj:
-            from odysseus.agents.prompt_builder.search_ops import _calibration_complete
-
-            _calibration_complete(run_id, state, out)
-            state = get_search_state(run_id=run_id, output_dir=out)
-
     # Auto-discover pending candidates
     pending_candidates_list = _load_pending(run_id, out)
 
@@ -314,7 +301,6 @@ async def build_review_briefing_tool(
         examples=examples_for_confusion,
         run_dir=out / run_id,
         cell_attempt_history=cell_attempt_history or None,
-        emosa_trajectory_id=trajectory_id,
     )
 
     # Update cell attempt history from batch outcomes (links prior child variants to outcomes)

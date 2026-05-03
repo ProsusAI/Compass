@@ -12,69 +12,52 @@ def _load_prompt(name: str) -> str:
     return _load_text(f"odysseus/agents/prompts/{name}.md")
 
 
-def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start", "post_coldstart"]) -> str:
+def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start"]) -> str:
     """Return the overlay prompt filename stem for the given (algorithm, phase) pair.
 
-    | phase            | overlay used                              |
-    |------------------|-------------------------------------------|
-    | iterative        | algorithm-specific iterative overlay      |
-    | cold_start       | algorithm-specific cold-start overlay     |
-    | post_coldstart   | algorithm-specific iterative overlay      |
+    On the pipeline trunk this map is empty by design; leaves populate it with their
+    (algorithm, phase) → overlay-stem entries.
 
     Raises:
-        ValueError: When the (algorithm, phase) combination is not recognised.
+        NotImplementedError: Pipeline trunk has no algorithm overlays; run on a leaf branch.
     """
-    _overlay_map: dict[tuple[str, str], str] = {
-        ("hill_climb", "iterative"): "review_agent_iterative_overlay_hillclimb",
-        ("hill_climb", "cold_start"): "review_agent_cold_start_overlay_hillclimb",
-        ("beam", "iterative"): "review_agent_iterative_overlay_beam",
-        ("beam", "cold_start"): "review_agent_cold_start_overlay_beam",
-        ("hill_climb", "post_coldstart"): "review_agent_iterative_overlay_hillclimb",
-        ("beam", "post_coldstart"): "review_agent_iterative_overlay_beam",
-    }
+    _overlay_map: dict[tuple[str, str], str] = {}
     key = (algorithm, phase)
     if key not in _overlay_map:
-        raise ValueError(
-            f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
-            f"Valid algorithms: hill_climb, beam. "
-            f"Valid phases: iterative, cold_start, post_coldstart."
+        raise NotImplementedError(
+            "Pipeline trunk has no algorithm overlays; run on a leaf branch "
+            "(feat/generalize-{hill-climb,beam,emosa,sms-emoa})."
         )
     return _overlay_map[key]
 
 
 def assemble_review_prompt(
     algorithm: str,
-    phase: Literal["iterative", "cold_start", "post_coldstart"],
+    phase: Literal["iterative", "cold_start"],
 ) -> str:
     """Compose the full Review Agent system prompt for the given strategy and phase.
 
-    For ``"iterative"`` and ``"cold_start"``, the assembled prompt is three layers:
-    base + phase-base + strategy overlay, separated by horizontal rules.
+    The assembled prompt is three layers: base + phase-base + strategy overlay,
+    separated by horizontal rules.
 
-    For ``"post_coldstart"``, the assembled prompt is four layers:
-    base + iterative-phase-base + post-coldstart override + strategy overlay.
-    The iterative base applies the standard diagnostic workflow; the post-coldstart
-    override mandates exactly one child per protected parent for round 2.
+    On the pipeline trunk the overlay map is empty, so this will always raise
+    ``NotImplementedError``. Leaf branches override ``_overlay_filename`` to populate
+    the map with their (algorithm, phase) entries.
 
     Args:
-        algorithm: Strategy discriminator — one of ``hill_climb``, ``beam``.
-        phase: ``"iterative"`` for rounds ≥ 2; ``"cold_start"`` for the seeding
-            round; ``"post_coldstart"`` for round 2 of beam search after cold-start.
+        algorithm: Strategy discriminator (e.g. ``hill_climb``, ``beam``).
+        phase: ``"iterative"`` for rounds ≥ 2; ``"cold_start"`` for the seeding round.
 
     Returns:
         Assembled Markdown string ready to use as a system prompt.
 
     Raises:
-        ValueError: When ``(algorithm, phase)`` is not a recognised combination.
+        NotImplementedError: Pipeline trunk has no algorithm overlays.
         FileNotFoundError: When any of the component prompt files is missing.
     """
     overlay_name = _overlay_filename(algorithm, phase)
     base = _load_prompt("review_agent_base_system")
     overlay = _load_prompt(overlay_name)
-    if phase == "post_coldstart":
-        iterative_base = _load_prompt("review_agent_iterative_base_system")
-        post_override = _load_prompt("review_agent_post_coldstart_base_system")
-        return f"{base}\n\n---\n\n{iterative_base}\n\n---\n\n{post_override}\n\n---\n\n{overlay}"
     phase_base = _load_prompt(f"review_agent_{phase}_base_system")
     return f"{base}\n\n---\n\n{phase_base}\n\n---\n\n{overlay}"
 
@@ -118,47 +101,34 @@ async def odysseus_backend_setup() -> list[Message]:
 
 
 @mcp.prompt()
-async def odysseus_review_agent_iterative(algorithm: str = "hill_climb") -> list[Message]:
+async def odysseus_review_agent_iterative(algorithm: str) -> list[Message]:
     """System prompt for the Review Agent — iterative phase (rounds ≥ 2).
 
     Assembles a three-tier prompt: shared base + iterative phase base +
     strategy overlay for the given algorithm.
 
+    On the pipeline trunk this always raises NotImplementedError — run on a leaf branch.
+
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
-            Defaults to ``hill_climb``.
+        algorithm: Search strategy in use (required; no default on the pipeline trunk).
     """
     content = assemble_review_prompt(algorithm, "iterative")
     return [UserMessage(content=content)]
 
 
 @mcp.prompt()
-async def odysseus_review_agent_cold_start(algorithm: str = "hill_climb") -> list[Message]:
+async def odysseus_review_agent_cold_start(algorithm: str) -> list[Message]:
     """System prompt for the Review Agent — cold-start / seeding phase.
 
     Assembles a three-tier prompt: shared base + cold-start phase base +
     strategy overlay for the given algorithm.
 
+    On the pipeline trunk this always raises NotImplementedError — run on a leaf branch.
+
     Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
-            Defaults to ``hill_climb``.
+        algorithm: Search strategy in use (required; no default on the pipeline trunk).
     """
     content = assemble_review_prompt(algorithm, "cold_start")
-    return [UserMessage(content=content)]
-
-
-@mcp.prompt()
-async def odysseus_review_agent_post_coldstart(algorithm: str = "hill_climb") -> list[Message]:
-    """System prompt for the Review Agent — round-2 post-cold-start phase.
-
-    Assembles a four-tier prompt: shared base + iterative phase base +
-    post-coldstart override + iterative strategy overlay for the given algorithm.
-
-    Args:
-        algorithm: Search strategy in use — one of ``hill_climb``, ``beam``.
-            Defaults to ``hill_climb``.
-    """
-    content = assemble_review_prompt(algorithm, "post_coldstart")
     return [UserMessage(content=content)]
 
 
