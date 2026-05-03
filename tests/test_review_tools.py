@@ -249,6 +249,62 @@ class TestRecordDirectiveOutcomesTrajectoryId:
         single_slot = tmp_path / "outputs" / (self._RUN_ID + "-single") / "search" / "child_variants.json"
         assert single_slot.exists(), "child_variants.json must be written for single-slot path"
 
+    async def test_trajectory_id_stamped_on_persisted_variants(self, tmp_path: Path) -> None:
+        """record_directive_outcomes_tool with trajectory_id=3 persists variants each carrying trajectory_id=3."""
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes_tool(
+                ctx=None,
+                run_id=self._RUN_ID,
+                outcomes=[],
+                child_variants=_CHILD_VARIANTS,
+                trajectory_id=3,
+                output_dir="outputs",
+            )
+
+        per_traj = tmp_path / "outputs" / self._RUN_ID / "search" / "child_variants_t3.json"
+        assert per_traj.exists(), "child_variants_t3.json must exist"
+        entries = json.loads(per_traj.read_text())
+        assert len(entries) == 1
+        assert entries[0]["trajectory_id"] == 3, f"Expected trajectory_id=3, got {entries[0].get('trajectory_id')}"
+
+
+class TestChildVariantTrajectoryIdField:
+    """Tests for the trajectory_id field on ChildVariant model."""
+
+    def test_child_variant_has_trajectory_id_field_defaulting_none(self) -> None:
+        """ChildVariant has trajectory_id field defaulting to None."""
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(
+            hypothesis="test",
+            directives=[],
+        )
+        assert hasattr(cv, "trajectory_id")
+        assert cv.trajectory_id is None
+
+    def test_child_variant_trajectory_id_roundtrips(self) -> None:
+        """ChildVariant.model_dump includes trajectory_id and round-trips via model_validate."""
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(
+            hypothesis="test",
+            directives=[],
+            trajectory_id=4,
+        )
+        dumped = cv.model_dump(mode="json")
+        assert dumped["trajectory_id"] == 4
+        loaded = ChildVariant.model_validate(dumped)
+        assert loaded.trajectory_id == 4
+
+    def test_child_variant_model_copy_with_trajectory_id(self) -> None:
+        """model_copy(update={'trajectory_id': N}) stamps trajectory_id correctly."""
+        from odysseus.agents.review.models import ChildVariant
+
+        cv = ChildVariant(hypothesis="test", directives=[])
+        stamped = cv.model_copy(update={"trajectory_id": 2})
+        assert stamped.trajectory_id == 2
+        assert cv.trajectory_id is None  # original unchanged
+
 
 class TestChildVariantNoParentPreference:
     """Tests for ChildVariant.parent_preference being optional."""

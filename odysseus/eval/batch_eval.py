@@ -54,6 +54,7 @@ class BatchEvalCandidate(BaseModel):
     prompt_version: str
     parent_version: str | None = None
     example_ids: list[str] = Field(default_factory=list)
+    trajectory_id: int | None = None
 
 
 class CandidateEvalOutcome(BaseModel):
@@ -486,6 +487,7 @@ async def run_batch_eval_impl(
             example_ids=c.example_ids,
             output_dir=eff_output_dir,
             eval_status="pending",
+            trajectory_id=c.trajectory_id,
         )
         _add_to_active_evals(run_id, c.prompt_version, eff_output_dir)
 
