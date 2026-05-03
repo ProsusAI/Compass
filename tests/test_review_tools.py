@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from odysseus.mcp import (
@@ -67,7 +66,6 @@ class TestRecordDirectiveOutcomesDecomposed:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[_OUTCOME],
                 loop_signal=_LOOP_SIGNAL,
                 child_variants=_CHILD_VARIANTS,
                 candidate_ranking=_CANDIDATE_RANKING,
@@ -77,7 +75,8 @@ class TestRecordDirectiveOutcomesDecomposed:
             )
 
         result = json.loads(result_json)
-        assert result["recorded"] == 1
+        # No "recorded" key — outcomes are synthesized in code, not passed by agent
+        assert "recorded" not in result
 
         review_result_path = tmp_path / "outputs" / _RUN_ID / "search" / "review_result.json"
         assert review_result_path.exists(), "review_result.json should be written for decomposed params"
@@ -87,7 +86,8 @@ class TestRecordDirectiveOutcomesDecomposed:
         assert saved["regression_guards"] == _REGRESSION_GUARDS
         assert saved["loop_signal"] == _LOOP_SIGNAL
         assert saved["child_variants"] == _CHILD_VARIANTS
-        assert len(saved["directive_history_update"]) == 1
+        # directive_history_update is no longer written to the audit record
+        assert "directive_history_update" not in saved
 
     async def test_legacy_review_result_path_persists(self, tmp_path: Path) -> None:
         """Passing review_result blob (legacy) also writes review_result.json."""
@@ -97,13 +97,11 @@ class TestRecordDirectiveOutcomesDecomposed:
             "regression_guards": _REGRESSION_GUARDS,
             "loop_signal": _LOOP_SIGNAL,
             "child_variants": _CHILD_VARIANTS,
-            "directive_history_update": [_OUTCOME],
         }
         with _patch_project_dir(tmp_path):
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[_OUTCOME],
                 loop_signal=_LOOP_SIGNAL,
                 child_variants=_CHILD_VARIANTS,
                 review_result=legacy_blob,
@@ -111,7 +109,7 @@ class TestRecordDirectiveOutcomesDecomposed:
             )
 
         result = json.loads(result_json)
-        assert result["recorded"] == 1
+        assert "recorded" not in result
 
         review_result_path = tmp_path / "outputs" / _RUN_ID / "search" / "review_result.json"
         assert review_result_path.exists()
@@ -127,14 +125,12 @@ class TestRecordDirectiveOutcomesDecomposed:
             "candidate_ranking": _CANDIDATE_RANKING,
             "promotion_decisions": _PROMOTION_DECISIONS,
             "regression_guards": _REGRESSION_GUARDS,
-            "directive_history_update": [],
         }
 
         with _patch_project_dir(tmp_path):
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=run_decomposed,
-                outcomes=[],
                 candidate_ranking=_CANDIDATE_RANKING,
                 promotion_decisions=_PROMOTION_DECISIONS,
                 regression_guards=_REGRESSION_GUARDS,
@@ -143,7 +139,6 @@ class TestRecordDirectiveOutcomesDecomposed:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=run_legacy,
-                outcomes=[],
                 review_result=legacy_blob,
                 output_dir="outputs",
             )
@@ -164,7 +159,6 @@ class TestRecordDirectiveOutcomesDecomposed:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[_OUTCOME],
                 output_dir="outputs",
             )
 
@@ -183,7 +177,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[_OUTCOME],
                 child_variants=_CHILD_VARIANTS,
                 trajectory_id=2,
                 output_dir="outputs",
@@ -206,7 +199,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[_OUTCOME],
                 child_variants=_CHILD_VARIANTS,
                 trajectory_id=2,
                 output_dir="outputs",
@@ -223,7 +215,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[_OUTCOME],
                 child_variants=[{**_CHILD_VARIANTS[0]}],  # no variant_id set
                 trajectory_id=2,
                 output_dir="outputs",
@@ -241,7 +232,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID + "-single",
-                outcomes=[_OUTCOME],
                 child_variants=_CHILD_VARIANTS,
                 output_dir="outputs",
             )
@@ -255,7 +245,6 @@ class TestRecordDirectiveOutcomesTrajectoryId:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=_CHILD_VARIANTS,
                 trajectory_id=3,
                 output_dir="outputs",
@@ -436,7 +425,6 @@ class TestVariantIdSequentialCounter:
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=two_variants,
                 output_dir="outputs",
             )
@@ -453,14 +441,12 @@ class TestVariantIdSequentialCounter:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[self._CHILD_VARIANT_RAW],
                 output_dir="outputs",
             )
             result_json = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[
                     dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant A"),
                     dict(self._CHILD_VARIANT_RAW, hypothesis="Round 2 variant B"),
@@ -482,14 +468,12 @@ class TestVariantIdSequentialCounter:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="V2")],
                 output_dir="outputs",
             )
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=self._RUN_ID,
-                outcomes=[],
                 child_variants=[dict(self._CHILD_VARIANT_RAW, hypothesis="V3")],
                 output_dir="outputs",
             )
@@ -1148,86 +1132,6 @@ class TestLoadScoreReportDict:
         ScoreReport.model_validate(result)
 
 
-class TestEmptyOutcomeGuardrail:
-    """Tests for the B.3 guardrail: warn when round N≥2 has empty outcomes with prior directives."""
-
-    _RUN_ID = "test-run-guardrail"
-
-    def _write_search_state(self, tmp_path: Path, run_id: str, round_num: int) -> None:
-        search_dir = tmp_path / "outputs" / run_id / "search"
-        search_dir.mkdir(parents=True, exist_ok=True)
-        state_dict = {
-            "search_state_id": run_id,
-            "backend": "anthropic",
-            "algorithm": "beam",
-            "round": round_num,
-            "elite_set": [],
-            "round_history": [],
-            "stagnation_count": 0,
-            "stagnation_limit": 3,
-            "convergence_limit": 5,
-            "max_rounds": 50,
-            "mutation_mode": "targeted",
-            "converged": False,
-            "next_variant_seq": 1,
-        }
-        (search_dir / "search_state.json").write_text(json.dumps(state_dict), encoding="utf-8")
-
-    def _write_prior_child_variants(self, tmp_path: Path, run_id: str) -> None:
-        search_dir = tmp_path / "outputs" / run_id / "search"
-        search_dir.mkdir(parents=True, exist_ok=True)
-        (search_dir / "child_variants.json").write_text("[]", encoding="utf-8")
-
-    async def test_warns_when_round2_empty_outcomes_with_prior_directives(self, tmp_path: Path, capsys: Any) -> None:
-        """round=2 + outcomes=[] + child_variants.json present → warning on stderr."""
-        self._write_search_state(tmp_path, self._RUN_ID, round_num=2)
-        self._write_prior_child_variants(tmp_path, self._RUN_ID)
-
-        with _patch_project_dir(tmp_path):
-            await record_directive_outcomes_tool(
-                ctx=None,
-                run_id=self._RUN_ID,
-                outcomes=[],
-                output_dir="outputs",
-            )
-
-        captured = capsys.readouterr()
-        assert "Warning" in captured.err
-        assert "round 2" in captured.err
-        assert "empty outcomes" in captured.err
-
-    async def test_no_warning_for_round1_empty_outcomes(self, tmp_path: Path, capsys: Any) -> None:
-        """round=1 + outcomes=[] → no warning (no prior directives)."""
-        self._write_search_state(tmp_path, self._RUN_ID + "-r1", round_num=1)
-
-        with _patch_project_dir(tmp_path):
-            await record_directive_outcomes_tool(
-                ctx=None,
-                run_id=self._RUN_ID + "-r1",
-                outcomes=[],
-                output_dir="outputs",
-            )
-
-        captured = capsys.readouterr()
-        assert "Warning" not in captured.err
-
-    async def test_no_warning_when_outcomes_non_empty(self, tmp_path: Path, capsys: Any) -> None:
-        """round=2 + non-empty outcomes → no warning."""
-        self._write_search_state(tmp_path, self._RUN_ID + "-nonempty", round_num=2)
-        self._write_prior_child_variants(tmp_path, self._RUN_ID + "-nonempty")
-
-        with _patch_project_dir(tmp_path):
-            await record_directive_outcomes_tool(
-                ctx=None,
-                run_id=self._RUN_ID + "-nonempty",
-                outcomes=[_OUTCOME],
-                output_dir="outputs",
-            )
-
-        captured = capsys.readouterr()
-        assert "Warning" not in captured.err
-
-
 class TestBuildReviewBriefingDoesNotWriteRoundReport:
     """C.2: build_review_briefing_tool must NOT write round_reports/round_N.json."""
 
@@ -1248,9 +1152,7 @@ class TestBuildReviewBriefingDoesNotWriteRoundReport:
                 output_dir="outputs",
             )
 
-        assert not round_reports_dir.exists(), (
-            "build_review_briefing_tool must not create round_reports/ directory"
-        )
+        assert not round_reports_dir.exists(), "build_review_briefing_tool must not create round_reports/ directory"
 
     async def test_briefing_does_not_clobber_existing_round_report(self, tmp_path: Path) -> None:
         """If round_reports/round_2.json was pre-written by advance_round, briefing leaves it intact."""
@@ -1272,6 +1174,4 @@ class TestBuildReviewBriefingDoesNotWriteRoundReport:
             )
 
         on_disk = json.loads((round_reports_dir / "round_2.json").read_text(encoding="utf-8"))
-        assert on_disk == sentinel, (
-            "build_review_briefing_tool must not overwrite existing round_reports/round_2.json"
-        )
+        assert on_disk == sentinel, "build_review_briefing_tool must not overwrite existing round_reports/round_2.json"

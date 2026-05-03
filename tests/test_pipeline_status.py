@@ -197,7 +197,7 @@ def _setup_stage4_cold_start_done(base: Path, run_id: str) -> None:
     _setup_through_stage3(base, run_id)
     search = base / run_id / "search"
     search.mkdir(parents=True, exist_ok=True)
-    (search / "directive_history.json").write_text("[]")
+    (search / "child_variants.json").write_text("[]")
 
 
 def _setup_stage4_v1_done(base: Path, run_id: str) -> None:
@@ -654,7 +654,7 @@ class TestDetectStage4PhaseRecovery:
         prompts = tmp_path / run_id / "prompts"
         prompts.mkdir(parents=True, exist_ok=True)
         (prompts / "v1.txt").write_text("prompt: seed")
-        (search / "directive_history.json").write_text("[]")
+        (search / "child_variants.json").write_text("[]")
         (search / "search_state.json").write_text(
             json.dumps(
                 {
@@ -678,7 +678,7 @@ class TestDetectStage4PhaseRecovery:
         prompts = tmp_path / run_id / "prompts"
         prompts.mkdir(parents=True, exist_ok=True)
         (prompts / "v1.txt").write_text("prompt: seed")
-        (search / "directive_history.json").write_text("[]")
+        (search / "child_variants.json").write_text("[]")
         (search / "search_state.json").write_text(
             json.dumps(
                 {
@@ -716,7 +716,7 @@ def _setup_phase3_run(
     prompts = base / run_id / "prompts"
     prompts.mkdir(parents=True, exist_ok=True)
     (prompts / "v1.txt").write_text("prompt: seed")
-    (search / "directive_history.json").write_text("[]")
+    (search / "child_variants.json").write_text("[]")
     state: dict = {
         "round": round_,
         "converged": False,

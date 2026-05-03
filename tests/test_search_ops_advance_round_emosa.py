@@ -1174,9 +1174,7 @@ class TestRoundReportPersistenceEmosa:
     def _write_report(self, tmp_path: Path, run_id: str, version: str) -> None:
         eval_dir = tmp_path / run_id / "eval" / version
         eval_dir.mkdir(parents=True, exist_ok=True)
-        (eval_dir / "report.json").write_text(
-            json.dumps(self._make_report(version)), encoding="utf-8"
-        )
+        (eval_dir / "report.json").write_text(json.dumps(self._make_report(version)), encoding="utf-8")
 
     def test_advance_emosa_search_writes_round_report(self, tmp_path: Path) -> None:
         """_advance_emosa_search writes round_reports/round_2.json with both candidates."""
@@ -1246,6 +1244,7 @@ class TestRoundReportPersistenceEmosa:
         data = json.loads(round_report_path.read_text(encoding="utf-8"))
         assert "child_a" in data, "round_0.json must contain child_a"
         assert "child_b" in data, "round_0.json must contain child_b"
+
 
 # ---------------------------------------------------------------------------
 # C.4: trajectory_history snapshot persistence

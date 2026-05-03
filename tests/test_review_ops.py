@@ -6,30 +6,19 @@ from pathlib import Path
 
 from odysseus.agents.review.models import (
     ChildVariant,
-    DirectiveOutcome,
     EditDirective,
     ExampleContent,
 )
 from odysseus.agents.review.ops import (
     load_child_variants,
-    load_directive_history,
     load_round_reports,
     save_child_variants,
-    save_directive_history,
     save_round_report,
 )
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _make_directive_outcome(directive_id: str, outcome: str = "improved") -> DirectiveOutcome:
-    return DirectiveOutcome(
-        prior_directive_id=directive_id,
-        was_attempted=True,
-        outcome=outcome,
-    )
 
 
 def _make_edit_directive(directive_id: str, version: str = "v1") -> EditDirective:
@@ -50,59 +39,6 @@ def _make_child_variant(variant_id: str | None = None) -> ChildVariant:
         hypothesis="Test hypothesis",
         directives=[_make_edit_directive("d1")],
     )
-
-
-# ---------------------------------------------------------------------------
-# Directive history
-# ---------------------------------------------------------------------------
-
-
-class TestSaveLoadDirectiveHistory:
-    def test_roundtrip(self, tmp_path: Path) -> None:
-        history = [
-            _make_directive_outcome("dir-001", "improved"),
-            _make_directive_outcome("dir-002", "no_effect"),
-        ]
-        save_directive_history("state-abc", history, output_dir=tmp_path)
-        loaded = load_directive_history("state-abc", output_dir=tmp_path)
-
-        assert len(loaded) == 2
-        assert loaded[0].prior_directive_id == "dir-001"
-        assert loaded[0].was_attempted is True
-        assert loaded[0].outcome == "improved"
-        assert loaded[1].prior_directive_id == "dir-002"
-        assert loaded[1].outcome == "no_effect"
-
-    def test_load_returns_empty_when_no_file(self, tmp_path: Path) -> None:
-        result = load_directive_history("nonexistent-state", output_dir=tmp_path)
-        assert result == []
-
-    def test_overwrite_existing(self, tmp_path: Path) -> None:
-        initial = [_make_directive_outcome("dir-001", "improved")]
-        save_directive_history("state-xyz", initial, output_dir=tmp_path)
-
-        updated = [
-            _make_directive_outcome("dir-001", "regressed"),
-            _make_directive_outcome("dir-003", "no_effect"),
-        ]
-        save_directive_history("state-xyz", updated, output_dir=tmp_path)
-        loaded = load_directive_history("state-xyz", output_dir=tmp_path)
-
-        assert len(loaded) == 2
-        assert loaded[0].outcome == "regressed"
-        assert loaded[1].prior_directive_id == "dir-003"
-
-    def test_creates_directory_structure(self, tmp_path: Path) -> None:
-        history = [_make_directive_outcome("dir-001")]
-        save_directive_history("state-new", history, output_dir=tmp_path)
-
-        expected_path = tmp_path / "state-new" / "search" / "directive_history.json"
-        assert expected_path.exists()
-
-    def test_empty_history_roundtrip(self, tmp_path: Path) -> None:
-        save_directive_history("state-empty", [], output_dir=tmp_path)
-        loaded = load_directive_history("state-empty", output_dir=tmp_path)
-        assert loaded == []
 
 
 # ---------------------------------------------------------------------------
@@ -210,13 +146,6 @@ class TestSaveLoadRoundReports:
 
 
 class TestRunIdPaths:
-    def test_directive_history_uses_run_id_path(self, tmp_path: Path) -> None:
-        outcome = DirectiveOutcome(prior_directive_id="d1", was_attempted=True, outcome="improved")
-        save_directive_history("abc12345", [outcome], output_dir=tmp_path)
-        assert (tmp_path / "abc12345" / "search" / "directive_history.json").is_file()
-        loaded = load_directive_history("abc12345", output_dir=tmp_path)
-        assert len(loaded) == 1
-
     def test_round_report_uses_run_id_path(self, tmp_path: Path) -> None:
         save_round_report("abc12345", 1, {"v1": {"score": 0.8}}, output_dir=tmp_path)
         assert (tmp_path / "abc12345" / "search" / "round_reports" / "round_1.json").is_file()

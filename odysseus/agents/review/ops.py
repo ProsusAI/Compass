@@ -14,7 +14,6 @@ from typing import Any
 
 from odysseus.agents.review.models import (
     ChildVariant,
-    DirectiveOutcome,
 )
 from odysseus.project_dir import get_project_dir
 
@@ -25,10 +24,6 @@ def _default_output_dir() -> Path:
 
 def _search_dir(run_id: str, output_dir: Path) -> Path:
     return output_dir / run_id / "search"
-
-
-def _directive_history_path(run_id: str, output_dir: Path) -> Path:
-    return _search_dir(run_id, output_dir) / "directive_history.json"
 
 
 def _child_variants_path(run_id: str, output_dir: Path) -> Path:
@@ -55,34 +50,6 @@ def save_review_result(
     path = _review_result_path(run_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(result, indent=2), encoding="utf-8")
-
-
-def save_directive_history(
-    run_id: str,
-    history: list[DirectiveOutcome],
-    *,
-    output_dir: Path | None = None,
-) -> None:
-    if output_dir is None:
-        output_dir = _default_output_dir()
-    path = _directive_history_path(run_id, output_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = [h.model_dump(mode="json") for h in history]
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-
-def load_directive_history(
-    run_id: str,
-    *,
-    output_dir: Path | None = None,
-) -> list[DirectiveOutcome]:
-    if output_dir is None:
-        output_dir = _default_output_dir()
-    path = _directive_history_path(run_id, output_dir)
-    if not path.exists():
-        return []
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return [DirectiveOutcome.model_validate(d) for d in data]
 
 
 def save_child_variants(

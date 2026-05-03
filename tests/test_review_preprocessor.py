@@ -11,7 +11,7 @@ from odysseus.agents.prompt_builder.search import Candidate, SearchState
 from odysseus.agents.review.preprocessor import (
     _delta,
     _extract_metric,
-    _synthesize_directive_outcomes_from_batch,
+    _synthesize_directive_outcomes,
     build_candidate_comparisons,
     build_confusion_analysis,
     build_review_briefing,
@@ -483,7 +483,6 @@ class TestBuildReviewBriefing:
             score_reports=score_reports,
             historical_reports=historical_reports,
             prompt_texts=prompt_texts,
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -608,7 +607,6 @@ class TestMissingMetricBehavior:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -665,7 +663,6 @@ class TestMissingMetricBehavior:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "p1", "v2": "p2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
             eval_results=eval_results,
@@ -691,7 +688,6 @@ class TestMissingMetricBehavior:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "p1", "v2": "p2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -881,7 +877,6 @@ class TestBuildReviewBriefingStagnationSignal:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "prompt v1", "v2": "prompt v2"},
-            directive_history=[],
             candidate_versions=["v2"],
             parent_versions={"v2": "v1"},
         )
@@ -944,7 +939,6 @@ class TestBeamReviewBriefingFields:
             score_reports=score_reports,
             historical_reports={1: {v: score_reports[v] for v in elite_versions}},
             prompt_texts={v: f"prompt {v}" for v in elite_versions},
-            directive_history=[],
             candidate_versions=list(elite_versions),
             parent_versions={v: None for v in elite_versions},
         )
@@ -1434,7 +1428,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v_a": score_reports["v_a"]}},
             prompt_texts={"v_a": "## Rules\n1. foo", "v_b": "## Rules\n1. bar"},
-            directive_history=[],
             candidate_versions=["v_a", "v_b"],
             parent_versions={"v_a": None, "v_b": None},
             user_targets=user_targets,
@@ -1468,7 +1461,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "## Rules\n1. foo"},
-            directive_history=[],
             candidate_versions=["v1"],
             parent_versions={"v1": None},
             user_targets=user_targets,
@@ -1499,7 +1491,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "## Rules\n1. foo"},
-            directive_history=[],
             candidate_versions=["v1"],
             parent_versions={"v1": None},
             user_targets=user_targets,
@@ -1541,7 +1532,6 @@ class TestHolisticVersionSelection:
             score_reports=score_reports,
             historical_reports={1: {"v1": score_reports["v1"]}},
             prompt_texts={"v1": "## Rules\n1. foo", "v2": "## Rules\n1. bar"},
-            directive_history=[],
             candidate_versions=["v1", "v2"],
             parent_versions={"v1": None, "v2": None},
             user_targets=user_targets,
@@ -1659,7 +1649,6 @@ class TestEmosaPreprocessorDispatch:
             score_reports=score_reports,
             historical_reports={},
             prompt_texts={},
-            directive_history=[],
             candidate_versions=[],
             parent_versions={},
         )
@@ -1771,7 +1760,6 @@ class TestEmosaExplicitTrajectoryId:
             score_reports={},
             historical_reports={},
             prompt_texts={},
-            directive_history=[],
             candidate_versions=[],
             parent_versions={},
             emosa_trajectory_id=trajectory_id,
@@ -1881,7 +1869,6 @@ class TestEmosaExplicitTrajectoryId:
             score_reports={},
             historical_reports={},
             prompt_texts={},
-            directive_history=[],
             candidate_versions=[],
             parent_versions={},
             emosa_trajectory_id=3,
@@ -1894,8 +1881,8 @@ class TestEmosaExplicitTrajectoryId:
         assert briefing.acceptance_history == [True]  # 3 % 3 + 1 = 1 → [True]
 
 
-class TestSynthesizeDirectiveOutcomesFromBatch:
-    """Unit tests for _synthesize_directive_outcomes_from_batch (Fix B.1)."""
+class TestSynthesizeDirectiveOutcomes:
+    """Unit tests for _synthesize_directive_outcomes."""
 
     def _make_batch_outcome(
         self,
@@ -1918,7 +1905,7 @@ class TestSynthesizeDirectiveOutcomesFromBatch:
 
     def test_improved_directive(self) -> None:
         bo = self._make_batch_outcome(["d-1-0"], quality_delta=0.05)
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        results = _synthesize_directive_outcomes([bo])
         assert len(results) == 1
         assert results[0].prior_directive_id == "d-1-0"
         assert results[0].was_attempted is True
@@ -1926,46 +1913,34 @@ class TestSynthesizeDirectiveOutcomesFromBatch:
 
     def test_regressed_directive(self) -> None:
         bo = self._make_batch_outcome(["d-1-1"], quality_delta=-0.03)
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        results = _synthesize_directive_outcomes([bo])
         assert len(results) == 1
         assert results[0].outcome == "regressed"
 
     def test_no_effect_when_delta_zero(self) -> None:
         bo = self._make_batch_outcome(["d-1-2"], quality_delta=0.0)
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        results = _synthesize_directive_outcomes([bo])
         assert results[0].outcome == "no_effect"
 
     def test_no_effect_when_delta_none(self) -> None:
         bo = self._make_batch_outcome(["d-1-3"], quality_delta=None)
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        results = _synthesize_directive_outcomes([bo])
         assert results[0].outcome == "no_effect"
 
     def test_failed_eval_sets_not_attempted(self) -> None:
         bo = self._make_batch_outcome(["d-1-4"], quality_delta=None, eval_status="failed")
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        results = _synthesize_directive_outcomes([bo])
         assert results[0].was_attempted is False
-
-    def test_agent_recorded_takes_precedence(self) -> None:
-        from odysseus.agents.review.models import DirectiveOutcome
-
-        agent_entry = DirectiveOutcome(
-            prior_directive_id="d-1-0",
-            was_attempted=True,
-            outcome="regressed",
-        )
-        bo = self._make_batch_outcome(["d-1-0"], quality_delta=0.10)
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[agent_entry])
-        assert len(results) == 0, "agent-recorded entry must not be overwritten by synthesis"
 
     def test_multiple_directives_in_one_variant(self) -> None:
         bo = self._make_batch_outcome(["d-1-0", "d-1-1"], quality_delta=0.05)
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        results = _synthesize_directive_outcomes([bo])
         assert len(results) == 2
         assert {r.prior_directive_id for r in results} == {"d-1-0", "d-1-1"}
         assert all(r.outcome == "improved" for r in results)
 
     def test_empty_batch_outcomes_returns_empty(self) -> None:
-        results = _synthesize_directive_outcomes_from_batch([], agent_recorded=[])
+        results = _synthesize_directive_outcomes([])
         assert results == []
 
     def test_synthesized_outcomes_appear_in_briefing_directive_history(self) -> None:
@@ -1988,13 +1963,12 @@ class TestSynthesizeDirectiveOutcomesFromBatch:
             score_reports={},
             historical_reports={},
             prompt_texts={},
-            directive_history=[],
             candidate_versions=[],
             parent_versions={},
         )
         assert briefing.directive_history == []
 
-        results = _synthesize_directive_outcomes_from_batch([bo], agent_recorded=[])
+        results = _synthesize_directive_outcomes([bo])
         assert len(results) == 1
         assert results[0].prior_directive_id == "d-1-0"
         assert results[0].outcome == "improved"

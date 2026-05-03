@@ -89,10 +89,10 @@ async def build_review_briefing_tool(
 
     Pre-processes all numerical data.
 
-    Loads search state, score reports, prompt texts, directive
-    history, and child variants, then computes candidate comparisons, per-class
-    recall, diversity metrics, diminishing returns, oracle
-    metrics, and batch outcomes linking directives to eval results.
+    Loads search state, score reports, prompt texts, and child variants,
+    then computes candidate comparisons, per-class recall, diversity metrics,
+    diminishing returns, oracle metrics, and batch outcomes linking directives
+    to eval results. Directive history is synthesized in code from batch_outcomes.
 
     All parameters except run_id are optional and auto-discovered.
 
@@ -118,7 +118,6 @@ async def build_review_briefing_tool(
     from odysseus.agents.review.ops import (
         load_cell_attempt_history,
         load_child_variants,
-        load_directive_history,
         load_round_reports,
         update_cell_attempt_history,
     )
@@ -215,9 +214,6 @@ async def build_review_briefing_tool(
             except FileNotFoundError:
                 continue
 
-    # Load directive history
-    directive_history = load_directive_history(run_id, output_dir=out)
-
     # Load child variants for batch outcome tracking
     child_variants = load_child_variants(run_id, output_dir=out) or None
 
@@ -300,7 +296,6 @@ async def build_review_briefing_tool(
         score_reports=score_reports,
         historical_reports=historical,
         prompt_texts=prompt_texts,
-        directive_history=directive_history,
         candidate_versions=candidate_versions,
         parent_versions=parent_versions,
         routing_context=routing_context,
@@ -343,7 +338,6 @@ async def build_review_briefing_tool(
 async def record_directive_outcomes_tool(
     ctx: Context,
     run_id: str,
-    outcomes: list[dict[str, Any]],
     loop_signal: dict[str, Any] | None = None,
     child_variants: list[dict[str, Any]] | None = None,
     review_result: dict[str, Any] | None = None,
@@ -353,7 +347,11 @@ async def record_directive_outcomes_tool(
     trajectory_id: int | None = None,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Refinement Loop -- Review] Record the outcomes of prior Review Agent directives.
+    """[Stage 4: Refinement Loop -- Review] Record the Review Agent's result fields.
+
+    Records loop_signal, child_variants, candidate_ranking, promotion_decisions, and
+    regression_guards from the Review Agent. Directive outcomes are no longer passed
+    here — they are synthesized fully in code from batch_outcomes by build_review_briefing_tool.
 
     Also accepts the Review Agent's loop_signal to control search convergence.
     When loop_signal.action is "exit", the search loop is terminated immediately
@@ -366,15 +364,13 @@ async def record_directive_outcomes_tool(
 
     Args:
         run_id: Pipeline run identifier.
-        outcomes: List of DirectiveOutcome dicts to record.
         loop_signal: Optional LoopSignal dict from the Review Agent.
         child_variants: Optional list of ChildVariant dicts (Review Agent output).
             For cold-start / warm-up seeds, set each variant's parent_version to
             briefing.initial_parent_version (default "base").
         review_result: Optional full ReviewResult dict to persist to disk. Legacy fallback —
-            prefer decomposed parameters. When provided, child_variants, loop_signal, and
-            outcomes are extracted from it as fallbacks for any of those params not explicitly
-            provided.
+            prefer decomposed parameters. When provided, child_variants and loop_signal are
+            extracted from it as fallbacks for any of those params not explicitly provided.
         candidate_ranking: Decomposed ReviewResult field — list of ranked candidate dicts.
             Recommended over review_result to avoid size limits.
         promotion_decisions: Decomposed ReviewResult field — list of promotion decision dicts.
@@ -389,42 +385,19 @@ async def record_directive_outcomes_tool(
         output_dir: Output directory (default "outputs").
 
     Returns:
-        JSON object with recorded count, new total, and loop_signal status.
+        JSON object with child_variants_saved, variants_summary, and loop_signal status.
     """
     import contextlib
 
-    from odysseus.agents.review.models import ChildVariant, DirectiveOutcome, LoopSignal
+    from odysseus.agents.review.models import ChildVariant, LoopSignal
     from odysseus.agents.review.ops import (
-        load_directive_history,
         record_trajectory_dispatched,
         save_child_variants,
-        save_directive_history,
         save_trajectory_child_variants,
     )
 
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    parsed = [DirectiveOutcome.model_validate(o) for o in outcomes]
-    existing = load_directive_history(run_id, output_dir=out)
-    save_directive_history(run_id, existing + parsed, output_dir=out)
-
-    # Guardrail: warn when round N≥2 outcomes are empty despite prior-round directives.
-    if not parsed:
-        with contextlib.suppress(Exception):
-            state = _load_state(run_id, out)
-            if state.round >= 2:
-                search_dir = out / run_id / "search"
-                has_prior_directives = any(search_dir.glob("child_variants*.json"))
-                if has_prior_directives:
-                    import sys
-
-                    prior_count = sum(1 for _ in search_dir.glob("child_variants*.json"))
-                    print(
-                        f"Warning: round {state.round} record_directive_outcomes called with"
-                        f" empty outcomes despite {prior_count} prior-round directives"
-                        " — feedback loop may be broken",
-                        file=sys.stderr,
-                    )
 
     # When decomposed params are provided, assemble and persist an audit ReviewResult.
     # When only review_result is provided, persist it as-is (legacy path).
@@ -435,7 +408,6 @@ async def record_directive_outcomes_tool(
             "candidate_ranking": candidate_ranking or [],
             "promotion_decisions": promotion_decisions or [],
             "regression_guards": regression_guards or [],
-            "directive_history_update": [o.model_dump(mode="json") for o in parsed],
         }
         if child_variants is not None:
             reconstructed["child_variants"] = child_variants
@@ -447,10 +419,7 @@ async def record_directive_outcomes_tool(
 
         save_review_result(run_id, review_result, output_dir=out)
 
-    result: dict[str, Any] = {
-        "recorded": len(parsed),
-        "total": len(existing) + len(parsed),
-    }
+    result: dict[str, Any] = {}
 
     # Persist child variants.
     # EMOSA path (trajectory_id is not None): write per-trajectory file and record dispatch.

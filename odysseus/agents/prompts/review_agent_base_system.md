@@ -64,7 +64,6 @@ Every directive in `directives: list[EditDirective]` must use exactly these fiel
 
 Call `record_directive_outcomes_tool` with each ReviewResult field as a **separate parameter** to avoid MCP argument-size limits:
 
-- `outcomes` ← `directive_history_update`
 - `loop_signal` ← `loop_signal`
 - `child_variants` ← `child_variants`
 - `candidate_ranking` ← `candidate_ranking`

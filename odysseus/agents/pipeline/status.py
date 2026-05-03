@@ -596,15 +596,15 @@ def _detect_stage_4_phase(
     # -----------------------------------------------------------------------
     # Hill-climb / default path (cold_start → build_v1 → normal loop)
     # -----------------------------------------------------------------------
-    directive_history = search_dir / "directive_history.json"
+    child_variants_sentinel = search_dir / "child_variants.json"
     prompts_dir = run_dir / "prompts"
     has_v1 = prompts_dir.is_dir() and (
         any(prompts_dir.glob("v1.yaml")) or any(prompts_dir.glob("v1.json")) or any(prompts_dir.glob("v1.txt"))
     )
 
-    # Phase 1: Cold-start — no directives yet (search_state.json may exist due to
-    # pre-initialisation by _ensure_stage4_search_state).
-    if not directive_history.is_file():
+    # Phase 1: Cold-start — no child variants written yet (search_state.json may exist
+    # due to pre-initialisation by _ensure_stage4_search_state).
+    if not child_variants_sentinel.is_file():
         return "cold_start"
 
     # Phase 2: Build v1 — directives exist but no compiled prompt yet

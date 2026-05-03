@@ -323,7 +323,6 @@ class TestRecordDirectiveOutcomesToolLoopPhase:
             await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[],
                 output_dir=str(tmp_path / "outputs"),
             )
 
@@ -346,7 +345,6 @@ class TestEditDirectivesPersistence:
             result = await record_directive_outcomes_tool(
                 ctx=None,
                 run_id=_RUN_ID,
-                outcomes=[],
                 child_variants=[
                     {
                         "hypothesis": "Add a clearer boundary example",

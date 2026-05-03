@@ -26,10 +26,8 @@ from odysseus.agents.review.models import (
 )
 from odysseus.agents.review.ops import (
     load_child_variants,
-    load_directive_history,
     load_round_reports,
     save_child_variants,
-    save_directive_history,
     save_round_report,
 )
 from odysseus.agents.review.preprocessor import build_review_briefing
@@ -57,9 +55,7 @@ __all__ = [
     "UserTargetProgress",
     "build_review_briefing",
     "load_child_variants",
-    "load_directive_history",
     "load_round_reports",
     "save_child_variants",
-    "save_directive_history",
     "save_round_report",
 ]

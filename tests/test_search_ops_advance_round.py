@@ -70,9 +70,7 @@ class TestAdvanceRoundColdStartFloor:
 
         assert summary.round == 1
         elite_versions = {c.prompt_version for c in state.elite_set}
-        assert elite_versions == {"v1", "v2", "v3"}, (
-            f"All round-1 strategies must survive; got {elite_versions}"
-        )
+        assert elite_versions == {"v1", "v2", "v3"}, f"All round-1 strategies must survive; got {elite_versions}"
 
     def test_round1_elite_size_equals_beam_width(self, tmp_path) -> None:
         """Cold-start elite must retain all beam_width candidates."""
