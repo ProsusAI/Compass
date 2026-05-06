@@ -292,6 +292,8 @@ Output keys:
 | `quality_change` | `(predicted_quality − baseline_quality) / baseline_quality` |
 | `oracle_cost_change` | Same ratio for the ground-truth optimal route |
 | `oracle_quality_change` | Same ratio for the ground-truth optimal route |
+| `oracle_quality` | Absolute summed quality score of oracle-routed predictions |
+| `oracle_cost` | Absolute summed cost of oracle-routed predictions |
 
 Negative values indicate the router is cheaper/lower-quality than baseline. Hallucinated route predictions (route label not in `expected["routes"]`) are skipped with a warning.
 

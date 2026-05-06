@@ -296,6 +296,9 @@ def test_cost_quality_default_baseline():
     _qc = (1.76 - 1.90) / 1.90
     _oqc = (1.60 - 1.90) / 1.90
     assert out["oracle_quality_captured"] == pytest.approx((1 + _qc) / (1 + _oqc))
+    # Absolute oracle values: ex-0=claude-sonnet(0.88), ex-1=haiku(0.72)
+    assert out["oracle_quality"] == pytest.approx(1.60)
+    assert out["oracle_cost"] == pytest.approx(0.012)
 
 
 def test_cost_quality_explicit_baseline():
@@ -377,6 +380,8 @@ def test_cost_quality_empty_results():
     assert out["oracle_cost_change"] == 0.0
     assert out["oracle_quality_change"] == 0.0
     assert out["oracle_quality_captured"] == 1.0
+    assert out["oracle_quality"] == 0.0
+    assert out["oracle_cost"] == 0.0
 
 
 def test_cost_quality_all_predictions_hallucinated_logs_error(caplog: pytest.LogCaptureFixture):

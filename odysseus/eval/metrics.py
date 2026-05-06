@@ -165,6 +165,8 @@ def compute_cost_quality_change(
         "oracle_cost_change": 0.0,
         "oracle_quality_change": 0.0,
         "oracle_quality_captured": 1.0,
+        "oracle_quality": 0.0,
+        "oracle_cost": 0.0,
         "predicted_quality": 0.0,
         "predicted_cost": 0.0,
         "routing_overhead": 0.0,
@@ -250,6 +252,8 @@ def compute_cost_quality_change(
         "oracle_quality_captured": (
             (1 + quality_change) / (1 + oracle_quality_change) if oracle_quality_change != 0.0 else 1.0
         ),
+        "oracle_quality": oracle_quality,
+        "oracle_cost": oracle_cost,
         "predicted_quality": predicted_quality,
         "predicted_cost": predicted_cost,
         "routing_overhead": routing_overhead,
