@@ -42,6 +42,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+class TrajectorySnapshot(BaseModel):
+    """End-of-round snapshot of every trajectory's current_solution.
+
+    Used by the search viz to highlight per-trajectory live points across
+    iterations. Captured immediately after Metropolis + neighborhood
+    replacement + cooling, so it reflects each trajectory's adopted
+    working point for that round.
+    """
+
+    round: int
+    currents: dict[int, str]  # trajectory_id -> prompt_version
+
+
 class TrajectoryState(BaseModel):
     """State for a single SA trajectory (one weight vector / decomposition direction)."""
 
@@ -84,9 +97,11 @@ class AnnealingState(BaseModel):
     children_per_trajectory: int = 1
     """Number of child candidates to generate per trajectory per round (M)."""
     trajectories: list[TrajectoryState]
-    neighborhood_size: int = 4
+    neighborhood_size: int = 2
     """Number of nearest neighbor trajectories for EMOSA neighborhood replacement (B).
-    Raised from 2 to 4 per a15b608 to enable full cross-flow among K=5 trajectories."""
+    Canonical MOEA/D-SA uses B << K (Li & Landa-Silva 2011). With K=5, B=2 is the
+    smallest sensible choice that keeps decomposition meaningful while preventing
+    a single dominant child from sweeping the entire population."""
     ideal_point: tuple[float, float] = (0.0, 0.0)
     """(best_quality, lowest_cost) — updated as better solutions are found."""
     nadir_point: tuple[float, float] = (0.0, 0.0)
@@ -94,7 +109,7 @@ class AnnealingState(BaseModel):
     max_evals: int = 50
     total_evals: int = 0
     convergence_limit: int = 4
-    epsilon: float = 0.003
+    epsilon: float = 0.0003
     phase: Literal["calibration", "search", "converged"] = "calibration"
     rho: float = Field(default=1e-3, description="Augmentation coefficient ρ for ASF energy (Wierzbicki 1980).")
     """ρ prevents degenerate solutions by penalising the full weighted sum alongside the Chebyshev max."""
@@ -107,6 +122,26 @@ class AnnealingState(BaseModel):
     """Exponent used when rate > target_high: cool by alpha ** cooling_exp_fast."""
     cooling_exp_slow: float = 0.5
     """Exponent used when rate < target_low: cool by alpha ** cooling_exp_slow."""
+    trajectory_history: list[TrajectorySnapshot] = Field(default_factory=list)
+    """Per-round snapshots of trajectory current_solution.
+
+    Populated at calibration completion and each steady-state advance.
+    """
+    oracle_cost_change: float | None = None
+    """Oracle cost_change_with_overhead — dataset ceiling for cost improvement.
+
+    Populated by record_eval_result from the most recent eval report on disk.
+    Used by _ideal_for_trajectory to peg the cost-axis ideal for extreme
+    cost-focused trajectories (λ_c ≥ 0.85) so the energy gradient stays
+    non-negligible as the trajectory makes progress toward the oracle.
+    """
+    oracle_quality_change: float | None = None
+    """Oracle quality_change — dataset ceiling for quality improvement.
+
+    Populated by record_eval_result from the most recent eval report on disk.
+    Used by _ideal_for_trajectory to peg the quality-axis ideal for extreme
+    quality-focused trajectories (λ_q ≥ 0.85).
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -159,10 +194,16 @@ def compute_tchebycheff_energy(
     weight_vector: tuple[float, float],
     ideal_point: tuple[float, float],
     nadir_point: tuple[float, float],
+    rho: float = 0.0,
 ) -> float:
-    """Compute the weighted Tchebycheff energy for a (quality, cost) point.
+    """Compute the augmented weighted Tchebycheff energy for a (quality, cost) point.
 
-    ``E = max(λ_q * norm_q, λ_c * norm_c)``
+    ``E = max(λ_q * norm_q, λ_c * norm_c) + ρ * (λ_q * norm_q + λ_c * norm_c)``
+
+    The ρ-augmentation term (Wierzbicki 1980) prevents degenerate solutions by
+    penalising the full weighted sum alongside the Chebyshev max. When ``rho=0.0``
+    (default) this reduces to the plain Tchebycheff scalarization, preserving
+    backward compatibility with all existing call sites.
 
     Lower energy means the point is closer to the ideal along this weight
     vector's direction.
@@ -173,13 +214,48 @@ def compute_tchebycheff_energy(
         weight_vector: (lambda_q, lambda_c) with lambda_c = 1 - lambda_q.
         ideal_point: (best_quality, lowest_cost).
         nadir_point: (worst_quality, highest_cost).
+        rho: Augmentation coefficient (default 0.0 = plain Tchebycheff).
+            Pass ``sa_state.rho`` (typically 1e-3) to enable augmented ASF.
 
     Returns:
-        Tchebycheff energy as a non-negative float.
+        Tchebycheff energy (augmented when rho > 0) as a non-negative float.
     """
     lambda_q, lambda_c = weight_vector
     norm_q, norm_c = normalize_objectives(quality, cost, ideal_point, nadir_point)
-    return max(lambda_q * norm_q, lambda_c * norm_c)
+    return max(lambda_q * norm_q, lambda_c * norm_c) + rho * (lambda_q * norm_q + lambda_c * norm_c)
+
+
+def _ideal_for_trajectory(
+    trajectory_state: TrajectoryState,
+    sa_state: AnnealingState,
+) -> tuple[float, float]:
+    """Return a per-trajectory ideal point — oracle-pegged on the binding axis for extreme weights.
+
+    For trajectories with ``max(λ_q, λ_c) ≥ 0.85``, the binding-axis component
+    of the live archive ideal is replaced by the corresponding oracle value
+    (``sa_state.oracle_quality_change`` or ``sa_state.oracle_cost_change``).
+
+    This prevents the "shrinking step" pathology where extreme trajectories see
+    a decreasing energy gradient as the live ideal tightens around their best
+    discoveries.  Mid-band trajectories (both axes < 0.85) are unaffected.
+
+    Nadir stays the live archive value in all cases.
+
+    Args:
+        trajectory_state: The trajectory whose ideal point is being computed.
+        sa_state: The global annealing state (holds live ideal and oracle values).
+
+    Returns:
+        ``(ideal_q, ideal_c)`` — live ideal with oracle override on the binding
+        axis when the trajectory is extreme and the oracle value is available.
+    """
+    lq, lc = trajectory_state.weight_vector
+    iq, ic = sa_state.ideal_point
+    if lq >= 0.85 and sa_state.oracle_quality_change is not None:
+        iq = sa_state.oracle_quality_change
+    if lc >= 0.85 and sa_state.oracle_cost_change is not None:
+        ic = sa_state.oracle_cost_change
+    return (iq, ic)
 
 
 def compute_asf_energy(
@@ -326,8 +402,13 @@ def adaptive_cool(
 def compute_weight_vectors(num_trajectories: int) -> list[tuple[float, float]]:
     """Compute evenly-spaced weight vectors for decomposition-based search.
 
-    Lambda_q values are drawn from [0.1, 0.9]; lambda_c = 1 - lambda_q.
+    Lambda_q values are drawn from [0.05, 0.95]; lambda_c = 1 - lambda_q.
     Quality-focused (high lambda_q) trajectories are listed first.
+
+    For K=5 this produces: (0.95, 0.05), (0.725, 0.275), (0.5, 0.5),
+    (0.275, 0.725), (0.05, 0.95).  Sharpening the endpoints from 0.1/0.9 to
+    0.05/0.95 increases directional specialisation for the extreme trajectories
+    while preserving equal spacing and centroid symmetry.
 
     Args:
         num_trajectories: Number of weight vectors to generate (>= 1).
@@ -338,14 +419,14 @@ def compute_weight_vectors(num_trajectories: int) -> list[tuple[float, float]]:
     if num_trajectories == 1:
         return [(0.5, 0.5)]
     if num_trajectories == 2:
-        return [(0.9, 0.1), (0.1, 0.9)]
+        return [(0.95, 0.05), (0.05, 0.95)]
 
-    # linspace from 0.9 down to 0.1 (quality-focused first)
-    step = (0.9 - 0.1) / (num_trajectories - 1)
+    # linspace from 0.95 down to 0.05 (quality-focused first)
+    step = (0.95 - 0.05) / (num_trajectories - 1)
     vectors: list[tuple[float, float]] = []
     for i in range(num_trajectories):
-        lq = round(0.9 - i * step, 10)
-        lq = max(0.1, min(0.9, lq))
+        lq = round(0.95 - i * step, 10)
+        lq = max(0.05, min(0.95, lq))
         vectors.append((lq, round(1.0 - lq, 10)))
     return vectors
 

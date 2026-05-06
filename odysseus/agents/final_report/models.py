@@ -25,7 +25,7 @@ class PromptSummary(BaseModel):
 
     version: str
     quality_score: float
-    cost: float = Field(ge=0.0)
+    cost: float  # signed cost-change fraction (more-negative is better)
     round_introduced: int
 
 

@@ -98,7 +98,7 @@ Execute these steps exactly in order.
 
 9. **Evaluate.** Call `run_eval(prompt_version="v<N>", data_source=outputs/<run_id>/analysis/dev.jsonl, backend=new_backend)`.
 
-10. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
+10. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics.quality_change` and `cost` from `metrics.cost_change_with_overhead`. Both are signed fractions; pass them through unchanged. EMOSA / hill-climb / beam / sms-emoa all expect "higher quality is better" and "lower cost is better", so a more-positive `quality_change` is better and a more-negative `cost_change_with_overhead` is better. Do NOT use `metrics.accuracy` — that is routing-classifier accuracy, not the user-facing quality of the chosen route.
 
 11. **Record result.** Call `record_eval_result_tool(search_state_id, "v<N>", quality_score, cost)`.
 

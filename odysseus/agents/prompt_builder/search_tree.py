@@ -21,7 +21,7 @@ def load_json(path: Path, default: dict | list | None = None) -> dict | list | N
 
 
 _STRATEGY_LABELS: dict[str | None, str] = {
-    "beam": "Beam",
+    "emosa": "EMOSA",
 }
 
 TRAJECTORY_COLORS: list[str] = [
@@ -37,17 +37,22 @@ def _algorithm_chips(state_data: dict) -> list[dict]:
     """Return strategy-specific stat chips for the header. Adapters per algorithm."""
     algo = state_data.get("algorithm")
     pocket = state_data.get("algorithm_state", {})
-    if algo == "beam":
-        chips: list[dict] = []
-        beam_width = pocket.get("beam_width")
-        if beam_width is not None:
-            chips.append({"label": "beam_width", "value": beam_width})
-        hypervolume = pocket.get("hypervolume")
-        if hypervolume is not None:
-            chips.append({"label": "hypervolume", "value": round(float(hypervolume), 4)})
-        epsilon = state_data.get("epsilon")
-        if epsilon is not None:
-            chips.append({"label": "epsilon", "value": round(float(epsilon), 4)})
+    if algo == "emosa":
+        chips = []
+        num_trajectories = pocket.get("num_trajectories")
+        if num_trajectories is not None:
+            chips.append({"label": "traj", "value": str(num_trajectories)})
+        trajectories_pocket = pocket.get("trajectories", []) or []
+        temps = [t.get("temperature") for t in trajectories_pocket if t.get("temperature") is not None]
+        if temps:
+            chips.append({"label": "T", "value": f"{min(temps):.2e}–{max(temps):.2e}"})
+        steps = [t.get("step_count") for t in trajectories_pocket if t.get("step_count") is not None]
+        if steps:
+            chips.append({"label": "step", "value": f"{min(steps)}–{max(steps)}"})
+        total_evals = pocket.get("total_evals")
+        max_evals = pocket.get("max_evals")
+        if total_evals is not None and max_evals is not None:
+            chips.append({"label": "evals", "value": f"{total_evals}/{max_evals}"})
         return chips
     return []
 
@@ -64,6 +69,7 @@ def _build_reduction_lookup_from_evals(eval_dir: Path, versions: Iterable[str]) 
         lookup[v] = {
             "cost_reduction": metrics.get("cost_change_with_overhead", metrics.get("cost_change", 0.0)),
             "quality_change": metrics.get("quality_change", 0.0),
+            "predicted_quality": metrics.get("predicted_quality"),
             "predicted_cost": metrics.get("predicted_cost"),
             "routing_overhead": metrics.get("routing_overhead"),
             "baseline_cost": metrics.get("baseline_cost"),
@@ -74,8 +80,21 @@ def _build_reduction_lookup_from_evals(eval_dir: Path, versions: Iterable[str]) 
     return lookup
 
 
-def _dict_pareto_front(cs: list[dict]) -> set[str]:
-    """Return version strings on the Pareto front over (abs_quality, abs_cost)."""
+def _dict_pareto_front(cs: list[dict], mode: str = "delta") -> set[str]:
+    """Return version strings on the Pareto front.
+
+    Args:
+        cs: list of candidate dicts, each with at minimum ``version``,
+            ``score``/``cost`` (delta fields) and ``abs_quality``/``abs_cost``
+            (absolute fields).
+        mode: ``"delta"`` — dominate on ``score`` (quality_change, higher better)
+            and ``cost`` (cost_change_with_overhead, lower better).
+            ``"absolute"`` — dominate on ``abs_quality`` (higher better) and
+            ``abs_cost`` (lower better).
+
+    Both modes apply standard Pareto dominance: candidate *a* dominates *b* when
+    *a* is at least as good on both axes and strictly better on at least one.
+    """
     dominated: set[str] = set()
     for i, a in enumerate(cs):
         if a["version"] in dominated:
@@ -83,10 +102,16 @@ def _dict_pareto_front(cs: list[dict]) -> set[str]:
         for j, b in enumerate(cs):
             if i == j or b["version"] in dominated:
                 continue
+            if mode == "absolute":
+                a_q, b_q = a["abs_quality"], b["abs_quality"]
+                a_c, b_c = a["abs_cost"], b["abs_cost"]
+            else:
+                a_q, b_q = a["score"], b["score"]
+                a_c, b_c = a["cost"], b["cost"]
             if (
-                a["abs_quality"] >= b["abs_quality"]
-                and a["abs_cost"] <= b["abs_cost"]
-                and (a["abs_quality"] > b["abs_quality"] or a["abs_cost"] < b["abs_cost"])
+                a_q >= b_q
+                and a_c <= b_c
+                and (a_q > b_q or a_c < b_c)
             ):
                 dominated.add(b["version"])
     return {c["version"] for c in cs if c["version"] not in dominated}
@@ -97,21 +122,6 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     state_data = load_json(search_dir / "search_state.json")
     if not isinstance(state_data, dict):
         raise FileNotFoundError(f"search_state.json not found in {search_dir}")
-
-    # Extract per-round trajectory snapshots (EMOSA only; absent for other algorithms).
-    algo_state = state_data.get("algorithm_state", {}) or {}
-    traj_history = algo_state.get("trajectory_history", []) if isinstance(algo_state, dict) else []
-    iteration_currents: dict[int, list[str]] = {}
-    for snap in traj_history:
-        if not isinstance(snap, dict):
-            continue
-        rnd = snap.get("round")
-        currents = snap.get("currents") or {}
-        if rnd is None or not isinstance(currents, dict):
-            continue
-        versions = sorted({v for v in currents.values() if isinstance(v, str)})
-        iteration_currents[int(rnd)] = versions
-    use_trajectory_highlight = bool(iteration_currents)
 
     archive_loaded = load_json(search_dir / "candidate_archive.json")
     archive: list = archive_loaded if isinstance(archive_loaded, list) else []
@@ -124,7 +134,6 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
 
     # elite_set is the canonical unified field; population is a legacy state-file fallback
     elite_entries = state_data.get("elite_set", state_data.get("population", []))  # legacy state-file fallback
-    elite_versions = {c["prompt_version"] for c in elite_entries}
 
     # Build deduplicated candidate list from union of elite_set + archive + pending.
     # Precedence: elite_set > archive > pending (elite_set is most current).
@@ -176,9 +185,19 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
             continue
         seen.add(v)
         r = reductions.get(v, {})
+        # abs_quality: prefer metrics-derived predicted_quality (same numerator as quality_change,
+        # just unnormalized). Fall back to archive quality_score for legacy runs without the field.
+        pred_quality = r.get("predicted_quality")
+        abs_quality = round(pred_quality, 4) if pred_quality is not None else round(e.get("quality_score", 0.0), 4)
+        # abs_cost: prefer metrics-derived predicted_cost + routing_overhead (same numerator as
+        # cost_change_with_overhead, just unnormalized). Fall back to archive cost for legacy runs.
         pred_cost = r.get("predicted_cost")
-        overhead = r.get("routing_overhead")
-        abs_cost = round(pred_cost + (overhead or 0.0), 4) if pred_cost is not None else 0.0
+        if pred_cost is not None:
+            overhead = r.get("routing_overhead")
+            abs_cost = round(pred_cost + (overhead or 0.0), 4)
+        else:
+            entry_cost = e.get("cost")
+            abs_cost = round(entry_cost, 4) if entry_cost is not None else 0.0
         candidates.append(
             {
                 "version": v,
@@ -186,10 +205,9 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
                 "secondary_parent": e.get("secondary_parent_version"),
                 "score": round(r.get("quality_change", 0.0), 4),
                 "cost": round(r.get("cost_reduction", 0.0), 4),
-                "abs_quality": round(e.get("quality_score", 0.0), 4),
+                "abs_quality": abs_quality,
                 "abs_cost": abs_cost,
                 "iteration": e.get("iteration_introduced", e.get("round_introduced", 0)),
-                "on_front": v in elite_versions,
                 "trajectory_id": e.get("trajectory_id"),
             }
         )
@@ -199,20 +217,53 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
     for c in candidates:
         buckets[c["iteration"]].append(c["version"])
 
+    cand_by_ver = {c["version"]: c for c in candidates}
+    algorithm = state_data.get("algorithm")
+
     iterations = []
     for it in sorted(buckets):
         visible = [c for c in candidates if c["iteration"] <= it]
-        front = _dict_pareto_front(visible)
+        front_delta = _dict_pareto_front(visible, mode="delta")
+        front_abs = _dict_pareto_front(visible, mode="absolute")
+        bucket_versions = buckets[it]
+        if algorithm == "emosa":
+            # Lane order matches T0..T4 even when registration order differs
+            # (e.g. cold-start round 1). Stable sort; nulls go last.
+            bucket_versions = sorted(
+                bucket_versions,
+                key=lambda v: (
+                    cand_by_ver.get(v, {}).get("trajectory_id") is None,
+                    cand_by_ver.get(v, {}).get("trajectory_id") or 0,
+                ),
+            )
+        new_elite_delta = [v for v in bucket_versions if v in front_delta]
+        new_elite_abs = [v for v in bucket_versions if v in front_abs]
         iterations.append(
             {
                 "iteration": it,
-                "candidates": buckets[it],
-                "new_elite": [v for v in buckets[it] if v in front],
-                "front_size": len(front),
+                "candidates": bucket_versions,
+                "new_elite_delta": new_elite_delta,
+                "front_size_delta": len(front_delta),
+                "new_elite_abs": new_elite_abs,
+                "front_size_abs": len(front_abs),
+                # Legacy aliases — kept for backwards compatibility with external consumers.
+                "new_elite": new_elite_delta,
+                "front_size": len(front_delta),
             }
         )
 
     # ── User targets ──
+    # Source dataset-level baselines from any populated reductions entry.
+    # These are constants across all variants in a run; None for legacy runs
+    # that pre-date baseline emission in compute_cost_quality_change.
+    bl_quality: float | None = None
+    bl_cost: float | None = None
+    for _r in reductions.values():
+        if _r.get("baseline_quality") is not None and _r.get("baseline_cost") is not None:
+            bl_quality = _r["baseline_quality"]
+            bl_cost = _r["baseline_cost"]
+            break
+
     user_targets_dict: dict[str, float | None] = {
         "quality_delta": None,
         "cost_delta": None,
@@ -237,33 +288,12 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
                 user_targets_dict["quality_delta"] = quality_delta
                 user_targets_dict["cost_delta"] = cost_delta
 
-                # Compute absolute-mode targets.
-                # User targets are percentage deltas relative to the "always use
-                # baseline route" reference (e.g. cost_change <= -0.45).
-                # quality_abs = baseline_quality * (1 + quality_delta).
-                # cost_abs = baseline_cost * (1 + cost_delta), where baseline_cost
-                # is the all-baseline-route total from the metrics, not the
-                # candidate's predicted route cost.
-                if quality_delta is not None or cost_delta is not None:
-                    # Find the earliest candidate to derive baselines.
-                    # Deltas are relative to the "always use baseline route"
-                    # reference. For cost, use baseline_cost from metrics.
-                    # For quality, derive from abs_quality / (1 + quality_change)
-                    # since abs_quality (the aggregate metric) and the summed
-                    # per-example baseline_quality are on different scales.
-                    earliest = min(candidates, key=lambda c: c.get("iteration", 0)) if candidates else None
-                    if earliest is not None:
-                        v = earliest["version"]
-                        r = reductions.get(v, {})
-                        if quality_delta is not None:
-                            qc = r.get("quality_change", 0.0)
-                            if (1 + qc) != 0:
-                                baseline_abs_quality = earliest["abs_quality"] / (1 + qc)
-                                user_targets_dict["quality_abs"] = round(baseline_abs_quality * (1 + quality_delta), 6)
-                        if cost_delta is not None:
-                            bl_cost = r.get("baseline_cost")
-                            if bl_cost is not None:
-                                user_targets_dict["cost_abs"] = round(bl_cost * (1 + cost_delta), 6)
+                # Translate deltas to absolute-mode targets using the run's
+                # baseline-route totals (same baseline used to compute the deltas).
+                if quality_delta is not None and bl_quality is not None:
+                    user_targets_dict["quality_abs"] = round(bl_quality * (1 + quality_delta), 6)
+                if cost_delta is not None and bl_cost is not None:
+                    user_targets_dict["cost_abs"] = round(bl_cost * (1 + cost_delta), 6)
             except Exception:
                 pass  # If parsing fails, leave all targets as None
 
@@ -280,20 +310,10 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
         if oc is not None and oq is not None:
             oracle_ceiling_dict["cost_delta"] = round(oc, 6)
             oracle_ceiling_dict["quality_delta"] = round(oq, 6)
-            # Compute absolute oracle values using same baseline derivation as user targets
-            if candidates:
-                earliest = min(candidates, key=lambda c: c.get("iteration", 0))
-                v = earliest["version"]
-                er = reductions.get(v, {})
-                # Quality absolute: baseline_abs_quality * (1 + oracle_quality_change)
-                qc = er.get("quality_change", 0.0)
-                if (1 + qc) != 0:
-                    baseline_abs_quality = earliest["abs_quality"] / (1 + qc)
-                    oracle_ceiling_dict["quality_abs"] = round(baseline_abs_quality * (1 + oq), 6)
-                # Cost absolute: baseline_cost * (1 + oracle_cost_change)
-                bl_cost = er.get("baseline_cost")
-                if bl_cost is not None:
-                    oracle_ceiling_dict["cost_abs"] = round(bl_cost * (1 + oc), 6)
+            if bl_quality is not None:
+                oracle_ceiling_dict["quality_abs"] = round(bl_quality * (1 + oq), 6)
+            if bl_cost is not None:
+                oracle_ceiling_dict["cost_abs"] = round(bl_cost * (1 + oc), 6)
             break
 
     return {
@@ -303,8 +323,6 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
         "algorithm_chips": _algorithm_chips(state_data),
         "user_targets": user_targets_dict,
         "oracle_ceiling": oracle_ceiling_dict,
-        "iteration_currents": iteration_currents,
-        "use_trajectory_highlight": use_trajectory_highlight,
         "algorithm": state_data.get("algorithm"),
         "trajectory_colors": TRAJECTORY_COLORS,
         "trajectory_weights": [
@@ -754,6 +772,8 @@ _HTML_TEMPLATE = """\
 //  DATA
 // ─────────────────────────────────────────────
 const DATA = /*__DATA__*/;
+const candidateByVersion = {};
+DATA.candidates.forEach(c => { candidateByVersion[c.version] = c; });
 
 // ─────────────────────────────────────────────
 //  TRAJECTORY COLORING HELPERS
@@ -788,21 +808,13 @@ function renderTreeLegend() {
       const wv = weights[i];
       let wLabel = '';
       if (wv && Array.isArray(wv)) {
-        wLabel = ' (w=' + wv.map(function(v) { return v.toFixed(1); }).join(', ') + ')';
+        wLabel = ' (w=' + wv.map(function(v) { return (+v.toFixed(3)).toString(); }).join(', ') + ')';
       }
       html += '<div class="legend-item">'
         + '<div class="legend-swatch" style="background:' + color + ';box-shadow:0 0 5px ' + hexToRgba(color, 0.6) + '"></div>'
         + 'T' + i + wLabel
         + '</div>';
     }
-    html += '<div class="legend-item">'
-      + '<div class="legend-swatch" style="background:rgba(100,116,139,0.45)"></div>'
-      + 'Dominated'
-      + '</div>';
-    html += '<div class="legend-item">'
-      + '<div class="legend-swatch" style="border:2px dashed rgba(118,255,3,0.7);background:transparent;width:12px;height:12px"></div>'
-      + 'New this iteration'
-      + '</div>';
   } else {
     html += '<div class="legend-item">'
       + '<div class="legend-swatch" style="background:var(--cyan);box-shadow:0 0 5px var(--cyan)"></div>'
@@ -870,7 +882,11 @@ function toggleScatterMode() {
     scatterMode === 'delta'
       ? 'Elite Set \u2014 Quality Change vs Cost Change'
       : 'Elite Set \u2014 Quality Score vs Cost ($)';
+  // Recompute Pareto front for the new mode so tree and timeline stay in sync.
+  frontAtIteration = computeParetoFront(filteredCandidates, scatterMode);
+  drawTree(hoveredVersion);
   drawScatter(hoveredVersion);
+  drawTimeline();
 }
 
 // Node positions in the tree canvas (populated after layout)
@@ -895,15 +911,21 @@ function nodeRadius(score) {
   return lerp(5, 10, t);
 }
 
-function computeParetoFront(candidates) {
+function computeParetoFront(candidates, mode) {
+  // mode='delta': dominate on score (quality_change, higher better) and cost (cost_change, lower better).
+  // mode='absolute': dominate on abs_quality (higher better) and abs_cost (lower better).
+  const useAbs = mode === 'absolute';
   const dominated = new Set();
   for (let i = 0; i < candidates.length; i++) {
     if (dominated.has(candidates[i].version)) continue;
     for (let j = 0; j < candidates.length; j++) {
       if (i === j || dominated.has(candidates[j].version)) continue;
       const a = candidates[i], b = candidates[j];
-      if (a.abs_quality >= b.abs_quality && a.abs_cost <= b.abs_cost &&
-          (a.abs_quality > b.abs_quality || a.abs_cost < b.abs_cost)) {
+      const aq = useAbs ? a.abs_quality : a.score;
+      const bq = useAbs ? b.abs_quality : b.score;
+      const ac = useAbs ? a.abs_cost : a.cost;
+      const bc = useAbs ? b.abs_cost : b.cost;
+      if (aq >= bq && ac <= bc && (aq > bq || ac < bc)) {
         dominated.add(b.version);
       }
     }
@@ -914,27 +936,7 @@ function computeParetoFront(candidates) {
 function updateIterationFilter(iteration) {
   activeIteration = iteration;
   filteredCandidates = DATA.candidates.filter(c => c.iteration <= iteration);
-  if (DATA.use_trajectory_highlight) {
-    // EMOSA: highlight per-iteration trajectory current_solutions.
-    // For "all iterations" view, use the most recent snapshot.
-    const snapKey = iteration >= maxIteration ? maxIteration : iteration;
-    let versions = DATA.iteration_currents[snapKey];
-    if (!versions) {
-      // Fallback: walk down to the most recent snapshot at or before the active iteration.
-      const keys = Object.keys(DATA.iteration_currents).map(Number).sort((a, b) => a - b);
-      let pick = null;
-      for (const k of keys) {
-        if (k <= snapKey) pick = k;
-      }
-      versions = pick !== null ? DATA.iteration_currents[pick] : [];
-    }
-    frontAtIteration = new Set(versions);
-  } else if (iteration >= maxIteration) {
-    // Use backend elite set (respects max_size pruning via crowding distance)
-    frontAtIteration = new Set(filteredCandidates.filter(c => c.on_front).map(c => c.version));
-  } else {
-    frontAtIteration = computeParetoFront(filteredCandidates);
-  }
+  frontAtIteration = computeParetoFront(filteredCandidates, scatterMode);
 
   const slider = document.getElementById('iterationSlider');
   const label = document.getElementById('iterationSliderLabel');
@@ -993,22 +995,34 @@ const BAND_HEIGHT = 60;   // pixels per round
 const TOTAL_ROWS = DATA.iterations.length + 1;
 
 function computeTreeLayout(canvasW) {
-  // Assign x positions to nodes per iteration
-  // For each iteration, space candidates evenly across the usable width
-  // Also place "base" at top center
   const usableW = canvasW - MARGIN_LEFT - MARGIN_RIGHT;
-
-  // base node
   nodePositions['base'] = { x: MARGIN_LEFT + usableW / 2, y: MARGIN_TOP };
+
+  const numLanes = (DATA.algorithm === 'emosa' && DATA.trajectory_colors)
+    ? DATA.trajectory_colors.length
+    : null;
 
   DATA.iterations.forEach((rd, ri) => {
     const y = MARGIN_TOP + (ri + 1) * BAND_HEIGHT + BAND_HEIGHT / 2;
-    const n = rd.candidates.length;
-    rd.candidates.forEach((ver, ci) => {
-      // spread evenly; 3 nodes → positions at 1/4, 2/4, 3/4 of usable width
-      const x = MARGIN_LEFT + usableW * (ci + 1) / (n + 1);
-      nodePositions[ver] = { x, y };
-    });
+    if (numLanes != null) {
+      const laneCounts = {};
+      const laneWidth = usableW / (numLanes + 1);
+      rd.candidates.forEach((ver) => {
+        const c = candidateByVersion[ver];
+        const lane = (c && c.trajectory_id != null) ? c.trajectory_id : 0;
+        const occ = laneCounts[lane] || 0;
+        laneCounts[lane] = occ + 1;
+        const baseX = MARGIN_LEFT + laneWidth * (lane + 1);
+        const offset = occ === 0 ? 0 : (occ % 2 === 1 ? 1 : -1) * 0.15 * laneWidth * Math.ceil(occ / 2);
+        nodePositions[ver] = { x: baseX + offset, y };
+      });
+    } else {
+      const n = rd.candidates.length;
+      rd.candidates.forEach((ver, ci) => {
+        const x = MARGIN_LEFT + usableW * (ci + 1) / (n + 1);
+        nodePositions[ver] = { x, y };
+      });
+    }
   });
 }
 
@@ -1671,14 +1685,18 @@ function drawTimeline() {
     return 'rgba(0,180,120,0.7)';
   }
 
-  const maxNewElite = Math.max(...DATA.iterations.map(r => r.new_elite), 1);
-  const maxFrontSize = Math.max(...DATA.iterations.map(r => r.front_size));
-  const minFrontSize = Math.min(...DATA.iterations.map(r => r.front_size));
+  // Select mode-specific fields: use abs variants when in absolute mode.
+  const neKey = scatterMode === 'absolute' ? 'new_elite_abs' : 'new_elite_delta';
+  const fsKey = scatterMode === 'absolute' ? 'front_size_abs' : 'front_size_delta';
+  const maxNewElite = Math.max(...DATA.iterations.map(r => r[neKey].length), 1);
+  const maxFrontSize = Math.max(...DATA.iterations.map(r => r[fsKey]));
+  const minFrontSize = Math.min(...DATA.iterations.map(r => r[fsKey]));
   const isFiltering = activeIteration < maxIteration;
 
   DATA.iterations.forEach((rd, ri) => {
     const bx = ML + ri * barW;
-    const bh = rd.new_elite / maxNewElite * maxBarH;
+    const neCount = rd[neKey].length;
+    const bh = neCount / maxNewElite * maxBarH;
     const by = MT + maxBarH - bh;
     const isFuture = rd.iteration > activeIteration;
     const isActive = rd.iteration === activeIteration;
@@ -1713,10 +1731,10 @@ function drawTimeline() {
     ctx.fillText(`I${rd.iteration}`, bx + barW / 2, H - MB + 10);
 
     // New elite count on top of bar
-    if (rd.new_elite > 0 && !isFuture) {
+    if (neCount > 0 && !isFuture) {
       ctx.fillStyle = 'rgba(0,229,255,0.7)';
       ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      ctx.fillText('+' + rd.new_elite, bx + barW / 2, by + 14);
+      ctx.fillText('+' + neCount, bx + barW / 2, by + 14);
     }
   });
 
@@ -1727,7 +1745,7 @@ function drawTimeline() {
     visibleIterations.forEach((rd, i) => {
       const ri = DATA.iterations.indexOf(rd);
       const bx = ML + ri * barW + barW / 2;
-      const t = maxFrontSize > minFrontSize ? (rd.front_size - minFrontSize) / (maxFrontSize - minFrontSize) : 0.5;
+      const t = maxFrontSize > minFrontSize ? (rd[fsKey] - minFrontSize) / (maxFrontSize - minFrontSize) : 0.5;
       const ly = MT + 6 + (1 - t) * (maxBarH - 4);
       if (i === 0) ctx.moveTo(bx, ly); else ctx.lineTo(bx, ly);
     });
@@ -1738,7 +1756,7 @@ function drawTimeline() {
     visibleIterations.forEach(rd => {
       const ri = DATA.iterations.indexOf(rd);
       const bx = ML + ri * barW + barW / 2;
-      const t = maxFrontSize > minFrontSize ? (rd.front_size - minFrontSize) / (maxFrontSize - minFrontSize) : 0.5;
+      const t = maxFrontSize > minFrontSize ? (rd[fsKey] - minFrontSize) / (maxFrontSize - minFrontSize) : 0.5;
       const ly = MT + 6 + (1 - t) * (maxBarH - 4);
       ctx.beginPath();
       ctx.arc(bx, ly, 2.5, 0, Math.PI * 2);
@@ -1813,9 +1831,7 @@ function showInfoPanel(ver) {
   infoPanelParent.textContent = formatParents(c);
   const isOnFront = frontAtIteration.has(c.version);
   const badgeClass = isOnFront ? 'badge-elite' : 'badge-dominated';
-  const badgeText = DATA.use_trajectory_highlight
-    ? (isOnFront ? 'trajectory current' : 'not current')
-    : (isOnFront ? 'elite set' : 'not in elite set');
+  const badgeText = isOnFront ? 'elite set' : 'not in elite set';
   const isNewThisRound = c.iteration === activeIteration && activeIteration < maxIteration;
   const newStyle = 'background:rgba(118,255,3,0.1);color:rgba(118,255,3,0.9);'
     + 'border:1px solid rgba(118,255,3,0.3);margin-left:4px';

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a search tree HTML visualization for a beam search run.
+"""Generate a search tree HTML visualization for an EMOSA search run.
 
 Usage:
     python scripts/viz_search_tree.py <run_id> [--output-dir outputs] [--out search_tree.html]

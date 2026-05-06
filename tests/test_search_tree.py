@@ -35,6 +35,7 @@ def _make_candidate(
 def _make_eval_report(
     quality_change: float = 0.1,
     cost_change: float = -0.2,
+    predicted_quality: float | None = None,
     predicted_cost: float = 0.4,
     routing_overhead: float = 0.05,
     baseline_cost: float = 0.5,
@@ -51,6 +52,8 @@ def _make_eval_report(
         "baseline_cost": baseline_cost,
         "baseline_quality": baseline_quality,
     }
+    if predicted_quality is not None:
+        metrics["predicted_quality"] = predicted_quality
     if oracle_cost_change is not None:
         metrics["oracle_cost_change"] = oracle_cost_change
     if oracle_quality_change is not None:
@@ -303,14 +306,33 @@ class TestCollectDataFromArchive:
         assert v1_entry["score"] != 0.0  # 0.05 quality_change from report
 
     def test_pareto_front_correct_in_synthesized_rounds(self, tmp_path: Path) -> None:
-        """new_elite in a round should be candidates on the Pareto front at that iteration."""
+        """new_elite / front_size aliases and mode-specific fields are emitted correctly.
+
+        Fixture is constructed so that delta and absolute Pareto fronts differ:
+        - vA: high quality_change (delta good) but low predicted_quality (absolute bad).
+        - vB: low quality_change (delta bad) but high predicted_quality (absolute good),
+              plus low predicted_cost+overhead — so vB is on the absolute Pareto front.
+        - vC: dominated on both axes by vA (delta) and by vB (absolute) → never elite.
+
+        In delta space:  vA has score=0.3, cost≈-0.09 (best quality_change, low cost
+                         change); vB has score=0.0, cost≈0.0. vA dominates vB in delta.
+                         Delta front = {vA}.
+        In absolute:     vA abs_quality=0.75 (predicted_quality), abs_cost=0.30 (predicted_cost, no overhead);
+                         vB abs_quality=0.95 (predicted_quality), abs_cost=0.20 (predicted_cost, no overhead).
+                         vB dominates vA. Absolute front = {vB}.
+
+        abs_quality and abs_cost are derived from predicted_quality / predicted_cost in the
+        eval reports (new path), not from the archive quality_score / cost fields.
+        """
         search_dir = tmp_path / "search"
         eval_dir = tmp_path / "eval"
 
-        # Two candidates: A dominates B (higher quality, lower cost)
+        # Archive quality/cost are intentionally mismatched from the eval-report abs values
+        # to verify that collect_data prefers the metrics-derived values.
         archive = [
-            _make_candidate("vA", None, 0, quality=0.9, cost=0.3),
-            _make_candidate("vB", None, 0, quality=0.7, cost=0.5),
+            _make_candidate("vA", None, 0, quality=0.50, cost=0.99),
+            _make_candidate("vB", None, 0, quality=0.50, cost=0.99),
+            _make_candidate("vC", None, 0, quality=0.50, cost=0.99),
         ]
         state = {
             "search_state_id": "test-run",
@@ -318,10 +340,10 @@ class TestCollectDataFromArchive:
             "iteration": 0,
             "algorithm": "hill_climb",
             "algorithm_state": {},
-            "elite_set": [archive[0]],  # vA is on front
+            "elite_set": archive,
             "warm_up_complete": True,
             "evaluation_budget": 50,
-            "evaluations_used": 2,
+            "evaluations_used": 3,
             "reference_delta": 0.05,
             "stagnation_window": 5,
             "reference_point": [0.5, 0.6],
@@ -333,23 +355,56 @@ class TestCollectDataFromArchive:
         _write_json(search_dir / "candidate_archive.json", archive)
         _write_json(search_dir / "pending_candidates.json", [])
 
-        for c in archive:
-            _write_json(
-                eval_dir / c["prompt_version"] / "report.json",
-                _make_eval_report(
-                    quality_change=c["quality_score"] - 0.7,
-                    predicted_cost=c["cost"],
-                ),
-            )
+        # vA: high quality_change=0.3, negative cost_change → good in delta space.
+        #     predicted_quality=0.75, predicted_cost=0.30, routing_overhead=0.0 → abs_quality=0.75, abs_cost=0.30.
+        # vB: quality_change=0.0, cost_change=0.0 → dominated by vA in delta.
+        #     predicted_quality=0.95, predicted_cost=0.20, routing_overhead=0.0 → abs_quality=0.95, abs_cost=0.20.
+        # vC: poor on both delta and absolute axes.
+        eval_reports = {
+            "vA": _make_eval_report(
+                quality_change=0.30, cost_change=-0.10,
+                predicted_quality=0.75, predicted_cost=0.30, routing_overhead=0.0,
+            ),
+            "vB": _make_eval_report(
+                quality_change=0.00, cost_change=0.00,
+                predicted_quality=0.95, predicted_cost=0.20, routing_overhead=0.0,
+            ),
+            "vC": _make_eval_report(
+                quality_change=-0.05, cost_change=0.05,
+                predicted_quality=0.60, predicted_cost=0.50, routing_overhead=0.0,
+            ),
+        }
+        for v, report in eval_reports.items():
+            _write_json(eval_dir / v / "report.json", report)
 
         data = collect_data(search_dir, run_dir=tmp_path)
 
+        # Confirm abs values come from metrics, not archive (archive had quality=0.50, cost=0.99)
+        c_a = next(c for c in data["candidates"] if c["version"] == "vA")
+        c_b = next(c for c in data["candidates"] if c["version"] == "vB")
+        assert c_a["abs_quality"] == 0.75
+        assert c_a["abs_cost"] == 0.30
+        assert c_b["abs_quality"] == 0.95
+        assert c_b["abs_cost"] == 0.20
+
         assert len(data["iterations"]) == 1
         rd = data["iterations"][0]
-        # vA dominates vB so only vA should be in new_elite
-        assert "vA" in rd["new_elite"]
-        assert "vB" not in rd["new_elite"]
-        assert rd["front_size"] == 1
+
+        # ── Delta Pareto: vA dominates vB and vC ──
+        assert "vA" in rd["new_elite_delta"]
+        assert "vB" not in rd["new_elite_delta"]
+        assert "vC" not in rd["new_elite_delta"]
+        assert rd["front_size_delta"] == 1
+
+        # ── Absolute Pareto: vB (higher abs_quality, lower abs_cost) dominates vA and vC ──
+        assert "vB" in rd["new_elite_abs"]
+        assert "vA" not in rd["new_elite_abs"]
+        assert "vC" not in rd["new_elite_abs"]
+        assert rd["front_size_abs"] == 1
+
+        # ── Legacy aliases still present and mirror delta variants ──
+        assert set(rd["new_elite"]) == set(rd["new_elite_delta"])
+        assert rd["front_size"] == rd["front_size_delta"]
 
     def test_regression_6bfddeee_duplicate_archive_and_missing_population_child(self, tmp_path: Path) -> None:
         """Regression for run 6bfddeee: v6 duplicated in archive, v9 only in elite_set."""
@@ -429,10 +484,11 @@ class TestCollectDataFromArchive:
         assert v9["parent"] == "v7"
         assert v9["secondary_parent"] == "v8"
 
-        # v6 is dominated (not in elite_set), v9 is on the front (in elite_set)
+        # v6 and v9 both surface in candidates (membership only — viz now
+        # computes Pareto front in JS rather than reading on_front).
         v6 = next(c for c in data["candidates"] if c["version"] == "v6")
-        assert v6["on_front"] is False
-        assert v9["on_front"] is True
+        assert "on_front" not in v6
+        assert "on_front" not in v9
 
 
 class TestVizFilterRegression:
@@ -614,8 +670,8 @@ class TestVizFilterRegression:
 class TestStrategySeams:
     """Strategy label and algorithm_chips injection seams work correctly."""
 
-    def test_strategy_seams_for_beam(self, tmp_path: Path) -> None:
-        """A beam state yields correct strategy_label and beam-specific algorithm_chips."""
+    def test_strategy_seams_default_label(self, tmp_path: Path) -> None:
+        """An unknown algorithm value falls back to the default strategy_label."""
         search_dir = tmp_path / "search"
 
         archive = [_make_candidate("cv-0-0", None, 0)]
@@ -623,7 +679,7 @@ class TestStrategySeams:
             "search_state_id": "hc-test",
             "backend": "anthropic",
             "iteration": 0,
-            "algorithm": "beam",
+            "algorithm": "hill_climb",
             "elite_set": archive,
             "warm_up_complete": True,
             "evaluation_budget": 20,
@@ -639,62 +695,41 @@ class TestStrategySeams:
 
         data = collect_data(search_dir, run_dir=tmp_path)
 
-        assert data["strategy_label"] == "Beam"
+        assert data["strategy_label"] == "Prompt-Builder Search"
+        assert data["algorithm_chips"] == []
 
-    def test_beam_state_yields_beam_chips(self, tmp_path: Path) -> None:
-        """Beam state with algorithm_state and epsilon produces correct chips."""
+
+class TestEmosaAlgorithmChips:
+    """EMOSA _algorithm_chips adapter renders correct chips; non-emosa runs are guarded."""
+
+    def _make_emosa_state(self, tmp_path: Path, **pocket_overrides: object) -> dict:
+        """Write a minimal EMOSA search_state.json and return the data from collect_data."""
         search_dir = tmp_path / "search"
-
-        archive = [_make_candidate("cv-0-0", None, 0)]
-        state = {
-            "search_state_id": "beam-chips-test",
-            "backend": "anthropic",
-            "iteration": 0,
-            "algorithm": "beam",
-            "algorithm_state": {"beam_width": 3, "hypervolume": 0.234567},
-            "epsilon": 0.001,
-            "elite_set": archive,
-            "warm_up_complete": True,
-            "evaluation_budget": 20,
-            "evaluations_used": 1,
-            "converged": False,
-            "loop_phase": "review",
-            "active_evals": [],
-        }
-
-        _write_json(search_dir / "search_state.json", state)
-        _write_json(search_dir / "candidate_archive.json", archive)
-        _write_json(search_dir / "pending_candidates.json", [])
-
-        data = collect_data(search_dir, run_dir=tmp_path)
-
-        chip_labels = {c["label"] for c in data["algorithm_chips"]}
-        assert "traj" not in chip_labels
-        assert "T" not in chip_labels
-        assert "step" not in chip_labels
-        assert "evals" not in chip_labels
-
-
-class TestTrajectoryHighlight:
-    """collect_data emits iteration_currents and use_trajectory_highlight for EMOSA snapshots."""
-
-    def _make_state(self, tmp_path: Path, trajectory_history: list | None) -> dict:
-        search_dir = tmp_path / "search"
-        archive = [_make_candidate("v1", None, 1)]
+        archive = [_make_candidate("v1", None, 0)]
+        # Build per-trajectory state (temperature/step_count are now per-trajectory)
+        trajectories = [
+            {
+                "trajectory_id": i,
+                "weight_vector": [0.5, 0.5],
+                "temperature": 0.5,
+                "alpha": 0.95,
+                "step_count": 3,
+            }
+            for i in range(5)
+        ]
         pocket: dict = {
             "t_min": 0.01,
             "num_trajectories": 5,
-            "trajectories": [],
-            "total_evals": 10,
+            "trajectories": trajectories,
+            "total_evals": 15,
             "max_evals": 50,
             "phase": "search",
         }
-        if trajectory_history is not None:
-            pocket["trajectory_history"] = trajectory_history
+        pocket.update(pocket_overrides)
         state = {
-            "search_state_id": "traj-snap-test",
+            "search_state_id": "emosa-test",
             "backend": "mock-echo",
-            "round": 2,
+            "round": 1,
             "algorithm": "emosa",
             "algorithm_state": pocket,
             "elite_set": archive,
@@ -707,42 +742,31 @@ class TestTrajectoryHighlight:
         _write_json(search_dir / "pending_candidates.json", [])
         return collect_data(search_dir, run_dir=tmp_path)
 
-    def test_trajectory_history_populates_iteration_currents(self, tmp_path: Path) -> None:
-        """Two trajectory snapshots produce iteration_currents with correct dedup."""
-        history = [
-            {
-                "round": 1,
-                "currents": {"0": "v1", "1": "v2", "2": "v3", "3": "v4", "4": "v5"},
-            },
-            {
-                "round": 2,
-                # v6 appears twice (trajectories 0 and 1 converged on it)
-                "currents": {"0": "v6", "1": "v6", "2": "v8", "3": "v9", "4": "v10"},
-            },
-        ]
-        data = self._make_state(tmp_path, trajectory_history=history)
+    def test_emosa_chips_renders_all_four_chips(self, tmp_path: Path) -> None:
+        """emosa run renders traj, T (min–max range), step (min–max range), and evals chips."""
+        data = self._make_emosa_state(tmp_path)
+        chips = {c["label"]: c["value"] for c in data["algorithm_chips"]}
 
-        assert data["use_trajectory_highlight"] is True
-        ic = data["iteration_currents"]
+        assert "traj" in chips
+        assert chips["traj"] == "5"
 
-        assert set(ic[1]) == {"v1", "v2", "v3", "v4", "v5"}
-        # Round 2: v6 is deduplicated, so 4 unique versions
-        assert set(ic[2]) == {"v6", "v8", "v9", "v10"}
-        assert len(ic[2]) == 4
+        # T shows min–max range; all 5 trajectories have T=0.5, so range is "5.00e-01–5.00e-01"
+        assert "T" in chips
+        assert chips["T"] == "5.00e-01–5.00e-01"
 
-    def test_no_trajectory_history_gives_false_flag(self, tmp_path: Path) -> None:
-        """When trajectory_history is absent, iteration_currents is empty and flag is False."""
-        data = self._make_state(tmp_path, trajectory_history=None)
+        # step shows min–max range; all trajectories have step=3
+        assert "step" in chips
+        assert chips["step"] == "3–3"
 
-        assert data["iteration_currents"] == {}
-        assert data["use_trajectory_highlight"] is False
+        assert "evals" in chips
+        assert chips["evals"] == "15/50"
 
-    def test_non_emosa_run_gives_false_flag(self, tmp_path: Path) -> None:
-        """A non-EMOSA run (no algorithm_state) produces empty iteration_currents."""
+    def test_non_emosa_run_does_not_render_emosa_chips(self, tmp_path: Path) -> None:
+        """hill_climb run does NOT render traj, T, step, or evals chips (regression guard)."""
         search_dir = tmp_path / "search"
         archive = [_make_candidate("v1", None, 0)]
         state = {
-            "search_state_id": "hill-climb-traj-test",
+            "search_state_id": "hill-climb-test",
             "backend": "anthropic",
             "round": 1,
             "algorithm": "hill_climb",
@@ -757,5 +781,10 @@ class TestTrajectoryHighlight:
         _write_json(search_dir / "pending_candidates.json", [])
         data = collect_data(search_dir, run_dir=tmp_path)
 
-        assert data["iteration_currents"] == {}
-        assert data["use_trajectory_highlight"] is False
+        chip_labels = {c["label"] for c in data["algorithm_chips"]}
+        assert "traj" not in chip_labels
+        assert "T" not in chip_labels
+        assert "step" not in chip_labels
+        assert "evals" not in chip_labels
+
+

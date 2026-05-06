@@ -1,0 +1,10 @@
+{"id": "e01", "input": "What is 2+2?", "expected": "haiku", "complexity": "trivial"}
+{"id": "e02", "input": "Explain the causes of World War I in two paragraphs.", "expected": "sonnet", "complexity": "medium"}
+{"id": "e03", "input": "Develop a rigorous proof that there are infinitely many primes using analytic methods.", "expected": "opus", "complexity": "hard"}
+{"id": "e04", "input": "Translate 'good morning' to French.", "expected": "haiku", "complexity": "trivial"}
+{"id": "e05", "input": "Summarise the key differences between supervised and unsupervised learning.", "expected": "sonnet", "complexity": "medium"}
+{"id": "e06", "input": "What is the capital of Japan?", "expected": "haiku", "complexity": "trivial"}
+{"id": "e07", "input": "Compare and contrast Rawls's veil of ignorance with Nozick's entitlement theory of justice.", "expected": "opus", "complexity": "hard"}
+{"id": "e08", "input": "Convert 37 degrees Celsius to Fahrenheit.", "expected": "haiku", "complexity": "trivial"}
+{"id": "e09", "input": "Describe how TCP/IP handshaking works.", "expected": "sonnet", "complexity": "medium"}
+{"id": "e10", "input": "Critically analyse the epistemological foundations of Bayesian inference.", "expected": "opus", "complexity": "hard"}

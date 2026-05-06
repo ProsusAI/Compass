@@ -118,7 +118,7 @@ Execute these steps exactly in order on round 1.
 8. **Write all prompts.** Call `save_prompt_tool` for each variant's compiled prompt using `<variant_id>` as the prompt version handle.
 9. **Register candidates.** For each compiled prompt, call `register_candidate_tool(run_id=run_id, prompt_version="<variant_id>", example_ids=[<complete list of example_ids for this variant>])`.
 10. **Evaluate each candidate.** For each candidate, call `run_eval(prompt_version="<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
-11. **Extract scores.** From each ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
+11. **Extract scores.** From each ScoreReport: extract `quality_score` from `metrics.quality_change` and `cost` from `metrics.cost_change_with_overhead`. Both are signed fractions; pass them through unchanged. EMOSA / hill-climb / beam / sms-emoa all expect "higher quality is better" and "lower cost is better", so a more-positive `quality_change` is better and a more-negative `cost_change_with_overhead` is better. Do NOT use `metrics.accuracy` — that is routing-classifier accuracy, not the user-facing quality of the chosen route.
 12. **Record results.** Call `record_eval_result_tool(run_id, "<variant_id>", quality_score, cost)` for each candidate.
 13. **Advance round.** Call `advance_step_tool(run_id)`.
 14. **Set output.** Set `prompt_version` to the best candidate from this round (highest quality, break ties by lowest cost) in context. This triggers the Review Agent.
@@ -146,7 +146,7 @@ Execute on round 2 and every subsequent round.
 6. **Evaluate each child.** For each child prompt:
    - Call `register_candidate_tool(run_id=run_id, prompt_version="<variant_id>", parent_version=variant.parent_version, example_ids=[<complete list of example IDs in this child>])`. The `example_ids` list must contain every example ID in the child — the full set, not just changed examples. Each variant carries a `trajectory_id` field (EMOSA only); forward it unchanged into `run_batch_eval` candidates and `register_candidate_tool` so the trajectory ownership is preserved through registration.
    - Call `run_eval(prompt_version="<variant_id>", data_source=dev_jsonl_path, backend=backend)`.
-   - Extract `quality_score` and `cost` from the ScoreReport.
+   - Extract `quality_score` from `metrics.quality_change` and `cost` from `metrics.cost_change_with_overhead`. Both are signed fractions; pass them through unchanged. EMOSA / hill-climb / beam / sms-emoa all expect "higher quality is better" and "lower cost is better", so a more-positive `quality_change` is better and a more-negative `cost_change_with_overhead` is better. Do NOT use `metrics.accuracy` — that is routing-classifier accuracy, not the user-facing quality of the chosen route.
    - Call `record_eval_result_tool(run_id, "<variant_id>", quality_score, cost)`.
 7. **Advance round.** Call `advance_step_tool(run_id)`. Read the returned RoundSummary.
 8. **Read round result.**

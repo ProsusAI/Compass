@@ -49,11 +49,12 @@ Full-pipeline integration test scenarios for Project Odysseus. Each `.md` file i
 |---|----------|---------|-------|
 | 15 | Full End-to-End with Final Report | `full_pipeline_dataset.jsonl` | All 6 stages verified in detail: holdout filtering, holdout eval, briefing, report content |
 
-### Cold-Start Protection (16)
+### EMOSA Algorithm (18–19)
 
-| # | Scenario | Fixtures | Focus |
-|---|----------|----------|-------|
-| 16 | Round-1 Cold-Start Protection | `full_pipeline_dataset.jsonl` (mock-echo, beam_width=3) | Beam round-1 elite floor protects all K cold-start strategies; round-2 review emits one child per protected parent |
+| # | Scenario | Dataset | Focus |
+|---|----------|---------|-------|
+| 18 | EMOSA — Calibration Round | `emosa_toy_dataset.jsonl` | K=5 trajectories complete calibration round; per-trajectory state seeded; phase calibration→search; loop_phase calibration→review |
+| 19 | EMOSA — Steady-State Round | `emosa_toy_dataset.jsonl` | K=5 per-fork review with explicit `trajectory_id`; build+eval 5 children; Metropolis acceptance; temperature cooling; step_count 1→2 |
 
 ## Prerequisites
 
