@@ -273,6 +273,32 @@ async def save_routing_context(ctx: Context, run_id: str, routing_context_json: 
     return f"Routing context saved to {out_path}"
 
 
+@mcp.tool()
+async def get_routing_context_tool(ctx: Context, run_id: str) -> str:
+    """[Stage 2+] Return the parsed RoutingContext for a run as JSON.
+
+    Reads outputs/<run_id>/validation/routing_context.json. Raises ToolError
+    if Stage 2 has not produced the file yet.
+
+    Args:
+        run_id: Pipeline run identifier.
+
+    Returns:
+        JSON-serialized RoutingContext.
+    """
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    path = project_dir / "outputs" / run_id / "validation" / "routing_context.json"
+    if not path.is_file():
+        raise ToolError(
+            f"Routing context not found at {path}. Complete data validation (call save_routing_context) first."
+        )
+    try:
+        routing_context = RoutingContext.model_validate_json(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ToolError(f"Failed to parse RoutingContext at {path}: {exc}") from exc
+    return routing_context.model_dump_json(indent=2)
+
+
 def _collect_dataset_route_keys(transformed_path: Path) -> set[str]:
     """Collect the union of ``expected.routes`` keys across all rows.
 

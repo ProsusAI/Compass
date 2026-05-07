@@ -73,21 +73,29 @@ _REVIEW_TOOLS: list[str] = [
 
 _BUILD_TOOLS: list[str] = [
     "get_search_state_tool",
+    "get_routing_context_tool",
+    "get_child_variants_tool",
     "get_edit_directives_tool",
+    "get_prompt_text_tool",
+    "get_score_report_tool",
     "init_search_state_tool",
     "register_candidate_tool",
     "record_eval_result_tool",
     "advance_step_tool",
+    "save_prompt_tool",
     "run_eval",
     "run_batch_eval",
 ]
 
 _RERUN_TOOLS: list[str] = [
     "get_search_state_tool",
+    "get_routing_context_tool",
+    "get_prompt_text_tool",
     "init_search_state_tool",
     "register_candidate_tool",
     "record_eval_result_tool",
     "advance_step_tool",
+    "save_prompt_tool",
     "run_eval",
 ]
 

@@ -8,6 +8,7 @@ from odysseus.eval.backends.registry import BackendRegistry  # noqa: F401
 from odysseus.mcp.backend_setup_tools import get_default_pricing
 from odysseus.mcp.data_validation_tools import (
     detect_and_parse_dataset,
+    get_routing_context_tool,
     save_routing_context,
     stratified_split_tool,
     transform_dataset,
@@ -65,6 +66,7 @@ from odysseus.mcp.resources import (
 from odysseus.mcp.review_tools import (
     build_review_briefing_tool,
     get_prompt_text_tool,
+    get_score_report_tool,
     query_holdout_examples_tool,
     record_directive_outcomes_tool,
 )
@@ -99,6 +101,8 @@ __all__ = [
     "get_edit_directives_tool",
     "get_pipeline_status",
     "get_prompt_text_tool",
+    "get_routing_context_tool",
+    "get_score_report_tool",
     "get_search_state_tool",
     "init_search_state_tool",
     "optimize_routing_prompt",

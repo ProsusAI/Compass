@@ -2,7 +2,7 @@
 
 Manages the search-loop optimization: tracks `SearchState` and an elite set across rounds, persists all state to files, filters holdout contamination, and regenerates a live HTML visualization on each state mutation.
 
-The subpackage is code-only; the Prompt Builder Agent (LLM-driven, system prompt in `odysseus/agents/prompts/`) calls these functions via MCP tools defined in `odysseus/mcp/prompt_building_tools.py`.
+The subpackage is code-only; the Prompt Builder Agent (LLM-driven, system prompt in `odysseus/agents/prompts/`) calls these functions via MCP tools defined in `odysseus/mcp/prompt_building_tools.py`. Inputs are populated via the discovery sequence defined in `odysseus/agents/prompts/prompt_builder_system.md` — the agent uses MCP tools (`get_routing_context_tool`, `get_search_state_tool`, `get_child_variants_tool`, `get_prompt_text_tool`) rather than a context dict.
 
 ## Contents
 

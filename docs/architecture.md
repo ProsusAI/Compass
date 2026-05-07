@@ -87,20 +87,22 @@ Top-level report from the Data Validation agent containing `SchemaFinding` list,
 Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Prompt Builder Agent.
 
 **`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
-`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `directive_history` list (`DirectiveOutcome` entries for prior-round directives — synthesized wholly in code by `_synthesize_directive_outcomes` inside `build_review_briefing` from `batch_outcomes`; no `directive_history.json` file is persisted and the agent no longer writes outcomes), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, and `regression_guards`. Persistence (child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_child_variants_tool`. `get_edit_directives_tool` is a back-compat helper that flattens all directives across variants into a single list.
+`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `directive_history` list (`DirectiveOutcome` entries for prior-round directives — synthesized wholly in code by `_synthesize_directive_outcomes` inside `build_review_briefing` from `batch_outcomes`; no `directive_history.json` file is persisted and the agent no longer writes outcomes), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). Fields are ordered stable-first, varying-last for prompt-cache prefix stability (see [`render.py`](../odysseus/agents/review/render.py)).
+
+`build_review_briefing_tool` now returns a **markdown progressive-disclosure summary** (rendered by [`odysseus/agents/review/render.py`](../odysseus/agents/review/render.py)) rather than raw JSON. Seven companion detail-fetch tools (`get_score_report_tool`, `get_confusion_cell_tool`, `get_directive_history_tool`, `get_batch_outcomes_tool`, `get_round_child_variants_tool`, `get_dataset_oracle_distribution_tool`, `get_per_class_recall_tool`) provide on-demand drill-down without reloading the full briefing on every call. `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, and `regression_guards`. Persistence (child variants, round reports) lives in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes_tool` and retrieved by the Prompt Builder via `get_child_variants_tool`. `get_edit_directives_tool` is a back-compat helper that flattens all directives across variants into a single list.
 
 Strategy-specific optional fields pre-provisioned as `None`-default slots in the model; each leaf branch's preprocessor function populates the slots relevant to its algorithm:
 
 | Field | Type | Algorithm | Populated by |
 |---|---|---|---|
 | `parent_a_version`, `parent_b_version` | `str \| None` | all | `build_review_briefing` |
-| `trajectory_id` | `int \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
-| `weight_vector` | `tuple[float, float] \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
-| `binding_axis` | `"quality" \| "cost" \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
-| `acceptance_history` | `list[bool] \| None` | EMOSA | `_populate_emosa_review_fields` (leaf branch) |
+| `trajectory_id` | `int \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
+| `weight_vector` | `tuple[float, float] \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
+| `binding_axis` | `"quality" \| "cost" \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
+| `acceptance_history` | `list[bool] \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
 | `stagnation_signal` | `dict \| None` | all | algorithm-specific `_populate_*_review_fields` on the leaf branch |
 
-Algorithm-specific advance logic (e.g. EMOSA steady-state advance, beam step) lives entirely on the leaf branches' `search_ops.py`.
+Algorithm-specific advance logic (e.g. hill-climb step, beam step) lives entirely on the leaf branches' `search_ops.py`.
 
 **`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
@@ -137,10 +139,18 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation/detect.py`](../odysseus/agents/data_validation/detect.py) |
 | `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; rejects mappings whose output violates `expected.route ∈ expected.routes.keys()` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
 | `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
+| `get_routing_context_tool` | Implemented | Return the parsed RoutingContext for a run as JSON; reads `outputs/<run_id>/validation/routing_context.json`; also available to the Prompt Builder sub-agent | [`odysseus/mcp/data_validation_tools.py`](../odysseus/mcp/data_validation_tools.py) |
 | `build_review_briefing_tool` | Implemented | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `record_directive_outcomes_tool` | Implemented | Persist child variants + directive outcomes; apply the Review Agent's `loop_signal` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `query_holdout_examples_tool` | Implemented | Query holdout examples, optionally filtered by route, with `offset`/`limit` pagination for directive crafting | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_prompt_text_tool` | Implemented | Retrieve the full text of a versioned prompt; requires `run_id`; checks `outputs/<run_id>/prompts/` first, falls back to project-level `prompts/` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_prompt_text_tool` | Implemented | Retrieve the full text of a versioned prompt; requires `run_id`; checks `outputs/<run_id>/prompts/` first, falls back to project-level `prompts/`; also available to the Prompt Builder sub-agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_score_report_tool` | Implemented | Return markdown ScoreReport for a candidate version: metrics table, summary, top-K errors, diff; also available to the Prompt Builder sub-agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_confusion_cell_tool` | Implemented | Return markdown detail for a single confusion cell (recomputes briefing, slices matching ConfusionImpact) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_directive_history_tool` | Implemented | Return markdown table of directive outcomes from round reports; supports `since_round` filter and `limit` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_batch_outcomes_tool` | Implemented | Return markdown of BatchOutcomes (metrics per version per round) from round reports | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_round_child_variants_tool` | Implemented | Return markdown of child variants grouped by variant_id; optionally includes full directive bodies | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_dataset_oracle_distribution_tool` | Implemented | Return per-route oracle aggregates from `analysis/dev.jsonl` (n_labeled, mean cost/quality, Pareto-optimal count, ties-with-cheaper-route count); optional row-level drill-down filtered by route or example_ids | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `get_per_class_recall_tool` | Implemented | Return the full per-class recall table for a round (all routes, no median/regression filter) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `build_final_report_briefing_tool` | Implemented | Pre-process all pipeline artifacts into a structured briefing with charts for the Final Report Agent | [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py) |
 | `save_final_report` | Implemented | Save the final report markdown to disk | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
 | `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–5, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
@@ -166,11 +176,11 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 |---|---|
 | `orchestrator` | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`, `initiate_rerun` |
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
-| `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_pipeline_status` |
+| `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_routing_context_tool`, `stratified_split_tool`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `get_child_variants_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
-| `review_cold` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `get_pipeline_status` |
-| `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_routing_context_tool`, `get_edit_directives_tool`, `get_child_variants_tool`, `get_prompt_text_tool`, `get_score_report_tool`, `save_prompt_tool`, `signal_eval_complete_tool`, `get_pipeline_status` |
+| `review_cold` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `get_score_report_tool`, `get_confusion_cell_tool`, `get_directive_history_tool`, `get_batch_outcomes_tool`, `get_round_child_variants_tool`, `get_dataset_oracle_distribution_tool`, `get_per_class_recall_tool`, `get_pipeline_status` |
+| `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_score_report_tool`, `get_confusion_cell_tool`, `get_directive_history_tool`, `get_batch_outcomes_tool`, `get_round_child_variants_tool`, `get_dataset_oracle_distribution_tool`, `get_per_class_recall_tool`, `get_pipeline_status` |
 | `calibration` | Algorithm-specific phase — tool set defined by the leaf branch |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
@@ -215,11 +225,11 @@ Two JSON sentinel files signal that a sub-agent is in-flight for the current rou
 | `search/build_dispatched.json` | `register_candidate_tool` (first builder action) | `advance_step_tool` (round complete); `run_batch_eval_impl` (when `active_evals` drains after batch eval) | `complete_stage("prompt_building")` rejects while present |
 | `search/review_dispatched.json` | `build_review_briefing_tool` (reviewer dispatch) | `record_directive_outcomes_tool` (directives saved) | `complete_stage("review")` checks fanout |
 
-`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is `{"round": N}` for single-slot algorithms; multi-slot leaf branches (e.g. EMOSA) extend this to `{"round": N, "trajectory_ids": [...]}` to track per-trajectory dispatch within the round.
+`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is `{"round": N}` for single-slot algorithms; multi-slot leaf branches may extend this to include additional tracking fields.
 
 **Multi-trajectory review fanout (leaf-branch feature)**
 
-Algorithms with multiple parallel trajectories (e.g. EMOSA on `feat/generalize-emosa`) extend `_next_action_for_stage_4` to dispatch N Review Agent sub-agents in parallel — one per trajectory ID.  Each sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, writing `child_variants_t<N>.json` for slot N.  The trunk pipeline uses a single-slot (`expected=1`) fanout; `complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` and checks `is_complete`.
+Algorithms with multiple parallel trajectories extend `_next_action_for_stage_4` on their leaf branch to dispatch N Review Agent sub-agents in parallel — one per trajectory ID.  The trunk pipeline uses a single-slot (`expected=1`) fanout; `complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` and checks `is_complete`.
 
 **`DispatchFanout` and `review_fanout_status`**
 
@@ -234,11 +244,11 @@ Algorithms with multiple parallel trajectories (e.g. EMOSA on `feat/generalize-e
 | `is_complete` | `bool` | `len(completed) >= expected` |
 | `missing` | `list[int]` | `in_flight + not_dispatched` |
 
-For `expected=1` (single-slot algorithms like hill-climb), fanout is complete when `search/child_variants.json` exists.  For multi-slot algorithms (e.g. EMOSA), `review_fanout_status` delegates to `trajectory_fanout_missing` (see `odysseus/agents/review/ops.py`) which checks per-slot `child_variants_t<N>.json` files; each slot maps to one trajectory.  Multi-slot dispatch state is tracked in `review_dispatched.json` as a round-keyed list of trajectory_ids rather than the simple `{"round": N}` marker used by single-slot algorithms.
+For `expected=1` (single-slot — the trunk default), fanout is complete when `search/child_variants.json` exists.  Multi-slot dispatch is a leaf-branch concern; leaf branches extend `review_fanout_status` as needed.
 
-**`child_variants.json` / `child_variants_t<N>.json`**
+**`child_variants.json`**
 
-Written by `record_directive_outcomes_tool` for single-slot algorithms; acts as the canonical review-completion sentinel.  For multi-slot algorithms (e.g. EMOSA on its leaf branch), each trajectory's Review Agent sub-agent calls `record_directive_outcomes_tool(..., trajectory_id=<N>, child_variants=[...])`, writing `child_variants_t<N>.json` for slot N and recording the slot as complete.  `trajectory_fanout_missing` globs `child_variants_t*.json` and cross-references `review_dispatched.json` to compute the per-trajectory `FanoutStatus` (fields: `num_trajectories`, `completed`, `dispatched`, `in_flight`, `not_dispatched`, `missing`).
+Written by `record_directive_outcomes_tool`; acts as the canonical review-completion sentinel.  Multi-slot per-trajectory variants (`child_variants_t<N>.json`) are a leaf-branch extension.
 
 **Defense-in-depth phase flip**
 
@@ -323,7 +333,7 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
-| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py). For EMOSA runs, node coloring reflects per-iteration trajectory `current_solution` (from `AnnealingState.trajectory_history: list[TrajectorySnapshot]`) rather than Pareto elite-set membership; legend labels change to "Trajectory current" / "Not current". Non-EMOSA runs retain legacy `on_front` coloring. |
+| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py). Node coloring reflects `on_front` (Pareto elite-set) membership; algorithm-specific overlays can be added on leaf branches. |
 | `outputs/<run_id>/search/child_variants.json` | `ChildVariant[]` — Review Agent output: grouped directives with parent preferences and hypotheses (canonical directive storage; retrieved via `get_child_variants_tool`) |
 | `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |
 | `outputs/<run_id>/search/search_state_original.json` | Preserved original search state from before rerun initiation |

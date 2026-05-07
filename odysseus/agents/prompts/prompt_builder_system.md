@@ -22,18 +22,47 @@ Your workflow has two phases: initial compilation (round 1) and optimization (ro
 
 ## Inputs
 
-Read all inputs from the context dict at startup. If any required input is missing, fail immediately with a clear error stating which key is absent.
+The entry-verification `get_pipeline_status` call you already made is your
+only path to filesystem state. Do not call `Bash`, `Read`, `find`, `ls`, or
+`cat` for any reason. Do not Read files under `outputs/<run_id>/` directly.
+Use the discovery sequence below to populate every input the rest of this
+prompt refers to.
 
-| Key | Type | Source | Description |
-|-----|------|--------|-------------|
-| `run_id` | str | User Input Agent | Pipeline run identifier; all paths are under `outputs/<run_id>/` |
-| `dev_jsonl_path` | str | Data Validation Agent | `outputs/<run_id>/analysis/` — dev split examples |
-| `split_report_path` | str | Data Validation Agent | `outputs/<run_id>/analysis/` — split statistics |
-| `routing_context` | RoutingContext | Data Validation Agent | Domain, routes, dimensions |
-| `holdout_jsonl_path` | str | Data Validation Agent | Holdout examples (used by filter tool before final eval) |
-| `backend` | str | MCP tool param | Backend label for evaluation |
-| `child_variants` | list[ChildVariant] | `get_child_variants_tool` | Grouped directives per child prompt — each variant has a `parent_version` and a `directives` list; retrieved via tool call (round 1+) |
-| `eval_score_report` | ScoreReport | Eval Runner Agent | Eval results (round 2+ only) |
+### Discovery sequence
+
+1. From the prior `get_pipeline_status` response: scan `stages` for the
+   Stage-2 entry (`stage == 2`). Its `artifacts` list contains the absolute
+   paths to `dev.jsonl`, `holdout.jsonl`, and `routing_context.json`. Pick
+   them out by filename suffix and bind them to `dev_jsonl_path`,
+   `holdout_jsonl_path`. (You will pass `routing_context.json` to the next
+   step but never Read it directly.)
+2. Call `get_routing_context_tool(run_id=run_id)` for the parsed
+   `RoutingContext` (domain, routes, dimensions, route_ordering,
+   routing_dimensions). Bind to `routing_context`.
+3. Call `get_search_state_tool(run_id=run_id)`. From the result, bind:
+   `backend`, `round`, `loop_phase`, `mutation_mode`, `pareto_front` (=
+   `elite_set`), and the pending-candidates list.
+4. Call `get_child_variants_tool(run_id=run_id)`. Bind to `child_variants`.
+5. (Round 2+ only.) For each unique `parent_version` across `child_variants`
+   that is not the canonical `"base"` value
+   (`ReviewBriefing.initial_parent_version`), call
+   `get_prompt_text_tool(run_id=run_id, version=<parent_version>)` and bind
+   the returned text under `parent_prompts[<parent_version>]`. The eval
+   `ScoreReport` for the previous round's pending candidates is available via
+   `get_score_report_tool(run_id=run_id, version=<version>)` if you need it
+   for review-style inspection; the elite set returned by
+   `get_search_state_tool` already carries quality/cost values for tie-breaks
+   so you usually do not need to call `get_score_report_tool` at all.
+
+| Variable | Source |
+|---|---|
+| `run_id` | passed in by the orchestrator (also visible in `get_pipeline_status.run_id`) |
+| `dev_jsonl_path` | step 1 |
+| `holdout_jsonl_path` | step 1 |
+| `routing_context` | step 2 |
+| `backend`, `round`, `loop_phase`, `mutation_mode`, `pareto_front` | step 3 |
+| `child_variants` | step 4 |
+| `parent_prompts` | step 5 (round 2+) |
 
 ## Tools
 
@@ -84,11 +113,11 @@ Also extract the `model` field from the backend profile YAML. Pass this value as
 
 Execute these steps exactly in order on round 1.
 
-1. **Read all inputs.** Load every key from the inputs table. For `child_variants`, call `get_child_variants_tool(run_id=run_id)` to retrieve them. Fail immediately if any required key is missing. On round 1, `child_variants` is required and every variant must have at least one directive with `block_type == 'example'`.
+1. **Read all inputs.** Run the discovery sequence above. Fail immediately if any required value is missing. On round 1, every variant must have at least one directive with `block_type == 'example'`.
 2. **Detect provider.** Read the `odysseus://backends/{backend}` resource (substituting the backend label) and extract the `provider` field from the returned YAML.
 3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
 4. **Initialize search state.** Call `init_search_state_tool(run_id=run_id, backend=backend)`. The tool applies default search parameters. If the routing context or input report specifies custom search budget parameters, pass them as overrides. Store the returned `search_state_id`.
-5. **Retrieve child variants.** Call `get_child_variants_tool(run_id=run_id)`. On round 1, expect one or more variants, each with `parent_version: "base"` (the canonical initial parent — matches `ReviewBriefing.initial_parent_version`). Each variant contains a complete directive set — examples, rules, and optionally vocabulary. Validate that every variant has at least one directive with `block_type == 'example'`.
+5. **Retrieve child variants.** Use the `child_variants` from step 4 of the discovery sequence. On round 1, expect one or more variants, each with `parent_version: "base"` (the canonical initial parent — matches `ReviewBriefing.initial_parent_version`). Each variant contains a complete directive set — examples, rules, and optionally vocabulary. Validate that every variant has at least one directive with `block_type == 'example'`.
 6. **Compile one prompt per variant.** For each ChildVariant, compile a separate prompt using `<variant_id>` as the prompt version handle (variant ids are sequential `v1`, `v2`, …):
 
    **Extract directives from the variant:**
@@ -127,13 +156,13 @@ Execute these steps exactly in order on round 1.
 
 Execute on round 2 and every subsequent round.
 
-1. **Receive feedback.** Call `get_child_variants_tool(run_id=run_id)` to retrieve the Review Agent's child variants. Each variant specifies a `parent_version` and the `directives` to apply together as one child prompt. Read the latest ScoreReport from `eval_score_report`. Apply vocabulary directives (`block_type == 'vocabulary'`) from all variants as in Phase 1 step 5: use refined descriptions when compiling Categories and Decision Logic; ignore directives referencing unrecognized route or dimension names.
-2. **Read search state.** Call `get_search_state_tool(run_id)`. Note the `mutation_mode` (set by the Review Agent's loop signal) and `pareto_front`.
+1. **Receive feedback.** Use `child_variants` and `parent_prompts` from the discovery sequence. Each variant specifies a `parent_version` and the `directives` to apply together as one child prompt. If you need ScoreReport detail beyond the quality/cost stored in the elite set, call `get_score_report_tool(run_id=run_id, version=<v>)` for the relevant version. Apply vocabulary directives (`block_type == 'vocabulary'`) from all variants as in Phase 1 step 5: use refined descriptions when compiling Categories and Decision Logic; ignore directives referencing unrecognized route or dimension names.
+2. **Read search state.** Use `mutation_mode` and `pareto_front` from step 3 of the discovery sequence.
 3. **Read parent versions.** Each variant specifies `parent_version` — the Review Agent has already selected the parent. Do not re-select parents from the Pareto front.
 4. **Generate children from variants.** Create one child prompt per `ChildVariant`. Each variant already specifies which parent to mutate and which directives to apply — do not merge or redistribute directives across variants.
 
    For each variant:
-   - Read the parent prompt (`parent_version`).
+   - Use `parent_prompts[parent_version]` from step 5 of the discovery sequence.
    - Apply all directives in the variant's `directives` list to produce the child.
    - Apply vocabulary directives from all variants (these set shared terminology).
 
