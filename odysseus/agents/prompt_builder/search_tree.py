@@ -109,11 +109,7 @@ def _dict_pareto_front(cs: list[dict], mode: str = "delta") -> set[str]:
             else:
                 a_q, b_q = a["score"], b["score"]
                 a_c, b_c = a["cost"], b["cost"]
-            if (
-                a_q >= b_q
-                and a_c <= b_c
-                and (a_q > b_q or a_c < b_c)
-            ):
+            if a_q >= b_q and a_c <= b_c and (a_q > b_q or a_c < b_c):
                 dominated.add(b["version"])
     return {c["version"] for c in cs if c["version"] not in dominated}
 

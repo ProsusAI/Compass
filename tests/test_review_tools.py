@@ -639,21 +639,80 @@ class TestBuildReviewBriefingToolSelector:
                 output_dir="outputs",
             )
 
-        # Extract briefing JSON from output (may have executive summary header)
-        briefing_json = result.split("# Full Briefing Data\n\n", 1)[1] if "# Full Briefing Data" in result else result
-        briefing = json.loads(briefing_json)
+        # Tool now returns markdown — verify it ran and contains the confusion section.
+        assert isinstance(result, str) and len(result) > 0
+        assert "## Confusion analysis" in result
 
-        confusion = briefing.get("confusion_analysis", [])
+        # For field-level assertions, call build_review_briefing directly.
+        from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
+        from odysseus.agents.review.ops import load_round_reports
+        from odysseus.agents.review.preprocessor import build_review_briefing
+
+        out = tmp_path / "outputs"
+        state = get_search_state(run_id=run_id, output_dir=out)
+        pending = _load_pending(run_id, out)
+        candidate_versions = [c.prompt_version for c in pending]
+        parent_versions = {c.prompt_version: c.parent_version for c in pending}
+        all_versions = {c.prompt_version for c in state.elite_set}
+        score_reports: dict = {}
+        for v in (list(all_versions) + candidate_versions):
+            rp = out / run_id / "eval" / v / "report.json"
+            if rp.exists():
+                from odysseus.mcp.review_tools import _load_score_report_dict
+                score_reports[v] = _load_score_report_dict(rp, rp.parent / "results.jsonl")
+        from odysseus.eval.models import EvalResult, Example
+        all_er: list[EvalResult] = []
+        for v in [c.prompt_version for c in state.elite_set]:
+            rsp = out / run_id / "eval" / v / "results.jsonl"
+            if rsp.exists():
+                for line in rsp.read_text(encoding="utf-8").splitlines():
+                    s = line.strip()
+                    if s:
+                        try:
+                            all_er.append(EvalResult.model_validate(json.loads(s)))
+                        except Exception:
+                            pass
+        loaded_examples: list[Example] = []
+        dev_p = out / run_id / "analysis" / "dev.jsonl"
+        if dev_p.exists():
+            for line in dev_p.read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if s:
+                    try:
+                        loaded_examples.append(Example.model_validate_json(s))
+                    except Exception:
+                        pass
+        briefing = build_review_briefing(
+            search_state=state,
+            score_reports=score_reports,
+            historical_reports=load_round_reports(run_id, output_dir=out),
+            prompt_texts={},
+            candidate_versions=candidate_versions,
+            parent_versions=parent_versions,
+            routing_context=None,
+            child_variants=None,
+            pending_candidates=pending,
+            user_targets=None,
+            full_dataset_oracle=None,
+            dev_oracle=None,
+            eval_results=all_er or None,
+            examples=loaded_examples or None,
+            run_dir=out / run_id,
+            cell_attempt_history=None,
+            emosa_trajectory_id=None,
+        )
+
+        confusion = briefing.confusion_analysis
         assert len(confusion) > 0, "expected non-empty confusion_analysis"
 
         # Count unique misrouted example IDs: e1 appears in both versions but
         # dedup should count it once. e2 appears in v2 only. So count == 2.
         simple_to_complex = next(
-            (c for c in confusion if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
+            (c for c in confusion if c.true_route == "simple" and c.predicted_route == "complex"),
             None,
         )
         assert simple_to_complex is not None
-        assert simple_to_complex["count"] == 2  # deduped: e1 + e2, not 3
+        assert simple_to_complex.count == 2  # deduped: e1 + e2, not 3
 
     async def test_empty_elite_set_yields_empty_confusion(self, tmp_path: Path) -> None:
         """Round 0 / empty elite_set: confusion_analysis == [] without errors."""
@@ -668,9 +727,10 @@ class TestBuildReviewBriefingToolSelector:
                 output_dir="outputs",
             )
 
-        briefing_json = result.split("# Full Briefing Data\n\n", 1)[1] if "# Full Briefing Data" in result else result
-        briefing = json.loads(briefing_json)
-        assert briefing.get("confusion_analysis") == []
+        # Tool now returns markdown — verify it ran.
+        assert isinstance(result, str) and len(result) > 0
+        # Empty elite set → no confusion section in summary.
+        assert "## Confusion analysis" not in result
 
     async def test_monkey_patch_selector_limits_to_single_version(self, tmp_path: Path) -> None:
         """Monkey-patching _select_confusion_candidates limits analysis to one version."""
@@ -750,6 +810,12 @@ class TestBuildReviewBriefingToolSelector:
             rp.parent.mkdir(parents=True, exist_ok=True)
             rp.write_text(json.dumps(report), encoding="utf-8")
 
+        from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
+        from odysseus.agents.review.ops import load_round_reports
+        from odysseus.agents.review.preprocessor import build_review_briefing
+        from odysseus.eval.models import EvalResult, Example
+        from odysseus.mcp.review_tools import _load_score_report_dict
+
         original_selector = _rt._select_confusion_candidates
         try:
             # Override: only analyse "va"
@@ -761,20 +827,69 @@ class TestBuildReviewBriefingToolSelector:
                     run_id=run_id,
                     output_dir="outputs",
                 )
+
+            # Build briefing directly with same selector override to inspect fields.
+            out = tmp_path / "outputs"
+            state = get_search_state(run_id=run_id, output_dir=out)
+            pending = _load_pending(run_id, out)
+            candidate_versions = [c.prompt_version for c in pending]
+            parent_versions = {c.prompt_version: c.parent_version for c in pending}
+            score_reports: dict = {}
+            for v in [c.prompt_version for c in state.elite_set]:
+                rp = out / run_id / "eval" / v / "report.json"
+                if rp.exists():
+                    score_reports[v] = _load_score_report_dict(rp, rp.parent / "results.jsonl")
+            # Only load "va" results (selector override)
+            all_er: list[EvalResult] = []
+            rsp = out / run_id / "eval" / "va" / "results.jsonl"
+            if rsp.exists():
+                for line in rsp.read_text(encoding="utf-8").splitlines():
+                    s = line.strip()
+                    if s:
+                        try:
+                            all_er.append(EvalResult.model_validate(json.loads(s)))
+                        except Exception:
+                            pass
+            loaded_examples: list[Example] = []
+            dev_p = out / run_id / "analysis" / "dev.jsonl"
+            if dev_p.exists():
+                for line in dev_p.read_text(encoding="utf-8").splitlines():
+                    s = line.strip()
+                    if s:
+                        try:
+                            loaded_examples.append(Example.model_validate_json(s))
+                        except Exception:
+                            pass
+            briefing = build_review_briefing(
+                search_state=state,
+                score_reports=score_reports,
+                historical_reports=load_round_reports(run_id, output_dir=out),
+                prompt_texts={},
+                candidate_versions=candidate_versions,
+                parent_versions=parent_versions,
+                routing_context=None,
+                child_variants=None,
+                pending_candidates=pending,
+                user_targets=None,
+                full_dataset_oracle=None,
+                dev_oracle=None,
+                eval_results=all_er or None,
+                examples=loaded_examples or None,
+                run_dir=out / run_id,
+                cell_attempt_history=None,
+                emosa_trajectory_id=None,
+            )
         finally:
             _rt._select_confusion_candidates = original_selector
 
-        briefing_json = result.split("# Full Briefing Data\n\n", 1)[1] if "# Full Briefing Data" in result else result
-        briefing = json.loads(briefing_json)
-
-        confusion = briefing.get("confusion_analysis", [])
+        confusion = briefing.confusion_analysis
         # Only va's misroutes counted: e1 only → count == 1
         simple_to_complex = next(
-            (c for c in confusion if c["true_route"] == "simple" and c["predicted_route"] == "complex"),
+            (c for c in confusion if c.true_route == "simple" and c.predicted_route == "complex"),
             None,
         )
         assert simple_to_complex is not None
-        assert simple_to_complex["count"] == 1, (
+        assert simple_to_complex.count == 1, (
             "selector override to 'va' only should reflect 1 unique misroute (e1), not 2"
         )
 

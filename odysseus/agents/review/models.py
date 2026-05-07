@@ -212,39 +212,38 @@ class ReviewBriefing(BaseModel):
     ``extra="ignore"`` allows older serialised briefings that predate the
     cross-branch generalisation (or future fields added on strategy branches)
     to load without raising a validation error.
+
+    Fields are ordered stable-first, varying-last for cache-prefix stability.
     """
 
     model_config = ConfigDict(extra="ignore")
 
+    # --- stable round-to-round ---
     round: int
-    candidates: list[CandidateAnalysis]
-    elite_set: list[Candidate]
-    per_class_recall: dict[str, ClassRecallEntry]
+    routing_context: RoutingContext | None = None
+    # Canonical parent_version for cold-start / warm-up seeds. Read this instead of hard-coding "base".
+    initial_parent_version: str = INITIAL_PARENT_VERSION
+    oracle_metrics: OracleMetrics | None = None
     diversity_metrics: DiversityMetrics
     diminishing_returns: DiminishingReturns
-    oracle_metrics: OracleMetrics | None = None
-    routing_context: RoutingContext | None = None
-    near_miss_candidates: list[NearMissCandidate] = []
-    directive_history: list[DirectiveOutcome] = Field(default_factory=list)
-    executive_summary: str = ""
-    batch_outcomes: list[BatchOutcome] = Field(default_factory=list)
+    per_class_recall: dict[str, ClassRecallEntry]
     target_progress: list[UserTargetProgress] = Field(default_factory=list)
     single_candidate_meets_all: bool = False
     backtracking: bool = False
-    confusion_analysis: list[ConfusionImpact] = Field(default_factory=list)
-    child_variants: list[ChildVariant] = Field(default_factory=list)
-    # Canonical parent_version for cold-start / warm-up seeds. Read this instead of hard-coding "base".
-    initial_parent_version: str = INITIAL_PARENT_VERSION
-
-    # Strategy-agnostic stagnation signal (shape depends on strategy):
-    # hill-climb: {"count": int, "limit": int, "mutation_mode": str}
-    # beam:       {"hypervolume_delta": float, "backtrack_threshold": int}
+    # Beam stagnation signal: {"hypervolume_delta": float, "backtrack_threshold": int}
     stagnation_signal: dict[str, Any] | None = None
-
+    # --- varying per round ---
+    elite_set: list[Candidate]
+    confusion_analysis: list[ConfusionImpact] = Field(default_factory=list)
+    candidates: list[CandidateAnalysis]
+    near_miss_candidates: list[NearMissCandidate] = []
+    directive_history: list[DirectiveOutcome] = Field(default_factory=list)
+    batch_outcomes: list[BatchOutcome] = Field(default_factory=list)
+    child_variants: list[ChildVariant] = Field(default_factory=list)
     parent_a_version: str | None = None
     parent_b_version: str | None = None
-
-    # Beam-specific optional fields (populated by _populate_beam_review_fields).
+    executive_summary: str = ""
+    # --- Beam trailer (populated by _populate_beam_review_fields) ---
     beam_width: int | None = None
     beam_rank: dict[str, int] | None = None  # prompt_version -> rank within elite_set
     crowding_distance: dict[str, float] | None = None  # prompt_version -> crowding distance

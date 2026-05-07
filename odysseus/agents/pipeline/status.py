@@ -140,6 +140,12 @@ def get_pipeline_status(
     if project_dir is None:
         project_dir = get_project_dir()
 
+    # Capture whether the caller explicitly supplied a run_id before the
+    # resolve-to-most-recent step may rewrite it.  When the caller supplied one,
+    # discovered_runs is skipped entirely — the orchestrator only needs it during
+    # the Stage 1 entry-point call (where run_id is None).
+    caller_run_id = run_id
+
     # Resolve run_id
     if run_id is None:
         runs = discover_runs(outputs_dir)
@@ -231,9 +237,15 @@ def get_pipeline_status(
     if subagent_instruction:
         subagent_instruction = subagent_instruction.format(run_id=run_id or "new")
 
-    # Populate discovered_runs for all known runs
-    all_run_ids = discover_runs(outputs_dir)
-    discovered_runs = [_run_summary_for(rid, outputs_dir, project_dir) for rid in all_run_ids]
+    # Populate discovered_runs only on the entry-point call (caller_run_id is None).
+    # When a run_id is already bound, the orchestrator never reads this array, so
+    # skip the disk scan to avoid ~30 redundant discover_runs + _run_summary_for
+    # calls per pipeline run.
+    if caller_run_id is None:
+        all_run_ids = discover_runs(outputs_dir)
+        discovered_runs: list[dict[str, Any]] = [_run_summary_for(rid, outputs_dir, project_dir) for rid in all_run_ids]
+    else:
+        discovered_runs = []
 
     return {
         "run_id": run_id,

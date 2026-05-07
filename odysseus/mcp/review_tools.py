@@ -85,31 +85,15 @@ async def build_review_briefing(
     output_dir: str = "outputs",
     trajectory_id: int | None = None,
 ) -> str:
-    """[Stage 4: Refinement Loop -- Review] Build a ReviewBriefing for the Review Agent.
-
-    Pre-processes all numerical data.
-
-    Loads search state, score reports, prompt texts, and child variants,
-    then computes candidate comparisons, per-class recall, diversity metrics,
-    diminishing returns, oracle metrics, and batch outcomes linking directives
-    to eval results. Directive history is synthesized in code from batch_outcomes.
-
-    All parameters except run_id are optional and auto-discovered.
+    """[Stage 4: Refinement Loop -- Review] Build a ReviewBriefing with pre-computed metrics for the Review Agent.
 
     Args:
         run_id: Pipeline run identifier.
-        candidate_versions: Versions evaluated in the current round. Auto-discovered
-            from pending candidates on disk if omitted.
-        parent_versions: Mapping of candidate -> parent version. Auto-discovered
-            from pending candidates if omitted.
-        report_paths: Mapping of version -> path to its RunReport JSON (auto-converted to ScoreReport on load).
-            Auto-discovered from disk (outputs/<run_id>/eval/<version>/report.json)
-            if omitted.
+        candidate_versions: Versions evaluated this round (auto-discovered if omitted).
+        parent_versions: Mapping of candidate -> parent version (auto-discovered if omitted).
+        report_paths: Mapping of version -> report.json path (auto-discovered if omitted).
         output_dir: Output directory (default "outputs").
-        trajectory_id: EMOSA only. When provided, populate EMOSA-specific briefing
-            fields (weight_vector, binding_axis, acceptance_history) from this
-            specific trajectory rather than using the default round-robin pick.
-            Pass the trajectory's integer ID (0-indexed). Ignored for non-EMOSA runs.
+        trajectory_id: EMOSA only — selects per-trajectory fields; ignored otherwise.
 
     Returns:
         JSON-serialized ReviewBriefing.
@@ -334,13 +318,9 @@ async def build_review_briefing(
     # Record that the Review Agent sub-agent is now in-flight for this round.
     record_review_dispatched(run_id, round=state.round, output_dir=out)
 
-    output_parts: list[str] = []
-    if briefing.executive_summary:
-        output_parts.append("# Executive Summary\n\n")
-        output_parts.append(briefing.executive_summary)
-        output_parts.append("\n\n# Full Briefing Data\n\n")
-    output_parts.append(briefing.model_dump_json(indent=2))
-    return "".join(output_parts)
+    from odysseus.agents.review.render import render_briefing_summary
+
+    return render_briefing_summary(briefing)
 
 
 @mcp.tool()
@@ -356,45 +336,21 @@ async def record_directive_outcomes(
     trajectory_id: int | None = None,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Refinement Loop -- Review] Record the Review Agent's result fields.
-
-    Records loop_signal, child_variants, candidate_ranking, promotion_decisions, and
-    regression_guards from the Review Agent. Directive outcomes are no longer passed
-    here — they are synthesized fully in code from batch_outcomes by build_review_briefing_tool.
-
-    Also accepts the Review Agent's loop_signal to control search convergence.
-    When loop_signal.action is "exit", the search loop is terminated immediately
-    (converged=true). When "refine", the signal is persisted for advance_round
-    to consume (budget extensions, mutation mode overrides).
-
-    Prefer passing ReviewResult fields as separate parameters (candidate_ranking,
-    promotion_decisions, regression_guards) rather than as a single review_result
-    dict to avoid hitting JSON size limits.
+    """[Stage 4: Refinement Loop -- Review] Persist Review Agent outputs and advance the loop to build phase.
 
     Args:
-        run_id: Pipeline run identifier.
-        loop_signal: Optional LoopSignal dict from the Review Agent.
-        child_variants: Optional list of ChildVariant dicts (Review Agent output).
-            For cold-start / warm-up seeds, set each variant's parent_version to
-            briefing.initial_parent_version (default "base").
-        review_result: Optional full ReviewResult dict to persist to disk. Legacy fallback —
-            prefer decomposed parameters. When provided, child_variants and loop_signal are
-            extracted from it as fallbacks for any of those params not explicitly provided.
-        candidate_ranking: Decomposed ReviewResult field — list of ranked candidate dicts.
-            Recommended over review_result to avoid size limits.
-        promotion_decisions: Decomposed ReviewResult field — list of promotion decision dicts.
-            Recommended over review_result to avoid size limits.
-        regression_guards: Decomposed ReviewResult field — list of regression guard dicts.
-            Recommended over review_result to avoid size limits.
-        trajectory_id: EMOSA-only — when provided together with child_variants, persists
-            variants to child_variants_t<trajectory_id>.json via
-            save_trajectory_child_variants and records the trajectory as dispatched via
-            record_trajectory_dispatched. Variant ids use the format cv-{round}-t{trajectory_id}-{i}.
-            When None (default), the single-slot child_variants.json path is used.
+        run_id: Run identifier.
+        loop_signal: "exit" converges; "refine" persists for advance_round.
+        child_variants: ChildVariant dicts to save.
+        review_result: Legacy full ReviewResult dict (prefer decomposed params).
+        candidate_ranking: Ranked candidates.
+        promotion_decisions: Promotion decisions.
+        regression_guards: Regression guards.
+        trajectory_id: EMOSA only — writes per-trajectory file.
         output_dir: Output directory (default "outputs").
 
     Returns:
-        JSON object with child_variants_saved, variants_summary, and loop_signal status.
+        JSON with child_variants_saved, variants_summary, loop_signal status.
     """
     import contextlib
 

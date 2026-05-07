@@ -151,7 +151,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     loop — orchestrators use ``start_stage`` directly to advance the pipeline.
 
     Args:
-        run_id: Optional pipeline run identifier.
+        run_id: Pipeline run identifier; uses most recent run if omitted.
 
     Returns:
         JSON object with current stage, subagent_instruction (raw, from status.py),
@@ -418,23 +418,11 @@ async def initiate_rerun(
     run_id: str,
     source_prompt_version: str | None = None,
 ) -> str:
-    """Initiate a rerun of a completed pipeline run with a different backend.
-
-    Only valid when Stage 4 has converged for the given run_id (a final prompt
-    version exists). This tool:
-    - Finds the best prompt version from the Pareto front (or uses source_prompt_version if provided)
-    - Renames search/search_state.json to search/search_state_original.json
-    - Writes outputs/<run_id>/rerun_config.json with mode="rerun" and new_backend=null
-
-    After this tool returns, proceed to Stage 3 to configure the new backend. The
-    pipeline will then route through a restructure-only Stage 4 (single eval round)
-    followed by Stage 5 for the final report.
+    """Initiate a rerun of a completed pipeline run against a different backend.
 
     Args:
-        run_id: Pipeline run identifier. Must have a converged Stage 4.
-        source_prompt_version: Optional override for which prompt version to rerun.
-            If None, the best candidate on the Pareto front is selected automatically
-            (highest quality, ties broken by lowest cost).
+        run_id: Pipeline run identifier with a converged Stage 4.
+        source_prompt_version: Prompt version to rerun; auto-selected from Pareto front if omitted.
 
     Returns:
         JSON confirmation with source_prompt_version, original_backend, and instructions.

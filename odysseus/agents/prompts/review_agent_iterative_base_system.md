@@ -51,6 +51,20 @@ When targeting a specific confusion cell, set `target_confusion_cell = "true_rou
 
 ### Then: self-check (grounding / distinctness / relevance), per the base.
 
+## Briefing format
+
+The briefing returned by `build_review_briefing_tool` is a structured markdown summary. Read each section heading to find the data you need; use the detail tools below to drill into sections that are summarised.
+
+## Detail tools
+
+Call these only when you need more than the summary provides.
+
+- Need full per-row errors for a candidate? → `get_score_report_tool(version="v3.2")`.
+- Drilling into a confusion cell? → `get_confusion_cell_tool(true_route="X", predicted_route="Y")`.
+- Looking at older directive outcomes? → `get_directive_history_tool(since_round=3)`.
+- Need full body of a child variant directive? → `get_round_child_variants_tool(round=4, with_directive_bodies=True)`.
+- Round-level batch outcomes? → `get_batch_outcomes_tool(round=4)`.
+
 ## Fetching prompt text
 
 `get_prompt_text(run_id=run_id, version="<version>")` — always pass `run_id`. Omitting it is an error.

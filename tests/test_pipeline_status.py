@@ -653,19 +653,22 @@ class TestDiscoveredRuns:
 
     def test_discovered_runs_has_converged_prompt_false_for_incomplete_stage4(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
-        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        # Pass run_id=None (entry-point call) so discovered_runs is populated.
+        result = get_pipeline_status(tmp_path, run_id=None, project_dir=tmp_path)
         entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
         assert entry["has_converged_prompt"] is False
 
     def test_discovered_runs_has_converged_prompt_true_for_converged(self, tmp_path: Path) -> None:
         _setup_stage4_converged(tmp_path, "r1")
-        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        # Pass run_id=None (entry-point call) so discovered_runs is populated.
+        result = get_pipeline_status(tmp_path, run_id=None, project_dir=tmp_path)
         entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
         assert entry["has_converged_prompt"] is True
 
     def test_discovered_runs_includes_current_stage(self, tmp_path: Path) -> None:
         _setup_stage1(tmp_path, "r1")
-        result = get_pipeline_status(tmp_path, "r1")
+        # Pass run_id=None (entry-point call) so discovered_runs is populated.
+        result = get_pipeline_status(tmp_path, run_id=None)
         entry = next(r for r in result["discovered_runs"] if r["run_id"] == "r1")
         assert entry["current_stage"] == 2
 
