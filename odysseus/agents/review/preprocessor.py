@@ -1044,6 +1044,7 @@ def build_confusion_analysis(
                 persistence_rate=persistence_rate,
                 persistent_count=persistent_count,
                 volatile_count=volatile_count,
+                sample_example_ids=sample_ids[:3],
             )
         )
 

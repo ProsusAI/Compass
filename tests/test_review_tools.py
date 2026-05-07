@@ -1119,8 +1119,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 output_dir="outputs",
             )
@@ -1133,8 +1132,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 route="simple",
                 output_dir="outputs",
@@ -1150,8 +1148,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 example_ids=["row-1"],
                 output_dir="outputs",
@@ -1167,8 +1164,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 route="simple",
                 limit=1,
@@ -1183,8 +1179,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 output_dir="outputs",
             )
@@ -1196,8 +1191,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 output_dir="outputs",
             )
@@ -1209,8 +1203,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 output_dir="outputs",
             )
@@ -1225,8 +1218,7 @@ class TestGetDatasetOracleDistributionTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_dataset_oracle_distribution
 
-            result = await get_dataset_oracle_distribution(
-                ctx=None,
+            result = await get_dataset_oracle_distribution(                ctx=None,
                 run_id=self._RUN_ID,
                 output_dir="outputs",
             )
@@ -1235,8 +1227,7 @@ class TestGetDatasetOracleDistributionTool:
 
 
 # ---------------------------------------------------------------------------
-# Tests for get_per_class_recall
-# ---------------------------------------------------------------------------
+# Tests for get_per_class_recall# ---------------------------------------------------------------------------
 
 
 class TestGetPerClassRecallTool:
@@ -1296,8 +1287,7 @@ class TestGetPerClassRecallTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_per_class_recall
 
-            result = await get_per_class_recall(
-                ctx=None,
+            result = await get_per_class_recall(                ctx=None,
                 run_id=self._RUN_ID,
                 output_dir="outputs",
             )
@@ -1311,8 +1301,7 @@ class TestGetPerClassRecallTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_per_class_recall
 
-            result = await get_per_class_recall(
-                ctx=None,
+            result = await get_per_class_recall(                ctx=None,
                 run_id=self._RUN_ID,
                 output_dir="outputs",
             )
@@ -1326,8 +1315,7 @@ class TestGetPerClassRecallTool:
         with _patch_project_dir(tmp_path):
             from odysseus.mcp.review_tools import get_per_class_recall
 
-            result = await get_per_class_recall(
-                ctx=None,
+            result = await get_per_class_recall(                ctx=None,
                 run_id="nonexistent-run",
                 output_dir="outputs",
             )

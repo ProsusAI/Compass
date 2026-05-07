@@ -22,6 +22,7 @@ from odysseus.agents.review.models import (
 )
 from odysseus.agents.review.render import render_briefing_summary
 from odysseus.agents.prompt_builder.search import Candidate
+from odysseus.agents.routing_context import RouteDefinition, RouteOrdering, RoutingContext, RoutingDimension
 from odysseus.eval.models import ErrorBreakdown, RunSummary, ScoreReport
 
 
@@ -240,3 +241,144 @@ class TestRenderBriefingSummary:
         result = render_briefing_summary(briefing)
         assert "## Last round directives" in result
         assert "`d-1-1`" in result
+
+
+def _make_routing_context() -> RoutingContext:
+    return RoutingContext(
+        domain="test-domain",
+        routes=[
+            RouteDefinition(name="simple", description="Handles simple factual queries"),
+            RouteDefinition(name="complex", description="Handles multi-step reasoning tasks"),
+        ],
+        routing_dimensions=[
+            RoutingDimension(name="cost", direction="lower_is_better", description="Inference cost per query"),
+            RoutingDimension(name="quality", direction="higher_is_better", description="Output accuracy score"),
+        ],
+        route_ordering=RouteOrdering(dimension="cost", order=["simple", "complex"]),
+    )
+
+
+class TestRoutingContextRendering:
+    def test_routing_context_section_present(self) -> None:
+        briefing = _make_minimal_briefing()
+        briefing = briefing.model_copy(update={"routing_context": _make_routing_context()})
+        result = render_briefing_summary(briefing)
+        assert "## Routing context" in result
+
+    def test_route_descriptions_rendered(self) -> None:
+        briefing = _make_minimal_briefing()
+        briefing = briefing.model_copy(update={"routing_context": _make_routing_context()})
+        result = render_briefing_summary(briefing)
+        assert "Handles simple factual queries" in result
+        assert "Handles multi-step reasoning tasks" in result
+
+    def test_routing_dimensions_table(self) -> None:
+        briefing = _make_minimal_briefing()
+        briefing = briefing.model_copy(update={"routing_context": _make_routing_context()})
+        result = render_briefing_summary(briefing)
+        assert "cost" in result
+        assert "lower_is_better" in result
+        assert "higher_is_better" in result
+        assert "Inference cost per query" in result
+
+    def test_route_ordering_line(self) -> None:
+        briefing = _make_minimal_briefing()
+        briefing = briefing.model_copy(update={"routing_context": _make_routing_context()})
+        result = render_briefing_summary(briefing)
+        assert "ordering: dimension=cost" in result
+        assert "simple" in result
+        assert "complex" in result
+
+
+class TestPerClassRecallHiddenFooter:
+    def test_hidden_footer_when_low_support_routes_filtered(self) -> None:
+        """When low-support routes are filtered, footer shows how many were hidden."""
+        briefing = _make_minimal_briefing()
+        # route_b has support=20 (below median of ~35), no regression — should be hidden
+        # route_a has support=50, no regression — above median — shown
+        # route_c has support=5, regression=False — below median — hidden
+        pcr = {
+            "route_a": ClassRecallEntry(recall=0.90, support=50, trend=[0.85, 0.88, 0.90], regression_flag=False),
+            "route_b": ClassRecallEntry(recall=0.70, support=20, trend=[0.72, 0.71, 0.70], regression_flag=False),
+            "route_c": ClassRecallEntry(recall=0.50, support=5, trend=[0.55, 0.52, 0.50], regression_flag=False),
+        }
+        briefing = briefing.model_copy(update={"per_class_recall": pcr})
+        result = render_briefing_summary(briefing)
+        assert "hidden" in result
+        assert "get_per_class_recall_tool" in result
+
+    def test_no_hidden_footer_when_all_routes_shown(self) -> None:
+        """When all routes pass the filter, no hidden footer is appended."""
+        briefing = _make_minimal_briefing()
+        # Both routes have regression=True so both are shown
+        pcr = {
+            "route_a": ClassRecallEntry(recall=0.80, support=50, trend=[0.85, 0.82, 0.80], regression_flag=True),
+            "route_b": ClassRecallEntry(recall=0.60, support=20, trend=[0.70, 0.65, 0.60], regression_flag=True),
+        }
+        briefing = briefing.model_copy(update={"per_class_recall": pcr})
+        result = render_briefing_summary(briefing)
+        # No routes were filtered
+        assert "hidden" not in result or "get_per_class_recall_tool" not in result
+
+
+class TestConfusionAnalysisExampleIds:
+    def test_sample_example_ids_rendered(self) -> None:
+        """When sample_example_ids is populated, example ids appear under the cell row."""
+        briefing = _make_minimal_briefing()
+        confusion = [
+            ConfusionImpact(
+                true_route="route_a",
+                predicted_route="route_b",
+                count=10,
+                support=50,
+                misroute_rate=0.20,
+                cost_impact=0.05,
+                quality_impact=0.08,
+                avg_cost_impact=0.005,
+                avg_quality_impact=0.008,
+                persistence_rate=0.6,
+                persistent_count=6,
+                volatile_count=4,
+                effective_impact=0.13,
+                sample_example_ids=["ex-001", "ex-002", "ex-003"],
+            )
+        ]
+        briefing = briefing.model_copy(update={"confusion_analysis": confusion})
+        result = render_briefing_summary(briefing)
+        assert "ex-001" in result
+        assert "ex-002" in result
+        assert "ex-003" in result
+
+    def test_no_sample_ids_when_empty(self) -> None:
+        """When sample_example_ids is empty, no sample line is appended."""
+        briefing = _make_minimal_briefing()
+        # The minimal briefing has sample_example_ids=[] by default
+        result = render_briefing_summary(briefing)
+        assert "sample examples:" not in result
+
+    def test_at_most_3_example_ids_rendered(self) -> None:
+        """Only up to 3 sample_example_ids are rendered per cell."""
+        briefing = _make_minimal_briefing()
+        confusion = [
+            ConfusionImpact(
+                true_route="route_a",
+                predicted_route="route_b",
+                count=10,
+                support=50,
+                misroute_rate=0.20,
+                cost_impact=0.05,
+                quality_impact=0.08,
+                avg_cost_impact=0.005,
+                avg_quality_impact=0.008,
+                persistence_rate=0.6,
+                persistent_count=6,
+                volatile_count=4,
+                effective_impact=0.13,
+                # Preprocessor caps at 3, but renderer also enforces [:3]
+                sample_example_ids=["ex-001", "ex-002", "ex-003"],
+            )
+        ]
+        briefing = briefing.model_copy(update={"confusion_analysis": confusion})
+        result = render_briefing_summary(briefing)
+        # ex-004 should NOT appear
+        assert "ex-004" not in result

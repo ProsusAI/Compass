@@ -28,15 +28,41 @@ def _render_routing_context(briefing: ReviewBriefing) -> str:
     rc = briefing.routing_context
     if rc is None:
         return ""
-    routes = ", ".join(r.name for r in rc.routes) if rc.routes else "(none)"
     pm = getattr(rc, "primary_metric_name", None) or "(not set)"
     lines = [
         "## Routing context",
         "",
         f"- dataset: {getattr(rc, 'domain', '(unknown)')}",
-        f"- routes ({len(rc.routes)}): {routes}",
         f"- primary metric: {pm}",
+        "",
     ]
+    # Routes table
+    lines.append(f"### Routes ({len(rc.routes)})")
+    lines.append("")
+    lines.append("| name | description |")
+    lines.append("|---|---|")
+    for r in rc.routes:
+        desc = r.description.replace("|", "\\|")
+        lines.append(f"| {r.name} | {desc} |")
+
+    # Routing dimensions table
+    if rc.routing_dimensions:
+        lines.append("")
+        lines.append("### Routing dimensions")
+        lines.append("")
+        lines.append("| name | direction | description |")
+        lines.append("|---|---|---|")
+        for d in rc.routing_dimensions:
+            desc = d.description.replace("|", "\\|")
+            lines.append(f"| {d.name} | {d.direction} | {desc} |")
+
+    # Route ordering
+    if rc.route_ordering is not None:
+        ro = rc.route_ordering
+        order_str = ", ".join(ro.order)
+        lines.append("")
+        lines.append(f"- ordering: dimension={ro.dimension}, order=[{order_str}]")
+
     return "\n".join(lines)
 
 
@@ -48,10 +74,13 @@ def _render_per_class_recall(briefing: ReviewBriefing) -> str:
     med = statistics.median(supports) if supports else 0
 
     rows: list[tuple[str, float, int, str, bool]] = []
+    hidden = 0
     for route, entry in pcr.items():
         if entry.regression_flag or entry.support >= med:
             trend_str = " → ".join(f"{v:.2f}" for v in entry.trend[-3:]) if entry.trend else "—"
             rows.append((route, entry.recall, entry.support, trend_str, entry.regression_flag))
+        else:
+            hidden += 1
 
     if not rows:
         return (
@@ -66,6 +95,8 @@ def _render_per_class_recall(briefing: ReviewBriefing) -> str:
     ]
     for route, recall, support, trend, reg in rows:
         lines.append(f"| {route} | {recall:.3f} | {support} | {trend} | {reg} |")
+    if hidden > 0:
+        lines.append(f"\n({hidden} route(s) hidden — call get_per_class_recall_tool for full table)")
     return "\n".join(lines)
 
 
@@ -125,6 +156,9 @@ def _render_confusion_analysis(briefing: ReviewBriefing, n: int = 5) -> str:
             f"| {cell} | {c.count} | {misroute_pct} | {c.quality_impact:.3f} | {c.cost_impact:.3f}"
             f" | {c.persistence_rate:.2f} | {c.attempt_count} |"
         )
+        if c.sample_example_ids:
+            ids_str = ", ".join(c.sample_example_ids[:3])
+            lines.append(f"  - sample examples: {ids_str}")
     lines.append("")
     lines.append("Use `get_confusion_cell(true_route=..., predicted_route=...)` for cell-level detail.")
     return "\n".join(lines)

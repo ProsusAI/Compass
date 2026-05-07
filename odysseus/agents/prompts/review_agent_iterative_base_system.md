@@ -64,6 +64,8 @@ Call these only when you need more than the summary provides.
 - Looking at older directive outcomes? → `get_directive_history_tool(since_round=3)`.
 - Need full body of a child variant directive? → `get_round_child_variants_tool(round=4, with_directive_bodies=True)`.
 - Round-level batch outcomes? → `get_batch_outcomes_tool(round=4)`.
+- Need per-route oracle aggregates or row-level cost/quality? → `get_dataset_oracle_distribution_tool(run_id, route="X")` (or `example_ids=[...]`).
+- Need the full per-class recall table (including low-support routes)? → `get_per_class_recall_tool(run_id)`.
 
 ## Fetching prompt text
 

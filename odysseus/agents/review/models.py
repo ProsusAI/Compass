@@ -194,6 +194,7 @@ class ConfusionImpact(BaseModel):
     last_attempted_round: int | None = None
     best_outcome: Literal["improved", "no_effect", "regressed"] | None = None
     effective_impact: float = 0.0
+    sample_example_ids: list[str] = Field(default_factory=list)
 
 
 class NearMissCandidate(BaseModel):
