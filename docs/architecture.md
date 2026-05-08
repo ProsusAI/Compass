@@ -184,6 +184,17 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 | `calibration` | Algorithm-specific phase — tool set defined by the leaf branch |
 | `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` |
 
+#### Model Routing (Claude Code orchestrators)
+
+`optimize_routing_prompt` and `get_pipeline_status` embed advisory model-routing hints for Claude Code consumers. The source of truth is [`_REVIEW_AGENT_PROMPT_NAMES`](../odysseus/mcp/server.py); the resolver is [`recommended_model_for`](../odysseus/mcp/orchestrator_tools.py).
+
+| Stage / activate_prompt | Recommended model | Rationale |
+|---|---|---|
+| `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start` | `sonnet` | High-stakes synthesis: confusion deltas, hypothesis generation |
+| All other stages (`input_report`, `data_validation`, `prompt_building`, `final_report`) | `haiku` | Tool-driven / rote tasks; 3× cheaper with no observed quality regression |
+
+These hints are advisory text only. Non-Claude-Code MCP consumers see them as plain text and may ignore them. No model defaults inside `odysseus/*` are changed.
+
 #### Sub-Agent Guard Pattern
 
 `get_pipeline_status` implements a two-sided entry/exit contract for sub-agent dispatch:

@@ -50,6 +50,19 @@ When `trajectory_id: int` is passed (EMOSA K-way fanout), the tool writes per-tr
 
 Both readers prefer per-trajectory files when present: if any `child_variants_t<N>.json` exist under `outputs/<run_id>/search/`, they call `load_all_trajectory_child_variants` and return variants sorted by `trajectory_id`. Otherwise they fall back to the single-slot `child_variants.json` written during calibration and non-EMOSA strategies.
 
+## Model routing hints (Claude Code orchestrators)
+
+`optimize_routing_prompt` embeds a `MODEL ROUTING` block in its briefing, and each `get_pipeline_status` response prepends a per-stage `MODEL HINT` line to `subagent_instruction`. Both hints are advisory text for Claude Code's `Agent({model: ...})` parameter.
+
+Source of truth: `_REVIEW_AGENT_PROMPT_NAMES` in `server.py`. Resolver: `recommended_model_for(activate_prompt)` in `orchestrator_tools.py`.
+
+| Stage category | Model |
+|---|---|
+| `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start` | `sonnet` |
+| All other stages | `haiku` |
+
+Non-Claude-Code consumers see these as plain text and may ignore them. No Odysseus model defaults are changed.
+
 ## How to add a new tool to a stage
 
 1. Implement the tool function in the appropriate `*_tools.py` module, decorated with `@mcp.tool()`.

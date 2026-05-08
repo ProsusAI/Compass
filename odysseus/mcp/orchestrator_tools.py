@@ -27,6 +27,18 @@ from odysseus.mcp.server import (
 logger = logging.getLogger(__name__)
 
 
+def recommended_model_for(activate_prompt: str | None) -> str:
+    """Return the recommended Claude Code Agent model for a given activate_prompt.
+
+    Returns ``"sonnet"`` for review-phase prompts (high-stakes synthesis) and
+    ``"haiku"`` for all other pipeline stages (tool-driven / rote tasks).
+
+    This is advisory text for Claude Code orchestrators only.  Non-Claude-Code
+    MCP consumers see the hint as plain text and may ignore it.
+    """
+    return "sonnet" if activate_prompt in _REVIEW_AGENT_PROMPT_NAMES else "haiku"
+
+
 @mcp.tool()
 async def optimize_routing_prompt(ctx: Context) -> str:
     """Start the Odysseus routing prompt optimization pipeline.
@@ -64,6 +76,13 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  d. Spawn a sub-agent with the system prompt from <stage_system_prompt>\n"
         f"  e. After the sub-agent returns → call complete_stage()\n"
         f"  f. Call get_pipeline_status again → repeat until pipeline complete\n\n"
+        f"MODEL ROUTING (Claude Code orchestrators only — applies to your\n"
+        f"Agent tool calls; ignore if you are not running on Claude Code):\n"
+        f'  - review / review_cold sub-agents → model="sonnet"\n'
+        f"  - all other sub-agents (input_report, data_validation,\n"
+        f'    prompt_building, final_report) → model="haiku"\n'
+        f"  - Apply on every Agent({{subagent_type, prompt, model: ...}}) you spawn\n"
+        f"    from this orchestrator session.\n\n"
         f"USER INPUT MEDIATION (for stages that need user decisions):\n"
         f"  Sub-agents CANNOT interact with users directly. When a sub-agent needs user input,\n"
         f"  it writes partial artifacts and exits. You detect this via get_pipeline_status:\n\n"
@@ -164,9 +183,12 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
                 raise ToolError(f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}") from e
 
     if result.get("subagent_instruction"):
+        recommended_model = recommended_model_for(activate_prompt)
         result["subagent_instruction"] = (
             "⚠️ DISPATCH REQUIRED — You must spawn a sub-agent. "
-            "Do NOT call stage tools yourself.\n\n" + result["subagent_instruction"]
+            "Do NOT call stage tools yourself.\n"
+            f'MODEL HINT (Claude Code only): spawn this sub-agent with model="{recommended_model}".\n\n'
+            + result["subagent_instruction"]
         )
         output = {
             "run_id": result["run_id"],
