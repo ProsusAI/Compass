@@ -76,13 +76,24 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  d. Spawn a sub-agent with the system prompt from <stage_system_prompt>\n"
         f"  e. After the sub-agent returns → call complete_stage()\n"
         f"  f. Call get_pipeline_status again → repeat until pipeline complete\n\n"
-        f"MODEL ROUTING (Claude Code orchestrators only — applies to your\n"
-        f"Agent tool calls; ignore if you are not running on Claude Code):\n"
-        f'  - review / review_cold sub-agents → model="sonnet"\n'
-        f"  - all other sub-agents (input_report, data_validation,\n"
-        f'    prompt_building, final_report) → model="haiku"\n'
-        f"  - Apply on every Agent({{subagent_type, prompt, model: ...}}) you spawn\n"
-        f"    from this orchestrator session.\n\n"
+        f"MODEL CAPABILITY (applies to all consumers):\n"
+        f"  - review / review_cold sub-agents perform high-stakes synthesis and\n"
+        f"    deserve a strong reasoning model.\n"
+        f"  - All other sub-agents (input_report, data_validation,\n"
+        f"    prompt_building, final_report) are tool-driven and can run on a\n"
+        f"    smaller, faster, cheaper model without quality loss.\n\n"
+        f"CLAUDE CODE BINDING (applies only if you are running on Claude Code with\n"
+        f"access to the model aliases below — ignore this block otherwise):\n"
+        f"  Every Agent({{...}}) you spawn MUST include a literal `model` parameter.\n"
+        f"  Omitting it inherits the orchestrator's model (Sonnet under auto mode),\n"
+        f"  which silently violates the routing rule.\n\n"
+        f"  Required values:\n"
+        f'    - review / review_cold      → model: "sonnet"\n'
+        f'    - all other sub-agents      → model: "haiku"\n\n'
+        f"  Each get_pipeline_status response tells you which value to pass for\n"
+        f"  the current dispatch. If your Claude Code installation does not have\n"
+        f"  access to one of these aliases, fall back to the closest available\n"
+        f"  tier and report it in the run summary.\n\n"
         f"USER INPUT MEDIATION (for stages that need user decisions):\n"
         f"  Sub-agents CANNOT interact with users directly. When a sub-agent needs user input,\n"
         f"  it writes partial artifacts and exits. You detect this via get_pipeline_status:\n\n"
@@ -184,11 +195,16 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
 
     if result.get("subagent_instruction"):
         recommended_model = recommended_model_for(activate_prompt)
+        tier = "strong" if recommended_model == "sonnet" else "fast"
+        model_alias = '"sonnet"' if recommended_model == "sonnet" else '"haiku"'
         result["subagent_instruction"] = (
-            "⚠️ DISPATCH REQUIRED — You must spawn a sub-agent. "
-            "Do NOT call stage tools yourself.\n"
-            f'MODEL HINT (Claude Code only): spawn this sub-agent with model="{recommended_model}".\n\n'
-            + result["subagent_instruction"]
+            "⚠️ DISPATCH REQUIRED — Spawn a sub-agent. "
+            "Do NOT call stage tools yourself.\n\n"
+            f"  Recommended model tier for this dispatch: {tier}\n"
+            f"  (Claude Code: pass `model: {model_alias}` as a literal\n"
+            f"   parameter on your Agent call — REQUIRED, do not omit; omission\n"
+            f"   inherits the orchestrator's model.\n"
+            f"   Other runtimes: select the equivalent tier on your backend.)\n\n" + result["subagent_instruction"]
         )
         output = {
             "run_id": result["run_id"],

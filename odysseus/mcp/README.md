@@ -50,18 +50,22 @@ When `trajectory_id: int` is passed (EMOSA K-way fanout), the tool writes per-tr
 
 Both readers prefer per-trajectory files when present: if any `child_variants_t<N>.json` exist under `outputs/<run_id>/search/`, they call `load_all_trajectory_child_variants` and return variants sorted by `trajectory_id`. Otherwise they fall back to the single-slot `child_variants.json` written during calibration and non-EMOSA strategies.
 
-## Model routing hints (Claude Code orchestrators)
+## Model routing hints
 
-`optimize_routing_prompt` embeds a `MODEL ROUTING` block in its briefing, and each `get_pipeline_status` response prepends a per-stage `MODEL HINT` line to `subagent_instruction`. Both hints are advisory text for Claude Code's `Agent({model: ...})` parameter.
+`optimize_routing_prompt` and `get_pipeline_status` embed two-layer routing hints. Source of truth: `_REVIEW_AGENT_PROMPT_NAMES` in `server.py`. Resolver: `recommended_model_for(activate_prompt)` in `orchestrator_tools.py`.
 
-Source of truth: `_REVIEW_AGENT_PROMPT_NAMES` in `server.py`. Resolver: `recommended_model_for(activate_prompt)` in `orchestrator_tools.py`.
+**Layer 1 — Universal capability claim (all consumers):**
 
-| Stage category | Model |
-|---|---|
-| `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start` | `sonnet` |
-| All other stages | `haiku` |
+| Stage category | Tier | Note |
+|---|---|---|
+| `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start` | strong | High-stakes synthesis |
+| All other stages | fast | Tool-driven / rote tasks |
 
-Non-Claude-Code consumers see these as plain text and may ignore them. No Odysseus model defaults are changed.
+**Layer 2 — Claude Code binding (Claude Code only — ignore otherwise):**
+
+Every `Agent({...})` call MUST include a literal `model` parameter (`model: "sonnet"` for review/review_cold, `model: "haiku"` for all other stages). Omitting it inherits the orchestrator's model. Each `get_pipeline_status` response states the correct value for the current dispatch. If the aliases are unavailable, fall back to the closest tier.
+
+Other runtimes should map the tier to their equivalent backend model. No Odysseus model defaults are changed.
 
 ## How to add a new tool to a stage
 
