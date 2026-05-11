@@ -67,23 +67,19 @@ async def init_search_state_tool(
     ctx: Context,
     run_id: str,
     backend: str,
-    max_rounds: int = 50,
-    stagnation_limit: int = 3,
-    convergence_limit: int = 5,
+    evaluation_budget: int = 60,
     primary_metric_name: str | None = None,
 ) -> str:
     """[Stage 4: Refinement Loop] Initialise a new prompt-builder search state.
 
     The search algorithm is hardcoded per branch via ``_BRANCH_ALGORITHM`` in
     ``search_ops.py``; callers pass only ``run_id``, ``backend``, and optional
-    max-rounds knobs.
+    budget knobs.
 
     Args:
         run_id: Pipeline run identifier.
         backend: Backend identifier (e.g. "anthropic", "openai").
-        max_rounds: Maximum number of search rounds before forced convergence.
-        stagnation_limit: Stagnation rounds before switching to exploratory mode.
-        convergence_limit: Stagnation rounds that trigger convergence.
+        evaluation_budget: Total prompt versions to evaluate. Read this from the InputReport `evaluation_budget` field.
         primary_metric_name: Optional name of the primary quality metric.
 
     Returns:
@@ -101,9 +97,7 @@ async def init_search_state_tool(
         state = init_search_state(
             backend=backend,
             run_id=run_id,
-            max_rounds=max_rounds,
-            stagnation_limit=stagnation_limit,
-            convergence_limit=convergence_limit,
+            evaluation_budget=evaluation_budget,
             primary_metric_name=primary_metric_name,
         )
     except FileExistsError as exc:

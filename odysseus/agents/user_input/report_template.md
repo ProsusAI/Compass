@@ -30,10 +30,10 @@
 ### Data Split Ratio
 <value, if user-provided>
 
-### Max Iterations
+### Evaluation Budget
 <value, if user-provided>
 
-_(Optional field subsections — Evaluation Threshold, Data Split Ratio, Max Iterations — are only present when the user explicitly provided them. If an optional field was defaulted, it appears in Assumed Defaults instead, not here.)_
+_(Optional field subsections — Evaluation Threshold, Data Split Ratio, Evaluation Budget — are only present when the user explicitly provided them. If an optional field was defaulted, it appears in Assumed Defaults instead, not here.)_
 
 ## Gap Report
 
@@ -82,4 +82,4 @@ _(Section omitted entirely if status is `proceed`.)_
 - `target_metrics` — default: `["f1/macro"]`
 - `evaluation_threshold` — default: `0.80`
 - `data_split_ratio` — default: `0.80`
-- `max_iterations` — default: `10`
+- `evaluation_budget` — total prompt versions to evaluate (default: 60)

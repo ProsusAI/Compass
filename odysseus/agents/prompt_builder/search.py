@@ -173,6 +173,7 @@ class SearchState(BaseModel):
     stagnation_limit: int = 3
     convergence_limit: int = 5
     max_rounds: int = 50
+    evaluation_budget: int = 60
     mutation_mode: Literal["targeted", "exploratory"] = "targeted"
     converged: bool = False
     loop_phase: Literal[

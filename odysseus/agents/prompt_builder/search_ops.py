@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -218,7 +219,7 @@ def init_search_state(
     backend: str,
     run_id: str,
     output_dir: Path | None = None,
-    max_rounds: int = 50,
+    evaluation_budget: int = 60,
     stagnation_limit: int = 3,
     convergence_limit: int = 5,
     primary_metric_name: str | None = None,
@@ -232,7 +233,7 @@ def init_search_state(
         backend: Backend identifier (e.g. ``"anthropic"``).
         run_id: Run identifier used as the top-level directory key for storage.
         output_dir: Root directory for persisted state files.
-        max_rounds: Maximum number of search rounds before forced convergence.
+        evaluation_budget: Total prompt versions to evaluate before the search terminates.
         stagnation_limit: Stagnation rounds before switching to exploratory mode.
         convergence_limit: Stagnation rounds that trigger convergence.
         primary_metric_name: Optional name of the primary quality metric.
@@ -246,6 +247,21 @@ def init_search_state(
             "Run on a leaf branch (feat/generalize-{hill_climb,beam,emosa,sms_emoa}) that sets "
             "_BRANCH_ALGORITHM to a concrete algorithm."
         )
+
+    # Derive max_rounds from evaluation_budget based on algorithm's K
+    if _BRANCH_ALGORITHM == "hill_climb":
+        max_rounds = evaluation_budget
+    elif _BRANCH_ALGORITHM == "beam":
+        k = int(_BRANCH_ALGORITHM_STATE.get("beam_width", 3))
+        max_rounds = math.ceil(evaluation_budget / k)
+    elif _BRANCH_ALGORITHM == "emosa":
+        k = int(_BRANCH_ALGORITHM_STATE.get("num_trajectories", 5))
+        max_rounds = math.ceil(evaluation_budget / k)
+    elif _BRANCH_ALGORITHM == "sms_emoa":
+        max_rounds = 500  # SMS-EMOA uses algorithm_state["evaluation_budget"] as its budget
+    else:
+        max_rounds = evaluation_budget
+
     if output_dir is None:
         output_dir = _default_output_dir()
 
@@ -271,16 +287,21 @@ def init_search_state(
             "call get_search_state_tool instead of re-initialising"
         )
 
+    algorithm_state = dict(_BRANCH_ALGORITHM_STATE)
+    if _BRANCH_ALGORITHM == "sms_emoa":
+        algorithm_state["evaluation_budget"] = evaluation_budget
+
     search_state_id = uuid.uuid4().hex[:12]
     state = SearchState(
         search_state_id=search_state_id,
         backend=backend,
         max_rounds=max_rounds,
+        evaluation_budget=evaluation_budget,
         stagnation_limit=stagnation_limit,
         convergence_limit=convergence_limit,
         primary_metric_name=primary_metric_name,
         algorithm=_BRANCH_ALGORITHM,
-        algorithm_state=_BRANCH_ALGORITHM_STATE,
+        algorithm_state=algorithm_state,
     )
     _save_state(run_id, state, output_dir)
     _try_write_viz(run_id, output_dir)
@@ -634,6 +655,7 @@ def advance_round_beam(
 
     # Check convergence
     converged = new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
+    new_convergence_limit = state.convergence_limit
 
     qualities = [c.quality_score for c in new_elite]
     front_quality_spread = max(qualities) - min(qualities) if len(new_elite) > 1 else 0.0

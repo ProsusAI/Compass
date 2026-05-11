@@ -36,7 +36,7 @@ A complete routing problem has three required fields and three optional fields.
 
 - `evaluation_threshold` — pass/fail threshold for the pipeline exit check.
 - `data_split_ratio` — fraction reserved for holdout evaluation.
-- `max_iterations` — maximum refinement loop rounds.
+- `evaluation_budget` — total prompt versions to evaluate.
 
 ### Per-field guidance
 
@@ -61,7 +61,7 @@ A complete routing problem has three required fields and three optional fields.
 |---|---|---|---|
 | `evaluation_threshold` | `0.80` | Conservative, achievable on most problems. | "No evaluation threshold specified — using 0.80 as the pass/fail threshold. You can adjust this in a follow-up." |
 | `data_split_ratio` | `0.80` | Standard 20/80 dev/holdout split. | "No data split ratio provided — reserving 80% of data for holdout evaluation." |
-| `max_iterations` | `10` | Bounds cost while allowing convergence. | "No iteration limit provided — defaulting to 10 refinement rounds." |
+| `evaluation_budget` | `60` | Bounds cost while allowing convergence. | "No evaluation budget provided — defaulting to 60 prompt versions." |
 
 Users can override any assumed default in a follow-up message. The agent re-evaluates and produces a new report.
 
@@ -119,7 +119,7 @@ Once all blocking gaps are resolved, produce the validated input report followin
 ### Data Split Ratio
 <value, if user-provided>
 
-### Max Iterations
+### Evaluation Budget
 <value, if user-provided>
 
 ## Gap Report
@@ -141,7 +141,7 @@ Once all blocking gaps are resolved, produce the validated input report followin
 **Rules:**
 
 1. **Status** is always the first bold field after the H1 heading.
-2. **Confirmed Inputs** is always present. The Target Metrics subsection is always present (required field). Optional field subsections (Evaluation Threshold, Data Split Ratio, Max Iterations) appear only if the user explicitly provided them. Defaulted fields go in Assumed Defaults instead.
+2. **Confirmed Inputs** is always present. The Target Metrics subsection is always present (required field). Optional field subsections (Evaluation Threshold, Data Split Ratio, Evaluation Budget) appear only if the user explicitly provided them. Defaulted fields go in Assumed Defaults instead.
 3. **Gap Report** is omitted entirely if no gaps were detected.
 4. **Assumed Defaults** is omitted entirely if status is `proceed`.
 5. Gap Report headings use exact field identifiers (e.g. `### target_metrics`).
