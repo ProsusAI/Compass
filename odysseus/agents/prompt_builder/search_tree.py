@@ -76,6 +76,7 @@ def _build_reduction_lookup_from_evals(eval_dir: Path, versions: Iterable[str]) 
             "baseline_quality": metrics.get("baseline_quality"),
             "oracle_cost_change": metrics.get("oracle_cost_change"),
             "oracle_quality_change": metrics.get("oracle_quality_change"),
+            "accuracy": metrics.get("accuracy"),
         }
     return lookup
 
@@ -209,6 +210,7 @@ def collect_data(search_dir: Path, run_dir: Path | None = None) -> dict:
                 "abs_cost": abs_cost,
                 "iteration": e.get("iteration_introduced", e.get("round_introduced", 0)),
                 "trajectory_id": e.get("trajectory_id"),
+                "accuracy": r.get("accuracy"),
             }
         )
 
@@ -706,6 +708,7 @@ _HTML_TEMPLATE = """\
         <div class="info-row"><span class="k">cost Δ</span><span class="v" id="infoPanelCost"></span></div>
         <div class="info-row"><span class="k">iteration</span><span class="v" id="infoPanelRound"></span></div>
         <div class="info-row"><span class="k">parents</span><span class="v" id="infoPanelParent"></span></div>
+        <div class="info-row"><span class="k">accuracy</span><span class="v" id="infoPanelAccuracy"></span></div>
         <div id="infoPanelBadge"></div>
       </div>
     </div>
@@ -765,6 +768,7 @@ _HTML_TEMPLATE = """\
   <div class="tt-row"><span class="tt-k">cost Δ</span><span class="tt-v" id="ttCost"></span></div>
   <div class="tt-row"><span class="tt-k">iteration</span><span class="tt-v" id="ttRound"></span></div>
   <div class="tt-row"><span class="tt-k">parents</span><span class="tt-v" id="ttParent"></span></div>
+<div class="tt-row"><span class="tt-k">accuracy</span><span class="tt-v" id="ttAccuracy"></span></div>
 </div>
 
 <script>
@@ -1781,6 +1785,7 @@ const ttScore = document.getElementById('ttScore');
 const ttCost = document.getElementById('ttCost');
 const ttRound = document.getElementById('ttRound');
 const ttParent = document.getElementById('ttParent');
+const ttAccuracy = document.getElementById('ttAccuracy');
 
 function formatParents(c) {
   const parts = [];
@@ -1795,6 +1800,7 @@ function showTooltip(c, mx, my) {
   ttCost.textContent = (c.cost >= 0 ? '+' : '') + c.cost.toFixed(4);
   ttRound.textContent = c.iteration;
   ttParent.textContent = formatParents(c);
+  ttAccuracy.textContent = c.accuracy != null ? (c.accuracy * 100).toFixed(1) + '%' : '—';
   tooltip.classList.add('visible');
   positionTooltip(mx, my);
 }
@@ -1820,6 +1826,7 @@ const infoPanelCost = document.getElementById('infoPanelCost');
 const infoPanelRound = document.getElementById('infoPanelRound');
 const infoPanelParent = document.getElementById('infoPanelParent');
 const infoPanelBadge = document.getElementById('infoPanelBadge');
+const infoPanelAccuracy = document.getElementById('infoPanelAccuracy');
 
 function showInfoPanel(ver) {
   const c = byVersion[ver];
@@ -1829,6 +1836,7 @@ function showInfoPanel(ver) {
   infoPanelCost.textContent = (c.cost >= 0 ? '+' : '') + c.cost.toFixed(4);
   infoPanelRound.textContent = `iteration ${c.iteration}`;
   infoPanelParent.textContent = formatParents(c);
+  infoPanelAccuracy.textContent = c.accuracy != null ? (c.accuracy * 100).toFixed(1) + '%' : '—';
   const isOnFront = frontAtIteration.has(c.version);
   const badgeClass = isOnFront ? 'badge-elite' : 'badge-dominated';
   const badgeText = isOnFront ? 'elite set' : 'not in elite set';
