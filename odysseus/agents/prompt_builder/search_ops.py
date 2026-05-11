@@ -30,7 +30,7 @@ from odysseus.agents.prompt_builder.search import (
     validate_elite_set,
 )
 from odysseus.agents.prompt_builder.viz import _try_write_viz
-from odysseus.agents.review.models import LoopSignal, UserTarget
+from odysseus.agents.review.models import INITIAL_PARENT_VERSION, LoopSignal, UserTarget
 from odysseus.project_dir import get_project_dir
 
 logger = logging.getLogger(__name__)
@@ -323,6 +323,12 @@ def register_candidate(
         output_dir = _default_output_dir()
     state = _load_state(run_id, output_dir)
     pending = _load_pending(run_id, output_dir)
+
+    # Beam cold-start (round == 0): overlay mandates parent_version == "base"
+    # for every seed. Coerce here because the Review LLM doesn't always comply,
+    # and the search-tree viz lineage depends on this invariant.
+    if state.algorithm == "beam" and state.round == 0:
+        parent_version = INITIAL_PARENT_VERSION
 
     # Collect all known versions
     front_versions = {c.prompt_version for c in state.elite_set}
