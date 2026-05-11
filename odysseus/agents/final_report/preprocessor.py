@@ -26,6 +26,7 @@ from odysseus.agents.final_report.models import (
     PerClassPerformance,
     PromptSummary,
 )
+from odysseus.eval.models import ConfidenceInterval
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ def build_final_report_briefing(
     error_analysis = _build_error_analysis(run_dir, prompt_version)
     per_class = _extract_per_class_performance(holdout_report, error_analysis)
     baseline_comparison = _build_baseline_comparison(run_dir, prompt_version)
+    confidence_intervals = _extract_confidence_intervals(holdout_report)
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
     backend_name = search_state.get("backend", "unknown") if search_state else "unknown"
@@ -82,6 +84,7 @@ def build_final_report_briefing(
         per_class_performance=per_class,
         error_analysis=error_analysis,
         baseline_comparison=baseline_comparison,
+        confidence_intervals=confidence_intervals,
         charts=charts,
     )
 
@@ -535,6 +538,24 @@ def _compute_baselines_from_raw(
     except Exception:
         logger.debug("Failed to construct baseline comparison from raw data", exc_info=True)
         return None
+
+
+def _extract_confidence_intervals(
+    holdout_report: dict | list | None,
+) -> dict[str, ConfidenceInterval] | None:
+    """Load CIs from holdout report, excluding confusion matrix entries."""
+    if not isinstance(holdout_report, dict):
+        return None
+    raw = holdout_report.get("confidence_intervals")
+    if not isinstance(raw, dict) or not raw:
+        return None
+    out: dict[str, ConfidenceInterval] = {}
+    for key, val in raw.items():
+        if key.startswith("confusion/"):
+            continue
+        with contextlib.suppress(Exception):
+            out[key] = ConfidenceInterval(**val)
+    return out or None
 
 
 def _build_baseline_comparison(run_dir: Path, prompt_version: str | None = None) -> BaselineComparison | None:

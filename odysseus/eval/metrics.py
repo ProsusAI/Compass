@@ -6,11 +6,36 @@ import logging
 from collections import Counter
 from collections.abc import Callable
 
-from odysseus.eval.models import EvalResult, Example, MetricConfig
+from odysseus.eval.models import ConfidenceInterval, EvalResult, Example, MetricConfig
 
 logger = logging.getLogger(__name__)
 
 MetricFn = Callable[..., dict[str, float]]
+
+
+def _filter_pairs(
+    results: list[EvalResult],
+    examples: list[Example],
+    example_by_id: dict[str, Example] | None = None,
+) -> tuple[list[EvalResult], list[Example]]:
+    """Pair results with examples by ID, filtering out errored results.
+
+    Returns (filtered_results, filtered_examples) with matching indices.
+    """
+    if example_by_id is None:
+        example_by_id = {ex.id: ex for ex in examples}
+
+    filtered_results: list[EvalResult] = []
+    filtered_examples: list[Example] = []
+    for result in results:
+        if result.error is not None:
+            continue
+        if result.example_id not in example_by_id:
+            continue
+        filtered_results.append(result)
+        filtered_examples.append(example_by_id[result.example_id])
+
+    return filtered_results, filtered_examples
 
 
 class DefaultMetricsEngine:
@@ -39,19 +64,9 @@ class DefaultMetricsEngine:
         2. For each MetricConfig, dispatches to the registered function.
         3. Merges all returned dicts. Raises ValueError on duplicate keys.
         """
-        # Build example lookup
+        # Build example lookup and pair/filter
         example_by_id: dict[str, Example] = {ex.id: ex for ex in examples}
-
-        # Pair and filter
-        filtered_results: list[EvalResult] = []
-        filtered_examples: list[Example] = []
-        for result in results:
-            if result.error is not None:
-                continue
-            if result.example_id not in example_by_id:
-                continue
-            filtered_results.append(result)
-            filtered_examples.append(example_by_id[result.example_id])
+        filtered_results, filtered_examples = _filter_pairs(results, examples, example_by_id)
 
         # Dispatch and merge
         merged: dict[str, float] = {}
@@ -66,6 +81,30 @@ class DefaultMetricsEngine:
                 merged[key] = value
 
         return merged
+
+    def compute_cis(
+        self,
+        results: list[EvalResult],
+        examples: list[Example],
+        metric_configs: list[MetricConfig],
+        n_bootstrap: int | None = None,
+        ci_level: float = 0.95,
+    ) -> dict[str, ConfidenceInterval]:
+        """Bootstrap CIs using the same filtered pairs as compute()."""
+        from odysseus.eval.confidence import _default_n_bootstrap, bootstrap_cis
+
+        example_by_id: dict[str, Example] = {ex.id: ex for ex in examples}
+        filtered_results, filtered_examples = _filter_pairs(results, examples, example_by_id)
+        n = len(filtered_results)
+        effective_n = n_bootstrap if n_bootstrap is not None else _default_n_bootstrap(n)
+        return bootstrap_cis(
+            filtered_results,
+            filtered_examples,
+            metric_configs,
+            self._registry,
+            effective_n,
+            ci_level,
+        )
 
 
 def compute_accuracy(results: list[EvalResult], examples: list[Example]) -> dict[str, float]:

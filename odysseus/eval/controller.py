@@ -111,6 +111,7 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
 
     # 6. Compute metrics
     metrics = deps.metrics_engine.compute(results, examples, config.metrics)
+    confidence_intervals = deps.metrics_engine.compute_cis(results, examples, config.metrics)
 
     # 7. Build report
     end_time = datetime.now(UTC)
@@ -133,6 +134,7 @@ async def run(config: RunConfig, deps: RunDependencies) -> RunReport:
         metrics=metrics,
         results=list(results),
         summary=summary,
+        confidence_intervals=confidence_intervals if confidence_intervals else None,
     )
 
     logger.info(

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from odysseus.eval.models import ConfidenceInterval
+
 
 class DatasetOverview(BaseModel):
     """Dataset size and distribution summary."""
@@ -135,4 +137,5 @@ class FinalReportBriefing(BaseModel):
     per_class_performance: list[PerClassPerformance]
     error_analysis: ErrorAnalysis
     baseline_comparison: BaselineComparison | None = None
+    confidence_intervals: dict[str, ConfidenceInterval] | None = None
     charts: ChartPaths

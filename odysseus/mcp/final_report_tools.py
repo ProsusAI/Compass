@@ -313,6 +313,12 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
         except Exception:
             logging.getLogger(__name__).warning("Failed to compute baselines", exc_info=True)
 
+        try:
+            report_data = json.loads(Path(run_config.output.report_path).read_text(encoding="utf-8"))
+            ci_data = report_data.get("confidence_intervals") or {}
+        except Exception:
+            ci_data = {}
+
         results.append(
             {
                 "prompt_version": version,
@@ -322,6 +328,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
                 "summary": score_report.summary.model_dump(mode="json"),
                 "holdout_filtered": bool(example_ids),
                 "excluded_example_ids": example_ids,
+                "confidence_intervals": ci_data,
             }
         )
 

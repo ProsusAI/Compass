@@ -8,6 +8,7 @@ from typing import Any, Protocol, runtime_checkable
 # TC001: These imports must be at runtime (not under TYPE_CHECKING) for @runtime_checkable
 # isinstance checks to work correctly with the protocol classes.
 from odysseus.eval.models import (  # noqa: TC001
+    ConfidenceInterval,
     EvalResult,
     Example,
     MetricConfig,
@@ -56,6 +57,15 @@ class MetricsEngine(Protocol):
         examples: list[Example],
         metric_configs: list[MetricConfig],
     ) -> dict[str, float]: ...
+
+    def compute_cis(
+        self,
+        results: list[EvalResult],
+        examples: list[Example],
+        metric_configs: list[MetricConfig],
+        n_bootstrap: int | None = None,
+        ci_level: float = 0.95,
+    ) -> dict[str, ConfidenceInterval]: ...
 
 
 @runtime_checkable

@@ -254,6 +254,16 @@ class RunSummary(BaseModel):
     duration_seconds: float
 
 
+class ConfidenceInterval(BaseModel):
+    """A bootstrap percentile confidence interval for a single metric."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lower: float
+    upper: float
+    level: float
+
+
 class RunReport(BaseModel):
     """Complete report for an evaluation run."""
 
@@ -261,6 +271,7 @@ class RunReport(BaseModel):
     metrics: dict[str, float]
     results: list[EvalResult]
     summary: RunSummary
+    confidence_intervals: dict[str, ConfidenceInterval] | None = None
 
 
 class ErrorBreakdown(BaseModel):

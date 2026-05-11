@@ -3,6 +3,7 @@
 from typing import Any
 
 from odysseus.eval.models import (
+    ConfidenceInterval,
     EvalResult,
     Example,
     MetricConfig,
@@ -44,8 +45,20 @@ class StubDatasetManager:
 
 
 class StubMetricsEngine:
-    def compute(self, results: list[EvalResult], metric_configs: list[MetricConfig]) -> dict[str, float]:
+    def compute(
+        self, results: list[EvalResult], examples: list[Example], metric_configs: list[MetricConfig]
+    ) -> dict[str, float]:
         return {"accuracy": 1.0}
+
+    def compute_cis(
+        self,
+        results: list[EvalResult],
+        examples: list[Example],
+        metric_configs: list[MetricConfig],
+        n_bootstrap: int | None = None,
+        ci_level: float = 0.95,
+    ) -> dict[str, ConfidenceInterval]:
+        return {}
 
 
 class StubResultsCollector:
