@@ -97,14 +97,17 @@ async def init_search_state_tool(
         hint="Complete data validation and dataset split first.",
     )
 
-    state = init_search_state(
-        backend=backend,
-        run_id=run_id,
-        max_rounds=max_rounds,
-        stagnation_limit=stagnation_limit,
-        convergence_limit=convergence_limit,
-        primary_metric_name=primary_metric_name,
-    )
+    try:
+        state = init_search_state(
+            backend=backend,
+            run_id=run_id,
+            max_rounds=max_rounds,
+            stagnation_limit=stagnation_limit,
+            convergence_limit=convergence_limit,
+            primary_metric_name=primary_metric_name,
+        )
+    except FileExistsError as exc:
+        raise ToolError(str(exc)) from exc
     return state.model_dump_json(indent=2)
 
 

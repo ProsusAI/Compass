@@ -8,7 +8,7 @@ If the stage does not match, stop immediately and report:
 "This sub-agent was spawned for the Prompt Builder role but the pipeline is at stage N. Aborting."
 Do not call any tools. Do not proceed.
 
-If in the optimization loop (round 2+), also confirm `loop_phase` is `"build"` in the search state (call `get_search_state_tool`). If it is `"review"`, stop: the Review Agent should have been dispatched instead.
+If in the optimization loop (round 2+), also confirm `loop_phase` is `"build"` in the search state (call `get_search_state_tool`). If it is `"review"`, stop: the Review Agent should have been dispatched instead. The `init_search_state_tool` MCP tool will now raise a hard error (`ToolError: ... already has progress ...`) if called on a populated state, as a backstop against this guard being missed.
 
 ---
 

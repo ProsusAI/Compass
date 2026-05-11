@@ -783,6 +783,9 @@ def _ensure_stage4_search_state(run_dir: Path, project_dir: Path | None = None) 
             :func:`get_project_dir` when ``None``.
     """
     search_state_path = run_dir / "search" / "search_state.json"
+    # Safe to skip: init_search_state is a no-op on pristine state and raises
+    # FileExistsError on any state with progress, so the is_file() guard here
+    # and init_search_state's own guard together make concurrent dispatch safe.
     if search_state_path.is_file():
         return
 

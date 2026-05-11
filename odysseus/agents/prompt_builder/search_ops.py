@@ -248,6 +248,29 @@ def init_search_state(
         )
     if output_dir is None:
         output_dir = _default_output_dir()
+
+    # Guard: refuse to overwrite a state that already has progress.
+    # This prevents a re-dispatched round-2+ prompt-builder sub-agent from
+    # resetting round/elite_set/round_history back to zero.
+    try:
+        existing = _load_state(run_id, output_dir)
+        pending = _load_pending(run_id, output_dir)
+    except FileNotFoundError:
+        pass  # Normal cold-start: fall through to creation logic.
+    else:
+        # Pristine state: pre-initialised by _ensure_stage4_search_state but not
+        # yet touched by any sub-agent.  Safe to return as a no-op so the race
+        # between _ensure_stage4_search_state and the first cold-start sub-agent
+        # is idempotent (init_search_state raises on progress, no-ops on pristine).
+        if existing.round == 0 and not existing.round_history and not existing.elite_set and not pending:
+            return existing
+        raise FileExistsError(
+            f"search_state for run_id={run_id!r} already has progress "
+            f"(round={existing.round}, elites={len(existing.elite_set)}, "
+            f"history={len(existing.round_history)}, pending={len(pending)}); "
+            "call get_search_state_tool instead of re-initialising"
+        )
+
     search_state_id = uuid.uuid4().hex[:12]
     state = SearchState(
         search_state_id=search_state_id,
