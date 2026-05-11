@@ -659,6 +659,13 @@ def _detect_stage_4_phase(
             )
             loop_phase = "review"
 
+    # Beam round-2 review uses the post-cold-start phase: every scored cold-start
+    # parent gets exactly one protected child before standard Pareto competition.
+    # state.round == 1 here means cold-start has been advanced once and the next
+    # review pass is round-2 review.
+    if loop_phase == "review" and algorithm == "beam" and int(state_data.get("round", 0)) == 1:
+        return "review_post_coldstart"
+
     return loop_phase
 
 
@@ -996,6 +1003,15 @@ def _next_action_for_stage_4(
             algorithm,
         ),
         "review": _review_entry,
+        "review_post_coldstart": (
+            "Stage 4 — post-cold-start review (round 2): spawn the Review Agent to emit "
+            "exactly one protected child per scored cold-start parent. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
+            _REVIEW_TOOLS,
+            ["odysseus_review_agent_post_coldstart"],
+            STAGE_4_REVIEW_INSTRUCTION,
+            algorithm,
+        ),
         "build": _build_entry,
         # Extended phases — feature branches only; mapped to nearest equivalent
         "warmup_seed": (
