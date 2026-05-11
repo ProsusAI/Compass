@@ -654,7 +654,9 @@ def advance_round_beam(
     backtracking = new_stagnation_count >= backtrack_threshold
 
     # Check convergence
-    converged = new_stagnation_count >= state.convergence_limit or new_round >= state.max_rounds
+    total_evaluated = sum(len(r.candidates_evaluated) for r in state.round_history) + len(candidates_evaluated)
+    budget_reached = total_evaluated >= state.evaluation_budget
+    converged = (budget_reached and new_stagnation_count >= state.convergence_limit) or new_round >= state.max_rounds
     new_convergence_limit = state.convergence_limit
 
     qualities = [c.quality_score for c in new_elite]
