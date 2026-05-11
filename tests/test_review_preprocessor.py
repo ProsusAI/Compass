@@ -22,6 +22,7 @@ from odysseus.agents.review.preprocessor import (
     compute_oracle_metrics_from_report,
     extract_per_class_recall,
     generate_executive_summary,
+    parse_user_targets,
 )
 
 
@@ -1566,3 +1567,62 @@ class TestSynthesizeDirectiveOutcomes:
         assert len(results) == 1
         assert results[0].prior_directive_id == "d-1-0"
         assert results[0].outcome == "improved"
+
+
+class TestParseUserTargets:
+    def test_h3_heading_with_canonical_bullets(self) -> None:
+        from odysseus.agents.review.models import UserTarget
+
+        report = (
+            "## Metrics and Baseline\n"
+            "\n"
+            "### Target Metrics\n"
+            "- cost_change_with_overhead <= -0.45\n"
+            "- quality_change >= -0.03\n"
+            "\n"
+            "## Optimization Approach\n"
+        )
+        targets = parse_user_targets(report)
+        assert UserTarget(metric="cost_change_with_overhead", operator="<=", threshold=-0.45) in targets
+        assert UserTarget(metric="quality_change", operator=">=", threshold=-0.03) in targets
+        assert len(targets) == 2
+
+    def test_bold_heading_with_numbered_labeled_bullets(self) -> None:
+        from odysseus.agents.review.models import UserTarget
+
+        report = (
+            "## Metrics and Baseline\n"
+            "\n"
+            "**Target Metrics:**\n"
+            "1. **Cost Change:** <= -0.45 (45% reduction with overhead)\n"
+            "2. **Quality Change:** >= -0.03 (acceptable 3% quality reduction)\n"
+            "\n"
+            "## Optimization Approach\n"
+        )
+        targets = parse_user_targets(report)
+        # Label "Cost Change" maps to canonical cost_change_with_overhead.
+        assert UserTarget(metric="cost_change_with_overhead", operator="<=", threshold=-0.45) in targets
+        assert UserTarget(metric="quality_change", operator=">=", threshold=-0.03) in targets
+        assert len(targets) == 2
+
+    def test_inline_success_metric_fallback(self) -> None:
+        from odysseus.agents.review.models import UserTarget
+
+        report = (
+            "## Problem Statement\n"
+            "- **Success Metric:** Achieve cost_change_with_overhead <= -0.45 "
+            "while maintaining quality_change >= -0.03\n"
+        )
+        targets = parse_user_targets(report)
+        assert UserTarget(metric="cost_change_with_overhead", operator="<=", threshold=-0.45) in targets
+        assert UserTarget(metric="quality_change", operator=">=", threshold=-0.03) in targets
+        assert len(targets) == 2
+
+    def test_no_targets_returns_empty(self) -> None:
+        report = "## Problem Statement\n\nNo numeric thresholds anywhere.\n"
+        assert parse_user_targets(report) == []
+
+    def test_unknown_bold_label_is_skipped(self) -> None:
+        report = "**Target Metrics:**\n1. **Unknown Metric:** <= 0.5\n"
+        # No canonical mapping and no fallback hit → empty.
+        assert parse_user_targets(report) == []

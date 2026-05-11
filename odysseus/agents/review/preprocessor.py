@@ -415,28 +415,76 @@ def compute_diminishing_returns(
     )
 
 
+_CANONICAL_TARGET_METRIC_NAMES = (
+    "cost_change_with_overhead",
+    "cost_change",
+    "quality_change",
+    "accuracy",
+)
+
+_TARGET_LABEL_TO_METRIC = {
+    "cost change": "cost_change_with_overhead",
+    "quality change": "quality_change",
+}
+
+
 def parse_user_targets(report_text: str) -> list[UserTarget]:
-    """Parse target metrics from a validated input report's '### Target Metrics' section."""
-    # Find the Target Metrics section
+    """Parse target metrics from a validated input report.
+
+    Accepts two heading styles for the targets section:
+
+    * ``### Target Metrics`` (h3 heading) — the original validated form.
+    * ``**Target Metrics:**`` (bold-paragraph heading) — emitted by the newer
+      input agent.
+
+    Within the section, accepts both dash-bullet canonical form
+    (``- cost_change_with_overhead <= -0.45``) and numbered/bold-labeled form
+    (``1. **Cost Change:** <= -0.45``). Labeled bullets are mapped to canonical
+    metric names via ``_TARGET_LABEL_TO_METRIC``; unknown labels are ignored.
+
+    If no targets are parsed from a recognized section, falls back to scanning
+    the whole document for ``<canonical_name> <op> <value>`` substrings — this
+    rescues reports that only state targets inline (e.g. in a
+    ``**Success Metric:**`` line).
+    """
     section_match = re.search(
-        r"###\s*Target\s+Metrics\s*\n(.*?)(?=\n###|\n##|\Z)",
+        r"(?:###\s*Target\s+Metrics|\*\*Target\s+Metrics:?\*\*)\s*\n(.*?)(?=\n##\s|\n###\s|\Z)",
         report_text,
         re.DOTALL | re.IGNORECASE,
     )
-    if not section_match:
-        return []
 
-    section_text = section_match.group(1)
     targets: list[UserTarget] = []
-    # Match lines like: - `cost_change_with_overhead` <= -0.45
-    # or: - cost_change_with_overhead <= -0.45
-    pattern = re.compile(r"-\s*`?(\w+)`?\s*(<=|>=|<|>|==)\s*(-?[\d.]+)")
-    for match in pattern.finditer(section_text):
-        metric = match.group(1)
-        op = match.group(2)
-        threshold = float(match.group(3))
-        # The regex guarantees op is one of the valid Literal values
+    seen: set[tuple[str, str, float]] = set()
+
+    def _add(metric: str, op: str, threshold: float) -> None:
+        key = (metric, op, threshold)
+        if key in seen:
+            return
+        seen.add(key)
         targets.append(UserTarget(metric=metric, operator=op, threshold=threshold))  # type: ignore[arg-type]
+
+    if section_match:
+        section_text = section_match.group(1)
+        # Dash bullets with canonical metric names: "- cost_change_with_overhead <= -0.45"
+        for match in re.finditer(r"-\s*`?(\w+)`?\s*(<=|>=|<|>|==)\s*(-?[\d.]+)", section_text):
+            _add(match.group(1), match.group(2), float(match.group(3)))
+        # Numbered bullets with bold labels: "1. **Cost Change:** <= -0.45"
+        for match in re.finditer(
+            r"^\s*\d+\.\s*\*\*([^*]+?):?\*\*\s*(<=|>=|<|>|==)\s*(-?[\d.]+)",
+            section_text,
+            re.MULTILINE,
+        ):
+            label = match.group(1).strip().rstrip(":").lower()
+            metric = _TARGET_LABEL_TO_METRIC.get(label)
+            if metric is None:
+                continue
+            _add(metric, match.group(2), float(match.group(3)))
+
+    if not targets:
+        # Longest names first so "cost_change_with_overhead" matches before "cost_change".
+        names = "|".join(_CANONICAL_TARGET_METRIC_NAMES)
+        for match in re.finditer(rf"`?({names})`?\s*(<=|>=|<|>|==)\s*(-?[\d.]+)", report_text):
+            _add(match.group(1), match.group(2), float(match.group(3)))
 
     return targets
 
