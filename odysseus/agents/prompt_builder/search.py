@@ -556,7 +556,7 @@ def update_elite_set(
     in round 2.
     """
     if is_cold_start_round:
-        scored = [c for c in new_candidates if c.quality_score > 0.0 or c.cost > 0.0]
+        scored = [c for c in new_candidates if c.quality_score != 0.0 or c.cost != 0.0]
         by_version: dict[str, Candidate] = {}
         for c in list(current_elite) + scored:
             by_version[c.prompt_version] = c
@@ -568,7 +568,7 @@ def update_elite_set(
     all_candidates = list(current_elite) + [
         c
         for c in new_candidates
-        if c.quality_score > 0.0 or c.cost > 0.0  # skip degenerate
+        if c.quality_score != 0.0 or c.cost != 0.0  # skip placeholder (0.0, 0.0); signed deltas may be negative
     ]
     if not all_candidates:
         return [], 0
