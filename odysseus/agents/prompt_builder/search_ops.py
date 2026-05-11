@@ -479,25 +479,9 @@ def advance_round(
 ) -> RoundSummary:
     """Advance the search loop by one round.
 
-    This is an algorithm-specific operation. On the pipeline trunk this function
-    raises :exc:`NotImplementedError` — leaf branches supply the implementation
-    that matches their search strategy.
-
-    Args:
-        run_id: Run identifier used to locate the state on disk.
-        output_dir: Root directory for persisted state files.
-
-    Returns:
-        A :class:`RoundSummary` for the completed round.
-
-    Raises:
-        NotImplementedError: Always on the pipeline trunk.
+    Beam-branch implementation: delegates to :func:`advance_round_beam`.
     """
-    raise NotImplementedError(
-        "advance_round has no implementation on the pipeline trunk. "
-        "Run on a leaf branch (feat/generalize-{hill_climb,beam,emosa,sms_emoa}) "
-        "that provides the algorithm-specific advance_round body."
-    )
+    return advance_round_beam(run_id=run_id, output_dir=output_dir)
 
 
 # ---------------------------------------------------------------------------
