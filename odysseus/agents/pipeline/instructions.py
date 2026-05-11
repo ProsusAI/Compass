@@ -131,7 +131,7 @@ STAGE_4_COLD_START_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
-STAGE_4_BUILD_INSTRUCTION: str = (
+STAGE_4_BUILD_V1_INSTRUCTION: str = (
     "<HARD_STOP>\n"
     "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
@@ -150,6 +150,35 @@ STAGE_4_BUILD_INSTRUCTION: str = (
     "</HARD_STOP>\n\n"
     "<stage_system_prompt></stage_system_prompt>"
 )
+
+STAGE_4_BUILD_OPTIMIZE_INSTRUCTION: str = (
+    "<DISPATCH_CONTEXT>\n"
+    "This is an optimization round (round 2+ in the refinement loop). A search state already exists for this run.\n"
+    "- Begin by calling get_search_state_tool (NOT init_search_state_tool).\n"
+    "- Skip Phase 1 of your system prompt entirely. Proceed directly to Phase 2.\n"
+    "- Calling init_search_state_tool now would clobber the optimization history.\n"
+    "</DISPATCH_CONTEXT>\n\n"
+    "<HARD_STOP>\n"
+    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
+    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
+    "get_child_variants_tool, get_edit_directives_tool, get_prompt_text_tool, get_score_report_tool, "
+    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "advance_step_tool, save_prompt_tool, run_eval\n"
+    "Your tools: get_pipeline_status only\n\n"
+    "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
+    "Do not call it from within the sub-agent.\n\n"
+    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
+    "then call get_pipeline_status.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
+    "Do not call stage tools yourself.\n"
+    "</HARD_STOP>\n\n"
+    "<stage_system_prompt></stage_system_prompt>"
+)
+
+# Backward-compat alias — external callers keep working for one release.
+STAGE_4_BUILD_INSTRUCTION = STAGE_4_BUILD_V1_INSTRUCTION
 
 STAGE_4_RERUN_INSTRUCTION: str = (
     "<HARD_STOP>\n"

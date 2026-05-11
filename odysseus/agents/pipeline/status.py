@@ -15,8 +15,9 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_1_INSTRUCTION,
     STAGE_2_INSTRUCTION,
     STAGE_3_INSTRUCTION,
-    STAGE_4_BUILD_INSTRUCTION,
+    STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
     STAGE_4_BUILD_RECOVERING_INSTRUCTION,
+    STAGE_4_BUILD_V1_INSTRUCTION,
     STAGE_4_CALIBRATION_INSTRUCTION,
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
@@ -960,7 +961,7 @@ def _next_action_for_stage_4(
         "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
         _BUILD_TOOLS,
         ["odysseus_prompt_builder"],
-        STAGE_4_BUILD_INSTRUCTION,
+        STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
         algorithm,
     )
     _build_recovering_entry = (
@@ -988,7 +989,7 @@ def _next_action_for_stage_4(
             "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
             _BUILD_TOOLS,
             ["odysseus_prompt_builder"],
-            STAGE_4_BUILD_INSTRUCTION,
+            STAGE_4_BUILD_V1_INSTRUCTION,
             algorithm,
         ),
         "review": _review_entry,

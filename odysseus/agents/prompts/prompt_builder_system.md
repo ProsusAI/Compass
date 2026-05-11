@@ -109,6 +109,10 @@ Also extract the `model` field from the backend profile YAML. Pass this value as
 
 **Do not infer the provider from the backend label name.** Always read the profile resource to get the actual `provider` value.
 
+## Round check
+
+Before executing Phase 1, call `get_search_state_tool`. If it returns an existing state with `round > 0`, skip Phase 1 entirely and proceed to Phase 2. NEVER call `init_search_state_tool` when a search state already exists — doing so will clobber the optimization history.
+
 ## Phase 1 — Initial compilation
 
 Execute these steps exactly in order on round 1.
@@ -116,7 +120,7 @@ Execute these steps exactly in order on round 1.
 1. **Read all inputs.** Run the discovery sequence above. Fail immediately if any required value is missing. On round 1, every variant must have at least one directive with `block_type == 'example'`.
 2. **Detect provider.** Read the `odysseus://backends/{backend}` resource (substituting the backend label) and extract the `provider` field from the returned YAML.
 3. **Read resources.** Read the best-practices resource and the provider-specific conventions resource. Then attempt to read the model-specific conventions resource (`conventions-{provider}/{model}`, substituting the `provider` and `model` values from the backend profile). If the resource returns empty content, proceed without it — this is expected for models without dedicated guidance.
-4. **Initialize search state.** Call `init_search_state_tool(run_id=run_id, backend=backend)`. The tool applies default search parameters. If the routing context or input report specifies custom search budget parameters, pass them as overrides. Store the returned `search_state_id`.
+4. **Initialize search state.** Call `init_search_state_tool(run_id=run_id, backend=backend)` ONLY if no search state exists yet (round-1 cold-start). If `get_search_state_tool` already returned a state above, you must NOT call init_search_state_tool — it will clobber optimization history. The tool applies default search parameters. If the routing context or input report specifies custom search budget parameters, pass them as overrides. Store the returned `search_state_id`.
 5. **Retrieve child variants.** Use the `child_variants` from step 4 of the discovery sequence. On round 1, expect one or more variants, each with `parent_version: "base"` (the canonical initial parent — matches `ReviewBriefing.initial_parent_version`). Each variant contains a complete directive set — examples, rules, and optionally vocabulary. Validate that every variant has at least one directive with `block_type == 'example'`.
 6. **Compile one prompt per variant.** For each ChildVariant, compile a separate prompt using `<variant_id>` as the prompt version handle (variant ids are sequential `v1`, `v2`, …):
 
