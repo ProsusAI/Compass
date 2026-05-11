@@ -82,9 +82,9 @@ class TestDefaultValues:
         content = DEFAULTS_PATH.read_text()
         assert "0.80" in content, "data_split_ratio should default to 0.80"
 
-    def test_max_iterations_is_10(self) -> None:
+    def test_evaluation_budget_is_60(self) -> None:
         content = DEFAULTS_PATH.read_text()
-        # Check for "10" appearing near max_iterations context
-        assert "`10`" in content or "| 10 |" in content or "10 refinement" in content, (
-            "max_iterations should default to 10"
+        # evaluation_budget (renamed from max_iterations) defaults to 60 prompt versions
+        assert "`60`" in content or "| 60 |" in content or "60 prompt versions" in content, (
+            "evaluation_budget should default to 60"
         )
