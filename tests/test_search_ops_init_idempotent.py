@@ -19,9 +19,7 @@ from odysseus.agents.prompt_builder.search_ops import (
     _load_pending,
     _load_state,
     _save_state,
-    advance_round,
     init_search_state,
-    record_eval_result,
     register_candidate,
 )
 
@@ -79,23 +77,33 @@ def test_init_on_pristine_existing_state_is_noop(tmp_path: Path) -> None:
 
 def test_init_after_round_advance_raises(tmp_path: Path) -> None:
     """init_search_state raises FileExistsError after a round has been advanced."""
-    _init(tmp_path)
+    from odysseus.agents.prompt_builder.search import Candidate, RoundSummary
 
-    # Register a candidate and record eval so advance_round has something to work with.
-    register_candidate(
-        run_id=_RUN_ID,
+    state = _init(tmp_path)
+
+    # Synthesise post-advance state directly — avoids calling advance_round, which
+    # is algorithm-specific (stub on beam/emosa/sms-emoa leaves).
+    elite_candidate = Candidate(
         prompt_version="v1",
         parent_version="base",
-        output_dir=tmp_path,
-    )
-    record_eval_result(
-        run_id=_RUN_ID,
-        prompt_version="v1",
         quality_score=0.5,
         cost=-0.1,
-        output_dir=tmp_path,
+        round_introduced=0,
     )
-    advance_round(run_id=_RUN_ID, output_dir=tmp_path)
+    summary = RoundSummary(
+        round=1,
+        candidates_evaluated=["v1"],
+        new_elite_entries=1,
+        elite_size=1,
+        mutation_mode="targeted",
+        stagnation_count=0,
+        converged=False,
+        target_improvement=0.5,
+        front_quality_spread=0.0,
+        round_routing_cost=0.1,
+    )
+    updated = state.model_copy(update={"round": 1, "elite_set": [elite_candidate], "round_history": [summary]})
+    _save_state(_RUN_ID, updated, tmp_path)
 
     # State now has round == 1 and a non-empty elite_set.
     state_before = _load_state(_RUN_ID, tmp_path)
@@ -183,10 +191,33 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
         # Second call on pristine state: no-op (not an error).
         await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
 
-        # Advance state so it is no longer pristine.
-        register_candidate(run_id=_RUN_ID, prompt_version="v1", output_dir=output_dir)
-        record_eval_result(run_id=_RUN_ID, prompt_version="v1", quality_score=0.5, cost=-0.1, output_dir=output_dir)
-        advance_round(run_id=_RUN_ID, output_dir=output_dir)
+        # Advance state so it is no longer pristine — synthesised directly to
+        # avoid calling advance_round, which is algorithm-specific (stub on
+        # beam/emosa/sms-emoa leaves).
+        from odysseus.agents.prompt_builder.search import Candidate, RoundSummary
+
+        state = _load_state(_RUN_ID, output_dir)
+        elite_candidate = Candidate(
+            prompt_version="v1",
+            parent_version="base",
+            quality_score=0.5,
+            cost=-0.1,
+            round_introduced=0,
+        )
+        summary = RoundSummary(
+            round=1,
+            candidates_evaluated=["v1"],
+            new_elite_entries=1,
+            elite_size=1,
+            mutation_mode="targeted",
+            stagnation_count=0,
+            converged=False,
+            target_improvement=0.5,
+            front_quality_spread=0.0,
+            round_routing_cost=0.1,
+        )
+        updated = state.model_copy(update={"round": 1, "elite_set": [elite_candidate], "round_history": [summary]})
+        _save_state(_RUN_ID, updated, output_dir)
 
         # Third call: state has progress — must raise ToolError.
         with pytest.raises(ToolError) as exc_info:
