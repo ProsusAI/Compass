@@ -1102,7 +1102,7 @@ def _populate_beam_review_fields(
 ) -> dict[str, Any]:
     """Compute beam-specific ReviewBriefing fields.
 
-    Returns a dict with keys ``beam_rank``, ``crowding_distance``,
+    Returns a dict with keys ``beam_width``, ``beam_rank``, ``crowding_distance``,
     ``hypervolume``, ``reference_point``, ``stagnation_signal``.
     """
     from odysseus.agents.prompt_builder.search import (
@@ -1110,6 +1110,7 @@ def _populate_beam_review_fields(
     )
 
     pocket = getattr(search_state, "algorithm_state", {}) or {}
+    beam_width = int(pocket.get("beam_width", 3))
     hypervolume = float(pocket.get("hypervolume", 0.0))
     prev_hv = float(pocket.get("prev_hypervolume", 0.0))
     backtrack_threshold = int(pocket.get("backtrack_threshold", 2))
@@ -1133,6 +1134,7 @@ def _populate_beam_review_fields(
     }
 
     return {
+        "beam_width": beam_width,
         "beam_rank": beam_rank,
         "crowding_distance": crowding_serializable,
         "hypervolume": hypervolume,
@@ -1438,6 +1440,7 @@ def build_review_briefing(
         child_variants=child_variants or [],
         stagnation_signal=beam_overrides.get("stagnation_signal", stagnation_signal),
         confusion_analysis=confusion_analysis,
+        beam_width=beam_overrides.get("beam_width"),
         beam_rank=beam_overrides.get("beam_rank"),
         crowding_distance=beam_overrides.get("crowding_distance"),
         hypervolume=beam_overrides.get("hypervolume"),
