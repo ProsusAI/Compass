@@ -19,6 +19,7 @@ from odysseus.agents.prompt_builder.search_ops import (
     record_eval_result,
     register_candidate,
 )
+from odysseus.agents.review.models import INITIAL_PARENT_VERSION
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import MetricConfig, OutputConfig, RunConfig, ScoreReport
 from odysseus.mcp.server import mcp
@@ -125,7 +126,7 @@ async def register_candidate_tool(
         parent_version: Parent prompt version, if any. Round-1 / cold-start candidates
             use the canonical "base" (matches ReviewBriefing.initial_parent_version).
         example_ids: Holdout example IDs used as few-shots in this prompt version (backend tracking only).
-        trajectory_id: EMOSA trajectory id; when omitted, derived from per-trajectory variant files.
+        trajectory_id: Trajectory id (algorithm-specific); when omitted, defaults to None.
 
     Returns:
         JSON object confirming the registered prompt version.
@@ -331,10 +332,10 @@ def _advance_hill_climb(run_id: str) -> str:
 async def advance_step_tool(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Advance the search loop by one step.
 
-    Dispatches to the algorithm-specific advance logic via the leaf branch's
-    ``advance_round`` function.  On the pipeline trunk, ``_BRANCH_ALGORITHM``
-    is ``"__unset__"`` and ``init_search_state`` raises a ``RuntimeError``
-    before any state is created; this tool is only functional on leaf branches.
+    Dispatches to the strategy-specific advance logic determined by the
+    ``algorithm`` field of the current SearchState.  On this branch (trunk),
+    the concrete algorithm is set by a leaf branch; callers should not rely
+    on a specific algorithm being present.
 
     Args:
         run_id: Pipeline run identifier.
@@ -342,7 +343,16 @@ async def advance_step_tool(run_id: str) -> str:
     Returns:
         JSON-serialized RoundSummary for the completed round.
     """
-    return _advance_hill_climb(run_id)
+    try:
+        state = get_search_state(run_id=run_id)
+    except FileNotFoundError as exc:
+        raise ToolError(str(exc)) from exc
+
+    algorithm = state.algorithm
+    if algorithm == "hill_climb":
+        return _advance_hill_climb(run_id)
+
+    raise NotImplementedError(f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch")
 
 
 @mcp.tool()
@@ -386,6 +396,12 @@ async def save_prompt_tool(
     if not content:
         raise ToolError("content must not be empty")
 
+    if prompt_version == INITIAL_PARENT_VERSION:
+        raise ToolError(
+            f"'{INITIAL_PARENT_VERSION}' is a lineage placeholder and cannot be saved as a "
+            "prompt file. Use the compiled variant id (e.g. 'v1') instead."
+        )
+
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     prompt_path = project_dir / "outputs" / run_id / "prompts" / f"{prompt_version}.txt"
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -406,9 +422,7 @@ async def get_child_variants_tool(
     via record_directive_outcomes_tool. Each variant specifies a parent version
     and the directives to apply together as one child prompt.
 
-    Prefers per-trajectory files (``child_variants_t<N>.json``) produced by EMOSA
-    K-way fanout when they exist, falling back to the single-slot
-    ``child_variants.json`` written during calibration and non-EMOSA strategies.
+    Reads the single-slot ``child_variants.json`` written by record_directive_outcomes_tool.
 
     Args:
         run_id: Pipeline run identifier.
@@ -417,16 +431,11 @@ async def get_child_variants_tool(
     Returns:
         JSON-serialized list of ChildVariant objects.
     """
-    from odysseus.agents.review.ops import load_all_trajectory_child_variants, load_child_variants
+    from odysseus.agents.review.ops import load_child_variants
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    search_dir = out / run_id / "search"
-    trajectory_files = list(search_dir.glob("child_variants_t*.json")) if search_dir.exists() else []
-    if trajectory_files:
-        variants = load_all_trajectory_child_variants(run_id, output_dir=out)
-    else:
-        variants = load_child_variants(run_id, output_dir=out)
+    variants = load_child_variants(run_id, output_dir=out)
 
     # Dedup: if secondary version matches primary, set to None
     variants = [
@@ -460,16 +469,11 @@ async def get_edit_directives_tool(
     Returns:
         JSON-serialized flat list of EditDirective objects across all child variants.
     """
-    from odysseus.agents.review.ops import load_all_trajectory_child_variants, load_child_variants
+    from odysseus.agents.review.ops import load_child_variants
 
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-    search_dir = out / run_id / "search"
-    trajectory_files = list(search_dir.glob("child_variants_t*.json")) if search_dir.exists() else []
-    if trajectory_files:
-        variants = load_all_trajectory_child_variants(run_id, output_dir=out)
-    else:
-        variants = load_child_variants(run_id, output_dir=out)
+    variants = load_child_variants(run_id, output_dir=out)
     directives = [d for v in variants for d in v.directives]
     return json.dumps([d.model_dump(mode="json") for d in directives], indent=2)
 

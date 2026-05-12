@@ -395,7 +395,14 @@ async def record_directive_outcomes_tool(
     """
     import contextlib
 
-    from odysseus.agents.review.models import ChildVariant, LoopSignal
+    from odysseus.agents.review.models import (
+        INITIAL_PARENT_VERSION,
+        ChildVariant,
+        LoopSignal,
+        PromotionDecision,
+        RankedCandidate,
+        RegressionFlag,
+    )
     from odysseus.agents.review.ops import (
         record_trajectory_dispatched,
         save_child_variants,
@@ -404,6 +411,19 @@ async def record_directive_outcomes_tool(
 
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    # --- Validate all inputs before touching state or disk ---
+    parsed_variants: list[ChildVariant] = []
+    if child_variants is not None:
+        parsed_variants = [ChildVariant.model_validate(v) for v in child_variants]
+    if loop_signal is not None:
+        LoopSignal.model_validate(loop_signal)
+    if candidate_ranking is not None:
+        [RankedCandidate.model_validate(r) for r in candidate_ranking]
+    if promotion_decisions is not None:
+        [PromotionDecision.model_validate(p) for p in promotion_decisions]
+    if regression_guards is not None:
+        [RegressionFlag.model_validate(r) for r in regression_guards]
 
     # When decomposed params are provided, assemble and persist an audit ReviewResult.
     # When only review_result is provided, persist it as-is (legacy path).
@@ -431,8 +451,6 @@ async def record_directive_outcomes_tool(
     # EMOSA path (trajectory_id is not None): write per-trajectory file and record dispatch.
     # Single-slot path (trajectory_id is None): write the canonical child_variants.json sentinel.
     if child_variants is not None:
-        parsed_variants = [ChildVariant.model_validate(v) for v in child_variants]
-
         # Assign stable variant_ids using the global monotonic counter stored in
         # SearchState so that ids are sequential across all rounds (v1, v2, …).
         current_round = 0
@@ -445,6 +463,16 @@ async def record_directive_outcomes_tool(
                     parsed_variants[i] = v.model_copy(update={"variant_id": f"v{next_seq}"})
                     next_seq += 1
             _save_state(run_id, state.model_copy(update={"next_variant_seq": next_seq}), out)
+
+        # Cold-start: parent_version is infrastructure, not agent responsibility.
+        # Coerce unconditionally so agents need not set it on round 0.
+        if current_round == 0:
+            parsed_variants = [
+                v.model_copy(update={"parent_version": INITIAL_PARENT_VERSION})
+                for v in parsed_variants
+            ]
+            if loop_signal is None:
+                loop_signal = {"action": "refine", "reason": "cold_start_default"}
 
         if trajectory_id is not None:
             # EMOSA K-way fanout: use per-trajectory variant ids and file.
