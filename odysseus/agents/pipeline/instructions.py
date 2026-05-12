@@ -7,13 +7,20 @@ are filled at runtime by ``status.py``.
 
 from __future__ import annotations
 
+_NO_WORKTREE_ISOLATION_LINE: str = (
+    "DISPATCH CONSTRAINT: When you call the Agent tool to spawn the "
+    'sub-agent, do NOT pass isolation="worktree". Sub-agents MUST '
+    "share the orchestrator's working directory so artifacts written "
+    "under outputs/{run_id}/ are visible to the orchestrator on return. "
+    "This also lets the pipeline run in non-git working directories.\n\n"
+)
+
 # ---------------------------------------------------------------------------
 # Stage 1 — User Input
 # ---------------------------------------------------------------------------
 
 STAGE_1_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 1 tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT call any Stage 1 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(stage='input_report') BEFORE spawning the sub-agent.\n"
     "(No run_id yet — Stage 1 creates it via submit_input_report.)\n\n"
@@ -32,8 +39,7 @@ STAGE_1_INSTRUCTION: str = (
 # ---------------------------------------------------------------------------
 
 STAGE_2_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 2 tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT call any Stage 2 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='data_validation') "
     "BEFORE spawning the sub-agent.\n\n"
@@ -74,8 +80,7 @@ STAGE_2_INSTRUCTION: str = (
 # ---------------------------------------------------------------------------
 
 STAGE_3_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT perform backend setup from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT perform backend setup from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='backend_setup') "
     "BEFORE spawning the sub-agent.\n\n"
@@ -116,8 +121,7 @@ STAGE_3_INSTRUCTION: str = (
 # ---------------------------------------------------------------------------
 
 STAGE_4_COLD_START_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT call any Stage 4 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review_cold') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
@@ -133,7 +137,8 @@ STAGE_4_COLD_START_INSTRUCTION: str = (
 
 STAGE_4_BUILD_V1_INSTRUCTION: str = (
     "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    + _NO_WORKTREE_ISOLATION_LINE
+    + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
@@ -159,7 +164,8 @@ STAGE_4_BUILD_OPTIMIZE_INSTRUCTION: str = (
     "- Calling init_search_state_tool now would clobber the optimization history.\n"
     "</DISPATCH_CONTEXT>\n\n"
     "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    + _NO_WORKTREE_ISOLATION_LINE
+    + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
@@ -182,7 +188,8 @@ STAGE_4_BUILD_INSTRUCTION = STAGE_4_BUILD_V1_INSTRUCTION
 
 STAGE_4_RERUN_INSTRUCTION: str = (
     "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    + _NO_WORKTREE_ISOLATION_LINE
+    + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
@@ -202,7 +209,8 @@ STAGE_4_RERUN_INSTRUCTION: str = (
 
 STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
     "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    + _NO_WORKTREE_ISOLATION_LINE
+    + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
@@ -234,7 +242,8 @@ _STEADY_REVIEW_TOOLS_LINE: str = (
 
 STAGE_4_REVIEW_INSTRUCTION: str = (
     "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
+    + _NO_WORKTREE_ISOLATION_LINE
+    + "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
     + _STEADY_REVIEW_TOOLS_LINE
@@ -360,8 +369,7 @@ STAGE_4_CALIBRATION_INSTRUCTION: str = (
 )
 
 STAGE_4_CALIBRATION_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT call any Stage 4 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='calibration') BEFORE spawning the sub-agent.\n\n"
     "PRE-DISPATCH CHECK: Before spawning, verify that "
@@ -391,8 +399,7 @@ STAGE_4_CALIBRATION_INSTRUCTION: str = (
 # ---------------------------------------------------------------------------
 
 STAGE_5_INSTRUCTION: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 5 tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT call any Stage 5 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='final_report') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, "
