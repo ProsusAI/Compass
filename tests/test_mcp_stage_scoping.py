@@ -1,12 +1,15 @@
 """Tests for MCP session-scoped tool filtering."""
 
-from unittest.mock import AsyncMock, MagicMock
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.mcp.server import STAGE_REGISTRY, mcp, set_active_stage
+
+_RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 
 
 @pytest.fixture()
@@ -190,25 +193,32 @@ async def test_prompt_building_stage_filtering():
 # ---------------------------------------------------------------------------
 
 
-async def test_start_stage_sets_active_stage(mock_ctx):
-    """start_stage activates the given stage."""
+async def test_start_stage_sets_active_stage(mock_ctx, tmp_path: Path):
+    """start_stage activates the given stage and returns JSON with scope and tools."""
+    import json
+
     from odysseus.mcp.server import get_active_stage
 
     set_active_stage("orchestrator")
     from odysseus.mcp.orchestrator_tools import start_stage
 
-    result = await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
+    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        result = await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
     assert get_active_stage() == "data_validation"
-    assert "data_validation" in result
-    assert "detect_and_parse_dataset" in result
+    data = json.loads(result)
+    assert data["scope"] == "data_validation"
+    assert "detect_and_parse_dataset" in data["tools"]
+    assert "sub_agent_prompt" in data
+    assert data["run_id"] == "test-run"
 
 
-async def test_start_stage_sends_tool_list_changed(mock_ctx):
+async def test_start_stage_sends_tool_list_changed(mock_ctx, tmp_path: Path):
     """start_stage sends a tool list changed notification."""
     from odysseus.mcp.orchestrator_tools import start_stage
 
     set_active_stage("orchestrator")
-    await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
+    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
     mock_ctx.session.send_tool_list_changed.assert_awaited_once()
 
 
@@ -230,16 +240,21 @@ async def test_start_stage_rejects_from_non_orchestrator_scope(mock_ctx):
         await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
 
 
-async def test_start_stage_allows_input_report_without_run_id(mock_ctx):
+async def test_start_stage_allows_input_report_without_run_id(mock_ctx, tmp_path: Path):
     """start_stage allows input_report stage without a run_id."""
+    import json
+
     from odysseus.mcp.orchestrator_tools import start_stage
     from odysseus.mcp.server import get_active_stage
 
     set_active_stage("orchestrator")
-    result = await start_stage(ctx=mock_ctx, stage="input_report")
+    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        result = await start_stage(ctx=mock_ctx, stage="input_report")
     assert get_active_stage() == "input_report"
-    assert "input_report" in result
-    assert "submit_input_report" in result
+    data = json.loads(result)
+    assert data["scope"] == "input_report"
+    assert "submit_input_report" in data["tools"]
+    assert data["run_id"] is None
 
 
 async def test_start_stage_requires_run_id_for_non_input_stages(mock_ctx):
@@ -266,8 +281,6 @@ async def test_complete_stage_resets_to_orchestrator(mock_ctx, tmp_path):
     The review fanout guard requires child_variants.json to exist.  We create
     it in a temp dir and patch the dispatch module so the guard passes.
     """
-    from unittest.mock import patch
-
     from odysseus.mcp.orchestrator_tools import complete_stage, start_stage
     from odysseus.mcp.server import get_active_stage
 
@@ -276,7 +289,8 @@ async def test_complete_stage_resets_to_orchestrator(mock_ctx, tmp_path):
     (search_dir / "child_variants.json").write_text("[]")
 
     set_active_stage("orchestrator")
-    await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
+    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
     assert get_active_stage() == "review"
 
     with patch("odysseus.agents.pipeline.dispatch.get_project_dir", return_value=tmp_path):
@@ -292,8 +306,6 @@ async def test_complete_stage_sends_tool_list_changed(mock_ctx, tmp_path):
     The review fanout guard requires child_variants.json.  We satisfy it via
     a temp dir and a patch on the dispatch module.
     """
-    from unittest.mock import patch
-
     from odysseus.mcp.orchestrator_tools import complete_stage, start_stage
 
     search_dir = tmp_path / "outputs" / "test-run" / "search"
@@ -301,8 +313,73 @@ async def test_complete_stage_sends_tool_list_changed(mock_ctx, tmp_path):
     (search_dir / "child_variants.json").write_text("[]")
 
     set_active_stage("orchestrator")
-    await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
+    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
     mock_ctx.session.send_tool_list_changed.reset_mock()
     with patch("odysseus.agents.pipeline.dispatch.get_project_dir", return_value=tmp_path):
         await complete_stage(ctx=mock_ctx, run_id="test-run")
     mock_ctx.session.send_tool_list_changed.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Regression: stage system prompt split between get_pipeline_status / start_stage
+# ---------------------------------------------------------------------------
+
+
+async def test_get_pipeline_status_subagent_instruction_has_no_stage_prompt_body(tmp_path: Path):
+    """Regression: get_pipeline_status must not embed stage system prompt in subagent_instruction.
+
+    The prompt body was previously substituted into a <stage_system_prompt></stage_system_prompt>
+    placeholder. After the fix the placeholder is gone from templates and the prompt body is
+    only returned by start_stage's sub_agent_prompt field.
+    """
+    import json
+
+    from odysseus.mcp import get_pipeline_status
+
+    # Stage 2: has input_report.md so current_stage == 2
+    input_dir = tmp_path / "outputs" / "r1" / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "input_report.md").write_text("# Report")
+
+    # First heading of the data_validation_system.md — invariant substring
+    dv_prompt_sentinel = "## Entry verification"
+
+    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        result = await get_pipeline_status(ctx=None, run_id="r1")
+    data = json.loads(result)
+    instr = data.get("subagent_instruction", "")
+    # The data_validation system prompt should NOT appear verbatim in subagent_instruction
+    assert dv_prompt_sentinel not in instr, (
+        "Stage system prompt body must not be embedded in subagent_instruction; "
+        "it should only be in start_stage's sub_agent_prompt field."
+    )
+
+
+async def test_start_stage_sub_agent_prompt_contains_data_validation_prompt(mock_ctx, tmp_path: Path):
+    """start_stage('data_validation', run_id=...) returns JSON with sub_agent_prompt from the prompt file.
+
+    The sub_agent_prompt field must contain the stage system prompt body so the orchestrator
+    can forward it verbatim to the sub-agent.
+    """
+    import json
+
+    from odysseus.mcp.orchestrator_tools import start_stage
+
+    # Set up a run at stage 2 (stage 1 complete)
+    input_dir = tmp_path / "outputs" / "r1" / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "input_report.md").write_text("# Report")
+
+    set_active_stage("orchestrator")
+    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+        result = await start_stage(ctx=mock_ctx, stage="data_validation", run_id="r1")
+
+    data = json.loads(result)
+    assert "sub_agent_prompt" in data
+    sub_prompt = data["sub_agent_prompt"]
+    assert sub_prompt is not None
+    # The data_validation system prompt starts with "## Entry verification"
+    assert "## Entry verification" in sub_prompt, (
+        "start_stage sub_agent_prompt must contain the data_validation system prompt body"
+    )

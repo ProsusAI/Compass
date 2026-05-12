@@ -439,21 +439,28 @@ class TestGetPipelineStatus:
         assert data["run_id"] == "abc123"
         assert data["current_stage"] >= 2
 
-    async def test_get_pipeline_status_enriches_stage1_subagent_instruction(self, tmp_path: Path):
-        """get_pipeline_status enriches subagent_instruction with stage system prompt for stage 1."""
+    async def test_get_pipeline_status_stage1_no_prompt_body_in_subagent_instruction(self, tmp_path: Path):
+        """get_pipeline_status no longer embeds the stage system prompt in subagent_instruction.
+
+        The dispatch checklist is returned but the prompt body (which was previously substituted
+        into <stage_system_prompt></stage_system_prompt>) is now only available via start_stage's
+        sub_agent_prompt field.
+        """
         from odysseus.mcp import get_pipeline_status
 
         with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             result = await get_pipeline_status(ctx=None, run_id=None)
         data = json.loads(result)
         instr = data.get("subagent_instruction", "")
-        assert "<stage_system_prompt>" in instr
-        assert "</stage_system_prompt>" in instr
-        # The placeholder should be replaced with actual content (not empty)
+        # The dispatch checklist must still be present
+        assert "<HARD_STOP>" in instr
+        # The prompt body placeholder must NOT appear — it was removed from templates
         assert "<stage_system_prompt></stage_system_prompt>" not in instr
+        # And the filled-in tags must not appear either — prompt body is not injected here
+        assert "<stage_system_prompt>" not in instr
 
-    async def test_get_pipeline_status_enriches_stage2_subagent_instruction(self, tmp_path: Path):
-        """get_pipeline_status enriches subagent_instruction for stage 2."""
+    async def test_get_pipeline_status_stage2_no_prompt_body_in_subagent_instruction(self, tmp_path: Path):
+        """get_pipeline_status does not embed stage 2 system prompt in subagent_instruction."""
         from odysseus.mcp import get_pipeline_status
 
         # Create a stage-1-complete run (has input_report.md)
@@ -466,25 +473,9 @@ class TestGetPipelineStatus:
         data = json.loads(result)
         assert data["current_stage"] == 2
         instr = data.get("subagent_instruction", "")
-        assert "<stage_system_prompt>" in instr
-        assert "</stage_system_prompt>" in instr
+        assert "<HARD_STOP>" in instr
         assert "<stage_system_prompt></stage_system_prompt>" not in instr
-
-    async def test_get_pipeline_status_missing_prompt_file_raises_tool_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ):
-        """get_pipeline_status raises ToolError when stage prompt file is not found."""
-        from unittest.mock import patch
-
-        import odysseus.mcp.orchestrator_tools as orch_mod
-        from odysseus.mcp import get_pipeline_status
-
-        with (
-            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            patch.object(orch_mod, "_load_text", side_effect=FileNotFoundError("prompt not found")),
-            pytest.raises(ToolError, match="installation may be broken"),
-        ):
-            await get_pipeline_status(ctx=None, run_id=None)
+        assert "<stage_system_prompt>" not in instr
 
     async def test_get_pipeline_status_unknown_stage_not_enriched(self, tmp_path: Path):
         """get_pipeline_status does not enrich subagent_instruction for unknown stages."""
@@ -508,6 +499,31 @@ class TestGetPipelineStatus:
             result = await get_pipeline_status(ctx=None, run_id=None)
         data = json.loads(result)
         assert data["subagent_instruction"] is None
+
+    async def test_start_stage_missing_prompt_file_raises_tool_error(self, tmp_path: Path):
+        """start_stage raises ToolError when the stage prompt file is not found.
+
+        Prompt loading was moved from get_pipeline_status to start_stage.
+        A FileNotFoundError is now surfaced here as a clean preflight error.
+        """
+        from unittest.mock import AsyncMock as _AsyncMock
+        from unittest.mock import MagicMock
+
+        import odysseus.mcp.orchestrator_tools as orch_mod
+        from odysseus.mcp.orchestrator_tools import start_stage
+        from odysseus.mcp.server import set_active_stage
+
+        mock_ctx = MagicMock()
+        mock_ctx.session = MagicMock()
+        mock_ctx.session.send_tool_list_changed = _AsyncMock()
+
+        set_active_stage("orchestrator")
+        with (
+            patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch.object(orch_mod, "_load_text", side_effect=FileNotFoundError("prompt not found")),
+            pytest.raises(ToolError, match="installation may be broken"),
+        ):
+            await start_stage(ctx=mock_ctx, stage="input_report")
 
 
 class TestOptimizeRoutingPrompt:

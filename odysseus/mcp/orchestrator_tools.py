@@ -71,9 +71,13 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"   you MUST spawn a sub-agent using the subagent_instruction. Never call stage tools yourself.\n\n"
         f"DISPATCH PROTOCOL (for all stages after Stage 1):\n"
         f"  a. Call get_pipeline_status(run_id=...) to get the next action\n"
-        f"  b. If DISPATCH_REQUIRED is true → read subagent_instruction\n"
-        f"  c. Call start_stage() as specified in the instruction\n"
-        f"  d. Spawn a sub-agent with the system prompt from <stage_system_prompt>\n"
+        f"  b. If DISPATCH_REQUIRED is true → read `subagent_instruction` for your dispatch checklist\n"
+        f"  c. Call `start_stage(...)`. ITS RESPONSE CONTAINS the `sub_agent_prompt` field —\n"
+        f"     that is the sub-agent's prompt. Keep it for step (d).\n"
+        f"  d. Spawn a sub-agent. The sub-agent's INITIAL USER MESSAGE MUST be the `sub_agent_prompt`\n"
+        f"     field from `start_stage`'s response, VERBATIM. Do NOT include `subagent_instruction`\n"
+        f"     text — that brief is for you, not the sub-agent. Do not paraphrase, summarise, or\n"
+        f"     rewrite. Each dispatch is for ONE phase only.\n"
         f"  e. After the sub-agent returns → call complete_stage()\n"
         f"  f. Call get_pipeline_status again → repeat until pipeline complete\n\n"
         f"MODEL CAPABILITY (applies to all consumers):\n"
@@ -94,7 +98,7 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  the current dispatch. If your Claude Code installation does not have\n"
         f"  access to one of these aliases, fall back to the closest available\n"
         f"  tier and report it in the run summary.\n\n"
-        f"  DO NOT pass isolation=\"worktree\" on any Agent() call. Sub-agents must\n"
+        f'  DO NOT pass isolation="worktree" on any Agent() call. Sub-agents must\n'
         f"  share the orchestrator's cwd so the pipeline can read their outputs\n"
         f"  from outputs/<run_id>/ on return (and so it can run in non-git dirs).\n\n"
         f"USER INPUT MEDIATION (for stages that need user decisions):\n"
@@ -150,56 +154,22 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
     After the sub-agent exits, call ``complete_stage``, then call this tool
     again to verify stage completion and receive the next instruction.
 
+    Returns a dispatch checklist (``subagent_instruction``) for the orchestrator.
+    The stage system prompt itself is NOT included here — it is returned by
+    ``start_stage`` in the ``sub_agent_prompt`` field, which the orchestrator
+    forwards verbatim as the sub-agent's initial user message.
+
     Args:
         run_id: Optional pipeline run identifier.
 
     Returns:
-        JSON object with current stage, DISPATCH_REQUIRED flag, and
-        subagent_instruction (non-null when a sub-agent must be spawned).
+        JSON object with current stage, DISPATCH_REQUIRED flag, and subagent_instruction
+        (orchestrator-facing dispatch checklist only — no prompt body).
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
-    current_stage = result.get("current_stage")
     activate_prompt = result.get("activate_prompt")
-    algorithm = result.get("algorithm", "hill_climb")
-    subagent_instruction = result.get("subagent_instruction")
-
-    # Stage 4 has dynamic prompt lookup by activate_prompt name (cold-start/review/build phase).
-    # All other stages look up by stage number.
-    lookup_key: int | str | None = activate_prompt if current_stage == 4 and activate_prompt else current_stage
-
-    if subagent_instruction:
-        placeholder = "<stage_system_prompt></stage_system_prompt>"
-        if placeholder in subagent_instruction:
-            try:
-                if activate_prompt in _REVIEW_AGENT_PROMPT_NAMES:
-                    # Strategy-aware assembly: base + phase-base + strategy overlay
-                    from odysseus.mcp.prompts import assemble_review_prompt
-
-                    if activate_prompt == "odysseus_review_agent_cold_start":
-                        phase = "cold_start"
-                    elif activate_prompt == "odysseus_review_agent_post_coldstart":
-                        phase = "post_coldstart"
-                    else:
-                        phase = "iterative"
-                    system_prompt = assemble_review_prompt(algorithm, phase)
-                elif lookup_key in _STAGE_PROMPT_MAP:
-                    system_prompt = _load_text(_STAGE_PROMPT_MAP[lookup_key])
-                else:
-                    system_prompt = None
-
-                if system_prompt is not None:
-                    result["subagent_instruction"] = subagent_instruction.replace(
-                        placeholder,
-                        f"<stage_system_prompt>\n{system_prompt}\n</stage_system_prompt>",
-                    )
-            except FileNotFoundError as e:
-                raise ToolError(
-                    f"Stage {current_stage} system prompt not found — MCP server installation may be broken: {e}"
-                ) from e
-            except ValueError as e:
-                raise ToolError(f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}") from e
 
     if result.get("subagent_instruction"):
         recommended_model = recommended_model_for(activate_prompt)
@@ -213,7 +183,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
             f"      the orchestrator's model. Recommended tier for this dispatch: {tier}.\n"
             f"      Other runtimes: select the equivalent tier on your backend.)\n\n"
             f"  Agent() parameters you MUST NOT set:\n"
-            f"    - isolation              (do NOT pass isolation=\"worktree\". Sub-agents\n"
+            f'    - isolation              (do NOT pass isolation="worktree". Sub-agents\n'
             f"      MUST share the orchestrator's cwd so artifacts under outputs/<run_id>/\n"
             f"      are visible on return, and the pipeline can run in non-git working\n"
             f"      directories.)\n\n" + result["subagent_instruction"]
@@ -232,7 +202,7 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
 
 
 @mcp.tool()
-async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> str:  # noqa: ARG001
+async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> str:
     """Activate a pipeline stage, scoping visible tools to that stage.
 
     The orchestrator calls this before spawning a sub-agent so the sub-agent
@@ -248,7 +218,14 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
             stage (which creates the run_id); required for all other stages.
 
     Returns:
-        Confirmation message listing the tools now available.
+        JSON object with keys:
+          - ``scope``: the activated stage name.
+          - ``tools``: list of tool names now visible.
+          - ``sub_agent_prompt``: the stage system prompt body. The orchestrator
+            MUST forward this field verbatim as the sub-agent's initial user
+            message. This is the only correct prompt source — do not use
+            ``subagent_instruction`` from ``get_pipeline_status`` for this purpose.
+          - ``run_id``: the run identifier (may be None for ``input_report``).
     """
     current = get_active_stage()
     if current != "orchestrator":
@@ -272,8 +249,54 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
     except Exception:
         logger.warning("Failed to send tool list notification for stage '%s'", stage)
     tools = STAGE_REGISTRY[stage]
-    run_label = f" for run {run_id}" if run_id else ""
-    return f"Stage '{stage}' activated{run_label}. Available tools: {', '.join(tools)}"
+
+    # Compute the stage system prompt to forward to the sub-agent.
+    # We re-read pipeline status to get the current activate_prompt / algorithm
+    # for Stage 4's dynamic prompt lookup.
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    outputs_dir = project_dir / "outputs"
+
+    system_prompt: str | None = None
+    try:
+        if run_id is None:
+            # input_report stage: no run yet, always Stage 1 prompt
+            system_prompt = _load_text(_STAGE_PROMPT_MAP[1])
+        else:
+            status_result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
+            current_stage = status_result.get("current_stage")
+            activate_prompt = status_result.get("activate_prompt")
+            algorithm = status_result.get("algorithm", "hill_climb")
+
+            # Stage 4 uses activate_prompt name as lookup key; all others use stage number.
+            lookup_key: int | str | None = activate_prompt if current_stage == 4 and activate_prompt else current_stage
+
+            if activate_prompt in _REVIEW_AGENT_PROMPT_NAMES:
+                # Strategy-aware assembly: base + phase-base + strategy overlay
+                from odysseus.mcp.prompts import assemble_review_prompt
+
+                if activate_prompt == "odysseus_review_agent_cold_start":
+                    phase = "cold_start"
+                elif activate_prompt == "odysseus_review_agent_post_coldstart":
+                    phase = "post_coldstart"
+                else:
+                    phase = "iterative"
+                system_prompt = assemble_review_prompt(algorithm, phase)
+            elif lookup_key in _STAGE_PROMPT_MAP:
+                system_prompt = _load_text(_STAGE_PROMPT_MAP[lookup_key])
+    except FileNotFoundError as e:
+        raise ToolError(f"Stage system prompt not found — MCP server installation may be broken: {e}") from e
+    except ValueError as e:
+        raise ToolError(f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}") from e
+
+    return json.dumps(
+        {
+            "scope": stage,
+            "tools": list(tools),
+            "sub_agent_prompt": system_prompt,
+            "run_id": run_id,
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()

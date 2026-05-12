@@ -223,8 +223,9 @@ class TestSubagentInstruction:
         assert instr is not None
         assert "<HARD_STOP>" in instr
         assert "</HARD_STOP>" in instr
-        assert "<stage_system_prompt>" in instr
-        assert "</stage_system_prompt>" in instr
+        # The stage system prompt is no longer embedded in subagent_instruction;
+        # it is returned by start_stage in the sub_agent_prompt field.
+        assert "<stage_system_prompt></stage_system_prompt>" not in instr
         assert "get_pipeline_status" in instr
         assert "submit_input_report" in instr
         assert "Stage 1" in instr
@@ -236,8 +237,9 @@ class TestSubagentInstruction:
         assert instr is not None
         assert "<HARD_STOP>" in instr
         assert "</HARD_STOP>" in instr
-        assert "<stage_system_prompt>" in instr
-        assert "</stage_system_prompt>" in instr
+        # The stage system prompt is no longer embedded in subagent_instruction;
+        # it is returned by start_stage in the sub_agent_prompt field.
+        assert "<stage_system_prompt></stage_system_prompt>" not in instr
         assert "get_pipeline_status" in instr
         assert "validate_dataset" in instr
         assert "detect_and_parse_dataset" in instr
@@ -252,7 +254,7 @@ class TestSubagentInstruction:
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "<HARD_STOP>" in instr
-        assert "<stage_system_prompt>" in instr
+        assert "<stage_system_prompt></stage_system_prompt>" not in instr
         assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
 
     def test_stage4_available_tools_correct(self, tmp_path: Path) -> None:
