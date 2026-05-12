@@ -8,11 +8,8 @@ are filled at runtime by ``status.py``.
 from __future__ import annotations
 
 _NO_WORKTREE_ISOLATION_LINE: str = (
-    "DISPATCH CONSTRAINT: When you call the Agent tool to spawn the "
-    'sub-agent, do NOT pass isolation="worktree". Sub-agents MUST '
-    "share the orchestrator's working directory so artifacts written "
-    "under outputs/{run_id}/ are visible to the orchestrator on return. "
-    "This also lets the pipeline run in non-git working directories.\n\n"
+    'Reminder: omit the Agent() `isolation` parameter (no isolation="worktree"); '
+    "see the dispatch preamble for the full Agent() parameter contract.\n\n"
 )
 
 # ---------------------------------------------------------------------------

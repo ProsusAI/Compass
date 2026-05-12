@@ -94,6 +94,9 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  the current dispatch. If your Claude Code installation does not have\n"
         f"  access to one of these aliases, fall back to the closest available\n"
         f"  tier and report it in the run summary.\n\n"
+        f"  DO NOT pass isolation=\"worktree\" on any Agent() call. Sub-agents must\n"
+        f"  share the orchestrator's cwd so the pipeline can read their outputs\n"
+        f"  from outputs/<run_id>/ on return (and so it can run in non-git dirs).\n\n"
         f"USER INPUT MEDIATION (for stages that need user decisions):\n"
         f"  Sub-agents CANNOT interact with users directly. When a sub-agent needs user input,\n"
         f"  it writes partial artifacts and exits. You detect this via get_pipeline_status:\n\n"
@@ -205,11 +208,15 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
         result["subagent_instruction"] = (
             "⚠️ DISPATCH REQUIRED — Spawn a sub-agent. "
             "Do NOT call stage tools yourself.\n\n"
-            f"  Recommended model tier for this dispatch: {tier}\n"
-            f"  (Claude Code: pass `model: {model_alias}` as a literal\n"
-            f"   parameter on your Agent call — REQUIRED, do not omit; omission\n"
-            f"   inherits the orchestrator's model.\n"
-            f"   Other runtimes: select the equivalent tier on your backend.)\n\n" + result["subagent_instruction"]
+            f"  Agent() parameters you MUST set:\n"
+            f"    - model: {model_alias}   (REQUIRED — Claude Code only; omission inherits\n"
+            f"      the orchestrator's model. Recommended tier for this dispatch: {tier}.\n"
+            f"      Other runtimes: select the equivalent tier on your backend.)\n\n"
+            f"  Agent() parameters you MUST NOT set:\n"
+            f"    - isolation              (do NOT pass isolation=\"worktree\". Sub-agents\n"
+            f"      MUST share the orchestrator's cwd so artifacts under outputs/<run_id>/\n"
+            f"      are visible on return, and the pipeline can run in non-git working\n"
+            f"      directories.)\n\n" + result["subagent_instruction"]
         )
         output = {
             "run_id": result["run_id"],
