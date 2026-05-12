@@ -232,8 +232,7 @@ STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
-# Shared steady-review sub-agent toolbelt — used by both STAGE_4_REVIEW_INSTRUCTION
-# and STAGE_4_REVIEW_INSTRUCTION_EMOSA so the two instructions stay in sync.
+# Shared steady-review sub-agent toolbelt — used by STAGE_4_REVIEW_INSTRUCTION.
 _STEADY_REVIEW_TOOLS_LINE: str = (
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
     "build_review_briefing_tool, record_directive_outcomes_tool, "
@@ -257,35 +256,6 @@ STAGE_4_REVIEW_INSTRUCTION: str = (
     "<stage_system_prompt></stage_system_prompt>"
 )
 
-STAGE_4_REVIEW_INSTRUCTION_EMOSA: str = (
-    "<HARD_STOP>\n"
-    "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
-    "REQUIRED: Spawn {num_trajectories} independent sub-agents IN PARALLEL, one per trajectory.\n"
-    "CONTRACT: Iterate trajectory_id in 0..{max_trajectory_id} and dispatch exactly one sub-agent per id "
-    "in a single parallel batch. Do NOT split the fanout into nested groups or delegate the loop to another "
-    "sub-agent — the orchestrator must dispatch all {num_trajectories} sub-agents directly from one "
-    "tool-call batch.\n"
-    "Each sub-agent gets the <stage_system_prompt> below as its system prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning sub-agents.\n\n"
-    "Each sub-agent must be told its trajectory_id (0 through {max_trajectory_id}).\n"
-    "Include in each sub-agent's conversation context:\n"
-    '"Your trajectory_id is <N>. Your run_id is {run_id}."\n\n'
-    "Each sub-agent must call record_directive_outcomes_tool(run_id='{run_id}', "
-    "trajectory_id=<N>, child_variants=[...]) — server writes "
-    "child_variants_t<N>.json instead of single-slot child_variants.json.\n\n" + _STEADY_REVIEW_TOOLS_LINE + "\n"
-    "Your tools: get_pipeline_status only\n\n"
-    "POST-EXIT: Wait for ALL {num_trajectories} sub-agents (including any still running in "
-    "background) to complete BEFORE calling complete_stage. A single sub-agent finishing "
-    "does NOT mean review phase is done — you must wait for every trajectory_id in "
-    "0..{max_trajectory_id}. If polling with get_pipeline_status, keep waiting while it "
-    "reports 'review phase (partial, N/{num_trajectories})'. Only call "
-    "complete_stage(run_id='{run_id}') once all {num_trajectories} sub-agents have returned, "
-    "then call get_pipeline_status.\n"
-    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent(s). "
-    "Do not call stage tools yourself.\n"
-    "</HARD_STOP>\n\n"
-    "<stage_system_prompt></stage_system_prompt>"
-)
 
 STAGE_4_CALIBRATION_INSTRUCTION: str = (
     "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT call any Stage 4 tools from the current context.\n\n"

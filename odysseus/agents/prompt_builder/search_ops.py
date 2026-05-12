@@ -254,9 +254,6 @@ def init_search_state(
     elif _BRANCH_ALGORITHM == "beam":
         k = int(_BRANCH_ALGORITHM_STATE.get("beam_width", 3))
         max_rounds = math.ceil(evaluation_budget / k)
-    elif _BRANCH_ALGORITHM == "emosa":
-        k = int(_BRANCH_ALGORITHM_STATE.get("num_trajectories", 5))
-        max_rounds = math.ceil(evaluation_budget / k)
     elif _BRANCH_ALGORITHM == "sms_emoa":
         max_rounds = 500  # SMS-EMOA uses algorithm_state["evaluation_budget"] as its budget
     else:
