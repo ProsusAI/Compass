@@ -34,28 +34,3 @@ Eval reports are written by the eval engine at:
 outputs/<run_id>/eval/<prompt_version>/report.json
 ```
 
-## EMOSA trace logging
-
-Set the environment variable `ODYSSEUS_EMOSA_TRACE=1` (or flip `EMOSA_TRACE_ENABLED = True` in `emosa_trace.py`) to enable two diagnostic outputs in `<run>/search/`:
-
-| File | Content |
-|------|---------|
-| `emosa_trace.log` | Human-readable text: round boundaries, per-trajectory Metropolis decisions, neighborhood-replacement events. Written via a dedicated `logging.FileHandler` with `propagate=False` — never leaks to MCP stdout. |
-| `emosa_trace.jsonl` | One JSON record per Metropolis decision — append-only, line-buffered. Use this for downstream analysis of stagnation and acceptance rates. |
-
-### JSONL record fields
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `round` | `int` | Search round number |
-| `trajectory_id` | `int` | EMOSA trajectory index |
-| `parent_version` | `str \| null` | Parent prompt version (`null` on calibration step) |
-| `child_version` | `str` | Candidate prompt version |
-| `parent_energy` | `float \| null` | Tchebycheff energy of parent (`null` on calibration step) |
-| `child_energy` | `float` | Tchebycheff energy of candidate |
-| `delta_e` | `float \| null` | `child_energy - parent_energy` (`null` on calibration step) |
-| `temperature` | `float` | Trajectory temperature at time of decision |
-| `p_accept` | `float \| null` | Acceptance probability: `1.0` if `delta_e ≤ 0`, `exp(-delta_e/T)` if `delta_e > 0`, `null` on calibration step |
-| `accepted` | `bool` | Whether the candidate was accepted by Metropolis |
-
-Both outputs are off by default. `search_state.json` is not affected.
