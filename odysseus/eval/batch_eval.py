@@ -27,7 +27,6 @@ from odysseus.agents.prompt_builder.search_ops import (
     _save_pending,
     _save_state,
     record_eval_result,
-    register_candidate,
     set_loop_phase,
 )
 from odysseus.eval.backends.registry import BackendRegistry
@@ -446,8 +445,9 @@ async def run_batch_eval_impl(
 
     Normal mode (``candidates`` non-empty):
 
-    1. Register each candidate (``eval_status="pending"``) and add to
-       ``active_evals``.
+    1. Add each candidate to ``active_evals``. The caller must have already
+       registered them via ``register_candidate_tool`` — ``run_batch_eval``
+       no longer registers internally, mirroring ``run_eval``'s contract.
     2. Flip ``eval_status`` to ``"running"`` immediately before dispatch.
     3. Create a single shared ``TokenBucketRateLimiter``.
     4. Run all evals concurrently via ``asyncio.gather``.
@@ -477,18 +477,10 @@ async def run_batch_eval_impl(
         return await _run_recovery(run_id, eff_output_dir)
 
     # ---------------------------------------------------------------------- #
-    # Step 1: Register all candidates + add to active_evals
+    # Step 1: Add each candidate to active_evals.
+    # Caller must have already registered them via register_candidate_tool.
     # ---------------------------------------------------------------------- #
     for c in candidates:
-        register_candidate(
-            run_id=run_id,
-            prompt_version=c.prompt_version,
-            parent_version=c.parent_version,
-            example_ids=c.example_ids,
-            output_dir=eff_output_dir,
-            eval_status="pending",
-            trajectory_id=c.trajectory_id,
-        )
         _add_to_active_evals(run_id, c.prompt_version, eff_output_dir)
 
     # ---------------------------------------------------------------------- #
