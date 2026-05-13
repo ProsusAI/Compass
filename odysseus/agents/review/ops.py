@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from odysseus.agents.pipeline import paths
 from odysseus.agents.review.models import (
     ChildVariant,
 )
@@ -22,20 +23,16 @@ def _default_output_dir() -> Path:
     return get_project_dir() / "outputs"
 
 
-def _search_dir(run_id: str, output_dir: Path) -> Path:
-    return output_dir / run_id / "search"
-
-
 def _child_variants_path(run_id: str, output_dir: Path) -> Path:
-    return _search_dir(run_id, output_dir) / "child_variants.json"
+    return paths.search_dir(run_id, output_dir) / "child_variants.json"
 
 
 def _round_reports_dir(run_id: str, output_dir: Path) -> Path:
-    return _search_dir(run_id, output_dir) / "round_reports"
+    return paths.search_dir(run_id, output_dir) / "round_reports"
 
 
 def _review_result_path(run_id: str, output_dir: Path) -> Path:
-    return _search_dir(run_id, output_dir) / "review_result.json"
+    return paths.search_dir(run_id, output_dir) / "review_result.json"
 
 
 def save_review_result(
@@ -353,7 +350,7 @@ def load_round_reports(
 
 
 def _cell_attempt_history_path(run_id: str, output_dir: Path) -> Path:
-    return _search_dir(run_id, output_dir) / "cell_attempt_history.json"
+    return paths.search_dir(run_id, output_dir) / "cell_attempt_history.json"
 
 
 def load_cell_attempt_history(

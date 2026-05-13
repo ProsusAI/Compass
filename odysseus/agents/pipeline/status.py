@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from odysseus.agents.pipeline import paths
 from odysseus.agents.pipeline.instructions import (
     STAGE_1_INSTRUCTION,
     STAGE_2_INSTRUCTION,
@@ -24,19 +25,6 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_5_INSTRUCTION,
 )
 from odysseus.project_dir import get_project_dir
-
-
-def _is_build_dispatched(run_id: str, search_dir: Path) -> bool:  # noqa: ARG001
-    """Return True iff the build-dispatch marker exists in search_dir.
-
-    Inline helper rather than importing from dispatch to avoid a circular
-    dependency (dispatch → project_dir; status → pipeline → dispatch).
-    The ``run_id`` parameter is accepted for API symmetry but the
-    search_dir path already encodes the run identity.
-    """
-    build_marker = search_dir / "build_dispatched.json"
-    return build_marker.exists()
-
 
 logger = logging.getLogger(__name__)
 
@@ -754,7 +742,7 @@ def _detect_stage_4_phase(
     # dispatched — flip back to "review" to prevent deadlock.
     if loop_phase == "build":
         child_variants = search_dir / "child_variants.json"
-        if not child_variants.exists() and not _is_build_dispatched(run_dir.name, search_dir):
+        if not child_variants.exists() and not paths.is_build_dispatched(run_dir.name, run_dir.parent):
             logger.warning(
                 "loop_phase='build' but child_variants.json and build_dispatched.json absent "
                 "in %s/search/ — defense-in-depth re-flip to 'review'",

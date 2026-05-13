@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
+from odysseus.agents.pipeline import paths
 from odysseus.agents.prompt_builder.search import (
     AlgorithmType,
     Candidate,
@@ -57,26 +58,18 @@ _BRANCH_ALGORITHM_STATE: dict[str, Any] = {"beam_width": 3}
 # ---------------------------------------------------------------------------
 
 
-def _search_dir(run_id: str, output_dir: Path) -> Path:
-    return output_dir / run_id / "search"
-
-
-def _state_path(run_id: str, output_dir: Path) -> Path:
-    return output_dir / run_id / "search" / "search_state.json"
-
-
 def _pending_path(run_id: str, output_dir: Path) -> Path:
     return output_dir / run_id / "search" / "pending_candidates.json"
 
 
 def _save_state(run_id: str, state: SearchState, output_dir: Path) -> None:
-    path = _state_path(run_id, output_dir)
+    path = paths.search_state_path(run_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
 
 
 def _load_state(run_id: str, output_dir: Path) -> SearchState:
-    path = _state_path(run_id, output_dir)
+    path = paths.search_state_path(run_id, output_dir)
     if not path.exists():
         raise FileNotFoundError(f"Search state not found: {path}")
     return SearchState.model_validate_json(path.read_text(encoding="utf-8"))
@@ -146,7 +139,6 @@ def _append_archive(run_id: str, candidates: list[Candidate], output_dir: Path) 
 # ---------------------------------------------------------------------------
 # Beam strategy helpers
 # ---------------------------------------------------------------------------
-
 
 def _load_user_targets(run_id: str, output_dir: Path) -> list[UserTarget]:
     """Load user targets from the input report."""
