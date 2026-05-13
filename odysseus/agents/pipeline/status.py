@@ -15,10 +15,7 @@ from odysseus.agents.pipeline.instructions import (
     STAGE_1_INSTRUCTION,
     STAGE_2_INSTRUCTION,
     STAGE_3_INSTRUCTION,
-    STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
-    STAGE_4_BUILD_RECOVERING_INSTRUCTION,
-    STAGE_4_BUILD_V1_INSTRUCTION,
-    STAGE_4_CALIBRATION_INSTRUCTION,
+    STAGE_4_BUILD_INSTRUCTION,
     STAGE_4_COLD_START_INSTRUCTION,
     STAGE_4_RERUN_INSTRUCTION,
     STAGE_4_REVIEW_INSTRUCTION,
@@ -554,54 +551,45 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
 # Stage 4 — three-phase detection
 # ---------------------------------------------------------------------------
 
-_VALID_LOOP_PHASES = {
-    "build",
-    "review",
-    "warmup_seed",
-    "warmup_build",
-    "warmup_reduce",
-    "calibration",
-    "build_recovering",
-}
+_VALID_LOOP_PHASES = {"build", "review"}
 
 
 def _detect_stage_4_phase(
     run_dir: Path,
     rerun_config: dict[str, Any] | None,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     """Detect which phase Stage 4 is in.
 
-    Returns one of: ``"rerun"``, ``"cold_start"``, ``"build_v1"``,
-    ``"review"``, ``"build"``, or one of the extended phases
-    (``"warmup_seed"``, ``"warmup_build"``, ``"warmup_reduce"``,
-    ``"calibration"``, ``"build_recovering"``) for feature branches.
+    Returns ``(phase, flags)`` where phase ∈ {``"rerun"``, ``"cold_review"``,
+    ``"review"``, ``"build"``} and flags carries runtime variance:
 
-    ``build_v1`` is now gated on ``state.round == 0`` rather than a filename
-    glob.  ``variant_id``s are assigned monotonically from
-    ``state.next_variant_seq`` and the first surviving variant is not
-    guaranteed to be ``"v1"`` — if ``next_variant_seq`` advances across
-    multiple cold-start review calls the variant can land at ``"v2"`` (or
-    higher), and ``prompts/v1.txt`` would never be written.  Trusting the
-    persisted ``round`` counter avoids that deadlock.
+    - ``("build", {"is_first_round": True})``: first build after cold-start seeding.
+    - ``("build", {"recover_active_evals": True})``: recovery mode (active_evals non-empty).
+    - ``("build", {})``: steady-state optimization build.
 
     Defense-in-depth: if the persisted ``loop_phase`` is ``"build"`` but
     neither ``child_variants.json`` nor ``build_dispatched.json`` exist on
     disk, the phase is re-interpreted as ``"review"`` to prevent deadlock.
+
+    Unexpected ``loop_phase`` values (including extended phases used by
+    algorithm leaf branches: ``warmup_seed``, ``warmup_build``,
+    ``warmup_reduce``, ``calibration``, ``build_recovering``) fall back to
+    ``"review"``.
     """
     if rerun_config is not None:
-        return "rerun"
+        return ("rerun", {})
 
     search_dir = run_dir / "search"
     search_state_path = search_dir / "search_state.json"
 
     child_variants_sentinel = search_dir / "child_variants.json"
 
-    # Phase 1: Cold-start — no child variants written yet (search_state.json may exist
+    # Cold-review: no child variants written yet (search_state.json may exist
     # due to pre-initialisation by _ensure_stage4_search_state).
     if not child_variants_sentinel.is_file():
-        return "cold_start"
+        return ("cold_review", {})
 
-    # Load state once — used for both build_v1 detection and loop_phase reading.
+    # Load state once — used for both first-round detection and loop_phase reading.
     state_data: dict[str, Any] = {}
     if search_state_path.is_file():
         try:
@@ -609,13 +597,13 @@ def _detect_stage_4_phase(
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("Failed to parse search_state.json in %s: %s", run_dir, exc)
 
-    # Phase 2: Build v1 — child variants emitted but no round has been advanced yet.
+    # First build: child variants emitted but no round has been advanced yet.
     # Trust state.round, not a filename glob: variant_ids are assigned monotonically
     # from state.next_variant_seq and the first one is not guaranteed to be "v1".
     if int(state_data.get("round", 0)) == 0:
-        return "build_v1"
+        return ("build", {"is_first_round": True})
 
-    # Phase 3: Normal loop — read loop_phase from already-loaded state_data.
+    # Normal loop — read loop_phase from already-loaded state_data.
     raw_phase = state_data.get("loop_phase", "review")
     loop_phase = raw_phase if raw_phase in _VALID_LOOP_PHASES else "review"
     if raw_phase != loop_phase:
@@ -630,7 +618,7 @@ def _detect_stage_4_phase(
     if loop_phase == "build":
         active_evals = state_data.get("active_evals", [])
         if active_evals:
-            return "build_recovering"
+            return ("build", {"recover_active_evals": True})
 
     # Defense-in-depth: if loop_phase is "build" but there are no child_variants
     # on disk AND the build marker is also absent, the builder was never actually
@@ -651,9 +639,9 @@ def _detect_stage_4_phase(
     # review pass is round-2 review.
     algorithm = _read_algorithm_from_state(run_dir)
     if loop_phase == "review" and algorithm == "beam" and int(state_data.get("round", 0)) == 1:
-        return "review_post_coldstart"
+        return ("review", {"protected_parent_round": True})
 
-    return loop_phase
+    return (loop_phase, {})
 
 
 def _read_algorithm_from_state(run_dir: Path) -> str:
@@ -758,7 +746,7 @@ def _next_action_for_stage_4(
     # sub-agents can call get_search_state_tool without FileNotFoundError.
     _ensure_stage4_search_state(run_dir, project_dir=project_dir)
 
-    phase = _detect_stage_4_phase(run_dir, rerun_config)
+    phase, flags = _detect_stage_4_phase(run_dir, rerun_config)
     algorithm = _read_algorithm_from_state(run_dir)
 
     # Rerun is special — needs template formatting with config values
@@ -781,43 +769,8 @@ def _next_action_for_stage_4(
             algorithm,
         )
 
-    # All other phases use a static dispatch table.
-    # Extended phases (warmup_*, calibration, build_recovering) are used by
-    # feature branches; on main (hill-climb) they are never entered.  They are
-    # mapped to the nearest equivalent action so the orchestrator always has a
-    # valid next action even when reading state from a feature-branch run.
-    #
-    # Review phases use strategy-aware prompt names so the orchestrator can
-    # compose base + phase-base + strategy overlay at dispatch time.
-    _review_entry = (
-        "Stage 4 — review phase: spawn the Review Agent to analyse "
-        "eval results and emit edit directives. "
-        "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools.",
-        _REVIEW_TOOLS,
-        ["odysseus_review_agent_iterative"],
-        STAGE_4_REVIEW_INSTRUCTION,
-        algorithm,
-    )
-    _build_entry = (
-        "Stage 4 — build phase: spawn the Prompt Builder to generate "
-        "prompt variants and evaluate them. "
-        "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
-        _BUILD_TOOLS,
-        ["odysseus_prompt_builder"],
-        STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
-        algorithm,
-    )
-    _build_recovering_entry = (
-        "Stage 4 — build-recovering phase: active_evals is non-empty from a prior interrupted run. "
-        "Spawn the Prompt Builder to resume in-flight evaluations via run_batch_eval(candidates=[]). "
-        "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
-        _BUILD_TOOLS,
-        ["odysseus_prompt_builder"],
-        STAGE_4_BUILD_RECOVERING_INSTRUCTION,
-        algorithm,
-    )
-    phase_config: dict[str, tuple[str, list[str], list[str], str, str]] = {
-        "cold_start": (
+    if phase == "cold_review":
+        return (
             "Stage 4 — cold-start: spawn the Review Agent to seed the search "
             "with diverse initial hypotheses. "
             "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
@@ -825,51 +778,60 @@ def _next_action_for_stage_4(
             ["odysseus_review_agent_cold_start"],
             STAGE_4_COLD_START_INSTRUCTION,
             algorithm,
-        ),
-        "build_v1": (
-            "Stage 4 — build phase: spawn the Prompt Builder to compile the "
-            "initial routing prompt (v1) using seed examples from the Review Agent. "
-            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
-            _BUILD_TOOLS,
-            ["odysseus_prompt_builder"],
-            STAGE_4_BUILD_V1_INSTRUCTION,
-            algorithm,
-        ),
-        "review": _review_entry,
-        "review_post_coldstart": (
-            "Stage 4 — post-cold-start review (round 2): spawn the Review Agent to emit "
-            "exactly one protected child per scored cold-start parent. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
+        )
+
+    if phase == "review":
+        # Beam post-cold-start: protected_parent_round flag selects the round-2 overlay.
+        if flags.get("protected_parent_round"):
+            return (
+                "Stage 4 — post-cold-start review (round 2): spawn the Review Agent to emit "
+                "exactly one protected child per scored cold-start parent. "
+                "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
+                _REVIEW_TOOLS,
+                ["odysseus_review_agent_post_coldstart"],
+                STAGE_4_REVIEW_INSTRUCTION,
+                algorithm,
+            )
+        return (
+            "Stage 4 — review phase: spawn the Review Agent to analyse "
+            "eval results and emit edit directives. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools.",
             _REVIEW_TOOLS,
-            ["odysseus_review_agent_post_coldstart"],
+            ["odysseus_review_agent_iterative"],
             STAGE_4_REVIEW_INSTRUCTION,
             algorithm,
-        ),
-        "build": _build_entry,
-        # Extended phases — feature branches only; mapped to nearest equivalent
-        "warmup_seed": (
-            "Stage 4 — warmup-seed phase: spawn the Review Agent to seed the population. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _COLD_REVIEW_TOOLS,
-            ["odysseus_review_agent_cold_start"],
-            STAGE_4_COLD_START_INSTRUCTION,
-            algorithm,
-        ),
-        "warmup_build": _build_entry,
-        "warmup_reduce": _build_entry,
-        # Calibration phase (multi-trajectory algorithms)
-        "calibration": (
-            "Stage 4 — calibration phase: spawn the Prompt Builder to emit K diverse seed prompts, "
-            "score them, and seed K trajectories. "
-            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools.",
-            _BUILD_TOOLS,
-            ["odysseus_prompt_builder"],
-            STAGE_4_CALIBRATION_INSTRUCTION,
-            algorithm,
-        ),
-        "build_recovering": _build_recovering_entry,
-    }
-    return phase_config[phase]
+        )
+
+    # phase == "build" — behaviour varies by flags
+    is_first_round = flags.get("is_first_round", False)
+    recover_active_evals = flags.get("recover_active_evals", False)
+
+    if recover_active_evals:
+        action_text = (
+            "Stage 4 — build-recovering phase: active_evals is non-empty from a prior interrupted run. "
+            "Spawn the Prompt Builder to resume in-flight evaluations via run_batch_eval(candidates=[]). "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
+        )
+    elif is_first_round:
+        action_text = (
+            "Stage 4 — build phase: spawn the Prompt Builder to compile the "
+            "initial routing prompt (v1) using seed examples from the Review Agent. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
+        )
+    else:
+        action_text = (
+            "Stage 4 — build phase: spawn the Prompt Builder to generate "
+            "prompt variants and evaluate them. "
+            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
+        )
+
+    return (
+        action_text,
+        _BUILD_TOOLS,
+        ["odysseus_prompt_builder"],
+        STAGE_4_BUILD_INSTRUCTION(is_first_round=is_first_round, recover_active_evals=recover_active_evals),
+        algorithm,
+    )
 
 
 def _next_action_for_stage(stage: int) -> tuple[str, list[str], list[str], str | None]:

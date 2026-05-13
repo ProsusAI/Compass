@@ -128,7 +128,7 @@ STAGE_4_COLD_START_INSTRUCTION: str = (
     "</HARD_STOP>"
 )
 
-STAGE_4_BUILD_V1_INSTRUCTION: str = (
+_STAGE_4_BUILD_COMMON_BODY: str = (
     "<HARD_STOP>\n"
     + _NO_WORKTREE_ISOLATION_LINE
     + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
@@ -137,7 +137,13 @@ STAGE_4_BUILD_V1_INSTRUCTION: str = (
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
     "get_child_variants_tool, get_edit_directives_tool, get_prompt_text_tool, get_score_report_tool, "
     "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
-    "advance_step_tool, save_prompt_tool, run_eval\n"
+    "advance_step_tool, save_prompt_tool, run_eval"
+)
+
+_STAGE_4_BUILD_RECOVERY_EXTRA_TOOL: str = ", run_batch_eval"
+
+_STAGE_4_BUILD_COMMON_TAIL: str = (
+    "\n"
     "Your tools: get_pipeline_status only\n\n"
     "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
     "Do not call it from within the sub-agent.\n\n"
@@ -148,34 +154,49 @@ STAGE_4_BUILD_V1_INSTRUCTION: str = (
     "</HARD_STOP>"
 )
 
-STAGE_4_BUILD_OPTIMIZE_INSTRUCTION: str = (
+_STAGE_4_BUILD_DISPATCH_CONTEXT: str = (
     "<DISPATCH_CONTEXT>\n"
     "This is an optimization round (round 2+ in the refinement loop). A search state already exists for this run.\n"
     "- Begin by calling get_search_state_tool (NOT init_search_state_tool).\n"
     "- Skip Phase 1 of your system prompt entirely. Proceed directly to Phase 2.\n"
     "- Calling init_search_state_tool now would clobber the optimization history.\n"
     "</DISPATCH_CONTEXT>\n\n"
-    "<HARD_STOP>\n"
-    + _NO_WORKTREE_ISOLATION_LINE
-    + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
-    "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
-    "get_child_variants_tool, get_edit_directives_tool, get_prompt_text_tool, get_score_report_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
-    "advance_step_tool, save_prompt_tool, run_eval\n"
-    "Your tools: get_pipeline_status only\n\n"
-    "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
-    "Do not call it from within the sub-agent.\n\n"
-    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
-    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
-    "Do not call stage tools yourself.\n"
-    "</HARD_STOP>"
 )
 
-# Backward-compat alias — external callers keep working for one release.
-STAGE_4_BUILD_INSTRUCTION = STAGE_4_BUILD_V1_INSTRUCTION
+_STAGE_4_BUILD_RECOVERY_PARAGRAPH: str = (
+    "\n\n"
+    "RECOVERY MODE: active_evals is non-empty. The sub-agent must call "
+    "run_batch_eval(run_id='{run_id}', candidates=[]) to resume in-flight evaluations. "
+    "Completed evals (eval_status='complete') are recovered from disk automatically; "
+    "only missing or incomplete evals (eval_status='pending' or 'running') are re-run."
+)
+
+
+def STAGE_4_BUILD_INSTRUCTION(  # noqa: N802
+    *,
+    is_first_round: bool = False,
+    recover_active_evals: bool = False,
+) -> str:
+    """Return the Stage-4 build sub-agent instruction for the given variant.
+
+    Three output variants:
+    - ``is_first_round=True``: first build after cold-start seeding (no DISPATCH_CONTEXT).
+    - ``recover_active_evals=True``: recovery mode, includes ``run_batch_eval`` in toolbelt.
+    - else (steady-state): optimisation round with leading DISPATCH_CONTEXT.
+    """
+    if recover_active_evals:
+        tools_line = _STAGE_4_BUILD_COMMON_BODY + _STAGE_4_BUILD_RECOVERY_EXTRA_TOOL
+        return tools_line + _STAGE_4_BUILD_RECOVERY_PARAGRAPH + _STAGE_4_BUILD_COMMON_TAIL
+    if is_first_round:
+        return _STAGE_4_BUILD_COMMON_BODY + _STAGE_4_BUILD_COMMON_TAIL
+    return _STAGE_4_BUILD_DISPATCH_CONTEXT + _STAGE_4_BUILD_COMMON_BODY + _STAGE_4_BUILD_COMMON_TAIL
+
+
+# Convenience pre-built strings for backward compatibility with tests that compare text.
+# These are not public API — internal use only.
+_STAGE_4_BUILD_OPTIMIZE_INSTRUCTION: str = STAGE_4_BUILD_INSTRUCTION()
+_STAGE_4_BUILD_V1_INSTRUCTION: str = STAGE_4_BUILD_INSTRUCTION(is_first_round=True)
+_STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = STAGE_4_BUILD_INSTRUCTION(recover_active_evals=True)
 
 STAGE_4_RERUN_INSTRUCTION: str = (
     "<HARD_STOP>\n"
@@ -241,32 +262,6 @@ STAGE_4_REVIEW_INSTRUCTION: str = (
     "then call get_pipeline_status.\n"
     "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
     "Do not call stage tools yourself.\n"
-    "</HARD_STOP>"
-)
-
-
-STAGE_4_CALIBRATION_INSTRUCTION: str = (
-    "<HARD_STOP>\n" + _NO_WORKTREE_ISOLATION_LINE + "You MUST NOT call any Stage 4 tools from the current context.\n\n"
-    "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='calibration') BEFORE spawning the sub-agent.\n\n"
-    "PRE-DISPATCH CHECK: Before spawning, verify that "
-    "outputs/{run_id}/search/build_dispatched.json does not exist. "
-    "If it does, a build sub-agent is already in-flight — wait for it to complete.\n\n"
-    "CALIBRATION MODE: No trajectories are seeded yet. The sub-agent must:\n"
-    "  1. Activate odysseus_review_agent_cold_start to emit K diverse candidate prompts.\n"
-    "  2. Call odysseus_prompt_builder to compile and register each candidate.\n"
-    "  3. Call run_batch_eval to score all K candidates.\n"
-    "  4. Call advance_step_tool to seed K trajectories from scored candidates and flip "
-    "loop_phase to 'review'.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "odysseus_review_agent_cold_start, odysseus_prompt_builder, "
-    "run_batch_eval, advance_step_tool\n"
-    "Your tools: get_pipeline_status only\n\n"
-    "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
-    "After K calibration variants are scored, advance_step_tool seeds K trajectories "
-    "and flips loop_phase to 'review'. Re-dispatch the appropriate sub-agent for "
-    "subsequent phases. Do not call stage tools yourself.\n"
     "</HARD_STOP>"
 )
 

@@ -2,6 +2,12 @@ import json
 import time
 from pathlib import Path
 
+from odysseus.agents.pipeline.instructions import (
+    STAGE_4_BUILD_INSTRUCTION,
+    _STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
+    _STAGE_4_BUILD_RECOVERING_INSTRUCTION,
+    _STAGE_4_BUILD_V1_INSTRUCTION,
+)
 from odysseus.agents.pipeline.status import (
     _detect_stage_4_phase,
     _read_rerun_config,
@@ -639,12 +645,12 @@ class TestDiscoveredRuns:
 
 
 class TestDetectStage4PhaseRecovery:
-    """_detect_stage_4_phase returns 'build_recovering' when active_evals is non-empty."""
+    """_detect_stage_4_phase returns ("build", {"recover_active_evals": True}) when active_evals is non-empty."""
 
     def test_detect_stage_4_phase_returns_build_recovering(self, tmp_path: Path) -> None:
-        """loop_phase='build' + active_evals non-empty → 'build_recovering'."""
+        """loop_phase='build' + active_evals non-empty → ("build", {"recover_active_evals": True})."""
         run_id = "r1"
-        # Set up enough state for Phase 3 detection (past cold_start and build_v1)
+        # Set up enough state for Phase 3 detection (past cold_review and first-build)
         search = tmp_path / run_id / "search"
         search.mkdir(parents=True, exist_ok=True)
         prompts = tmp_path / run_id / "prompts"
@@ -662,12 +668,12 @@ class TestDetectStage4PhaseRecovery:
             )
         )
 
-        phase = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
+        phase, flags = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
 
-        assert phase == "build_recovering"
+        assert (phase, flags) == ("build", {"recover_active_evals": True})
 
     def test_detect_stage_4_phase_normal_build_without_active_evals(self, tmp_path: Path) -> None:
-        """loop_phase='build' + empty active_evals + dispatched marker → 'build'."""
+        """loop_phase='build' + empty active_evals + dispatched marker → ("build", {})."""
         run_id = "r1"
         search = tmp_path / run_id / "search"
         search.mkdir(parents=True, exist_ok=True)
@@ -688,9 +694,9 @@ class TestDetectStage4PhaseRecovery:
         # Need the dispatch marker or defense-in-depth will flip to review
         (search / "build_dispatched.json").write_text(json.dumps({"round": 2}))
 
-        phase = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
+        phase, flags = _detect_stage_4_phase(tmp_path / run_id, rerun_config=None)
 
-        assert phase == "build"
+        assert (phase, flags) == ("build", {})
 
 
 # ---------------------------------------------------------------------------
@@ -729,27 +735,57 @@ class TestDetectStage4PhasePostColdstart:
     """_detect_stage_4_phase post-coldstart phase detection."""
 
     def test_hill_climb_round1_review_returns_review(self, tmp_path: Path) -> None:
-        """Gate: algorithm != 'beam' → returns 'review', not 'review_post_coldstart'."""
+        """Gate: algorithm != 'beam' → returns ("review", {}), not post-coldstart."""
         run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="hill_climb")
-        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "review"
+        phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert (phase, flags) == ("review", {})
 
     def test_beam_round2_review_returns_review(self, tmp_path: Path) -> None:
-        """Gate: round != 1 → returns 'review', not 'review_post_coldstart'."""
+        """Gate: round != 1 → returns ("review", {}), not post-coldstart."""
         run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=2, algorithm="beam")
-        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "review"
+        phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert (phase, flags) == ("review", {})
 
     def test_beam_round1_build_phase_returns_build(self, tmp_path: Path) -> None:
-        """Gate: loop_phase != 'review' → returns 'build', not 'review_post_coldstart'."""
+        """Gate: loop_phase != 'review' → returns ("build", {}), not post-coldstart."""
         run_dir = _setup_phase3_run(tmp_path, "r1", "build", round_=1, algorithm="beam", active_evals=[])
         # Need the dispatch marker so defense-in-depth doesn't flip to review
         (run_dir / "search" / "build_dispatched.json").write_text(json.dumps({"round": 1}))
-        phase = _detect_stage_4_phase(run_dir, rerun_config=None)
-        assert phase == "build"
+        phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
+        assert (phase, flags) == ("build", {})
 
 
-# TestNextActionForStage4PostColdstart removed — post-coldstart is a leaf-branch feature.
-# TestEnsureStage4SearchState removed — _ensure_stage4_search_state calls init_search_state
-# which raises RuntimeError on the pipeline trunk (_BRANCH_ALGORITHM == "__unset__").
-# These tests live on the leaf branches (feat/generalize-{hill_climb,beam,emosa,sms_emoa}).
+class TestStage4BuildInstructionByteIdentical:
+    """STAGE_4_BUILD_INSTRUCTION callable produces byte-identical output to the old constants."""
+
+    def test_first_round_matches_v1_constant(self) -> None:
+        result = STAGE_4_BUILD_INSTRUCTION(is_first_round=True)
+        assert result == _STAGE_4_BUILD_V1_INSTRUCTION
+
+    def test_steady_state_matches_optimize_constant(self) -> None:
+        result = STAGE_4_BUILD_INSTRUCTION()
+        assert result == _STAGE_4_BUILD_OPTIMIZE_INSTRUCTION
+
+    def test_recovery_matches_recovering_constant(self) -> None:
+        result = STAGE_4_BUILD_INSTRUCTION(recover_active_evals=True)
+        assert result == _STAGE_4_BUILD_RECOVERING_INSTRUCTION
+
+    def test_first_round_has_no_dispatch_context(self) -> None:
+        result = STAGE_4_BUILD_INSTRUCTION(is_first_round=True)
+        assert "<DISPATCH_CONTEXT>" not in result
+
+    def test_steady_state_has_dispatch_context(self) -> None:
+        result = STAGE_4_BUILD_INSTRUCTION()
+        assert result.startswith("<DISPATCH_CONTEXT>")
+
+    def test_recovery_has_run_batch_eval_in_tools(self) -> None:
+        result = STAGE_4_BUILD_INSTRUCTION(recover_active_evals=True)
+        assert "run_batch_eval" in result
+
+    def test_non_recovery_has_no_run_batch_eval(self) -> None:
+        for variant in [STAGE_4_BUILD_INSTRUCTION(), STAGE_4_BUILD_INSTRUCTION(is_first_round=True)]:
+            assert "run_batch_eval" not in variant
+
+    def test_recovery_has_recovery_mode_paragraph(self) -> None:
+        result = STAGE_4_BUILD_INSTRUCTION(recover_active_evals=True)
+        assert "RECOVERY MODE" in result
