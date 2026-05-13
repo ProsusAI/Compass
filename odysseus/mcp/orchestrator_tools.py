@@ -24,6 +24,10 @@ from odysseus.mcp.server import (
     set_active_stage,
 )
 
+# Pre-loaded stage prompt bodies — populated at import time in prompts.py.
+# Imported here so start_stage reads from the cache rather than hitting disk.
+from odysseus.mcp.prompts import _STAGE_PROMPT_BODIES  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 
@@ -261,8 +265,8 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
     system_prompt: str | None = None
     try:
         if run_id is None:
-            # input_report stage: no run yet, always Stage 1 prompt
-            system_prompt = _load_text(_STAGE_PROMPT_MAP[1])
+            # input_report stage: no run yet, always Stage 1 prompt (pre-loaded)
+            system_prompt = _STAGE_PROMPT_BODIES[1]
         else:
             status_result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
             current_stage = status_result.get("current_stage")
@@ -283,8 +287,8 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
                 else:
                     phase = "iterative"
                 system_prompt = assemble_review_prompt(algorithm, phase)
-            elif lookup_key in _STAGE_PROMPT_MAP:
-                system_prompt = _load_text(_STAGE_PROMPT_MAP[lookup_key])
+            elif lookup_key in _STAGE_PROMPT_BODIES:
+                system_prompt = _STAGE_PROMPT_BODIES[lookup_key]
     except FileNotFoundError as e:
         raise ToolError(f"Stage system prompt not found — MCP server installation may be broken: {e}") from e
     except ValueError as e:

@@ -76,42 +76,17 @@ def assemble_review_prompt(
     return f"{base}\n\n---\n\n{phase_base}\n\n---\n\n{overlay}"
 
 
-@mcp.prompt()
-async def odysseus_routing_input() -> list[Message]:
-    """Activate the Odysseus routing input agent.
-
-    Use when a user wants help with a routing optimization problem.
-    Guides the user through providing a complete problem specification.
-    """
-    system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
-    return [UserMessage(content=system_prompt)]
-
-
-@mcp.prompt()
-async def odysseus_data_validation() -> list[Message]:
-    """Activate the Odysseus data validation agent.
-
-    Validates the routing dataset and produces a data quality report.
-    """
-    system_prompt = _load_text("odysseus/agents/prompts/data_validation_system.md")
-    return [UserMessage(content=system_prompt)]
-
-
-@mcp.prompt()
-async def odysseus_prompt_builder() -> list[Message]:
-    """Activate the Odysseus prompt builder agent."""
-    system_prompt = _load_text("odysseus/agents/prompts/prompt_builder_system.md")
-    return [UserMessage(content=system_prompt)]
-
-
-@mcp.prompt()
-async def odysseus_backend_setup() -> list[Message]:
-    """Activate the Odysseus backend setup agent.
-
-    Guides the user through selecting or creating a backend profile.
-    """
-    system_prompt = _load_text("odysseus/agents/prompts/backend_setup_system.md")
-    return [UserMessage(content=system_prompt)]
+# Stage prompt bodies pre-loaded at import time — keyed by the identifier used
+# in _STAGE_PROMPT_MAP (int stage number or activate_prompt name string).
+# The Review Agent prompts are NOT here — they use assemble_review_prompt().
+_STAGE_PROMPT_BODIES: dict[int | str, str] = {
+    1: _load_text("odysseus/agents/prompts/user_input_system.md"),
+    2: _load_text("odysseus/agents/prompts/data_validation_system.md"),
+    3: _load_text("odysseus/agents/prompts/backend_setup_system.md"),
+    "odysseus_prompt_builder": _load_text("odysseus/agents/prompts/prompt_builder_system.md"),
+    "odysseus_prompt_builder_rerun": _load_text("odysseus/agents/prompts/prompt_builder_rerun_system.md"),
+    5: _load_text("odysseus/agents/prompts/final_report_system.md"),
+}
 
 
 @mcp.prompt()
@@ -144,6 +119,7 @@ async def odysseus_review_agent_cold_start(algorithm: str = "beam") -> list[Mess
     return [UserMessage(content=content)]
 
 
+
 @mcp.prompt()
 async def odysseus_review_agent_post_coldstart(algorithm: str = "beam") -> list[Message]:
     """System prompt for the Review Agent — round-2 post-cold-start phase.
@@ -157,12 +133,3 @@ async def odysseus_review_agent_post_coldstart(algorithm: str = "beam") -> list[
     """
     content = assemble_review_prompt(algorithm, "post_coldstart")
     return [UserMessage(content=content)]
-
-
-@mcp.prompt()
-async def odysseus_final_report() -> list[Message]:
-    """Activate the Odysseus final report agent.
-
-    Runs holdout evaluation and generates the final optimization report.
-    """
-    return [UserMessage(content=_load_text("odysseus/agents/prompts/final_report_system.md"))]

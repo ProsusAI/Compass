@@ -39,13 +39,8 @@ from odysseus.mcp.prompt_building_tools import (
     run_eval,
 )
 from odysseus.mcp.prompts import (
-    odysseus_backend_setup,
-    odysseus_data_validation,
-    odysseus_final_report,
-    odysseus_prompt_builder,
     odysseus_review_agent_cold_start,
     odysseus_review_agent_iterative,
-    odysseus_routing_input,
 )
 from odysseus.mcp.resources import (
     backend_profile,
@@ -121,13 +116,8 @@ __all__ = [
     "transform_dataset",
     "validate_dataset",
     # Prompts
-    "odysseus_backend_setup",
-    "odysseus_data_validation",
-    "odysseus_final_report",
-    "odysseus_prompt_builder",
     "odysseus_review_agent_cold_start",
     "odysseus_review_agent_iterative",
-    "odysseus_routing_input",
     # Resources
     "backend_profile",
     "backend_setup_clarification_skill",

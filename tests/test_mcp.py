@@ -145,29 +145,35 @@ class TestRunEval:
                 )
 
 
-class TestOdysseusRoutingInputPrompt:
-    """Tests for the odysseus_routing_input MCP prompt."""
+class TestStagPromptBodies:
+    """Tests for _STAGE_PROMPT_BODIES pre-loaded stage prompt bodies."""
 
-    async def test_prompt_registered(self):
-        """odysseus_routing_input is listed as an MCP prompt."""
-        prompts = await mcp.list_prompts()
-        prompt_names = [p.name for p in prompts]
-        assert "odysseus_routing_input" in prompt_names
+    def test_stage_1_body_loaded(self):
+        """Stage 1 prompt body is pre-loaded and non-empty."""
+        from odysseus.mcp.prompts import _STAGE_PROMPT_BODIES
 
-    async def test_prompt_returns_messages(self):
-        """Prompt returns a non-empty list of messages."""
-        from odysseus.mcp import odysseus_routing_input
+        assert 1 in _STAGE_PROMPT_BODIES
+        assert len(_STAGE_PROMPT_BODIES[1]) > 0
 
-        messages = await odysseus_routing_input()
-        assert len(messages) >= 1
+    def test_stage_1_body_matches_file(self):
+        """Stage 1 body matches user_input_system.md content."""
+        from odysseus.mcp.prompts import _STAGE_PROMPT_BODIES
 
-    async def test_prompt_content_matches_system_prompt(self):
-        """Prompt content matches the user_input_system.md file."""
-        from odysseus.mcp import odysseus_routing_input
-
-        messages = await odysseus_routing_input()
         expected = _load_text("odysseus/agents/prompts/user_input_system.md")
-        assert messages[0].content.text == expected
+        assert _STAGE_PROMPT_BODIES[1] == expected
+
+    def test_all_stage_keys_present(self):
+        """All expected stage keys are pre-loaded."""
+        from odysseus.mcp.prompts import _STAGE_PROMPT_BODIES
+
+        for key in [1, 2, 3, 5, "odysseus_prompt_builder", "odysseus_prompt_builder_rerun"]:
+            assert key in _STAGE_PROMPT_BODIES, f"Missing key: {key}"
+            assert len(_STAGE_PROMPT_BODIES[key]) > 0, f"Empty body for key: {key}"
+
+    def test_routing_input_prompt_not_registered_as_mcp_prompt(self):
+        """odysseus_routing_input is no longer registered as an MCP @mcp.prompt()."""
+        prompt_names = [p.name for p in mcp._prompt_manager.list_prompts()]
+        assert "odysseus_routing_input" not in prompt_names
 
 
 class TestInputAgentResources:
@@ -500,11 +506,11 @@ class TestGetPipelineStatus:
         data = json.loads(result)
         assert data["subagent_instruction"] is None
 
-    async def test_start_stage_missing_prompt_file_raises_tool_error(self, tmp_path: Path):
-        """start_stage raises ToolError when the stage prompt file is not found.
+    async def test_start_stage_review_missing_prompt_raises_tool_error(self, tmp_path: Path):
+        """start_stage raises ToolError when the review agent prompt assembly fails (FileNotFoundError).
 
-        Prompt loading was moved from get_pipeline_status to start_stage.
-        A FileNotFoundError is now surfaced here as a clean preflight error.
+        Stage prompts for non-review stages are pre-loaded at import time; review prompts are
+        assembled on demand via assemble_review_prompt and can still raise FileNotFoundError.
         """
         from unittest.mock import AsyncMock as _AsyncMock
         from unittest.mock import MagicMock
@@ -513,6 +519,19 @@ class TestGetPipelineStatus:
         from odysseus.mcp.orchestrator_tools import start_stage
         from odysseus.mcp.server import set_active_stage
 
+        # Simulate a review stage being the next action
+        review_status = {
+            "run_id": "run1",
+            "stages": [],
+            "current_stage": 4,
+            "current_stage_name": "Refinement Loop",
+            "next_action": "review",
+            "available_tools": [],
+            "activate_prompt": "odysseus_review_agent_iterative",
+            "algorithm": "hill_climb",
+            "subagent_instruction": None,
+        }
+
         mock_ctx = MagicMock()
         mock_ctx.session = MagicMock()
         mock_ctx.session.send_tool_list_changed = _AsyncMock()
@@ -520,10 +539,11 @@ class TestGetPipelineStatus:
         set_active_stage("orchestrator")
         with (
             patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
-            patch.object(orch_mod, "_load_text", side_effect=FileNotFoundError("prompt not found")),
+            patch.object(orch_mod, "_get_pipeline_status", return_value=review_status),
+            patch("odysseus.mcp.prompts.assemble_review_prompt", side_effect=FileNotFoundError("prompt not found")),
             pytest.raises(ToolError, match="installation may be broken"),
         ):
-            await start_stage(ctx=mock_ctx, stage="input_report")
+            await start_stage(ctx=mock_ctx, stage="review", run_id="run1")
 
 
 class TestOptimizeRoutingPrompt:
