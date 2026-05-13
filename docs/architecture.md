@@ -190,7 +190,7 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 
 **Layer 1 — Universal capability claim (all consumers):**
 
-| Stage / activate_prompt | Tier | Rationale |
+| Stage / dispatch prompt | Tier | Rationale |
 |---|---|---|
 | `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start` | strong | High-stakes synthesis: confusion deltas, hypothesis generation |
 | All other stages (`input_report`, `data_validation`, `prompt_building`, `final_report`) | fast | Tool-driven / rote tasks; 3× cheaper with no observed quality regression |

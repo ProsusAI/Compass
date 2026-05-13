@@ -327,7 +327,29 @@ class TestStage4ThreePhaseDetection:
         _setup_stage4_v1_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent_iterative"
+        instr = result.get("subagent_instruction", "")
+        assert instr is not None
+        # Review phase instruction contains stage='review' and review tools
+        assert "stage='review'" in instr
+        assert "build_review_briefing_tool" in instr
+
+
+    def test_normal_loop_review_when_v1_filename_absent(self, tmp_path: Path) -> None:
+        """Regression: cold-start can emit variant_id='v2' (not 'v1'), so prompts/v1.txt
+        never exists. After advance_step_tool runs, loop_phase='review' must route to
+        the Review Agent — not back to build_v1. State.round is the source of truth."""
+        _setup_stage4_cold_start_done(tmp_path, "r1")
+        (tmp_path / "r1" / "prompts").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "r1" / "prompts" / "v2.txt").write_text("prompt: test")
+        search = tmp_path / "r1" / "search"
+        (search / "search_state.json").write_text(json.dumps({"round": 1, "converged": False, "loop_phase": "review"}))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        instr = result.get("subagent_instruction", "")
+        assert instr is not None
+        # Review phase instruction routes to review stage, not build
+        assert "stage='review'" in instr
+        assert "build_review_briefing_tool" in instr
+
 
     def test_normal_loop_build_phase(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
@@ -338,7 +360,11 @@ class TestStage4ThreePhaseDetection:
         (search / "build_dispatched.json").write_text(json.dumps({"round": 1}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_prompt_builder"
+        instr = result.get("subagent_instruction", "")
+        assert instr is not None
+        # Build phase instruction contains prompt_building stage and build tools
+        assert "stage='prompt_building'" in instr
+        assert "register_candidate_tool" in instr
 
     def test_stage4_complete_when_converged(self, tmp_path: Path) -> None:
         _setup_stage4_converged(tmp_path, "r1")
@@ -518,11 +544,15 @@ class TestStage4RerunMode:
         (base / run_id / "rerun_config.json").write_text(json.dumps(rerun_config))
 
     def test_rerun_mode_returns_rerun_instruction(self, tmp_path: Path) -> None:
-        """Stage 4 with rerun_config.json returns odysseus_prompt_builder_rerun prompt."""
+        """Stage 4 with rerun_config.json returns rerun-specific subagent_instruction."""
         self._setup_rerun_ready(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_prompt_builder_rerun"
+        instr = result.get("subagent_instruction", "")
+        assert instr is not None
+        # Rerun instruction mentions rerun mode and prompt_building stage
+        assert "stage='prompt_building'" in instr
+        assert "rerun" in instr.lower()
 
     def test_rerun_mode_subagent_instruction_mentions_rerun(self, tmp_path: Path) -> None:
         """Rerun subagent instruction contains source_prompt_version and new_backend."""

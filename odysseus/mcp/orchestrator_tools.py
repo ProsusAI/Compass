@@ -70,11 +70,11 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"<instructions>\n"
         f"You are the Odysseus pipeline orchestrator. You have two modes:\n\n"
         f"1. STAGE 1 — User Input: You personally act as the User Input Agent (system prompt below).\n"
-        f"2. ALL OTHER STAGES — Dispatcher: When get_pipeline_status returns DISPATCH_REQUIRED: true,\n"
-        f"   you MUST spawn a sub-agent using the subagent_instruction. Never call stage tools yourself.\n\n"
+        f"2. ALL OTHER STAGES — Dispatcher: When get_pipeline_status returns a non-null\n"
+        f"   `subagent_instruction`, you MUST spawn a sub-agent using it. Never call stage tools yourself.\n\n"
         f"DISPATCH PROTOCOL (for all stages after Stage 1):\n"
         f"  a. Call get_pipeline_status(run_id=...) to get the next action\n"
-        f"  b. If DISPATCH_REQUIRED is true → read `subagent_instruction` for your dispatch checklist\n"
+        f"  b. If `subagent_instruction` is non-null → read it for your dispatch checklist\n"
         f"  c. Call `start_stage(...)`. ITS RESPONSE CONTAINS the `sub_agent_prompt` field —\n"
         f"     that is the sub-agent's prompt. Keep it for step (d).\n"
         f"  d. Spawn a sub-agent. The sub-agent's INITIAL USER MESSAGE MUST be the `sub_agent_prompt`\n"
@@ -168,19 +168,20 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
         run_id: Optional pipeline run identifier.
 
     Returns:
-        JSON object with current stage, DISPATCH_REQUIRED flag, and subagent_instruction
-        (orchestrator-facing dispatch checklist only — no prompt body).
+        JSON object with current stage, subagent_instruction (non-null when dispatch
+        is needed, null when the pipeline is at a terminal state), and stage details.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
     activate_prompt = result.get("activate_prompt")
 
-    if result.get("subagent_instruction"):
+    subagent_instruction: str | None = result.get("subagent_instruction")
+    if subagent_instruction:
         recommended_model = recommended_model_for(activate_prompt)
         tier = "strong" if recommended_model == "sonnet" else "fast"
         model_alias = '"sonnet"' if recommended_model == "sonnet" else '"haiku"'
-        result["subagent_instruction"] = (
+        subagent_instruction = (
             "⚠️ DISPATCH REQUIRED — Spawn a sub-agent. "
             "Do NOT call stage tools yourself.\n\n"
             f"  Agent() parameters you MUST set:\n"
@@ -191,19 +192,18 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
             f'    - isolation              (do NOT pass isolation="worktree". Sub-agents\n'
             f"      MUST share the orchestrator's cwd so artifacts under outputs/<run_id>/\n"
             f"      are visible on return, and the pipeline can run in non-git working\n"
-            f"      directories.)\n\n" + result["subagent_instruction"]
+            f"      directories.)\n\n" + subagent_instruction
         )
-        output = {
-            "run_id": result["run_id"],
-            "current_stage": result["current_stage"],
-            "current_stage_name": result["current_stage_name"],
-            "DISPATCH_REQUIRED": True,
-            "subagent_instruction": result["subagent_instruction"],
-            "stages": result["stages"],
-            "discovered_runs": result.get("discovered_runs", []),
-        }
-        return json.dumps(output, indent=2)
-    return json.dumps(result, indent=2)
+
+    output = {
+        "run_id": result["run_id"],
+        "current_stage": result["current_stage"],
+        "current_stage_name": result["current_stage_name"],
+        "subagent_instruction": subagent_instruction,
+        "stages": result["stages"],
+        "discovered_runs": result.get("discovered_runs", []),
+    }
+    return json.dumps(output, indent=2)
 
 
 @mcp.tool()
