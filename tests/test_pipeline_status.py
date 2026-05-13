@@ -107,7 +107,8 @@ class TestGetPipelineStatus:
         (tmp_path / "abc12345" / "validation" / "data_quality_report.json").write_text(json.dumps(report))
         result = get_pipeline_status(tmp_path, "abc12345", project_dir=tmp_path)
         assert result["stages"][1]["status"] == "incomplete"
-        assert result["stages"][1]["detail"] == "data_quality_critical_fail"
+        assert result["stages"][1]["detail"]["code"] == "data_quality_critical_fail"
+        assert result["stages"][1]["detail"]["kind"] == "halt"
         assert result["current_stage"] == 2
 
     def test_warning_severity_does_not_block(self, tmp_path: Path) -> None:
@@ -394,7 +395,7 @@ class TestStage3PricingValidation:
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["stages"][1]["status"] == "complete"
         assert result["stages"][2]["status"] == "incomplete"
-        assert result["stages"][2]["detail"] == "pricing_missing"
+        assert result["stages"][2]["detail"]["code"] == "pricing_missing"
 
     def test_incomplete_when_yaml_is_malformed(self, tmp_path: Path) -> None:
         """Stage 3 treats malformed YAML as incomplete, not a crash."""
@@ -482,7 +483,7 @@ class TestStage3RerunMode:
         self._write_rerun_config(tmp_path / "r1", new_backend="openai")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["stages"][2]["status"] == "incomplete"
-        assert result["stages"][2]["detail"] == "pricing_missing"
+        assert result["stages"][2]["detail"]["code"] == "pricing_missing"
 
     def test_stage3_incomplete_when_new_backend_yaml_does_not_exist(self, tmp_path: Path) -> None:
         """rerun_config.json references a backend YAML that doesn't exist → incomplete."""
@@ -760,6 +761,61 @@ class TestDetectStage4PhasePostColdstart:
         (run_dir / "search" / "build_dispatched.json").write_text(json.dumps({"round": 1}))
         phase, flags = _detect_stage_4_phase_beam(run_dir, rerun_config=None)
         assert (phase, flags) == ("build", {})
+
+
+class TestStageDetailStructure:
+    """StageDetail is serialized as a dict and has the expected structure."""
+
+    def test_mapping_confirmation_needed_detail_shape(self, tmp_path: Path) -> None:
+        """mapping_confirmation_needed detail has kind, code, artifact_path, and serializes cleanly."""
+        import json
+
+        _setup_stage1(tmp_path, "r1")
+        (tmp_path / "r1" / "validation").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "r1" / "validation" / "proposed_mapping.json").write_text('{"fields": {}}')
+        # No transformed.jsonl → proposed_mapping state
+        result = get_pipeline_status(tmp_path, "r1")
+        detail = result["stages"][1].get("detail")
+        assert detail is not None
+        assert detail["kind"] == "user_input_needed"
+        assert detail["code"] == "mapping_confirmation_needed"
+        assert detail["artifact_path"] == "validation/proposed_mapping.json"
+        assert "prompt_to_user" in detail
+        assert "expected_response" in detail
+        assert detail["halt_on_failure_after"] == 2
+        # Must serialize cleanly to JSON
+        serialized = json.dumps(detail)
+        reparsed = json.loads(serialized)
+        assert reparsed["code"] == "mapping_confirmation_needed"
+
+    def test_pricing_missing_detail_has_correct_halt_after(self, tmp_path: Path) -> None:
+        """Stage 3 pricing_missing detail has halt_on_failure_after=3."""
+        _setup_through_stage2(tmp_path, "r1")
+        backends = tmp_path / "backends"
+        backends.mkdir(parents=True, exist_ok=True)
+        (backends / "mock.yaml").write_text(
+            "model: claude-haiku-4-5\nprovider: anthropic\nrequests_per_minute: 100\ntokens_per_minute: 100000\n"
+        )
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        detail = result["stages"][2].get("detail")
+        assert detail is not None
+        assert detail["code"] == "pricing_missing"
+        assert detail["halt_on_failure_after"] == 3
+
+    def test_data_quality_critical_fail_is_halt_kind(self, tmp_path: Path) -> None:
+        """data_quality_critical_fail detail has kind='halt'."""
+        _setup_through_stage2(tmp_path, "r1")
+        report = {
+            "schema_findings": [
+                {"field": "route_in_routes", "status": "fail", "severity": "critical", "violation": "bad", "row_indices": [0]}
+            ]
+        }
+        (tmp_path / "r1" / "validation" / "data_quality_report.json").write_text(json.dumps(report))
+        result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
+        detail = result["stages"][1].get("detail")
+        assert detail is not None
+        assert detail["kind"] == "halt"
+        assert detail["code"] == "data_quality_critical_fail"
 
 
 class TestStage4BuildInstructionByteIdentical:

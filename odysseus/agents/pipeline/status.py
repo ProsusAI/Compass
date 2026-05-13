@@ -6,10 +6,12 @@ Never writes files — pure queries only.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from odysseus.agents.pipeline.instructions import (
     STAGE_1_INSTRUCTION,
@@ -37,6 +39,27 @@ def _is_build_dispatched(run_id: str, search_dir: Path) -> bool:  # noqa: ARG001
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# StageDetail — structured user-mediation payload
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StageDetail:
+    """Structured payload for stages that require user interaction or signal a hard halt.
+
+    Serialise via ``dataclasses.asdict(detail)`` when embedding in JSON responses.
+    """
+
+    kind: Literal["user_input_needed", "halt"]
+    code: str
+    artifact_path: str
+    prompt_to_user: str
+    expected_response: str
+    halt_on_failure_after: int | None = 2
+
 
 # ---------------------------------------------------------------------------
 # Stage definitions
@@ -288,8 +311,8 @@ def get_pipeline_status(
             "status": status,
             "artifacts": artifacts,
         }
-        if detail:
-            entry["detail"] = detail
+        if detail is not None:
+            entry["detail"] = dataclasses.asdict(detail)
 
         stage_results.append(entry)
 
@@ -352,7 +375,7 @@ def _check_stage(
     run_dir: Path,
     project_dir: Path,
     rerun_config: dict[str, Any] | None = None,
-) -> tuple[str, list[str], str]:
+) -> tuple[str, list[str], StageDetail | None]:
     """Check a single stage.
 
     Returns (status, artifact_paths, detail).
@@ -377,11 +400,11 @@ def _check_stage(
     artifacts = [str(folder / f) for f in files]
     missing = [p for p in artifacts if not Path(p).is_file()]
     if missing:
-        return "incomplete", artifacts, ""
-    return "complete", artifacts, ""
+        return "incomplete", artifacts, None
+    return "complete", artifacts, None
 
 
-def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
+def _check_stage_2(run_dir: Path) -> tuple[str, list[str], StageDetail | None]:
     """Stage 2: Data Validated — validation files + dev/holdout split outputs.
 
     Critical-severity failures in the data quality report block stage
@@ -404,19 +427,49 @@ def _check_stage_2(run_dir: Path) -> tuple[str, list[str], str]:
 
     quality_report_path = run_dir / "validation" / "data_quality_report.json"
     if quality_report_path.is_file() and _has_critical_schema_failure(quality_report_path):
-        return "incomplete", artifacts, "data_quality_critical_fail"
+        return (
+            "incomplete",
+            artifacts,
+            StageDetail(
+                kind="halt",
+                code="data_quality_critical_fail",
+                artifact_path="validation/data_quality_report.json",
+                prompt_to_user=(
+                    "The data quality report has critical schema failures. "
+                    "Read the failing schema_findings (severity='critical', status='fail') "
+                    "and present the violations to the user. Ask for a corrected field mapping."
+                ),
+                expected_response="Corrected field mapping or instruction to proceed despite failures.",
+                halt_on_failure_after=2,
+            ),
+        )
 
     missing = [p for p in artifacts if not Path(p).is_file()]
     if not missing:
-        return "complete", artifacts, ""
+        return "complete", artifacts, None
 
     # Check for intermediate "proposed mapping" state
     proposed_mapping = run_dir / "validation" / "proposed_mapping.json"
     transformed = run_dir / "validation" / "transformed.jsonl"
     if proposed_mapping.is_file() and not transformed.is_file():
-        return "incomplete", artifacts + [str(proposed_mapping)], "mapping_confirmation_needed"
+        return (
+            "incomplete",
+            artifacts + [str(proposed_mapping)],
+            StageDetail(
+                kind="user_input_needed",
+                code="mapping_confirmation_needed",
+                artifact_path="validation/proposed_mapping.json",
+                prompt_to_user=(
+                    "A proposed field mapping is ready for review. "
+                    "Present it as a table (source field → target field) with sample rows "
+                    "and list any unmapped fields. Ask the user to confirm or provide corrections."
+                ),
+                expected_response="Confirmed mapping or corrected mapping from the user.",
+                halt_on_failure_after=2,
+            ),
+        )
 
-    return "incomplete", artifacts, ""
+    return "incomplete", artifacts, None
 
 
 def _has_critical_schema_failure(quality_report_path: Path) -> bool:
@@ -444,7 +497,7 @@ def _check_stage_3(
     project_dir: Path,
     run_dir: Path,
     rerun_config: dict[str, Any] | None = None,
-) -> tuple[str, list[str], str]:
+) -> tuple[str, list[str], StageDetail | None]:
     """Stage 3: Backend Configured.
 
     In normal mode: at least one backends/*.yaml must have valid pricing.
@@ -461,31 +514,76 @@ def _check_stage_3(
         # Rerun mode: new_backend must be explicitly set
         new_backend = rerun_config.get("new_backend")
         if not new_backend:
-            return "incomplete", [], "rerun_backend_not_configured"
+            return (
+                "incomplete",
+                [],
+                StageDetail(
+                    kind="user_input_needed",
+                    code="rerun_backend_not_configured",
+                    artifact_path="rerun_config.json",
+                    prompt_to_user=(
+                        "The rerun configuration does not specify a new backend. "
+                        "Ask the user which backend they want to use for the rerun."
+                    ),
+                    expected_response="Backend name to use for the rerun.",
+                    halt_on_failure_after=3,
+                ),
+            )
 
         backends_dir = project_dir / "backends"
         yaml_path = backends_dir / f"{new_backend}.yaml"
         if not yaml_path.is_file():
-            return "incomplete", [str(yaml_path)], ""
+            return "incomplete", [str(yaml_path)], None
 
         try:
             profile = BackendProfile.from_yaml(yaml_path)
             if profile.pricing is not None:
-                return "complete", [str(yaml_path)], ""
+                return "complete", [str(yaml_path)], None
         except Exception:
             pass
-        return "incomplete", [str(yaml_path)], "pricing_missing"
+        return (
+            "incomplete",
+            [str(yaml_path)],
+            StageDetail(
+                kind="user_input_needed",
+                code="pricing_missing",
+                artifact_path=f"backends/{new_backend}.yaml",
+                prompt_to_user=(
+                    "The backend YAML is missing pricing information. "
+                    "Ask the user for: input_cost_per_million_tokens, "
+                    "cached_cost_per_million_tokens, and output_cost_per_million_tokens."
+                ),
+                expected_response="Pricing values: input, cached, and output costs per million tokens.",
+                halt_on_failure_after=3,
+            ),
+        )
 
     # Normal mode: any backend with pricing
     backends_dir = project_dir / "backends"
     if not backends_dir.is_dir():
-        return "incomplete", [], ""
+        return "incomplete", [], None
     yaml_files = list(backends_dir.glob("*.yaml"))
     if not yaml_files:
         backend_options = run_dir / "backend_options.json"
         if backend_options.is_file():
-            return "incomplete", [str(backend_options)], "backend_selection_needed"
-        return "incomplete", [], ""
+            return (
+                "incomplete",
+                [str(backend_options)],
+                StageDetail(
+                    kind="user_input_needed",
+                    code="backend_selection_needed",
+                    artifact_path="backend_options.json",
+                    prompt_to_user=(
+                        "No backend is configured yet. "
+                        "Read backend_options.json and present the available backends to the user. "
+                        "If backends exist: ask which to use or if they want to create a new one. "
+                        "If none: ask for label, provider, model, requests_per_minute, tokens_per_minute."
+                    ),
+                    expected_response="Backend selection or new backend configuration from the user.",
+                    halt_on_failure_after=3,
+                ),
+            )
+        return "incomplete", [], None
 
     artifacts = [str(f) for f in sorted(yaml_files)]
     has_priced_backend = False
@@ -500,25 +598,40 @@ def _check_stage_3(
             continue
 
     if not has_priced_backend:
-        return "incomplete", artifacts, "pricing_missing"
-    return "complete", artifacts, ""
+        return (
+            "incomplete",
+            artifacts,
+            StageDetail(
+                kind="user_input_needed",
+                code="pricing_missing",
+                artifact_path="backends/",
+                prompt_to_user=(
+                    "No backend with pricing is configured. "
+                    "Ask the user for: input_cost_per_million_tokens, "
+                    "cached_cost_per_million_tokens, and output_cost_per_million_tokens."
+                ),
+                expected_response="Pricing values: input, cached, and output costs per million tokens.",
+                halt_on_failure_after=3,
+            ),
+        )
+    return "complete", artifacts, None
 
 
-def _check_stage_4(run_dir: Path) -> tuple[str, list[str], str]:
+def _check_stage_4(run_dir: Path) -> tuple[str, list[str], StageDetail | None]:
     """Stage 4: Refinement Loop — search_state.json with converged == true."""
     search_state = run_dir / "search" / "search_state.json"
     if not search_state.is_file():
-        return "incomplete", [], ""
+        return "incomplete", [], None
     try:
         data = json.loads(search_state.read_text())
         if data.get("converged") is True:
-            return "complete", [str(search_state)], ""
+            return "complete", [str(search_state)], None
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
-    return "incomplete", [str(search_state)], ""
+    return "incomplete", [str(search_state)], None
 
 
-def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
+def _check_stage_5(run_dir: Path) -> tuple[str, list[str], StageDetail | None]:
     """Stage 5: Final Report — reports/final_report.md exists."""
     report = run_dir / "reports" / "final_report.md"
     pareto_candidates = run_dir / "pareto_candidates_listed.json"
@@ -533,7 +646,7 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
     holdout_report_exists = holdout_report_path is not None
 
     if report.is_file():
-        return "complete", [str(report)], ""
+        return "complete", [str(report)], None
 
     artifacts: list[str] = []
     if pareto_candidates.is_file():
@@ -542,9 +655,25 @@ def _check_stage_5(run_dir: Path) -> tuple[str, list[str], str]:
         artifacts.append(str(holdout_report_path))
 
     if pareto_candidates.is_file() and not holdout_report_exists:
-        return "incomplete", artifacts, "version_selection_needed"
+        return (
+            "incomplete",
+            artifacts,
+            StageDetail(
+                kind="user_input_needed",
+                code="version_selection_needed",
+                artifact_path="pareto_candidates_listed.json",
+                prompt_to_user=(
+                    "Pareto candidates are listed but no holdout evaluation has been run. "
+                    "Read pareto_candidates_listed.json and present the candidates as a table "
+                    "(version, quality score, cost, round). Ask which prompt_versions "
+                    "(one or more) the user wants to evaluate on the holdout set."
+                ),
+                expected_response="One or more prompt_versions chosen by the user.",
+                halt_on_failure_after=2,
+            ),
+        )
 
-    return "incomplete", artifacts, ""
+    return "incomplete", artifacts, None
 
 
 # ---------------------------------------------------------------------------
