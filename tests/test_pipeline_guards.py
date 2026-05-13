@@ -109,7 +109,7 @@ class TestCheckArtifacts:
 # ---------------------------------------------------------------------------
 
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
-_DISPATCH_PATCH = "odysseus.agents.pipeline.dispatch.get_project_dir"
+_DISPATCH_PATCH = "odysseus.agents.pipeline.paths.get_project_dir"
 
 
 def _setup_stage_scope(stage_name: str) -> None:

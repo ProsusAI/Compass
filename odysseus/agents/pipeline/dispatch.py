@@ -13,20 +13,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from odysseus.agents.pipeline import paths
 from odysseus.project_dir import get_project_dir
-
-
-def _search_dir(run_id: str, output_dir: Path | None = None) -> Path:
-    base = output_dir or (get_project_dir() / "outputs")
-    return base / run_id / "search"
-
-
-def _build_marker_path(run_id: str, output_dir: Path | None = None) -> Path:
-    return _search_dir(run_id, output_dir) / "build_dispatched.json"
-
-
-def _review_marker_path(run_id: str, output_dir: Path | None = None) -> Path:
-    return _search_dir(run_id, output_dir) / "review_dispatched.json"
 
 
 def record_build_dispatched(run_id: str, *, round: int, output_dir: Path | None = None) -> None:
@@ -34,40 +22,40 @@ def record_build_dispatched(run_id: str, *, round: int, output_dir: Path | None 
 
     ``complete_stage(prompt_building)`` will refuse to advance while this marker exists.
     """
-    path = _build_marker_path(run_id, output_dir)
+    path = paths.build_marker_path(run_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"round": round}), encoding="utf-8")
 
 
 def clear_build_dispatched(run_id: str, output_dir: Path | None = None) -> None:
     """Remove the build-dispatch marker if it exists."""
-    path = _build_marker_path(run_id, output_dir)
+    path = paths.build_marker_path(run_id, output_dir)
     if path.exists():
         path.unlink()
 
 
 def is_build_dispatched(run_id: str, output_dir: Path | None = None) -> bool:
     """Return True iff the build-dispatch marker file exists on disk."""
-    return _build_marker_path(run_id, output_dir).exists()
+    return paths.build_marker_path(run_id, output_dir).exists()
 
 
 def record_review_dispatched(run_id: str, *, round: int, output_dir: Path | None = None) -> None:
     """Mark that the Review Agent sub-agent has been dispatched for this round."""
-    path = _review_marker_path(run_id, output_dir)
+    path = paths.review_marker_path(run_id, output_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"round": round}), encoding="utf-8")
 
 
 def clear_review_dispatched(run_id: str, output_dir: Path | None = None) -> None:
     """Remove the review-dispatch marker if it exists."""
-    path = _review_marker_path(run_id, output_dir)
+    path = paths.review_marker_path(run_id, output_dir)
     if path.exists():
         path.unlink()
 
 
 def is_review_dispatched(run_id: str, output_dir: Path | None = None) -> bool:
     """Return True iff the review-dispatch marker file exists on disk."""
-    return _review_marker_path(run_id, output_dir).exists()
+    return paths.review_marker_path(run_id, output_dir).exists()
 
 
 def is_build_recovering(run_id: str, output_dir: str = "outputs") -> bool:
@@ -156,7 +144,7 @@ def review_fanout_status(
         # No algorithm_state yet — fall through to single-slot semantics (pre-calibration).
 
     # Single-slot path (hill-climb, or EMOSA pre-calibration)
-    search_dir = _search_dir(run_id, output_dir)
+    search_dir = paths.search_dir(run_id, output_dir)
     child_variants_path = search_dir / "child_variants.json"
     if child_variants_path.exists():
         return DispatchFanout(expected=1, completed=[0])

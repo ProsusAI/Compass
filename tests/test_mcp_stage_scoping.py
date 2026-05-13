@@ -293,7 +293,7 @@ async def test_complete_stage_resets_to_orchestrator(mock_ctx, tmp_path):
         await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
     assert get_active_stage() == "review"
 
-    with patch("odysseus.agents.pipeline.dispatch.get_project_dir", return_value=tmp_path):
+    with patch("odysseus.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
         result = await complete_stage(ctx=mock_ctx, run_id="test-run")
     assert get_active_stage() == "orchestrator"
     assert "review" in result
@@ -316,7 +316,7 @@ async def test_complete_stage_sends_tool_list_changed(mock_ctx, tmp_path):
     with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
         await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
     mock_ctx.session.send_tool_list_changed.reset_mock()
-    with patch("odysseus.agents.pipeline.dispatch.get_project_dir", return_value=tmp_path):
+    with patch("odysseus.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
         await complete_stage(ctx=mock_ctx, run_id="test-run")
     mock_ctx.session.send_tool_list_changed.assert_awaited_once()
 
