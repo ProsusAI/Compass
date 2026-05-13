@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from odysseus.agents.pipeline import paths
+from odysseus.agents.pipeline import paths, tool_registry
 from odysseus.agents.pipeline.instructions import (
     STAGE_1_INSTRUCTION,
     STAGE_2_INSTRUCTION,
@@ -59,52 +59,6 @@ _STAGES: list[dict[str, Any]] = [
     {"stage": 3, "name": "Backend Configured", "subfolder": None, "files": []},
     {"stage": 4, "name": "Refinement Loop", "subfolder": "search", "files": []},
     {"stage": 5, "name": "Final Report", "subfolder": None, "files": []},
-]
-
-# ---------------------------------------------------------------------------
-# Deduplicated tool lists for Stage 4 phases
-# ---------------------------------------------------------------------------
-
-_COLD_REVIEW_TOOLS: list[str] = [
-    "get_search_state_tool",
-    "build_review_briefing_tool",
-    "record_directive_outcomes_tool",
-]
-
-_REVIEW_TOOLS: list[str] = [
-    "get_search_state_tool",
-    "build_review_briefing_tool",
-    "record_directive_outcomes_tool",
-    "get_prompt_text_tool",
-    "query_holdout_examples_tool",
-]
-
-_BUILD_TOOLS: list[str] = [
-    "get_search_state_tool",
-    "get_routing_context_tool",
-    "get_child_variants_tool",
-    "get_edit_directives_tool",
-    "get_prompt_text_tool",
-    "get_score_report_tool",
-    "init_search_state_tool",
-    "register_candidate_tool",
-    "record_eval_result_tool",
-    "advance_step_tool",
-    "save_prompt_tool",
-    "run_eval",
-    "run_batch_eval",
-]
-
-_RERUN_TOOLS: list[str] = [
-    "get_search_state_tool",
-    "get_routing_context_tool",
-    "get_prompt_text_tool",
-    "init_search_state_tool",
-    "register_candidate_tool",
-    "record_eval_result_tool",
-    "advance_step_tool",
-    "save_prompt_tool",
-    "run_eval",
 ]
 
 # ---------------------------------------------------------------------------
@@ -911,7 +865,7 @@ def _next_action_for_stage_4(
             "Stage 4 — rerun mode: spawn the Prompt Builder Rerun agent to restructure "
             f"the source prompt (version {source_version}) for the new backend ({new_backend}). "
             "REQUIRED: activate prompt 'odysseus_prompt_builder_rerun' before calling any build tools.",
-            _RERUN_TOOLS,
+            tool_registry.RERUN_TOOLS,
             ["odysseus_prompt_builder_rerun"],
             rerun_instr,
             algorithm,
@@ -922,7 +876,7 @@ def _next_action_for_stage_4(
             "Stage 4 — cold-start: spawn the Review Agent to seed the search "
             "with diverse initial hypotheses. "
             "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            _COLD_REVIEW_TOOLS,
+            tool_registry.COLD_REVIEW_TOOLS,
             ["odysseus_review_agent_cold_start"],
             STAGE_4_COLD_START_INSTRUCTION,
             algorithm,
@@ -935,7 +889,7 @@ def _next_action_for_stage_4(
                 "Stage 4 — post-cold-start review (round 2): spawn the Review Agent to emit "
                 "exactly one protected child per scored cold-start parent. "
                 "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
-                _REVIEW_TOOLS,
+                tool_registry.REVIEW_TOOLS,
                 ["odysseus_review_agent_post_coldstart"],
                 STAGE_4_REVIEW_INSTRUCTION,
                 algorithm,
@@ -944,7 +898,7 @@ def _next_action_for_stage_4(
             "Stage 4 — review phase: spawn the Review Agent to analyse "
             "eval results and emit edit directives. "
             "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools.",
-            _REVIEW_TOOLS,
+            tool_registry.REVIEW_TOOLS,
             ["odysseus_review_agent_iterative"],
             STAGE_4_REVIEW_INSTRUCTION,
             algorithm,
@@ -975,7 +929,7 @@ def _next_action_for_stage_4(
 
     return (
         action_text,
-        _BUILD_TOOLS,
+        tool_registry.BUILD_TOOLS,
         ["odysseus_prompt_builder"],
         STAGE_4_BUILD_INSTRUCTION(is_first_round=is_first_round, recover_active_evals=recover_active_evals),
         algorithm,
