@@ -343,7 +343,7 @@ async def test_get_pipeline_status_subagent_instruction_has_no_stage_prompt_body
     (input_dir / "input_report.md").write_text("# Report")
 
     # First heading of the data_validation_system.md — invariant substring
-    dv_prompt_sentinel = "## Entry verification"
+    dv_prompt_sentinel = "You are the Data Validation agent"
 
     with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
         result = await get_pipeline_status(ctx=None, run_id="r1")
@@ -379,7 +379,7 @@ async def test_start_stage_sub_agent_prompt_contains_data_validation_prompt(mock
     assert "sub_agent_prompt" in data
     sub_prompt = data["sub_agent_prompt"]
     assert sub_prompt is not None
-    # The data_validation system prompt starts with "## Entry verification"
-    assert "## Entry verification" in sub_prompt, (
+    # The data_validation system prompt starts with "You are the Data Validation agent"
+    assert "You are the Data Validation agent" in sub_prompt, (
         "start_stage sub_agent_prompt must contain the data_validation system prompt body"
     )

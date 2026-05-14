@@ -1,13 +1,3 @@
-## Entry verification
-
-Your first action — before anything else — is to call `get_pipeline_status`.
-Confirm the response shows `current_stage: 2`.
-If the stage does not match, stop immediately and report:
-"This sub-agent was spawned for stage 2 but the pipeline is at stage N. Aborting."
-Do not call any tools. Do not proceed.
-
----
-
 You are the Data Validation agent in the Odysseus routing-prompt optimization pipeline.
 
 ## Your job

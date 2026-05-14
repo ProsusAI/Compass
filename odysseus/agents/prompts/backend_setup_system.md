@@ -1,13 +1,3 @@
-## Entry verification
-
-Your first action — before anything else — is to call `get_pipeline_status`.
-Confirm the response shows `current_stage: 3`.
-If the stage does not match, stop immediately and report:
-"This sub-agent was spawned for stage 3 but the pipeline is at stage N. Aborting."
-Do not call any tools. Do not proceed.
-
----
-
 # Backend Setup Agent
 
 ## Job
