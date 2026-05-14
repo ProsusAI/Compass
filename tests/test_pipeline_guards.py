@@ -10,88 +10,8 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.agents.pipeline.dispatch import record_build_dispatched
-from odysseus.agents.pipeline.guards import check_artifacts, require_artifacts
+from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.pipeline.status import _detect_stage_4_phase
-
-
-class TestRequireArtifacts:
-    def test_passes_when_all_exist(self, tmp_path: Path) -> None:
-        (tmp_path / "a.json").write_text("{}")
-        (tmp_path / "b.json").write_text("{}")
-
-        @require_artifacts(
-            tmp_path / "a.json",
-            tmp_path / "b.json",
-            stage=2,
-            stage_name="Data Validated",
-            hint="Run validate_dataset first.",
-        )
-        def my_tool() -> str:
-            return "ok"
-
-        assert my_tool() == "ok"
-
-    def test_raises_when_missing(self, tmp_path: Path) -> None:
-        (tmp_path / "a.json").write_text("{}")
-
-        @require_artifacts(
-            tmp_path / "a.json",
-            tmp_path / "missing.json",
-            stage=2,
-            stage_name="Data Validated",
-            hint="Run validate_dataset first.",
-        )
-        def my_tool() -> str:
-            return "ok"
-
-        with pytest.raises(ToolError, match="Pipeline precondition not met"):
-            my_tool()
-
-    def test_lists_all_missing(self, tmp_path: Path) -> None:
-        @require_artifacts(
-            tmp_path / "a.json",
-            tmp_path / "b.json",
-            stage=2,
-            stage_name="Data Validated",
-            hint="Run validate_dataset first.",
-        )
-        def my_tool() -> str:
-            return "ok"
-
-        with pytest.raises(ToolError, match="a.json") as exc_info:
-            my_tool()
-        assert "b.json" in str(exc_info.value)
-
-    def test_error_includes_stage_hint_and_status_ref(self, tmp_path: Path) -> None:
-        @require_artifacts(
-            tmp_path / "missing.json", stage=3, stage_name="Data Validation", hint="Complete data validation first."
-        )
-        def my_tool() -> str:
-            return "ok"
-
-        with pytest.raises(ToolError, match="stage 3") as exc_info:
-            my_tool()
-        msg = str(exc_info.value)
-        assert "Data Validation" in msg
-        assert "Complete data validation first." in msg
-        assert "get_pipeline_status" in msg
-
-    async def test_works_with_async(self, tmp_path: Path) -> None:
-        (tmp_path / "a.json").write_text("{}")
-
-        @require_artifacts(tmp_path / "a.json", stage=1, stage_name="Input", hint="Submit report.")
-        async def my_async_tool() -> str:
-            return "ok"
-
-        assert await my_async_tool() == "ok"
-
-    async def test_raises_for_async_when_missing(self, tmp_path: Path) -> None:
-        @require_artifacts(tmp_path / "missing.json", stage=1, stage_name="Input", hint="Submit report.")
-        async def my_async_tool() -> str:
-            return "ok"
-
-        with pytest.raises(ToolError, match="Pipeline precondition not met"):
-            await my_async_tool()
 
 
 class TestCheckArtifacts:
@@ -102,6 +22,22 @@ class TestCheckArtifacts:
     def test_raises_when_missing(self, tmp_path: Path) -> None:
         with pytest.raises(ToolError, match="Pipeline precondition not met"):
             check_artifacts(tmp_path / "nope.json", stage=1, stage_name="Input", hint="Submit report.")
+
+    def test_lists_all_missing_with_stage_context(self, tmp_path: Path) -> None:
+        (tmp_path / "a.json").write_text("{}")
+        with pytest.raises(ToolError, match="missing.json") as exc_info:
+            check_artifacts(
+                tmp_path / "a.json",
+                tmp_path / "missing.json",
+                stage=3,
+                stage_name="Data Validation",
+                hint="Complete data validation first.",
+            )
+        msg = str(exc_info.value)
+        assert "stage 3" in msg
+        assert "Data Validation" in msg
+        assert "Complete data validation first." in msg
+        assert "get_pipeline_status" in msg
 
 
 # ---------------------------------------------------------------------------

@@ -379,18 +379,6 @@ Scans `prompts_dir` on construction, populating an in-memory cache: `{stem: cont
 - `version="latest"` → returns the content of the file with the highest `mtime`.
 - Any other version → returns the cached content for `stem == version`, or raises `FileNotFoundError`.
 
-**`async watch() → None`**
-
-Long-running coroutine. Performs an immediate rescan on entry (to catch changes between construction and watch start), then uses `watchfiles.awatch()` to rescan on any filesystem change in `prompts_dir`. Cancel the task to stop watching.
-
-Typical usage:
-```python
-manager = FilePromptManager("prompts")
-watch_task = asyncio.create_task(manager.watch())
-# ... run eval loop ...
-watch_task.cancel()
-```
-
 ---
 
 ## Pricing

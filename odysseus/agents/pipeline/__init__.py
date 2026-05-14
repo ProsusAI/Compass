@@ -12,7 +12,7 @@ from odysseus.agents.pipeline.dispatch import (
     record_review_dispatched,
     review_fanout_status,
 )
-from odysseus.agents.pipeline.guards import check_artifacts, require_artifacts
+from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.pipeline.status import discover_runs, get_pipeline_status
 
 __all__ = [
@@ -26,6 +26,5 @@ __all__ = [
     "is_review_dispatched",
     "record_build_dispatched",
     "record_review_dispatched",
-    "require_artifacts",
     "review_fanout_status",
 ]
