@@ -8,7 +8,7 @@ from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
 
 import odysseus.project_dir as _project_dir_mod
-from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.eval_runner import run_eval as _run_eval
 from odysseus.agents.pipeline.dispatch import clear_build_dispatched, record_build_dispatched
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
@@ -210,7 +210,6 @@ async def run_eval(
             project_dir=project_dir,
         )
 
-    agent = EvalRunnerAgent()
     context: dict[str, Any] = {
         "prompt_version": prompt_version,
         "backend": run_config.backend if run_config else backend,
@@ -223,7 +222,7 @@ async def run_eval(
     else:
         context["config_path"] = config_path
 
-    result = await agent.run(context)
+    result = await _run_eval(context)
 
     if "error" in result:
         err = result["error"]

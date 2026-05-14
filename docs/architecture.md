@@ -336,7 +336,7 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 |---|---|
 | `odysseus/` | Main Python package: MCP server, agents, eval engine, prompt manager |
 | `odysseus/mcp/` | MCP server package: `server.py` (app + stage registry), `*_tools.py` (per-stage tools), `resources.py`, `prompts.py` |
-| `odysseus/agents/` | Root-level modules: `base.py`, `eval_runner.py`; stage subdirectories below |
+| `odysseus/agents/` | Root-level modules: `eval_runner.py` (`run_eval`), `routing_context.py`; stage subdirectories below |
 | `odysseus/agents/user_input/` | User input: input report contract (`report.py`), context/defaults/taxonomy/template resources |
 | `odysseus/agents/pipeline/` | Pipeline guards (`guards.py`), status detection (`status.py`), dispatch markers and fanout primitives (`dispatch.py`) |
 | `odysseus/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform, stratified split |

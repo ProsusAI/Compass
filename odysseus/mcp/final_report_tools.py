@@ -8,7 +8,7 @@ from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
 
 import odysseus.project_dir as _project_dir_mod
-from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.eval_runner import run_eval
 from odysseus.agents.final_report.preprocessor import build_final_report_briefing
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
@@ -255,7 +255,6 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
 
     holdout_path = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
 
-    agent = EvalRunnerAgent()
     results: list[dict] = []
 
     for version in prompt_versions:
@@ -286,7 +285,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
             "run_config": run_config,
         }
 
-        result = await agent.run(context)
+        result = await run_eval(context)
 
         if "error" in result:
             err = result["error"]

@@ -11,7 +11,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp, model_specific_conventions
 
-AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
+AGENT_RUN = "odysseus.mcp.prompt_building_tools._run_eval"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 
 

@@ -22,7 +22,7 @@ All five collaborators (`Backend`, `PromptManager`, `DatasetManager`, `MetricsEn
 |---------|-----------|
 | `RunDependencies` | Dataclass holding all injected collaborators + rate-limit ints sourced from the backend profile. Passed to `controller.run()`. |
 | `RunConfig` | Pydantic model: `backend`, `prompt_version`, `data_source`, `data_split`, `metrics`, `concurrency`, `retry`, `output`. Load from YAML via `RunConfig.from_yaml()`. |
-| `ScoreReport` | Slim summary built from `RunReport` after a run; includes `metrics`, `RunSummary`, error breakdown, and an optional run-over-run `RunDiff`. This is the contract between `EvalRunnerAgent` and the review step. |
+| `ScoreReport` | Slim summary built from `RunReport` after a run; includes `metrics`, `RunSummary`, error breakdown, and an optional run-over-run `RunDiff`. This is the contract between `run_eval` and the review step. |
 | Backend profiles | YAML files in `backends/` that define `model`, rate limits (`requests_per_minute`, `tokens_per_minute`), pricing, and provider-specific params. Loaded by `BackendRegistry`. |
 
 ## Deep dives
@@ -53,9 +53,9 @@ Evaluates many `BatchEvalCandidate`s in a single round concurrently, sharing one
 
 Recovery mode (crash resume, `candidates=[]`) lands in commit 4.
 
-## How EvalRunnerAgent wires it
+## How run_eval wires it
 
-`odysseus/agents/eval_runner.py` — `EvalRunnerAgent.run(context)`:
+`odysseus/agents/eval_runner.py` — `run_eval(context)`:
 
 1. **Config loading** — reads `outputs/run_config.yaml`, then overlays `prompt_version`, `data_source`, `backend`, and `data_split="dev"` from context.
 2. **Dependency construction** (`_wire_dependencies`) — loads `BackendRegistry` from `backends/`, looks up the profile by label, constructs `RunDependencies` with `FilePromptManager`, `JsonlDatasetManager`, `create_default_engine()`, and `JsonResultsCollector`. Rate-limit ints come from the profile.

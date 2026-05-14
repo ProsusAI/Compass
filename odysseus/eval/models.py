@@ -290,7 +290,7 @@ class RunDiff(BaseModel):
 
 
 class ScoreReport(BaseModel):
-    """Score report passed from EvalRunnerAgent to Review agent via pipeline context.
+    """Score report passed from run_eval to the Review agent via pipeline context.
 
     This is the contract between the two agents. The Review agent consumes
     this structure to decide whether the prompt iteration improved.

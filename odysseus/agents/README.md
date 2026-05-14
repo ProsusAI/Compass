@@ -34,8 +34,7 @@ data_validation → prompt_builder ↔ review
 
 | Module | Description |
 |--------|-------------|
-| [`base.py`](base.py) | `BaseAgent` abstract base class (`name` property, `run(context)` async method) |
-| [`eval_runner.py`](eval_runner.py) | `EvalRunnerAgent` — the one code-driven agent; orchestrates a full eval run and returns `ScoreReport` |
+| [`eval_runner.py`](eval_runner.py) | `run_eval(context)` — orchestrates a full eval run and returns `ScoreReport` |
 | [`routing_context.py`](routing_context.py) | `RoutingContext` and related models (`RouteDefinition`, `RoutingDimension`, `RouteOrdering`, `SeedVocabulary`) — shared across data validation and prompt builder |
 
 ---
@@ -61,9 +60,11 @@ One system prompt per LLM-driven agent:
 
 ---
 
-## `EvalRunnerAgent` — [`eval_runner.py`](eval_runner.py)
+## Eval Runner — [`eval_runner.py`](eval_runner.py)
 
-The one code-driven agent. Orchestrates a full evaluation run against the dev split without requiring an internal LLM call.
+`async def run_eval(context: dict[str, Any]) -> dict[str, Any]`
+
+Orchestrates a full evaluation run against the dev split without requiring an internal LLM call.
 
 **Role:** Extracts parameters from the pipeline context, loads a run config, wires dependencies, delegates to `odysseus.eval.controller`, and returns a structured `ScoreReport`.
 

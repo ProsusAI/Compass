@@ -8,8 +8,7 @@ Subdirectories:
   review/            — briefing models, directive persistence, preprocessing
 
 Root-level modules:
-  base.py            — BaseAgent abstract interface
-  eval_runner.py     — EvalRunnerAgent (cross-cutting)
+  eval_runner.py     — run_eval() (cross-cutting eval orchestration)
   routing_context.py — domain-agnostic routing context models
 """
 
@@ -39,7 +38,7 @@ from odysseus.agents.data_validation import (
 )
 
 # --- Root-level modules ---
-from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.eval_runner import run_eval
 
 # --- Prompt Builder ---
 from odysseus.agents.prompt_builder import (
@@ -95,7 +94,7 @@ from odysseus.agents.user_input.report import (
 
 __all__ = [
     # Root
-    "EvalRunnerAgent",
+    "run_eval",
     "STATUS_PROCEED",
     "STATUS_PROCEED_WITH_DEFAULTS",
     "USER_INPUT_REPORT_CONTEXT_KEY",

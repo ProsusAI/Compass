@@ -1,4 +1,4 @@
-"""Tests for EvalRunnerAgent (THP-131)."""
+"""Tests for run_eval (THP-131)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import yaml
 
-from odysseus.agents.eval_runner import EvalRunnerAgent
+from odysseus.agents.eval_runner import run_eval
 from odysseus.eval.models import (
     EvalResult,
     MetricConfig,
@@ -128,11 +128,9 @@ class TestEvalRunnerAgentSuccess:
     """Happy-path tests."""
 
     async def test_successful_run_returns_score_report(self, tmp_path: Path) -> None:
-        """Agent calls controller, builds ScoreReport, returns it in context."""
+        """run_eval calls controller, builds ScoreReport, returns it in context."""
         config_path = _write_run_config(tmp_path)
         report = _stub_run_report()
-
-        agent = EvalRunnerAgent()
 
         context = {
             **_default_context(),
@@ -141,8 +139,8 @@ class TestEvalRunnerAgentSuccess:
 
         with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                result = await agent.run(context)
+            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+                result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
         score_report = result[ScoreReport.CONTEXT_KEY]
@@ -151,11 +149,6 @@ class TestEvalRunnerAgentSuccess:
         assert score_report.summary.total == 1
         assert score_report.summary.succeeded == 1
         assert score_report.summary.failed == 0
-
-    async def test_name_property(self) -> None:
-        """Agent name is 'eval_runner'."""
-        agent = EvalRunnerAgent()
-        assert agent.name == "eval_runner"
 
 
 # ---------------------------------------------------------------------------
@@ -167,11 +160,10 @@ class TestEvalRunnerAgentAllErrors:
     """Tests for runs where all examples fail."""
 
     async def test_all_errored_run_returns_graceful_report(self, tmp_path: Path) -> None:
-        """All examples fail — agent returns ScoreReport with correct counts, no crash."""
+        """All examples fail — run_eval returns ScoreReport with correct counts, no crash."""
         config_path = _write_run_config(tmp_path)
         report = _stub_all_errors_report()
 
-        agent = EvalRunnerAgent()
         context = {
             **_default_context(),
             "config_path": str(config_path),
@@ -179,8 +171,8 @@ class TestEvalRunnerAgentAllErrors:
 
         with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                result = await agent.run(context)
+            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+                result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
         score_report = result[ScoreReport.CONTEXT_KEY]
@@ -212,7 +204,6 @@ class TestEvalRunnerAgentDiff:
         previous_report = _stub_run_report(accuracy=0.80)
         report_output_path.write_text(previous_report.model_dump_json(indent=2))
 
-        agent = EvalRunnerAgent()
         context = {
             **_default_context(),
             "config_path": str(config_path),
@@ -220,8 +211,8 @@ class TestEvalRunnerAgentDiff:
 
         with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=current_report)
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                result = await agent.run(context)
+            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+                result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
         score_report = result[ScoreReport.CONTEXT_KEY]
@@ -241,10 +232,9 @@ class TestEvalRunnerAgentErrors:
     """Error handling tests."""
 
     async def test_controller_raises_returns_structured_error(self, tmp_path: Path) -> None:
-        """When controller.run raises, agent returns structured error in context."""
+        """When controller.run raises, run_eval returns structured error in context."""
         config_path = _write_run_config(tmp_path)
 
-        agent = EvalRunnerAgent()
         context = {
             **_default_context(),
             "config_path": str(config_path),
@@ -252,8 +242,8 @@ class TestEvalRunnerAgentErrors:
 
         with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(side_effect=RuntimeError("connection reset"))
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                result = await agent.run(context)
+            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+                result = await run_eval(context)
 
         assert "error" in result
         assert result["error"]["category"] == "run_error"
@@ -261,13 +251,12 @@ class TestEvalRunnerAgentErrors:
 
     async def test_missing_config_returns_structured_error(self, tmp_path: Path) -> None:
         """Nonexistent config_path returns not_found error."""
-        agent = EvalRunnerAgent()
         context = {
             **_default_context(),
             "config_path": str(tmp_path / "does_not_exist.yaml"),
         }
 
-        result = await agent.run(context)
+        result = await run_eval(context)
 
         assert "error" in result
         assert result["error"]["category"] == "not_found"
@@ -277,13 +266,12 @@ class TestEvalRunnerAgentErrors:
         config_path = tmp_path / "run_config.yaml"
         config_path.write_text(yaml.dump({"metrics": []}))  # Empty metrics list
 
-        agent = EvalRunnerAgent()
         context = {
             **_default_context(),
             "config_path": str(config_path),
         }
 
-        result = await agent.run(context)
+        result = await run_eval(context)
 
         assert "error" in result
         assert result["error"]["category"] == "validation_error"
@@ -292,7 +280,6 @@ class TestEvalRunnerAgentErrors:
         """FileNotFoundError from controller surfaces as not_found."""
         config_path = _write_run_config(tmp_path)
 
-        agent = EvalRunnerAgent()
         context = {
             **_default_context(),
             "config_path": str(config_path),
@@ -300,8 +287,8 @@ class TestEvalRunnerAgentErrors:
 
         with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(side_effect=FileNotFoundError("prompt v99 not found"))
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                result = await agent.run(context)
+            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+                result = await run_eval(context)
 
         assert "error" in result
         assert result["error"]["category"] == "not_found"
@@ -311,16 +298,15 @@ class TestEvalRunnerAgentErrors:
         """KeyError from backend registry surfaces as not_found."""
         config_path = _write_run_config(tmp_path)
 
-        agent = EvalRunnerAgent()
         context = {
             **_default_context(),
             "config_path": str(config_path),
             "backend": "unknown-backend",
         }
 
-        with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies") as mock_wire:
+        with patch("odysseus.agents.eval_runner._wire_dependencies") as mock_wire:
             mock_wire.side_effect = KeyError("unknown-backend")
-            result = await agent.run(context)
+            result = await run_eval(context)
 
         assert "error" in result
         assert result["error"]["category"] == "not_found"
@@ -335,7 +321,7 @@ class TestEvalRunnerAgentPipelineConfig:
     """Tests for direct RunConfig (pipeline) path."""
 
     async def test_uses_prebuilt_run_config(self, tmp_path: Path) -> None:
-        """When context has 'run_config', agent uses it directly — no YAML."""
+        """When context has 'run_config', run_eval uses it directly — no YAML."""
         report = _stub_run_report()
         eval_dir = tmp_path / "outputs" / "test-run" / "eval"
         run_config = RunConfig(
@@ -349,7 +335,6 @@ class TestEvalRunnerAgentPipelineConfig:
             ),
         )
 
-        agent = EvalRunnerAgent()
         context = {
             "prompt_version": "v1",
             "data_source": "data/dev.jsonl",
@@ -360,8 +345,8 @@ class TestEvalRunnerAgentPipelineConfig:
 
         with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"):
-                result = await agent.run(context)
+            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+                result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
         called_config = mock_ctrl.run.call_args.args[0]
@@ -378,7 +363,6 @@ class TestEvalRunnerAgentPipelineConfig:
             metrics=[MetricConfig(name="accuracy")],
         )
 
-        agent = EvalRunnerAgent()
         context = {
             "prompt_version": "v1",
             "data_source": "data/dev.jsonl",
@@ -388,11 +372,11 @@ class TestEvalRunnerAgentPipelineConfig:
 
         with (
             patch("odysseus.agents.eval_runner.controller") as mock_ctrl,
-            patch("odysseus.agents.eval_runner.EvalRunnerAgent._wire_dependencies"),
-            patch.object(agent, "_load_config") as mock_load,
+            patch("odysseus.agents.eval_runner._wire_dependencies"),
+            patch("odysseus.agents.eval_runner._load_config") as mock_load,
         ):
             mock_ctrl.run = AsyncMock(return_value=report)
-            result = await agent.run(context)
+            result = await run_eval(context)
             mock_load.assert_not_called()
 
         assert ScoreReport.CONTEXT_KEY in result

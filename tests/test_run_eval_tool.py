@@ -1,9 +1,9 @@
-"""Tests for the run_eval MCP tool (thin adapter over EvalRunnerAgent).
+"""Tests for the run_eval MCP tool (thin adapter over run_eval()).
 
 These tests verify that the MCP layer correctly:
-- Passes tool parameters to the agent as a context dict
-- Translates agent success (ScoreReport) into JSON with paths and metrics
-- Translates agent errors into ToolError
+- Passes tool parameters to run_eval as a context dict
+- Translates run_eval success (ScoreReport) into JSON with paths and metrics
+- Translates run_eval errors into ToolError
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import run_eval
 from odysseus.mcp.prompt_building_tools import build_pipeline_config
 
-AGENT_RUN = "odysseus.agents.eval_runner.EvalRunnerAgent.run"
+AGENT_RUN = "odysseus.mcp.prompt_building_tools._run_eval"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 
 
