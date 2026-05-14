@@ -24,10 +24,9 @@ from odysseus.agents.pipeline.instructions import (
 # Pre-builder snapshots (copied from instructions.py before A1)
 # ---------------------------------------------------------------------------
 
-_NO = (
-    'Reminder: omit the Agent() `isolation` parameter (no isolation="worktree"); '
-    "see the dispatch preamble for the full Agent() parameter contract.\n\n"
-)
+# A3 dropped the per-HARD_STOP worktree-isolation reminder; the rule now lives
+# only in the dispatch preamble wrapped around every subagent_instruction.
+_NO = ""
 
 _SNAP_STAGE_1 = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 1 tools from the current context.\n\n"

@@ -101,9 +101,6 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  the current dispatch. If your Claude Code installation does not have\n"
         f"  access to one of these aliases, fall back to the closest available\n"
         f"  tier and report it in the run summary.\n\n"
-        f'  DO NOT pass isolation="worktree" on any Agent() call. Sub-agents must\n'
-        f"  share the orchestrator's cwd so the pipeline can read their outputs\n"
-        f"  from outputs/<run_id>/ on return (and so it can run in non-git dirs).\n\n"
         f"USER INPUT MEDIATION (for stages that need user decisions):\n"
         f"  Sub-agents CANNOT interact with users directly. When a sub-agent needs user input,\n"
         f"  it writes partial artifacts and exits. You detect this via get_pipeline_status:\n\n"

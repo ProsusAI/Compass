@@ -7,11 +7,6 @@ are filled at runtime by ``status.py``.
 
 from __future__ import annotations
 
-_NO_WORKTREE_ISOLATION_LINE: str = (
-    'Reminder: omit the Agent() `isolation` parameter (no isolation="worktree"); '
-    "see the dispatch preamble for the full Agent() parameter contract.\n\n"
-)
-
 # ---------------------------------------------------------------------------
 # Per-stage tool lists (module-level constants; passed into _hard_stop)
 # ---------------------------------------------------------------------------
@@ -119,7 +114,6 @@ def _hard_stop(
         parts.append(dispatch_context)
 
     parts.append("<HARD_STOP>\n")
-    parts.append(_NO_WORKTREE_ISOLATION_LINE)
 
     if must_not_line is not None:
         parts.append(must_not_line + "\n\n")
