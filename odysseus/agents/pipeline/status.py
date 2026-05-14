@@ -633,14 +633,6 @@ def _detect_stage_4_phase(
             )
             loop_phase = "review"
 
-    # Beam round-2 review uses the post-cold-start phase: every scored cold-start
-    # parent gets exactly one protected child before standard Pareto competition.
-    # state.round == 1 here means cold-start has been advanced once and the next
-    # review pass is round-2 review.
-    algorithm = _read_algorithm_from_state(run_dir)
-    if loop_phase == "review" and algorithm == "beam" and int(state_data.get("round", 0)) == 1:
-        return ("review", {"protected_parent_round": True})
-
     return (loop_phase, {})
 
 
@@ -659,6 +651,45 @@ def _read_algorithm_from_state(run_dir: Path) -> str:
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         logger.warning("Failed to read algorithm from %s: %s", search_state_path, exc)
         return "hill_climb"
+
+
+def _detect_stage_4_phase_beam(
+    run_dir: Path,
+    rerun_config: dict[str, Any] | None,
+) -> tuple[str, dict[str, Any]]:
+    """Beam-specific Stage-4 phase detection wrapping the base detector.
+
+    Applies the beam post-cold-start override on top of
+    :func:`_detect_stage_4_phase`.  When the base returns ``("review", {})``
+    at round 1 (the first review pass after cold-start seeding), this function
+    instead returns ``("review", {"protected_parent_round": True})``, signalling
+    that the dispatcher should use the post-coldstart overlay and mandate exactly
+    one protected child per cold-start parent.
+
+    All other phases (``"rerun"``, ``"cold_review"``, ``"build"``, and ``"review"``
+    at rounds ≥ 2) are returned unchanged.
+
+    Mapping from old string phases to new tuple contract:
+    - ``"cold_start"`` → ``("cold_review", {})`` (handled by base)
+    - ``"post_coldstart"`` → ``("review", {"protected_parent_round": True})``
+    - ``"iterative"`` / ``"review"`` → ``("review", {})`` (handled by base)
+    """
+    phase, flags = _detect_stage_4_phase(run_dir, rerun_config)
+    if phase == "review" and not flags:
+        search_state_path = run_dir / "search" / "search_state.json"
+        try:
+            state_data: dict[str, Any] = (
+                json.loads(search_state_path.read_text()) if search_state_path.is_file() else {}
+            )
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("Failed to read round from %s: %s", search_state_path, exc)
+            state_data = {}
+        if (
+            state_data.get("algorithm") == "beam"
+            and int(state_data.get("round", 0)) == 1
+        ):
+            return ("review", {"protected_parent_round": True})
+    return (phase, flags)
 
 
 def _ensure_stage4_search_state(run_dir: Path, project_dir: Path | None = None) -> None:
@@ -746,7 +777,7 @@ def _next_action_for_stage_4(
     # sub-agents can call get_search_state_tool without FileNotFoundError.
     _ensure_stage4_search_state(run_dir, project_dir=project_dir)
 
-    phase, flags = _detect_stage_4_phase(run_dir, rerun_config)
+    phase, flags = _detect_stage_4_phase_beam(run_dir, rerun_config)
     algorithm = _read_algorithm_from_state(run_dir)
 
     # Rerun is special — needs template formatting with config values

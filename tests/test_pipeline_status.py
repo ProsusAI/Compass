@@ -3,13 +3,14 @@ import time
 from pathlib import Path
 
 from odysseus.agents.pipeline.instructions import (
-    STAGE_4_BUILD_INSTRUCTION,
     _STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
     _STAGE_4_BUILD_RECOVERING_INSTRUCTION,
     _STAGE_4_BUILD_V1_INSTRUCTION,
+    STAGE_4_BUILD_INSTRUCTION,
 )
 from odysseus.agents.pipeline.status import (
     _detect_stage_4_phase,
+    _detect_stage_4_phase_beam,
     _read_rerun_config,
     discover_runs,
     get_pipeline_status,
@@ -732,26 +733,32 @@ def _setup_phase3_run(
 
 
 class TestDetectStage4PhasePostColdstart:
-    """_detect_stage_4_phase post-coldstart phase detection."""
+    """_detect_stage_4_phase_beam post-coldstart phase detection."""
+
+    def test_beam_round1_review_returns_protected_parent_round(self, tmp_path: Path) -> None:
+        """Positive: beam round==1 + loop_phase='review' → ("review", {"protected_parent_round": True})."""
+        run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="beam")
+        phase, flags = _detect_stage_4_phase_beam(run_dir, rerun_config=None)
+        assert (phase, flags) == ("review", {"protected_parent_round": True})
 
     def test_hill_climb_round1_review_returns_review(self, tmp_path: Path) -> None:
-        """Gate: algorithm != 'beam' → returns ("review", {}), not post-coldstart."""
+        """Gate: base _detect_stage_4_phase — algorithm != 'beam' → ("review", {}), not post-coldstart."""
         run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=1, algorithm="hill_climb")
         phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
         assert (phase, flags) == ("review", {})
 
     def test_beam_round2_review_returns_review(self, tmp_path: Path) -> None:
-        """Gate: round != 1 → returns ("review", {}), not post-coldstart."""
+        """Gate: round != 1 → ("review", {}), not post-coldstart."""
         run_dir = _setup_phase3_run(tmp_path, "r1", "review", round_=2, algorithm="beam")
-        phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
+        phase, flags = _detect_stage_4_phase_beam(run_dir, rerun_config=None)
         assert (phase, flags) == ("review", {})
 
     def test_beam_round1_build_phase_returns_build(self, tmp_path: Path) -> None:
-        """Gate: loop_phase != 'review' → returns ("build", {}), not post-coldstart."""
+        """Gate: loop_phase != 'review' → ("build", {}), not post-coldstart."""
         run_dir = _setup_phase3_run(tmp_path, "r1", "build", round_=1, algorithm="beam", active_evals=[])
         # Need the dispatch marker so defense-in-depth doesn't flip to review
         (run_dir / "search" / "build_dispatched.json").write_text(json.dumps({"round": 1}))
-        phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
+        phase, flags = _detect_stage_4_phase_beam(run_dir, rerun_config=None)
         assert (phase, flags) == ("build", {})
 
 
