@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import random
 
-from odysseus.eval.models import ConfidenceInterval, EvalResult, Example, MetricConfig
 from odysseus.eval.metrics import MetricFn
+from odysseus.eval.models import ConfidenceInterval, EvalResult, Example, MetricConfig
 
 
 def _default_n_bootstrap(n: int) -> int:

@@ -837,7 +837,13 @@ class TestStageDetailStructure:
         _setup_through_stage2(tmp_path, "r1")
         report = {
             "schema_findings": [
-                {"field": "route_in_routes", "status": "fail", "severity": "critical", "violation": "bad", "row_indices": [0]}
+                {
+                    "field": "route_in_routes",
+                    "status": "fail",
+                    "severity": "critical",
+                    "violation": "bad",
+                    "row_indices": [0],
+                }
             ]
         }
         (tmp_path / "r1" / "validation" / "data_quality_report.json").write_text(json.dumps(report))
