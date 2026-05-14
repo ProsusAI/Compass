@@ -48,7 +48,7 @@ async def optimize_routing_prompt(ctx: Context) -> str:
 
     This is the pipeline entry-point tool for orchestrators; it is not a
     stage sub-agent tool. Returns pipeline status and the stage system prompt.
-    Call `get_pipeline_status` to determine next action after this call.
+    Call `start_stage(run_id=...)` in a loop to dispatch sub-agents.
     """
     try:
         system_prompt = _load_text("odysseus/agents/prompts/user_input_system.md")
@@ -70,42 +70,25 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"<instructions>\n"
         f"You are the Odysseus pipeline orchestrator. You have two modes:\n\n"
         f"1. STAGE 1 — User Input: You personally act as the User Input Agent (system prompt below).\n"
-        f"2. ALL OTHER STAGES — Dispatcher: When get_pipeline_status returns a non-null\n"
+        f"2. ALL OTHER STAGES — Dispatcher: When start_stage returns a non-null\n"
         f"   `subagent_instruction`, you MUST spawn a sub-agent using it. Never call stage tools yourself.\n\n"
         f"DISPATCH PROTOCOL (for all stages after Stage 1):\n"
-        f"  a. Call get_pipeline_status(run_id=...) to get the next action\n"
-        f"  b. If `subagent_instruction` is non-null → read it for your dispatch checklist\n"
-        f"  c. Call `start_stage(...)`. ITS RESPONSE CONTAINS the `sub_agent_prompt` field —\n"
-        f"     that is the sub-agent's prompt. Keep it for step (d).\n"
+        f"  a. Call start_stage(run_id=...) — NO stage argument. The server decides the next stage.\n"
+        f"  b. If the response has `pipeline_complete: true` → stop. The pipeline is finished.\n"
+        f"  c. Read `subagent_instruction` for your dispatch checklist and `sub_agent_prompt` for\n"
+        f"     the sub-agent's initial user message.\n"
         f"  d. Spawn a sub-agent. The sub-agent's INITIAL USER MESSAGE MUST be the `sub_agent_prompt`\n"
         f"     field from `start_stage`'s response, VERBATIM. Do NOT include `subagent_instruction`\n"
         f"     text — that brief is for you, not the sub-agent. Do not paraphrase, summarise, or\n"
         f"     rewrite. Each dispatch is for ONE phase only.\n"
-        f"  e. After the sub-agent returns → call complete_stage()\n"
-        f"  f. Call get_pipeline_status again → repeat until pipeline complete\n\n"
-        f"MODEL CAPABILITY (applies to all consumers):\n"
-        f"  - review / review_cold sub-agents perform high-stakes synthesis and\n"
-        f"    deserve a strong reasoning model.\n"
-        f"  - All other sub-agents (input_report, data_validation,\n"
-        f"    prompt_building, final_report) are tool-driven and can run on a\n"
-        f"    smaller, faster, cheaper model without quality loss.\n\n"
-        f"CLAUDE CODE BINDING (applies only if you are running on Claude Code with\n"
-        f"access to the model aliases below — ignore this block otherwise):\n"
-        f"  Every Agent({{...}}) you spawn MUST include a literal `model` parameter.\n"
-        f"  Omitting it inherits the orchestrator's model (Sonnet under auto mode),\n"
-        f"  which silently violates the routing rule.\n\n"
-        f"  Required values:\n"
-        f'    - review / review_cold      → model: "sonnet"\n'
-        f'    - all other sub-agents      → model: "haiku"\n\n'
-        f"  Each get_pipeline_status response tells you which value to pass for\n"
-        f"  the current dispatch. If your Claude Code installation does not have\n"
-        f"  access to one of these aliases, fall back to the closest available\n"
-        f"  tier and report it in the run summary.\n\n"
+        f"     Use `recommended_model` from the response for the sub-agent's `model` parameter.\n"
+        f"  e. After the sub-agent returns → call complete_stage(run_id=...)\n"
+        f"  f. Loop back to (a)\n\n"
         f"USER INPUT MEDIATION (for stages that need user decisions):\n"
         f"  Sub-agents CANNOT interact with users directly. When a sub-agent needs user input,\n"
-        f"  it writes partial artifacts and exits. You detect this via get_pipeline_status:\n\n"
-        f"  a. After a sub-agent returns, call get_pipeline_status(run_id=...)\n"
-        f"  b. If the stage is 'incomplete' with a non-null 'detail' object:\n"
+        f"  it writes partial artifacts and exits. You detect this via start_stage:\n\n"
+        f"  a. Call start_stage(run_id=...) after the sub-agent returns\n"
+        f"  b. If the response has a non-null `detail` object:\n"
         f"     - Inspect detail.kind: 'user_input_needed' or 'halt'\n"
         f"     - Read the file at detail.artifact_path (relative to outputs/<run_id>/)\n"
         f"     - Present detail.prompt_to_user to the user\n"
@@ -123,6 +106,24 @@ async def optimize_routing_prompt(ctx: Context) -> str:
         f"  responded. This applies to ALL detail-driven input requests.\n\n"
         f"  You are the ONLY agent that talks to the user (except during Stage 1 where you act\n"
         f"  as the User Input Agent). Sub-agents must never stop-and-wait for user input.\n\n"
+        f"MODEL CAPABILITY (applies to all consumers):\n"
+        f"  - review / review_cold sub-agents perform high-stakes synthesis and\n"
+        f"    deserve a strong reasoning model.\n"
+        f"  - All other sub-agents (input_report, data_validation,\n"
+        f"    prompt_building, final_report) are tool-driven and can run on a\n"
+        f"    smaller, faster, cheaper model without quality loss.\n\n"
+        f"CLAUDE CODE BINDING (applies only if you are running on Claude Code with\n"
+        f"access to the model aliases below — ignore this block otherwise):\n"
+        f"  Every Agent({{...}}) you spawn MUST include a literal `model` parameter.\n"
+        f"  Omitting it inherits the orchestrator's model (Sonnet under auto mode),\n"
+        f"  which silently violates the routing rule.\n\n"
+        f"  Required values:\n"
+        f'    - review / review_cold      → model: "sonnet"\n'
+        f'    - all other sub-agents      → model: "haiku"\n\n'
+        f"  Each start_stage response carries a `recommended_model` field with the correct\n"
+        f"  value for the current dispatch. If your Claude Code installation does not have\n"
+        f"  access to one of these aliases, fall back to the closest available\n"
+        f"  tier and report it in the run summary.\n\n"
         f"STAGE 1 INSTRUCTIONS:\n"
         f"The pipeline status above has already been checked — use it to decide how to greet the user.\n\n"
         f"The `discovered_runs` array in pipeline_status lists all known runs with:\n"
@@ -142,61 +143,29 @@ async def optimize_routing_prompt(ctx: Context) -> str:
 
 @mcp.tool()
 async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
-    """Check pipeline progress and get the next dispatch instruction.
+    """Read-only inspector for pipeline progress.
 
-    Call this at any time. Accepts optional run_id; if omitted, uses the
-    most recent pipeline run.
-
-    The response includes a ``DISPATCH_REQUIRED`` boolean and a
-    ``subagent_instruction`` field. When ``DISPATCH_REQUIRED`` is true, you
-    MUST spawn a sub-agent using ``subagent_instruction`` — do NOT call stage
-    tools yourself. The instruction specifies the stage to activate via
-    ``start_stage`` and the system prompt for the sub-agent.
-
-    After the sub-agent exits, call ``complete_stage``, then call this tool
-    again to verify stage completion and receive the next instruction.
-
-    Returns a dispatch checklist (``subagent_instruction``) for the orchestrator.
-    The stage system prompt itself is NOT included here — it is returned by
-    ``start_stage`` in the ``sub_agent_prompt`` field, which the orchestrator
-    forwards verbatim as the sub-agent's initial user message.
+    Returns the raw pipeline status without any dispatch wrapping. Use this
+    for debugging, auditing, or reading stage detail fields (e.g. to surface
+    a ``detail.prompt_to_user`` message to the user). Not part of the dispatch
+    loop — orchestrators use ``start_stage`` directly to advance the pipeline.
 
     Args:
         run_id: Optional pipeline run identifier.
 
     Returns:
-        JSON object with current stage, subagent_instruction (non-null when dispatch
-        is needed, null when the pipeline is at a terminal state), and stage details.
+        JSON object with current stage, subagent_instruction (raw, from status.py),
+        stages array, and discovered_runs.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     outputs_dir = project_dir / "outputs"
     result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
-    activate_prompt = result.get("activate_prompt")
-
-    subagent_instruction: str | None = result.get("subagent_instruction")
-    if subagent_instruction:
-        recommended_model = recommended_model_for(activate_prompt)
-        tier = "strong" if recommended_model == "sonnet" else "fast"
-        model_alias = '"sonnet"' if recommended_model == "sonnet" else '"haiku"'
-        subagent_instruction = (
-            "⚠️ DISPATCH REQUIRED — Spawn a sub-agent. "
-            "Do NOT call stage tools yourself.\n\n"
-            f"  Agent() parameters you MUST set:\n"
-            f"    - model: {model_alias}   (REQUIRED — Claude Code only; omission inherits\n"
-            f"      the orchestrator's model. Recommended tier for this dispatch: {tier}.\n"
-            f"      Other runtimes: select the equivalent tier on your backend.)\n\n"
-            f"  Agent() parameters you MUST NOT set:\n"
-            f'    - isolation              (do NOT pass isolation="worktree". Sub-agents\n'
-            f"      MUST share the orchestrator's cwd so artifacts under outputs/<run_id>/\n"
-            f"      are visible on return, and the pipeline can run in non-git working\n"
-            f"      directories.)\n\n" + subagent_instruction
-        )
 
     output = {
         "run_id": result["run_id"],
         "current_stage": result["current_stage"],
         "current_stage_name": result["current_stage_name"],
-        "subagent_instruction": subagent_instruction,
+        "subagent_instruction": result.get("subagent_instruction"),
         "stages": result["stages"],
         "discovered_runs": result.get("discovered_runs", []),
     }
@@ -204,30 +173,48 @@ async def get_pipeline_status(ctx: Context, run_id: str | None = None) -> str:
 
 
 @mcp.tool()
-async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> str:
-    """Activate a pipeline stage, scoping visible tools to that stage.
+async def start_stage(ctx: Context, run_id: str | None = None) -> str:
+    """Single dispatch verb — inspect artifacts, choose the next stage, and activate it.
 
-    The orchestrator calls this before spawning a sub-agent so the sub-agent
-    only sees the tools relevant to its stage.  After the sub-agent finishes,
-    call ``complete_stage`` to return to orchestrator scope.
+    The orchestrator calls this in a loop (no ``stage`` argument needed). The
+    server reads the current artifact state to determine which stage to dispatch,
+    activates it, and returns everything the orchestrator needs to spawn a
+    sub-agent: the stage system prompt, the dispatch checklist, and the
+    recommended model.
+
+    After the sub-agent finishes, call ``complete_stage`` to return to
+    orchestrator scope, then call ``start_stage`` again to advance.
 
     Sends a ``notifications/tools/list_changed`` notification so the client
     refreshes its cached tool list with the newly visible stage tools.
 
     Args:
-        stage: Stage name — must be a key in ``STAGE_REGISTRY``.
-        run_id: Pipeline run identifier. Optional for the ``input_report``
-            stage (which creates the run_id); required for all other stages.
+        run_id: Pipeline run identifier. Optional on the very first call (which
+            lands on Stage 1 / ``input_report``); required for all subsequent
+            calls.
 
     Returns:
         JSON object with keys:
-          - ``scope``: the activated stage name.
-          - ``tools``: list of tool names now visible.
+          - ``scope``: the activated stage name (STAGE_REGISTRY key).
+          - ``tools``: list of tool names now visible to the sub-agent.
           - ``sub_agent_prompt``: the stage system prompt body. The orchestrator
-            MUST forward this field verbatim as the sub-agent's initial user
-            message. This is the only correct prompt source — do not use
-            ``subagent_instruction`` from ``get_pipeline_status`` for this purpose.
-          - ``run_id``: the run identifier (may be None for ``input_report``).
+            MUST forward this verbatim as the sub-agent's initial user message.
+          - ``run_id``: the resolved run identifier (may be None on Stage 1 entry).
+          - ``recommended_model``: ``"sonnet"`` for review phases, ``"haiku"``
+            for all other stages. Pass this as the ``model`` parameter to
+            ``Agent()``.
+          - ``subagent_instruction``: dispatch checklist for the orchestrator
+            (⚠️ DISPATCH REQUIRED header + stage-specific HARD_STOP body).
+          - ``pipeline_complete``: ``True`` when the pipeline is finished (stage
+            6). When this is ``True``, no stage is activated and the orchestrator
+            should stop.
+          - ``current_stage``: integer stage number (1–6).
+          - ``current_stage_name``: human-readable stage name.
+          - ``activate_prompt``: the activate_prompt key used for Stage 4 routing.
+          - ``detail``: the current stage's detail dict (user-mediation info),
+            or ``null`` if none.
+          - ``discovered_runs``: list of known runs (populated when
+            ``run_id=None`` is passed on the entry-point call).
     """
     current = get_active_stage()
     if current != "orchestrator":
@@ -236,14 +223,64 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
             f"(current scope: '{current}'). Call complete_stage first."
         )
 
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    outputs_dir = project_dir / "outputs"
+
+    # Read pipeline status to determine which stage to dispatch next.
+    try:
+        status_result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
+    except Exception as e:
+        raise ToolError(f"Failed to read pipeline status from {outputs_dir}: {e}") from e
+
+    current_stage_num = status_result.get("current_stage", 1)
+    activate_prompt = status_result.get("activate_prompt")
+    algorithm = status_result.get("algorithm", "hill_climb")
+    resolved_run_id = status_result.get("run_id")
+    subagent_instruction_raw: str | None = status_result.get("subagent_instruction")
+    discovered_runs = status_result.get("discovered_runs", [])
+
+    # Stage 6 = pipeline complete — do NOT activate any stage.
+    if current_stage_num == 6:
+        return json.dumps(
+            {
+                "pipeline_complete": True,
+                "run_id": resolved_run_id,
+                "next_action": status_result.get("next_action"),
+                "current_stage": current_stage_num,
+                "current_stage_name": status_result.get("current_stage_name"),
+            },
+            indent=2,
+        )
+
+    # Validate: non-entry-point calls must have a run_id.
+    if run_id is None and current_stage_num != 1:
+        raise ToolError(
+            f"run_id is required when the pipeline is at stage {current_stage_num}. "
+            "Only the first call (Stage 1 / input_report) may omit run_id."
+        )
+
+    # Map (current_stage, activate_prompt) → STAGE_REGISTRY key.
+    if current_stage_num == 1:
+        stage = "input_report"
+    elif current_stage_num == 2:
+        stage = "data_validation"
+    elif current_stage_num == 3:
+        stage = "backend_setup"
+    elif current_stage_num == 4:
+        if activate_prompt == "odysseus_review_agent_cold_start":
+            stage = "review_cold"
+        elif activate_prompt == "odysseus_review_agent_iterative":
+            stage = "review"
+        else:
+            # prompt_builder / prompt_builder_rerun / any other build phase
+            stage = "prompt_building"
+    else:
+        # stage 5
+        stage = "final_report"
+
     if stage not in STAGE_REGISTRY:
         valid = ", ".join(sorted(STAGE_REGISTRY))
-        raise ToolError(f"Unknown stage '{stage}'. Valid stages: {valid}")
-
-    if run_id is None and stage != "input_report":
-        raise ToolError(
-            f"run_id is required for stage '{stage}'. Only the 'input_report' stage can be started without a run_id."
-        )
+        raise ToolError(f"Computed stage '{stage}' is not in STAGE_REGISTRY. Valid stages: {valid}")
 
     set_active_stage(stage)
     try:
@@ -253,24 +290,16 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
     tools = STAGE_REGISTRY[stage]
 
     # Compute the stage system prompt to forward to the sub-agent.
-    # We re-read pipeline status to get the current activate_prompt / algorithm
-    # for Stage 4's dynamic prompt lookup.
-    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
-    outputs_dir = project_dir / "outputs"
-
     system_prompt: str | None = None
     try:
         if run_id is None:
             # input_report stage: no run yet, always Stage 1 prompt (pre-loaded)
             system_prompt = _STAGE_PROMPT_BODIES[1]
         else:
-            status_result = _get_pipeline_status(outputs_dir=outputs_dir, run_id=run_id, project_dir=project_dir)
-            current_stage = status_result.get("current_stage")
-            activate_prompt = status_result.get("activate_prompt")
-            algorithm = status_result.get("algorithm", "hill_climb")
-
             # Stage 4 uses activate_prompt name as lookup key; all others use stage number.
-            lookup_key: int | str | None = activate_prompt if current_stage == 4 and activate_prompt else current_stage
+            lookup_key: int | str | None = (
+                activate_prompt if current_stage_num == 4 and activate_prompt else current_stage_num
+            )
 
             if activate_prompt in _REVIEW_AGENT_PROMPT_NAMES:
                 # Strategy-aware assembly: base + phase-base + strategy overlay
@@ -290,12 +319,47 @@ async def start_stage(ctx: Context, stage: str, run_id: str | None = None) -> st
     except ValueError as e:
         raise ToolError(f"Review Agent prompt assembly failed — unknown algorithm or phase: {e}") from e
 
+    # Compute recommended model and build the dispatch checklist.
+    recommended_model = recommended_model_for(activate_prompt)
+    tier = "strong" if recommended_model == "sonnet" else "fast"
+    model_alias = '"sonnet"' if recommended_model == "sonnet" else '"haiku"'
+
+    wrapped_instruction: str | None = None
+    if subagent_instruction_raw:
+        wrapped_instruction = (
+            "⚠️ DISPATCH REQUIRED — Spawn a sub-agent. "
+            "Do NOT call stage tools yourself.\n\n"
+            f"  Agent() parameters you MUST set:\n"
+            f"    - model: {model_alias}   (REQUIRED — Claude Code only; omission inherits\n"
+            f"      the orchestrator's model. Recommended tier for this dispatch: {tier}.\n"
+            f"      Other runtimes: select the equivalent tier on your backend.)\n\n"
+            f"  Agent() parameters you MUST NOT set:\n"
+            f'    - isolation              (do NOT pass isolation="worktree". Sub-agents\n'
+            f"      MUST share the orchestrator's cwd so artifacts under outputs/<run_id>/\n"
+            f"      are visible on return, and the pipeline can run in non-git working\n"
+            f"      directories.)\n\n" + subagent_instruction_raw
+        )
+
+    # Extract current stage detail for user-mediation surfacing.
+    stage_detail: dict | None = None
+    stages = status_result.get("stages", [])
+    if stages and current_stage_num >= 1 and current_stage_num <= len(stages):
+        stage_detail = stages[current_stage_num - 1].get("detail")
+
     return json.dumps(
         {
             "scope": stage,
             "tools": list(tools),
             "sub_agent_prompt": system_prompt,
-            "run_id": run_id,
+            "run_id": resolved_run_id,
+            "recommended_model": recommended_model,
+            "subagent_instruction": wrapped_instruction,
+            "pipeline_complete": False,
+            "current_stage": current_stage_num,
+            "current_stage_name": status_result.get("current_stage_name"),
+            "activate_prompt": activate_prompt,
+            "detail": stage_detail,
+            "discovered_runs": discovered_runs,
         },
         indent=2,
     )

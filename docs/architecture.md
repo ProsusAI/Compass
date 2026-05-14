@@ -153,7 +153,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `get_per_class_recall_tool` | Implemented | Return the full per-class recall table for a round (all routes, no median/regression filter) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `build_final_report_briefing_tool` | Implemented | Pre-process all pipeline artifacts into a structured briefing with charts for the Final Report Agent | [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py) |
 | `save_final_report` | Implemented | Save the final report markdown to disk | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
-| `get_pipeline_status` | Implemented | Returns pipeline status; for stages 1–5, enriches `subagent_instruction` with the stage system prompt inside `<stage_system_prompt>` tags | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
+| `get_pipeline_status` | Implemented | Read-only inspector for pipeline progress. Not part of the dispatch loop — orchestrators use `start_stage` directly. | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
 | `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
 | `init_search_state_tool` | Implemented | Initialize prompt-builder search state for a run; algorithm is hardcoded per branch — no `algorithm`/`algorithm_state` params | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `register_candidate_tool` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
@@ -164,13 +164,13 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `get_child_variants_tool` | Implemented | Retrieve the current round's child variants (grouped directives per child prompt) for the Prompt Builder | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `get_edit_directives_tool` | Implemented | Back-compat helper: flattens all directives across child variants into a single list | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `save_prompt_tool` | Implemented | Save compiled routing prompt to disk with correct encoding | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
-| `start_stage` | Implemented | Activate a pipeline stage, scoping `tools/list` to that stage's tools | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
+| `start_stage` | Implemented | Single dispatch verb. Inspects artifacts to choose the next stage, activates it, and returns the sub-agent prompt + dispatch checklist + recommended model in one payload. | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
 | `complete_stage` | Implemented | Reset to orchestrator scope after a sub-agent finishes | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
 | `initiate_rerun` | Implemented | Validate Stage 4 is complete, select best prompt version, rename search state, write `rerun_config.json` | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
 
 #### Stage-Scoped Tool Filtering
 
-The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent and `complete_stage(run_id)` when it returns. While a stage is active, `tools/list` returns only the tools in `STAGE_REGISTRY[stage]` (defined in [`odysseus/mcp/server.py`](../odysseus/mcp/server.py)). This prevents sub-agents from calling tools outside their scope.
+The orchestrator calls `start_stage(run_id)` before spawning a sub-agent (no `stage` argument — the server infers the next stage from artifacts) and `complete_stage(run_id)` when it returns. While a stage is active, `tools/list` returns only the tools in `STAGE_REGISTRY[stage]` (defined in [`odysseus/mcp/server.py`](../odysseus/mcp/server.py)). This prevents sub-agents from calling tools outside their scope.
 
 | Stage | Tools |
 |---|---|
@@ -197,17 +197,17 @@ The orchestrator calls `start_stage(run_id, stage)` before spawning a sub-agent 
 
 **Layer 2 — Claude Code binding (Claude Code consumers only — ignore otherwise):**
 
-Every `Agent({...})` call MUST include a literal `model` parameter. Omitting it inherits the orchestrator's model (Sonnet under auto mode), silently violating the routing rule. Required aliases: `model: "sonnet"` for review/review_cold, `model: "haiku"` for all other stages. Each `get_pipeline_status` response states the correct value for the current dispatch. If a Claude Code installation lacks one of these aliases, fall back to the closest available tier and report it in the run summary.
+Every `Agent({...})` call MUST include a literal `model` parameter. Omitting it inherits the orchestrator's model (Sonnet under auto mode), silently violating the routing rule. Required aliases: `model: "sonnet"` for review/review_cold, `model: "haiku"` for all other stages. Each `start_stage` response carries a `recommended_model` field with the correct value for the current dispatch. If a Claude Code installation lacks one of these aliases, fall back to the closest available tier and report it in the run summary.
 
 Non-Claude-Code MCP consumers see both layers as plain text and should map the tier to whatever their backend offers. No model defaults inside `odysseus/*` are changed.
 
 #### Sub-Agent Guard Pattern
 
-`get_pipeline_status` implements a two-sided entry/exit contract for sub-agent dispatch:
+`start_stage` implements a two-sided entry/exit contract for sub-agent dispatch:
 
 | Gate point | Side | Mechanism | Strength |
 |---|---|---|---|
-| Entry | Orchestrator | `<HARD_STOP>` in `subagent_instruction`; stage system prompt embedded | Hard (structural) |
+| Entry | Orchestrator | `<HARD_STOP>` in `start_stage`'s `subagent_instruction`; sub-agent prompt in `sub_agent_prompt` | Hard (structural) |
 | Entry | Sub-agent | `get_pipeline_status` call; stage mismatch → abort | Hard (behavioural) |
 | Exit | Sub-agent | `get_pipeline_status` call; incomplete → fix before exiting | Hard (behavioural) |
 | Exit | Orchestrator | `<HARD_STOP>` post-exit instruction | Soft (advisory) |

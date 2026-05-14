@@ -543,7 +543,7 @@ class TestGetPipelineStatus:
             patch("odysseus.mcp.prompts.assemble_review_prompt", side_effect=FileNotFoundError("prompt not found")),
             pytest.raises(ToolError, match="installation may be broken"),
         ):
-            await start_stage(ctx=mock_ctx, stage="review", run_id="run1")
+            await start_stage(ctx=mock_ctx, run_id="run1")
 
 
 class TestOptimizeRoutingPrompt:

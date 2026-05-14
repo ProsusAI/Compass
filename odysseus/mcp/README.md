@@ -25,7 +25,7 @@ MCP server package. Thin adapter layer — each tool delegates to an agent modul
 
 The orchestrator controls scoping via two tools:
 
-1. **`start_stage(run_id, stage)`** — sets `_active_stage` to `stage` before spawning a sub-agent.
+1. **`start_stage(run_id)`** — inspects pipeline artifacts to pick the next stage, sets `_active_stage` accordingly, and returns the sub-agent prompt, dispatch checklist, and recommended model in one payload. No `stage` argument — the server decides.
 2. **`complete_stage(run_id)`** — resets `_active_stage` to `"orchestrator"` after the sub-agent finishes.
 
 | Stage name | Tools | Notes |

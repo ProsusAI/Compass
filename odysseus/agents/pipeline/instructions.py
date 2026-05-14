@@ -102,7 +102,6 @@ def _hard_stop(
     dispatch_context: str | None = None,
     recovery_note: str | None = None,
     detail_branches: str | None = None,
-    run_id_required: bool = True,
     extra_notes: list[str] | None = None,
     must_not_line: str | None = None,
     post_exit_line: str | None = None,
@@ -124,16 +123,6 @@ def _hard_stop(
         "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
     )
 
-    if run_id_required:
-        parts.append(
-            f"PRE-DISPATCH: Call start_stage(run_id='{{run_id}}', stage='{stage}') BEFORE spawning the sub-agent.\n\n"
-        )
-    else:
-        parts.append(
-            f"PRE-DISPATCH: Call start_stage(stage='{stage}') BEFORE spawning the sub-agent.\n"
-            "(No run_id yet — Stage 1 creates it via submit_input_report.)\n\n"
-        )
-
     parts.append(f"Sub-agent tools: {', '.join(tools)}")
 
     if recovery_note is not None:
@@ -151,7 +140,7 @@ def _hard_stop(
     else:
         parts.append(
             "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-            "then call get_pipeline_status.\n"
+            "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
         )
 
     if detail_branches is not None:
@@ -175,15 +164,12 @@ STAGE_1_INSTRUCTION: str = _hard_stop(
     stage="input_report",
     stage_label="Stage 1",
     tools=_STAGE_1_TOOLS,
-    run_id_required=False,
     post_exit_line=(
         "POST-EXIT: After the sub-agent returns, extract the run_id from its output, "
         "then call complete_stage(run_id='<run_id_from_submit>'), "
-        "then call get_pipeline_status."
+        "then call start_stage(run_id='<run_id_from_submit>') to get the next dispatch."
     ),
-    detail_branches=(
-        "If Stage 1 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
-    ),
+    detail_branches=("If Stage 1 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"),
 )
 
 # ---------------------------------------------------------------------------
@@ -235,8 +221,7 @@ STAGE_4_COLD_START_INSTRUCTION: str = _hard_stop(
     stage_label="Stage 4",
     tools=_STAGE_4_COLD_TOOLS,
     detail_branches=(
-        "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
-        "Do not call stage tools yourself.\n"
+        "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. Do not call stage tools yourself.\n"
     ),
 )
 
@@ -264,8 +249,7 @@ _STAGE_4_BUILD_NOTE: str = (
 _STAGE_4_BUILD_MUST_NOT: str = "You MUST NOT call any Stage 4 build-phase tools from the current context."
 
 _STAGE_4_BUILD_DETAIL: str = (
-    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
-    "Do not call stage tools yourself.\n"
+    "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. Do not call stage tools yourself.\n"
 )
 
 

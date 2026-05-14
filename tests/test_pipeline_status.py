@@ -299,7 +299,6 @@ class TestSubagentInstruction:
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "HARD_STOP" in instr
-        assert "final_report" in instr
         assert "build_final_report_briefing_tool" in instr
         assert "save_final_report" in instr
 
@@ -329,8 +328,7 @@ class TestStage4ThreePhaseDetection:
         assert result["current_stage"] == 4
         instr = result.get("subagent_instruction", "")
         assert instr is not None
-        # Review phase instruction contains stage='review' and review tools
-        assert "stage='review'" in instr
+        # Review phase instruction contains review tools
         assert "build_review_briefing_tool" in instr
 
 
@@ -347,7 +345,6 @@ class TestStage4ThreePhaseDetection:
         instr = result.get("subagent_instruction", "")
         assert instr is not None
         # Review phase instruction routes to review stage, not build
-        assert "stage='review'" in instr
         assert "build_review_briefing_tool" in instr
 
 
@@ -362,8 +359,7 @@ class TestStage4ThreePhaseDetection:
         assert result["current_stage"] == 4
         instr = result.get("subagent_instruction", "")
         assert instr is not None
-        # Build phase instruction contains prompt_building stage and build tools
-        assert "stage='prompt_building'" in instr
+        # Build phase instruction contains build tools
         assert "register_candidate_tool" in instr
 
     def test_stage4_complete_when_converged(self, tmp_path: Path) -> None:
@@ -550,8 +546,7 @@ class TestStage4RerunMode:
         assert result["current_stage"] == 4
         instr = result.get("subagent_instruction", "")
         assert instr is not None
-        # Rerun instruction mentions rerun mode and prompt_building stage
-        assert "stage='prompt_building'" in instr
+        # Rerun instruction mentions rerun mode
         assert "rerun" in instr.lower()
 
     def test_rerun_mode_subagent_instruction_mentions_rerun(self, tmp_path: Path) -> None:
@@ -615,7 +610,6 @@ class TestStage5FinalReport:
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "HARD_STOP" in instr
-        assert "final_report" in instr
         assert "build_final_report_briefing_tool" in instr
         assert "save_final_report" in instr
         assert "run_holdout_eval" in instr

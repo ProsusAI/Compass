@@ -21,7 +21,8 @@ from odysseus.agents.pipeline.instructions import (
 )
 
 # ---------------------------------------------------------------------------
-# Pre-builder snapshots (copied from instructions.py before A1)
+# Pre-builder snapshots (updated for F2: PRE-DISPATCH block removed;
+# POST-EXIT now references start_stage instead of get_pipeline_status)
 # ---------------------------------------------------------------------------
 
 # A3 dropped the per-HARD_STOP worktree-isolation reminder; the rule now lives
@@ -31,13 +32,11 @@ _NO = ""
 _SNAP_STAGE_1 = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 1 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(stage='input_report') BEFORE spawning the sub-agent.\n"
-    "(No run_id yet — Stage 1 creates it via submit_input_report.)\n\n"
     "Sub-agent tools: get_pipeline_status, submit_input_report\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, extract the run_id from its output, "
     "then call complete_stage(run_id='<run_id_from_submit>'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='<run_id_from_submit>') to get the next dispatch.\n"
     "If Stage 1 is not complete, re-dispatch the sub-agent. Do not call stage tools yourself.\n"
     "</HARD_STOP>"
 )
@@ -45,14 +44,12 @@ _SNAP_STAGE_1 = (
 _SNAP_STAGE_2 = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 2 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='data_validation') "
-    "BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, validate_dataset, "
     "detect_and_parse_dataset, transform_dataset, save_routing_context, "
     "stratified_split_tool, save_proposed_mapping\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
     "If Stage 2 is not complete with a non-empty detail field, follow the generic\n"
     "user-mediation flow: read detail.artifact_path, present detail.prompt_to_user\n"
     "to the user, wait for their real reply, call start_stage again, re-dispatch the\n"
@@ -67,12 +64,10 @@ _SNAP_STAGE_2 = (
 _SNAP_STAGE_3 = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT perform backend setup from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='backend_setup') "
-    "BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_default_pricing, save_backend_options\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
     "If Stage 3 is not complete with a non-empty detail field, follow the generic\n"
     "user-mediation flow: read detail.artifact_path, present detail.prompt_to_user\n"
     "to the user, wait for their real reply, call start_stage again, re-dispatch the\n"
@@ -86,23 +81,19 @@ _SNAP_STAGE_3 = (
 _SNAP_STAGE_4_COLD = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review_cold') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
     "build_review_briefing_tool, record_directive_outcomes_tool\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
     "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
     "Do not call stage tools yourself.\n"
     "</HARD_STOP>"
 )
 
 _S4_BUILD_BODY = (
-    "<HARD_STOP>\n"
-    + _NO
-    + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
     "get_child_variants_tool, get_edit_directives_tool, get_prompt_text_tool, get_score_report_tool, "
     "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
@@ -114,7 +105,7 @@ _S4_BUILD_TAIL = (
     "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
     "Do not call it from within the sub-agent.\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
     "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
     "Do not call stage tools yourself.\n"
     "</HARD_STOP>"
@@ -137,16 +128,11 @@ _S4_RECOVERY_PARA = (
 
 _SNAP_BUILD_V1 = _S4_BUILD_BODY + _S4_BUILD_TAIL
 _SNAP_BUILD_OPTIMIZE = _S4_DISPATCH_CTX + _S4_BUILD_BODY + _S4_BUILD_TAIL
-_SNAP_BUILD_RECOVER = (
-    _S4_BUILD_BODY + ", run_batch_eval" + _S4_RECOVERY_PARA + _S4_BUILD_TAIL
-)
+_SNAP_BUILD_RECOVER = _S4_BUILD_BODY + ", run_batch_eval" + _S4_RECOVERY_PARA + _S4_BUILD_TAIL
 
 _SNAP_STAGE_4_RERUN = (
-    "<HARD_STOP>\n"
-    + _NO
-    + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
     "get_prompt_text_tool, init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
     "advance_step_tool, save_prompt_tool, run_eval\n"
@@ -155,24 +141,21 @@ _SNAP_STAGE_4_RERUN = (
     "for the new backend. Source prompt version: '{source_prompt_version}'. "
     "New backend: '{new_backend}'.\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
     "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
     "Do not call stage tools yourself.\n"
     "</HARD_STOP>"
 )
 
 _SNAP_STAGE_4_REVIEW = (
-    "<HARD_STOP>\n"
-    + _NO
-    + "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
+    "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='review') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
     "build_review_briefing_tool, record_directive_outcomes_tool, "
     "get_prompt_text_tool, query_holdout_examples_tool\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
     "If Stage 4 is not complete, re-dispatch the appropriate sub-agent. "
     "Do not call stage tools yourself.\n"
     "</HARD_STOP>"
@@ -181,13 +164,12 @@ _SNAP_STAGE_4_REVIEW = (
 _SNAP_STAGE_5 = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 5 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='final_report') BEFORE spawning the sub-agent.\n\n"
     "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, "
     "list_pareto_candidates, run_holdout_eval, "
     "build_final_report_briefing_tool, save_final_report\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
-    "then call get_pipeline_status.\n"
+    "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
     "If Stage 5 is not complete with a non-empty detail field, follow the generic\n"
     "user-mediation flow: read detail.artifact_path, present detail.prompt_to_user\n"
     "to the user, wait for their real reply, call start_stage again, re-dispatch the\n"

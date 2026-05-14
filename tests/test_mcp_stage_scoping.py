@@ -194,16 +194,21 @@ async def test_prompt_building_stage_filtering():
 
 
 async def test_start_stage_sets_active_stage(mock_ctx, tmp_path: Path):
-    """start_stage activates the given stage and returns JSON with scope and tools."""
+    """start_stage infers the next stage from artifacts and returns JSON with scope and tools."""
     import json
 
     from odysseus.mcp.server import get_active_stage
+
+    # Set up stage 1 complete so the server infers stage 2 (data_validation).
+    input_dir = tmp_path / "outputs" / "test-run" / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "input_report.md").write_text("# Report")
 
     set_active_stage("orchestrator")
     from odysseus.mcp.orchestrator_tools import start_stage
 
     with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
-        result = await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
+        result = await start_stage(ctx=mock_ctx, run_id="test-run")
     assert get_active_stage() == "data_validation"
     data = json.loads(result)
     assert data["scope"] == "data_validation"
@@ -216,40 +221,42 @@ async def test_start_stage_sends_tool_list_changed(mock_ctx, tmp_path: Path):
     """start_stage sends a tool list changed notification."""
     from odysseus.mcp.orchestrator_tools import start_stage
 
+    # Set up stage 1 complete so the server infers stage 2 (data_validation).
+    input_dir = tmp_path / "outputs" / "test-run" / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "input_report.md").write_text("# Report")
+
     set_active_stage("orchestrator")
     with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
-        await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
+        await start_stage(ctx=mock_ctx, run_id="test-run")
     mock_ctx.session.send_tool_list_changed.assert_awaited_once()
 
 
-async def test_start_stage_rejects_unknown_stage(mock_ctx):
-    """start_stage raises ToolError for an unknown stage name."""
-    from odysseus.mcp.orchestrator_tools import start_stage
-
-    set_active_stage("orchestrator")
-    with pytest.raises(ToolError, match="Unknown stage"):
-        await start_stage(ctx=mock_ctx, stage="nonexistent", run_id="test-run")
-
-
-async def test_start_stage_rejects_from_non_orchestrator_scope(mock_ctx):
+async def test_start_stage_rejects_from_non_orchestrator_scope(mock_ctx, tmp_path: Path):
     """start_stage raises ToolError when called from a stage scope."""
     from odysseus.mcp.orchestrator_tools import start_stage
 
     set_active_stage("input_report")
-    with pytest.raises(ToolError, match="only be called from orchestrator scope"):
-        await start_stage(ctx=mock_ctx, stage="data_validation", run_id="test-run")
+    with (
+        patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+        pytest.raises(ToolError, match="only be called from orchestrator scope"),
+    ):
+        await start_stage(ctx=mock_ctx, run_id="test-run")
 
 
-async def test_start_stage_allows_input_report_without_run_id(mock_ctx, tmp_path: Path):
-    """start_stage allows input_report stage without a run_id."""
+async def test_start_stage_allows_entry_without_run_id(mock_ctx, tmp_path: Path):
+    """start_stage dispatches to input_report when called without a run_id (no existing runs)."""
     import json
 
     from odysseus.mcp.orchestrator_tools import start_stage
     from odysseus.mcp.server import get_active_stage
 
+    # Empty outputs dir — no runs yet, should land on stage 1.
+    (tmp_path / "outputs").mkdir(parents=True)
+
     set_active_stage("orchestrator")
     with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
-        result = await start_stage(ctx=mock_ctx, stage="input_report")
+        result = await start_stage(ctx=mock_ctx)
     assert get_active_stage() == "input_report"
     data = json.loads(result)
     assert data["scope"] == "input_report"
@@ -257,13 +264,23 @@ async def test_start_stage_allows_input_report_without_run_id(mock_ctx, tmp_path
     assert data["run_id"] is None
 
 
-async def test_start_stage_requires_run_id_for_non_input_stages(mock_ctx):
-    """start_stage raises ToolError when run_id is missing for non-input stages."""
+async def test_start_stage_requires_run_id_when_pipeline_past_stage1(mock_ctx, tmp_path: Path):
+    """start_stage raises ToolError when run_id is missing but pipeline is past stage 1."""
     from odysseus.mcp.orchestrator_tools import start_stage
 
+    # Set up a run at stage 2 (stage 1 complete).
+    input_dir = tmp_path / "outputs" / "some-run" / "input"
+    input_dir.mkdir(parents=True)
+    (input_dir / "input_report.md").write_text("# Report")
+
     set_active_stage("orchestrator")
-    with pytest.raises(ToolError, match="run_id is required"):
-        await start_stage(ctx=mock_ctx, stage="data_validation")
+    # Passing run_id=None while a run exists that is at stage 2 — server picks up
+    # the most recent run (some-run) which is at stage 2, so it should raise.
+    with (
+        patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+        pytest.raises(ToolError, match="run_id is required"),
+    ):
+        await start_stage(ctx=mock_ctx)
 
 
 async def test_complete_stage_rejects_from_orchestrator_scope(mock_ctx):
@@ -281,16 +298,15 @@ async def test_complete_stage_resets_to_orchestrator(mock_ctx, tmp_path):
     The review fanout guard requires child_variants.json to exist.  We create
     it in a temp dir and patch the dispatch module so the guard passes.
     """
-    from odysseus.mcp.orchestrator_tools import complete_stage, start_stage
+    from odysseus.mcp.orchestrator_tools import complete_stage
     from odysseus.mcp.server import get_active_stage
 
     search_dir = tmp_path / "outputs" / "test-run" / "search"
     search_dir.mkdir(parents=True)
     (search_dir / "child_variants.json").write_text("[]")
 
-    set_active_stage("orchestrator")
-    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
-        await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
+    # Directly activate review scope — we're testing complete_stage, not start_stage.
+    set_active_stage("review")
     assert get_active_stage() == "review"
 
     with patch("odysseus.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
@@ -306,16 +322,14 @@ async def test_complete_stage_sends_tool_list_changed(mock_ctx, tmp_path):
     The review fanout guard requires child_variants.json.  We satisfy it via
     a temp dir and a patch on the dispatch module.
     """
-    from odysseus.mcp.orchestrator_tools import complete_stage, start_stage
+    from odysseus.mcp.orchestrator_tools import complete_stage
 
     search_dir = tmp_path / "outputs" / "test-run" / "search"
     search_dir.mkdir(parents=True)
     (search_dir / "child_variants.json").write_text("[]")
 
-    set_active_stage("orchestrator")
-    with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
-        await start_stage(ctx=mock_ctx, stage="review", run_id="test-run")
-    mock_ctx.session.send_tool_list_changed.reset_mock()
+    # Directly activate review scope — we're testing complete_stage, not start_stage.
+    set_active_stage("review")
     with patch("odysseus.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
         await complete_stage(ctx=mock_ctx, run_id="test-run")
     mock_ctx.session.send_tool_list_changed.assert_awaited_once()
@@ -357,7 +371,7 @@ async def test_get_pipeline_status_subagent_instruction_has_no_stage_prompt_body
 
 
 async def test_start_stage_sub_agent_prompt_contains_data_validation_prompt(mock_ctx, tmp_path: Path):
-    """start_stage('data_validation', run_id=...) returns JSON with sub_agent_prompt from the prompt file.
+    """start_stage(run_id=...) infers data_validation and returns sub_agent_prompt from the prompt file.
 
     The sub_agent_prompt field must contain the stage system prompt body so the orchestrator
     can forward it verbatim to the sub-agent.
@@ -373,7 +387,7 @@ async def test_start_stage_sub_agent_prompt_contains_data_validation_prompt(mock
 
     set_active_stage("orchestrator")
     with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
-        result = await start_stage(ctx=mock_ctx, stage="data_validation", run_id="r1")
+        result = await start_stage(ctx=mock_ctx, run_id="r1")
 
     data = json.loads(result)
     assert "sub_agent_prompt" in data
