@@ -1086,13 +1086,3 @@ def test_run_dependencies_valid():
     assert deps.tokens_per_minute == 50000
 
 
-def test_run_dependencies_rpm_zero_rejected():
-    """RunDependencies rejects requests_per_minute < 1."""
-    with pytest.raises(ValueError, match="requests_per_minute must be >= 1"):
-        _make_run_deps(requests_per_minute=0)
-
-
-def test_run_dependencies_tpm_negative_rejected():
-    """RunDependencies rejects tokens_per_minute < 1."""
-    with pytest.raises(ValueError, match="tokens_per_minute must be >= 1"):
-        _make_run_deps(tokens_per_minute=-1)

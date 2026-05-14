@@ -99,9 +99,3 @@ class RunDependencies:
     requests_per_minute: int
     tokens_per_minute: int
     rate_limiter: TokenBucketRateLimiter | None = None
-
-    def __post_init__(self) -> None:
-        if self.requests_per_minute < 1:
-            raise ValueError("requests_per_minute must be >= 1")
-        if self.tokens_per_minute < 1:
-            raise ValueError("tokens_per_minute must be >= 1")
