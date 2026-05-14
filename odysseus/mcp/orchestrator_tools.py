@@ -14,19 +14,18 @@ from odysseus.agents.pipeline.dispatch import (
 from odysseus.agents.pipeline.guards import check_artifacts  # noqa: F401
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status
 from odysseus.agents.prompt_builder.search_ops import _BRANCH_ALGORITHM
+
+# Pre-loaded stage prompt bodies — populated at import time in prompts.py.
+# Imported here so start_stage reads from the cache rather than hitting disk.
+from odysseus.mcp.prompts import _STAGE_PROMPT_BODIES  # noqa: E402
 from odysseus.mcp.server import (
     _REVIEW_AGENT_PROMPT_NAMES,
-    _STAGE_PROMPT_MAP,
     STAGE_REGISTRY,
     _load_text,
     get_active_stage,
     mcp,
     set_active_stage,
 )
-
-# Pre-loaded stage prompt bodies — populated at import time in prompts.py.
-# Imported here so start_stage reads from the cache rather than hitting disk.
-from odysseus.mcp.prompts import _STAGE_PROMPT_BODIES  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
