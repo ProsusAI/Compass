@@ -833,6 +833,43 @@ def _ensure_stage4_search_state(run_dir: Path, project_dir: Path | None = None) 
         logger.warning("Failed to pre-initialise search_state.json for run %s: %s", run_id, exc)
 
 
+_STAGE_4_BUILD_ACTION_RECOVER: str = (
+    "Stage 4 — build-recovering phase: active_evals is non-empty from a prior interrupted run. "
+    "Spawn the Prompt Builder to resume in-flight evaluations via run_batch_eval(candidates=[]). "
+    "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
+)
+_STAGE_4_BUILD_ACTION_FIRST: str = (
+    "Stage 4 — build phase: spawn the Prompt Builder to compile the "
+    "initial routing prompt (v1) using seed examples from the Review Agent. "
+    "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
+)
+_STAGE_4_BUILD_ACTION_STEADY: str = (
+    "Stage 4 — build phase: spawn the Prompt Builder to generate "
+    "prompt variants and evaluate them. "
+    "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
+)
+
+# Static (action_text, tools, prompts, subagent_instruction) per non-build phase.
+_STAGE_4_PHASE_CONFIG: dict[str, tuple[str, list[str], list[str], str]] = {
+    "cold_review": (
+        "Stage 4 — cold-start: spawn the Review Agent to seed the search "
+        "with diverse initial hypotheses. "
+        "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
+        tool_registry.COLD_REVIEW_TOOLS,
+        ["odysseus_review_agent_cold_start"],
+        STAGE_4_COLD_START_INSTRUCTION,
+    ),
+    "review": (
+        "Stage 4 — review phase: spawn the Review Agent to analyse "
+        "eval results and emit edit directives. "
+        "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools.",
+        tool_registry.REVIEW_TOOLS,
+        ["odysseus_review_agent_iterative"],
+        STAGE_4_REVIEW_INSTRUCTION,
+    ),
+}
+
+
 def _next_action_for_stage_4(
     run_dir: Path,
     rerun_config: dict[str, Any] | None = None,
@@ -851,7 +888,6 @@ def _next_action_for_stage_4(
     phase, flags = _detect_stage_4_phase_beam(run_dir, rerun_config)
     algorithm = _read_algorithm_from_state(run_dir)
 
-    # Rerun is special — needs template formatting with config values
     if phase == "rerun":
         assert rerun_config is not None  # noqa: S101
         source_version = rerun_config.get("source_prompt_version", "unknown")
@@ -871,61 +907,31 @@ def _next_action_for_stage_4(
             algorithm,
         )
 
-    if phase == "cold_review":
+    # Beam post-cold-start: protected_parent_round flag selects the round-2 overlay.
+    if phase == "review" and flags.get("protected_parent_round"):
         return (
-            "Stage 4 — cold-start: spawn the Review Agent to seed the search "
-            "with diverse initial hypotheses. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_cold_start' before calling any review tools.",
-            tool_registry.COLD_REVIEW_TOOLS,
-            ["odysseus_review_agent_cold_start"],
-            STAGE_4_COLD_START_INSTRUCTION,
-            algorithm,
-        )
-
-    if phase == "review":
-        # Beam post-cold-start: protected_parent_round flag selects the round-2 overlay.
-        if flags.get("protected_parent_round"):
-            return (
-                "Stage 4 — post-cold-start review (round 2): spawn the Review Agent to emit "
-                "exactly one protected child per scored cold-start parent. "
-                "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
-                tool_registry.REVIEW_TOOLS,
-                ["odysseus_review_agent_post_coldstart"],
-                STAGE_4_REVIEW_INSTRUCTION,
-                algorithm,
-            )
-        return (
-            "Stage 4 — review phase: spawn the Review Agent to analyse "
-            "eval results and emit edit directives. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_iterative' before calling any review tools.",
+            "Stage 4 — post-cold-start review (round 2): spawn the Review Agent to emit "
+            "exactly one protected child per scored cold-start parent. "
+            "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
             tool_registry.REVIEW_TOOLS,
-            ["odysseus_review_agent_iterative"],
+            ["odysseus_review_agent_post_coldstart"],
             STAGE_4_REVIEW_INSTRUCTION,
             algorithm,
         )
 
+    if phase in _STAGE_4_PHASE_CONFIG:
+        action, tools, prompts, instr = _STAGE_4_PHASE_CONFIG[phase]
+        return action, tools, prompts, instr, algorithm
+
     # phase == "build" — behaviour varies by flags
     is_first_round = flags.get("is_first_round", False)
     recover_active_evals = flags.get("recover_active_evals", False)
-
     if recover_active_evals:
-        action_text = (
-            "Stage 4 — build-recovering phase: active_evals is non-empty from a prior interrupted run. "
-            "Spawn the Prompt Builder to resume in-flight evaluations via run_batch_eval(candidates=[]). "
-            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
-        )
+        action_text = _STAGE_4_BUILD_ACTION_RECOVER
     elif is_first_round:
-        action_text = (
-            "Stage 4 — build phase: spawn the Prompt Builder to compile the "
-            "initial routing prompt (v1) using seed examples from the Review Agent. "
-            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
-        )
+        action_text = _STAGE_4_BUILD_ACTION_FIRST
     else:
-        action_text = (
-            "Stage 4 — build phase: spawn the Prompt Builder to generate "
-            "prompt variants and evaluate them. "
-            "REQUIRED: activate prompt 'odysseus_prompt_builder' before calling any build tools."
-        )
+        action_text = _STAGE_4_BUILD_ACTION_STEADY
 
     return (
         action_text,
