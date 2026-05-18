@@ -111,17 +111,6 @@ class RoundSummary(BaseModel):
     backtracking: bool = False
     hypervolume: float | None = None
     reference_point: tuple[float, float] | None = None
-    acceptance_rates: dict[int, float] | None = None
-    reduce_case: Literal["singleton", "dominated", "delta_s_argmin"] | None = None
-    evicted_version: str | None = None
-    temperatures: dict[int, float] | None = None
-    """Per-trajectory temperature at end of round, keyed by trajectory_id."""
-    # EMOSA-specific optional fields (defaults None — backward-compatible with
-    # hill_climb consumers that never set these)
-    ideal_point: tuple[float, float] | None = None
-    nadir_point: tuple[float, float] | None = None
-    step_count: int | None = None
-    phase: str | None = None
 
     @model_validator(mode="before")
     @classmethod
