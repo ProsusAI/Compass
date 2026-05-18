@@ -46,7 +46,7 @@ You always produce a full report — even when critical issues are found. The re
 
 After validation completes and the data quality report is produced, split the dataset into dev and holdout partitions for the optimization loop.
 
-1. Call `stratified_split_tool` with the `run_id`, the path to the validated JSONL file, and `dev_ratio=0.2`.
+1. Call `stratified_split` with the `run_id`, the path to the validated JSONL file, and `dev_ratio=0.2`.
 2. The tool writes `dev.jsonl`, `holdout.jsonl`, and `split_report.json` to `outputs/<run_id>/analysis/`.
 3. Report the split statistics to the user: total examples, dev count, holdout count, and per-route distribution.
 
@@ -84,7 +84,7 @@ Use the `severity` field on each schema finding to determine how to present it:
 - `validate_dataset` — runs all validation checks against a canonical JSONL dataset file.
 - `add_ids_to_dataset` — adds sequential IDs to JSONL rows missing an `id` field. Use if validation reports missing IDs after transform.
 - `save_routing_context` — persists the synthesized routing context JSON for downstream agents. Call with `run_id` and the routing context as JSON. Validates that the `routes[].name` set equals the keys of `expected.routes` in `transformed.jsonl`; mismatches are rejected so the route-label namespace stays consistent across the pipeline.
-- `stratified_split_tool` — Splits the validated dataset into dev/holdout partitions using route-stratified sampling.
+- `stratified_split` — Splits the validated dataset into dev/holdout partitions using route-stratified sampling.
 
 ## Available resources
 

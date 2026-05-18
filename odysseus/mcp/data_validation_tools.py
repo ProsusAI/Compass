@@ -9,7 +9,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.data_validation.checks import run_all_checks
 from odysseus.agents.data_validation.detect import detect_and_parse
-from odysseus.agents.data_validation.split import stratified_split
+from odysseus.agents.data_validation.split import stratified_split as _stratified_split_impl
 from odysseus.agents.data_validation.transform import add_ids_to_dataset as _do_add_ids
 from odysseus.agents.data_validation.transform import transform_dataset as _do_transform
 from odysseus.agents.pipeline.guards import check_artifacts
@@ -274,7 +274,7 @@ async def save_routing_context(ctx: Context, run_id: str, routing_context_json: 
 
 
 @mcp.tool()
-async def get_routing_context_tool(ctx: Context, run_id: str) -> str:
+async def get_routing_context(ctx: Context, run_id: str) -> str:
     """[Stage 2+] Return the parsed RoutingContext for a run as JSON.
 
     Reads outputs/<run_id>/validation/routing_context.json. Raises ToolError
@@ -328,7 +328,7 @@ def _collect_dataset_route_keys(transformed_path: Path) -> set[str]:
 
 
 @mcp.tool()
-async def stratified_split_tool(
+async def stratified_split(
     ctx: Context,
     run_id: str,
     dataset_path: str,
@@ -377,7 +377,7 @@ async def stratified_split_tool(
             f"Samples: {samples}"
         )
 
-    dev_examples, holdout_examples, split_report = stratified_split(examples, dev_ratio=dev_ratio)
+    dev_examples, holdout_examples, split_report = _stratified_split_impl(examples, dev_ratio=dev_ratio)
 
     output_dir = project_dir / "outputs" / run_id / "analysis"
     output_dir.mkdir(parents=True, exist_ok=True)

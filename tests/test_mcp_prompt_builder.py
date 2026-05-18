@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from odysseus.mcp import (
-    filter_holdout_dataset_tool,
-    get_child_variants_tool,
-    get_edit_directives_tool,
-    get_search_state_tool,
+    filter_holdout_dataset,
+    get_child_variants,
+    get_edit_directives,
+    get_search_state,
 )
 
 _RUN_ID = "test_run"
@@ -60,7 +60,7 @@ class TestSearchStateTools:
         from mcp.server.fastmcp.exceptions import ToolError
 
         with _patch_project_dir(tmp_path), pytest.raises(ToolError):
-            await get_search_state_tool("nonexistent-id")
+            await get_search_state("nonexistent-id")
 
 
 class TestFilterHoldoutTool:
@@ -73,7 +73,7 @@ class TestFilterHoldoutTool:
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(
-                await filter_holdout_dataset_tool(
+                await filter_holdout_dataset(
                     ctx=None, holdout_jsonl_path=str(holdout), exclude_ids=["ex1"], run_id=_RUN_ID
                 )
             )
@@ -89,7 +89,7 @@ class TestFilterHoldoutTool:
 
         _setup_guard_artifacts(tmp_path, stage="search")
         with _patch_project_dir(tmp_path), pytest.raises(ToolError):
-            await filter_holdout_dataset_tool(
+            await filter_holdout_dataset(
                 ctx=None, holdout_jsonl_path="/nonexistent.jsonl", exclude_ids=[], run_id=_RUN_ID
             )
 
@@ -102,9 +102,7 @@ class TestFilterHoldoutTool:
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(
-                await filter_holdout_dataset_tool(
-                    ctx=None, holdout_jsonl_path=str(holdout), exclude_ids=[], run_id=_RUN_ID
-                )
+                await filter_holdout_dataset(ctx=None, holdout_jsonl_path=str(holdout), exclude_ids=[], run_id=_RUN_ID)
             )
         filtered = Path(result["filtered_holdout_path"])
         lines = filtered.read_text().strip().splitlines()
@@ -118,7 +116,7 @@ class TestFilterHoldoutTool:
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(
-                await filter_holdout_dataset_tool(
+                await filter_holdout_dataset(
                     ctx=None, holdout_jsonl_path=str(holdout), exclude_ids=["ex1"], run_id=_RUN_ID
                 )
             )
@@ -134,16 +132,14 @@ class TestFilterHoldoutTool:
         )
         with _patch_project_dir(tmp_path):
             result = json.loads(
-                await filter_holdout_dataset_tool(
-                    ctx=None, holdout_jsonl_path=str(holdout), exclude_ids=[], run_id=_RUN_ID
-                )
+                await filter_holdout_dataset(ctx=None, holdout_jsonl_path=str(holdout), exclude_ids=[], run_id=_RUN_ID)
             )
         assert "holdout_filtered" in result["filtered_holdout_path"]
 
 
 class TestEditDirectivesPersistence:
     @pytest.mark.asyncio
-    async def test_get_edit_directives_tool(self, tmp_path: Path) -> None:
+    async def test_get_edit_directives(self, tmp_path: Path) -> None:
         from odysseus.agents.review.models import ChildVariant, EditDirective
         from odysseus.agents.review.ops import save_child_variants
 
@@ -165,7 +161,7 @@ class TestEditDirectivesPersistence:
             )
             save_child_variants(_RUN_ID, [variant], output_dir=tmp_path / "outputs")
 
-            result = await get_edit_directives_tool(
+            result = await get_edit_directives(
                 ctx=None,
                 run_id=_RUN_ID,
                 output_dir=str(tmp_path / "outputs"),
@@ -175,10 +171,10 @@ class TestEditDirectivesPersistence:
             assert data[0]["directive_id"] == "d1"
 
     @pytest.mark.asyncio
-    async def test_get_edit_directives_tool_empty(self, tmp_path: Path) -> None:
+    async def test_get_edit_directives_empty(self, tmp_path: Path) -> None:
         with _patch_project_dir(tmp_path):
             _setup_guard_artifacts(tmp_path, stage="search")
-            result = await get_edit_directives_tool(
+            result = await get_edit_directives(
                 ctx=None,
                 run_id=_RUN_ID,
                 output_dir=str(tmp_path / "outputs"),
@@ -187,8 +183,8 @@ class TestEditDirectivesPersistence:
             assert data == []
 
     @pytest.mark.asyncio
-    async def test_get_edit_directives_tool_flattens_multiple_variants(self, tmp_path: Path) -> None:
-        """get_edit_directives_tool must flatten directives across all child variants in file order."""
+    async def test_get_edit_directives_flattens_multiple_variants(self, tmp_path: Path) -> None:
+        """get_edit_directives must flatten directives across all child variants in file order."""
         from odysseus.agents.review.models import ChildVariant, EditDirective
         from odysseus.agents.review.ops import save_child_variants
 
@@ -233,7 +229,7 @@ class TestEditDirectivesPersistence:
             )
             save_child_variants(_RUN_ID, [variant_a, variant_b], output_dir=tmp_path / "outputs")
 
-            result = await get_edit_directives_tool(
+            result = await get_edit_directives(
                 ctx=None,
                 run_id=_RUN_ID,
                 output_dir=str(tmp_path / "outputs"),
@@ -243,7 +239,7 @@ class TestEditDirectivesPersistence:
             assert [d["directive_id"] for d in data] == ["d1", "d2", "d3"]
 
     @pytest.mark.asyncio
-    async def test_get_child_variants_tool(self, tmp_path: Path) -> None:
+    async def test_get_child_variants(self, tmp_path: Path) -> None:
         from odysseus.agents.review.models import ChildVariant, EditDirective
         from odysseus.agents.review.ops import save_child_variants
 
@@ -265,7 +261,7 @@ class TestEditDirectivesPersistence:
             )
             save_child_variants(_RUN_ID, [variant], output_dir=tmp_path / "outputs")
 
-            result = await get_child_variants_tool(
+            result = await get_child_variants(
                 ctx=None,
                 run_id=_RUN_ID,
                 output_dir=str(tmp_path / "outputs"),
@@ -282,7 +278,7 @@ class TestTrajectoryChildVariantsFallback:
 
     @pytest.mark.asyncio
     async def test_get_child_variants_falls_back_to_single_slot(self, tmp_path: Path) -> None:
-        """When no per-trajectory files exist, get_child_variants_tool returns single-slot variants."""
+        """When no per-trajectory files exist, get_child_variants returns single-slot variants."""
         from odysseus.agents.review.models import ChildVariant, EditDirective
         from odysseus.agents.review.ops import save_child_variants
 
@@ -304,7 +300,7 @@ class TestTrajectoryChildVariantsFallback:
             )
             save_child_variants(_RUN_ID, [variant], output_dir=tmp_path / "outputs")
 
-            result = await get_child_variants_tool(
+            result = await get_child_variants(
                 ctx=None,
                 run_id=_RUN_ID,
                 output_dir=str(tmp_path / "outputs"),

@@ -169,7 +169,7 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
     """The MCP wrapper converts FileExistsError into ToolError on the second call."""
     from mcp.server.fastmcp.exceptions import ToolError
 
-    from odysseus.mcp.prompt_building_tools import init_search_state_tool
+    from odysseus.mcp.prompt_building_tools import init_search_state
 
     resolve_project_dir_patch = "odysseus.project_dir.resolve_project_dir"
     search_ops_project_dir_patch = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
@@ -186,10 +186,10 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
         patch(_ALGO_STATE_PATCH, {}),
     ):
         # First call: should succeed.
-        await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
+        await init_search_state(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
 
         # Second call on pristine state: no-op (not an error).
-        await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
+        await init_search_state(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
 
         # Advance state so it is no longer pristine — synthesised directly to
         # avoid calling advance_round, which is algorithm-specific (stub on
@@ -221,6 +221,6 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
 
         # Third call: state has progress — must raise ToolError.
         with pytest.raises(ToolError) as exc_info:
-            await init_search_state_tool(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
+            await init_search_state(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
 
     assert "already has progress" in str(exc_info.value)

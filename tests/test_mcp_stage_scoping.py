@@ -43,24 +43,24 @@ def test_stage_registry_has_all_stages():
 
 
 def test_calibration_excludes_prompt_and_holdout_tools():
-    """calibration toolbelt must not include get_prompt_text_tool or query_holdout_examples_tool."""
+    """calibration toolbelt must not include get_prompt_text or query_holdout_examples."""
     calibration_tools = set(STAGE_REGISTRY["calibration"])
-    assert "get_prompt_text_tool" not in calibration_tools
-    assert "query_holdout_examples_tool" not in calibration_tools
+    assert "get_prompt_text" not in calibration_tools
+    assert "query_holdout_examples" not in calibration_tools
 
 
 def test_calibration_includes_builder_tools():
     """calibration toolbelt must include prompt-building tools for K-seed scoring."""
     calibration_tools = set(STAGE_REGISTRY["calibration"])
     expected_builder_tools = {
-        "init_search_state_tool",
-        "register_candidate_tool",
+        "init_search_state",
+        "register_candidate",
         "run_batch_eval",
-        "record_eval_result_tool",
-        "advance_step_tool",
-        "save_prompt_tool",
-        "get_edit_directives_tool",
-        "signal_eval_complete_tool",
+        "record_eval_result",
+        "advance_step",
+        "save_prompt",
+        "get_edit_directives",
+        "signal_eval_complete",
     }
     assert expected_builder_tools.issubset(calibration_tools), (
         f"calibration stage missing builder tools: {expected_builder_tools - calibration_tools}"
@@ -68,29 +68,29 @@ def test_calibration_includes_builder_tools():
 
 
 async def test_calibration_stage_filtering():
-    """set_active_stage('calibration') excludes get_prompt_text_tool and query_holdout_examples_tool."""
+    """set_active_stage('calibration') excludes get_prompt_text and query_holdout_examples."""
     set_active_stage("calibration")
     tools = await mcp.list_tools()
     tool_names = {t.name for t in tools}
-    assert "get_prompt_text_tool" not in tool_names
-    assert "query_holdout_examples_tool" not in tool_names
+    assert "get_prompt_text" not in tool_names
+    assert "query_holdout_examples" not in tool_names
     # Builder tools must be included
     assert "run_batch_eval" in tool_names
-    assert "advance_step_tool" in tool_names
+    assert "advance_step" in tool_names
 
 
 def test_review_cold_excludes_prompt_and_holdout_tools():
-    """review_cold toolbelt must not include get_prompt_text_tool or query_holdout_examples_tool."""
+    """review_cold toolbelt must not include get_prompt_text or query_holdout_examples."""
     cold_tools = set(STAGE_REGISTRY["review_cold"])
-    assert "get_prompt_text_tool" not in cold_tools
-    assert "query_holdout_examples_tool" not in cold_tools
+    assert "get_prompt_text" not in cold_tools
+    assert "query_holdout_examples" not in cold_tools
 
 
 def test_review_steady_includes_prompt_and_holdout_tools():
-    """Steady review toolbelt must include get_prompt_text_tool and query_holdout_examples_tool."""
+    """Steady review toolbelt must include get_prompt_text and query_holdout_examples."""
     review_tools = set(STAGE_REGISTRY["review"])
-    assert "get_prompt_text_tool" in review_tools
-    assert "query_holdout_examples_tool" in review_tools
+    assert "get_prompt_text" in review_tools
+    assert "query_holdout_examples" in review_tools
 
 
 def test_every_stage_includes_get_pipeline_status():
@@ -119,8 +119,8 @@ def test_no_stage_specific_tools_in_orchestrator():
         "run_eval",
         "detect_and_parse_dataset",
         "get_default_pricing",
-        "init_search_state_tool",
-        "build_review_briefing_tool",
+        "init_search_state",
+        "build_review_briefing",
         "run_holdout_eval",
     }
     assert orchestrator_tools.isdisjoint(stage_only_tools)

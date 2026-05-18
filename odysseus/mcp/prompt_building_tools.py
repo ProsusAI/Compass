@@ -14,10 +14,18 @@ from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
     advance_round,
-    get_search_state,
-    init_search_state,
-    record_eval_result,
-    register_candidate,
+)
+from odysseus.agents.prompt_builder.search_ops import (
+    get_search_state as _get_search_state_impl,
+)
+from odysseus.agents.prompt_builder.search_ops import (
+    init_search_state as _init_search_state_impl,
+)
+from odysseus.agents.prompt_builder.search_ops import (
+    record_eval_result as _record_eval_result_impl,
+)
+from odysseus.agents.prompt_builder.search_ops import (
+    register_candidate as _register_candidate_impl,
 )
 from odysseus.agents.review.models import INITIAL_PARENT_VERSION
 from odysseus.eval.backends.registry import BackendRegistry
@@ -64,7 +72,7 @@ def build_pipeline_config(
 
 
 @mcp.tool()
-async def init_search_state_tool(
+async def init_search_state(
     ctx: Context,
     run_id: str,
     backend: str,
@@ -95,7 +103,7 @@ async def init_search_state_tool(
     )
 
     try:
-        state = init_search_state(
+        state = _init_search_state_impl(
             backend=backend,
             run_id=run_id,
             evaluation_budget=evaluation_budget,
@@ -107,7 +115,7 @@ async def init_search_state_tool(
 
 
 @mcp.tool()
-async def register_candidate_tool(
+async def register_candidate(
     run_id: str,
     prompt_version: str,
     parent_version: str | None = None,
@@ -118,7 +126,7 @@ async def register_candidate_tool(
 
     Also writes ``build_dispatched.json`` so that ``complete_stage(prompt_building)``
     knows a Prompt Builder sub-agent is in-flight.  The marker is cleared by
-    ``advance_step_tool`` when the round is complete.
+    ``advance_step`` when the round is complete.
 
     Args:
         run_id: Pipeline run identifier.
@@ -132,7 +140,7 @@ async def register_candidate_tool(
         JSON object confirming the registered prompt version.
     """
     try:
-        state = register_candidate(
+        state = _register_candidate_impl(
             run_id=run_id,
             prompt_version=prompt_version,
             parent_version=parent_version,
@@ -188,7 +196,7 @@ async def run_eval(
         # Hardcode dev split — agents cannot choose the dataset
         data_source = str(project_dir / "outputs" / run_id / "analysis" / "dev.jsonl")
 
-        state = get_search_state(run_id=run_id)
+        state = _get_search_state_impl(run_id=run_id)
 
         # Pre-flight: signal backend setup needed when backend is missing
         if not state.backend:
@@ -275,7 +283,7 @@ async def run_batch_eval(
 
 
 @mcp.tool()
-async def record_eval_result_tool(
+async def record_eval_result(
     run_id: str,
     prompt_version: str,
     quality_score: float,
@@ -293,7 +301,7 @@ async def record_eval_result_tool(
         JSON object with prompt_version, quality_score, and cost.
     """
     try:
-        result = record_eval_result(
+        result = _record_eval_result_impl(
             run_id=run_id,
             prompt_version=prompt_version,
             quality_score=quality_score,
@@ -307,7 +315,7 @@ async def record_eval_result_tool(
 
 
 def _advance_hill_climb(run_id: str) -> str:
-    """Hill-climb arm of advance_step_tool.
+    """Hill-climb arm of advance_step.
 
     Processes all pending candidates, updates the Pareto front, adjusts
     stagnation tracking, and checks for convergence.  Returns a
@@ -328,7 +336,7 @@ def _advance_hill_climb(run_id: str) -> str:
 
 
 @mcp.tool()
-async def advance_step_tool(run_id: str) -> str:
+async def advance_step(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Advance the search loop by one step.
 
     Dispatches to the strategy-specific advance logic determined by the
@@ -343,7 +351,7 @@ async def advance_step_tool(run_id: str) -> str:
         JSON-serialized RoundSummary for the completed round.
     """
     try:
-        state = get_search_state(run_id=run_id)
+        state = _get_search_state_impl(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
 
@@ -351,11 +359,11 @@ async def advance_step_tool(run_id: str) -> str:
     if algorithm == "hill_climb":
         return _advance_hill_climb(run_id)
 
-    raise NotImplementedError(f"advance_step_tool: algorithm '{algorithm}' not implemented on this branch")
+    raise NotImplementedError(f"advance_step: algorithm '{algorithm}' not implemented on this branch")
 
 
 @mcp.tool()
-async def get_search_state_tool(run_id: str) -> str:
+async def get_search_state(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Load and return the current search state.
 
     Args:
@@ -365,14 +373,14 @@ async def get_search_state_tool(run_id: str) -> str:
         JSON-serialized SearchState.
     """
     try:
-        state = get_search_state(run_id=run_id)
+        state = _get_search_state_impl(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
     return state.model_dump_json(indent=2)
 
 
 @mcp.tool()
-async def save_prompt_tool(
+async def save_prompt(
     ctx: Context,
     run_id: str,
     prompt_version: str,
@@ -410,7 +418,7 @@ async def save_prompt_tool(
 
 
 @mcp.tool()
-async def get_child_variants_tool(
+async def get_child_variants(
     ctx: Context,
     run_id: str,
     output_dir: str = "outputs",
@@ -418,10 +426,10 @@ async def get_child_variants_tool(
     """[Stage 4: Refinement Loop] Retrieve the Review Agent's child variants for the current round.
 
     Returns the list of ChildVariant objects persisted by the Review Agent
-    via record_directive_outcomes_tool. Each variant specifies a parent version
+    via record_directive_outcomes. Each variant specifies a parent version
     and the directives to apply together as one child prompt.
 
-    Reads the single-slot ``child_variants.json`` written by record_directive_outcomes_tool.
+    Reads the single-slot ``child_variants.json`` written by record_directive_outcomes.
 
     Args:
         run_id: Pipeline run identifier.
@@ -448,7 +456,7 @@ async def get_child_variants_tool(
 
 
 @mcp.tool()
-async def get_edit_directives_tool(
+async def get_edit_directives(
     ctx: Context,
     run_id: str,
     output_dir: str = "outputs",
@@ -456,10 +464,10 @@ async def get_edit_directives_tool(
     """[Stage 4: Refinement Loop] Retrieve flattened edit directives across all child variants.
 
     Flattens directives from all ChildVariant objects persisted by the Review
-    Agent via record_directive_outcomes_tool. This is a back-compat helper for
+    Agent via record_directive_outcomes. This is a back-compat helper for
     callers that need a flat directive list. Callers that need per-variant
     grouping (e.g. the Prompt Builder compiling one prompt per variant) should
-    use get_child_variants_tool instead.
+    use get_child_variants instead.
 
     Args:
         run_id: Pipeline run identifier.
@@ -478,7 +486,7 @@ async def get_edit_directives_tool(
 
 
 @mcp.tool()
-async def signal_eval_complete_tool(
+async def signal_eval_complete(
     ctx: Context,
     run_id: str,
     output_dir: str = "outputs",
@@ -486,7 +494,7 @@ async def signal_eval_complete_tool(
     """[Stage 4: Refinement Loop] Deprecated back-compat shim.
 
     Eval-complete is now signaled automatically when the Prompt Builder calls
-    ``advance_step_tool``, which clears the build-dispatch marker and flips
+    ``advance_step``, which clears the build-dispatch marker and flips
     ``loop_phase`` to ``"review"``.
 
     Retained for back-compat: calling this tool clears the build-dispatch

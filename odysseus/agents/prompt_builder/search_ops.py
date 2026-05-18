@@ -273,7 +273,7 @@ def init_search_state(
             f"search_state for run_id={run_id!r} already has progress "
             f"(round={existing.round}, elites={len(existing.elite_set)}, "
             f"history={len(existing.round_history)}, pending={len(pending)}); "
-            "call get_search_state_tool instead of re-initialising"
+            "call get_search_state instead of re-initialising"
         )
 
     algorithm_state = dict(_BRANCH_ALGORITHM_STATE)
@@ -753,7 +753,7 @@ def set_loop_phase(
 ) -> None:
     """Set the loop_phase on the search state.
 
-    Called by record_directive_outcomes_tool to signal that the Review Agent
+    Called by record_directive_outcomes to signal that the Review Agent
     has finished and the Prompt Builder should be spawned next.  Accepts the
     full widened enum so feature branches can drive additional phases.
     """

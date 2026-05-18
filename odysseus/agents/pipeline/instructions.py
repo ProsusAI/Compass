@@ -22,7 +22,7 @@ _STAGE_2_TOOLS: list[str] = [
     "detect_and_parse_dataset",
     "transform_dataset",
     "save_routing_context",
-    "stratified_split_tool",
+    "stratified_split",
     "save_proposed_mapping",
 ]
 
@@ -34,24 +34,24 @@ _STAGE_3_TOOLS: list[str] = [
 
 _STAGE_4_COLD_TOOLS: list[str] = [
     "get_pipeline_status",
-    "get_search_state_tool",
-    "build_review_briefing_tool",
-    "record_directive_outcomes_tool",
+    "get_search_state",
+    "build_review_briefing",
+    "record_directive_outcomes",
 ]
 
 _STAGE_4_BUILD_BASE_TOOLS: list[str] = [
     "get_pipeline_status",
-    "get_search_state_tool",
-    "get_routing_context_tool",
-    "get_child_variants_tool",
-    "get_edit_directives_tool",
-    "get_prompt_text_tool",
-    "get_score_report_tool",
-    "init_search_state_tool",
-    "register_candidate_tool",
-    "record_eval_result_tool",
-    "advance_step_tool",
-    "save_prompt_tool",
+    "get_search_state",
+    "get_routing_context",
+    "get_child_variants",
+    "get_edit_directives",
+    "get_prompt_text",
+    "get_score_report",
+    "init_search_state",
+    "register_candidate",
+    "record_eval_result",
+    "advance_step",
+    "save_prompt",
     "run_eval",
 ]
 
@@ -59,32 +59,32 @@ _STAGE_4_BUILD_RECOVERY_TOOLS: list[str] = _STAGE_4_BUILD_BASE_TOOLS + ["run_bat
 
 _STAGE_4_RERUN_TOOLS: list[str] = [
     "get_pipeline_status",
-    "get_search_state_tool",
-    "get_routing_context_tool",
-    "get_prompt_text_tool",
-    "init_search_state_tool",
-    "register_candidate_tool",
-    "record_eval_result_tool",
-    "advance_step_tool",
-    "save_prompt_tool",
+    "get_search_state",
+    "get_routing_context",
+    "get_prompt_text",
+    "init_search_state",
+    "register_candidate",
+    "record_eval_result",
+    "advance_step",
+    "save_prompt",
     "run_eval",
 ]
 
 _STAGE_4_REVIEW_TOOLS: list[str] = [
     "get_pipeline_status",
-    "get_search_state_tool",
-    "build_review_briefing_tool",
-    "record_directive_outcomes_tool",
-    "get_prompt_text_tool",
-    "query_holdout_examples_tool",
+    "get_search_state",
+    "build_review_briefing",
+    "record_directive_outcomes",
+    "get_prompt_text",
+    "query_holdout_examples",
 ]
 
 _STAGE_5_TOOLS: list[str] = [
     "get_pipeline_status",
-    "filter_holdout_dataset_tool",
+    "filter_holdout_dataset",
     "list_pareto_candidates",
     "run_holdout_eval",
-    "build_final_report_briefing_tool",
+    "build_final_report_briefing",
     "save_final_report",
 ]
 
@@ -228,9 +228,9 @@ STAGE_4_COLD_START_INSTRUCTION: str = _hard_stop(
 _STAGE_4_BUILD_DISPATCH_CONTEXT: str = (
     "<DISPATCH_CONTEXT>\n"
     "This is an optimization round (round 2+ in the refinement loop). A search state already exists for this run.\n"
-    "- Begin by calling get_search_state_tool (NOT init_search_state_tool).\n"
+    "- Begin by calling get_search_state (NOT init_search_state).\n"
     "- Skip Phase 1 of your system prompt entirely. Proceed directly to Phase 2.\n"
-    "- Calling init_search_state_tool now would clobber the optimization history.\n"
+    "- Calling init_search_state now would clobber the optimization history.\n"
     "</DISPATCH_CONTEXT>\n\n"
 )
 

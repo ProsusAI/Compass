@@ -5,7 +5,7 @@ Run from the project root:
     python tests/scenarios/data/review/generate_fixtures.py
 
 Creates search states, score reports, mutation logs, round reports, and
-minimal prompt files required by build_review_briefing_tool.
+minimal prompt files required by build_review_briefing.
 """
 
 import json

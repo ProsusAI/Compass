@@ -202,7 +202,7 @@ def _ensure_stage4_search_state(run_dir: Path, project_dir: Path | None = None) 
 
     This runs once on first Stage-4 dispatch so that ``_detect_stage_4_phase``
     and the cold-start Review Agent see a real ``SearchState`` with the branch
-    algorithm already persisted — ``get_search_state_tool`` no longer raises
+    algorithm already persisted — ``get_search_state`` no longer raises
     ``FileNotFoundError`` during the cold-start sub-agent.
 
     When the file already exists this function is a no-op.
@@ -285,7 +285,7 @@ def _next_action_for_stage_4(
     used by the orchestrator to compose the strategy-aware Review Agent prompt.
     """
     # Pre-init search_state.json on first Stage-4 dispatch so cold-start
-    # sub-agents can call get_search_state_tool without FileNotFoundError.
+    # sub-agents can call get_search_state without FileNotFoundError.
     _ensure_stage4_search_state(run_dir, project_dir=project_dir)
 
     phase, flags = _detect_stage_4_phase_beam(run_dir, rerun_config)

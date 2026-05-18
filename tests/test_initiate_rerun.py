@@ -84,26 +84,41 @@ def _run_initiate_rerun(
 
 
 class TestInitiateRerun:
-    def test_writes_rerun_config_json(self, tmp_path: Path) -> None:
+    def test_first_call_returns_candidate_list(self, tmp_path: Path) -> None:
+        """First call (no version) must return action_required=version_selection."""
+        _setup_stage4_converged_with_pareto(tmp_path, "r1")
+        result = _run_initiate_rerun(tmp_path, "r1")
+        assert result["action_required"] == "version_selection"
+        assert len(result["candidates"]) == 2
+        # Candidates should be sorted: highest quality first
+        assert result["candidates"][0]["prompt_version"] == "v3"
+
+    def test_first_call_does_not_write_rerun_config(self, tmp_path: Path) -> None:
+        """First call must not create rerun_config.json — that is the second call's job."""
         _setup_stage4_converged_with_pareto(tmp_path, "r1")
         _run_initiate_rerun(tmp_path, "r1")
+        assert not (tmp_path / "r1" / "rerun_config.json").is_file()
+
+    def test_writes_rerun_config_json(self, tmp_path: Path) -> None:
+        _setup_stage4_converged_with_pareto(tmp_path, "r1")
+        _run_initiate_rerun(tmp_path, "r1", source_prompt_version="v3")
         config_path = tmp_path / "r1" / "rerun_config.json"
         assert config_path.is_file()
         config = json.loads(config_path.read_text())
         assert config["mode"] == "rerun"
         assert config["new_backend"] is None
-        assert config["source_prompt_version"] == "v3"  # highest quality on front
+        assert config["source_prompt_version"] == "v3"
         assert config["original_backend"] == "mock"
 
     def test_renames_search_state(self, tmp_path: Path) -> None:
         _setup_stage4_converged_with_pareto(tmp_path, "r1")
-        _run_initiate_rerun(tmp_path, "r1")
+        _run_initiate_rerun(tmp_path, "r1", source_prompt_version="v3")
         assert not (tmp_path / "r1" / "search" / "search_state.json").is_file()
         assert (tmp_path / "r1" / "search" / "search_state_original.json").is_file()
 
     def test_stage4_becomes_incomplete_after_rename(self, tmp_path: Path) -> None:
         _setup_stage4_converged_with_pareto(tmp_path, "r1")
-        _run_initiate_rerun(tmp_path, "r1")
+        _run_initiate_rerun(tmp_path, "r1", source_prompt_version="v3")
         assert not (tmp_path / "r1" / "search" / "search_state.json").is_file()
 
     def test_explicit_source_version_override(self, tmp_path: Path) -> None:
@@ -135,12 +150,22 @@ class TestInitiateRerun:
         # Move pareto_front → elite_set (as the new code serialises it)
         state["elite_set"] = state.pop("pareto_front")
         (search_dir / "search_state.json").write_text(json.dumps(state))
+        # First call returns candidates; verify v3 is in the list
         result = _run_initiate_rerun(tmp_path, "r2")
-        assert result["source_prompt_version"] == "v3"
+        assert result["action_required"] == "version_selection"
+        assert any(c["prompt_version"] == "v3" for c in result["candidates"])
+        # Second call executes with chosen version
+        result2 = _run_initiate_rerun(tmp_path, "r2", source_prompt_version="v3")
+        assert result2["source_prompt_version"] == "v3"
 
     def test_pareto_front_fallback_loads_old_state_files(self, tmp_path: Path) -> None:
         """Old state files that only have pareto_front are still accepted."""
         _setup_stage4_converged_with_pareto(tmp_path, "r3")
         # Fixture already writes pareto_front (no elite_set key) — should work as-is
+        # First call returns candidates from pareto_front fallback
         result = _run_initiate_rerun(tmp_path, "r3")
-        assert result["source_prompt_version"] == "v3"
+        assert result["action_required"] == "version_selection"
+        assert any(c["prompt_version"] == "v3" for c in result["candidates"])
+        # Second call executes
+        result2 = _run_initiate_rerun(tmp_path, "r3", source_prompt_version="v3")
+        assert result2["source_prompt_version"] == "v3"

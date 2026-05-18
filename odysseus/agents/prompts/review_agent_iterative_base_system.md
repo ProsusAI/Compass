@@ -53,7 +53,7 @@ When targeting a specific confusion cell, set `target_confusion_cell = "true_rou
 
 ## Fetching prompt text
 
-`get_prompt_text_tool(run_id=run_id, version="<version>")` — always pass `run_id`. Omitting it is an error.
+`get_prompt_text(run_id=run_id, version="<version>")` — always pass `run_id`. Omitting it is an error.
 
 ## Target progress fields
 
@@ -81,7 +81,7 @@ When targeting a specific confusion cell, set `target_confusion_cell = "true_rou
 | `was_attempted` | `true` if variant was evaluated |
 | `outcome` | `"improved"` / `"no_effect"` / `"regressed"` |
 
-Use to inform which failure modes have been tried and with what effect. Do **not** pass `outcomes` to `record_directive_outcomes_tool` — outcomes are computed automatically.
+Use to inform which failure modes have been tried and with what effect. Do **not** pass `outcomes` to `record_directive_outcomes` — outcomes are computed automatically.
 
 ## What the overlay tells you
 

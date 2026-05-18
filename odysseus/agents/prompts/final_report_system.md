@@ -16,7 +16,7 @@ Perform the final holdout evaluation and generate a report summarising the optim
 
 ### Phase 2: Report generation
 
-5. Call `build_final_report_briefing_tool(run_id)`. Returns structured JSON with metrics, comparisons, error analysis, and chart paths.
+5. Call `build_final_report_briefing(run_id)`. Returns structured JSON with metrics, comparisons, error analysis, and chart paths.
 6. Write a markdown report following the template below.
 7. Call `save_final_report(run_id, <full markdown report>)`.
 

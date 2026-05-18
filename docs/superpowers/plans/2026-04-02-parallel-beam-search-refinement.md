@@ -25,8 +25,8 @@
 | `odysseus/agents/pipeline/status.py` | `_detect_stage_4_phase` + `build_recovering` phase, `_BUILD_TOOLS` update |
 | `odysseus/agents/pipeline/instructions.py` | New `STAGE_4_BUILD_RECOVERING_INSTRUCTION`, update `STAGE_4_BUILD_INSTRUCTION` |
 | `odysseus/mcp/server.py` | `STAGE_REGISTRY["prompt_building"]` add `run_batch_eval` |
-| `odysseus/mcp/review_tools.py` | `record_directive_outcomes_tool` + `get_edit_directives_tool` → directive batches |
-| `odysseus/mcp/prompt_building_tools.py` | New `run_batch_eval` tool, update `register_candidate_tool` |
+| `odysseus/mcp/review_tools.py` | `record_directive_outcomes` + `get_edit_directives` → directive batches |
+| `odysseus/mcp/prompt_building_tools.py` | New `run_batch_eval` tool, update `register_candidate` |
 | `odysseus/eval/protocols.py` | `RunDependencies` optional shared rate limiter |
 | `odysseus/eval/controller.py` | Accept shared rate limiter from `RunDependencies` |
 | `odysseus/agents/prompts/review_agent_system.md` | Directive batch schema, multi-parent branching, diversity rule |
@@ -588,14 +588,14 @@ def load_directive_batches(
 Run: `uv run pytest tests/test_review_ops.py -v`
 Expected: ALL PASS
 
-- [ ] **Step 5: Update `review_tools.py` — `record_directive_outcomes_tool`**
+- [ ] **Step 5: Update `review_tools.py` — `record_directive_outcomes`**
 
 In `odysseus/mcp/review_tools.py`:
-1. Change `edit_directives` parameter name to `directive_batches` in `record_directive_outcomes_tool`
+1. Change `edit_directives` parameter name to `directive_batches` in `record_directive_outcomes`
 2. Change the import from `save_edit_directives` to `save_directive_batches`
 3. Update the validation and persistence call to use `DirectiveBatch` instead of `EditDirective`
 
-- [ ] **Step 6: Update `review_tools.py` — `get_edit_directives_tool`**
+- [ ] **Step 6: Update `review_tools.py` — `get_edit_directives`**
 
 In `odysseus/mcp/review_tools.py`:
 1. Change import from `load_edit_directives` to `load_directive_batches`
@@ -753,13 +753,13 @@ def register_candidate(
     return state
 ```
 
-- [ ] **Step 4: Update `register_candidate_tool` in `prompt_building_tools.py`**
+- [ ] **Step 4: Update `register_candidate` in `prompt_building_tools.py`**
 
 In `odysseus/mcp/prompt_building_tools.py`, update the tool at line 104 to accept and pass through the new parameters:
 
 ```python
 @mcp.tool()
-async def register_candidate_tool(
+async def register_candidate(
     run_id: str,
     prompt_version: str,
     parent_version: str | None = None,
@@ -2242,7 +2242,7 @@ git commit -m "feat: implement run_batch_eval tool for concurrent multi-candidat
 - Modify: `odysseus/mcp/review_tools.py`
 - Test: `tests/test_review_preprocessor.py`
 
-**Context:** `build_review_briefing` (lines 560–676 of `preprocessor.py`) assembles a `ReviewBriefing` from raw pipeline data. It receives `search_state` (already typed as `Any`, but is a `SearchState`). The `ReviewBriefing` model (line 174 of `review/models.py`) currently has no `beam_width` or `batch_outcomes` fields — these were added in Task 2. The `build_review_briefing_tool` in `review_tools.py` (lines 24–163) calls `build_review_briefing` and must pass the new parameters.
+**Context:** `build_review_briefing` (lines 560–676 of `preprocessor.py`) assembles a `ReviewBriefing` from raw pipeline data. It receives `search_state` (already typed as `Any`, but is a `SearchState`). The `ReviewBriefing` model (line 174 of `review/models.py`) currently has no `beam_width` or `batch_outcomes` fields — these were added in Task 2. The `build_review_briefing` in `review_tools.py` (lines 24–163) calls `build_review_briefing` and must pass the new parameters.
 
 Steps:
 
@@ -2632,7 +2632,7 @@ def build_review_briefing(
 
 4. Add `beam_width=beam_width, batch_outcomes=batch_outcomes` to the `ReviewBriefing(...)` constructor call.
 
-- [ ] **Step 4: Update `build_review_briefing_tool` in `review_tools.py`**
+- [ ] **Step 4: Update `build_review_briefing` in `review_tools.py`**
 
 In `odysseus/mcp/review_tools.py`, update the call to `build_review_briefing` (lines 140–151) to pass `directive_batches` and `pending_candidates`:
 
@@ -2888,11 +2888,11 @@ Replace `"run_eval"` with `"run_batch_eval"` in `_BUILD_TOOLS`:
 
 ```python
 _BUILD_TOOLS: list[str] = [
-    "get_search_state_tool",
-    "get_edit_directives_tool",
-    "init_search_state_tool",
-    "register_candidate_tool",
-    "record_eval_result_tool",
+    "get_search_state",
+    "get_edit_directives",
+    "init_search_state",
+    "register_candidate",
+    "record_eval_result",
     "advance_round_tool",
     "run_batch_eval",
 ]
@@ -2927,8 +2927,8 @@ STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
     "RECOVERY MODE: active_evals is non-empty. The sub-agent must call run_batch_eval "
     "with an empty candidates list to resume in-flight evaluations before calling "
     "advance_round.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "Sub-agent tools: get_pipeline_status, get_search_state, get_edit_directives, "
+    "init_search_state, register_candidate, record_eval_result, "
     "advance_round_tool, run_batch_eval\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
@@ -2952,8 +2952,8 @@ STAGE_4_BUILD_INSTRUCTION: str = (
     "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "Sub-agent tools: get_pipeline_status, get_search_state, get_edit_directives, "
+    "init_search_state, register_candidate, record_eval_result, "
     "advance_round_tool, run_batch_eval\n"
     "Your tools: get_pipeline_status only\n\n"
     "NOTE: optimize_routing_prompt is the pipeline entry-point tool (orchestrator-level only). "
@@ -2973,15 +2973,15 @@ In `odysseus/mcp/server.py`, update the `"prompt_building"` entry:
 
 ```python
     "prompt_building": [
-        "init_search_state_tool",
-        "register_candidate_tool",
+        "init_search_state",
+        "register_candidate",
         "run_eval",         # retained for rerun mode (single-candidate)
         "run_batch_eval",   # new — primary eval tool for normal build rounds
-        "record_eval_result_tool",
+        "record_eval_result",
         "advance_round_tool",
-        "get_search_state_tool",
-        "get_edit_directives_tool",
-        "save_prompt_tool",
+        "get_search_state",
+        "get_edit_directives",
+        "save_prompt",
         "get_pipeline_status",
     ],
 ```
@@ -3005,7 +3005,7 @@ git commit -m "feat: add build_recovering phase detection and STAGE_4_BUILD_RECO
 
 ---
 
-## Task 10: Add diversity enforcement validation to `record_directive_outcomes_tool`
+## Task 10: Add diversity enforcement validation to `record_directive_outcomes`
 
 **Depends on:** Task 3 (parameter rename from `edit_directives` to `directive_batches`)
 
@@ -3013,7 +3013,7 @@ git commit -m "feat: add build_recovering phase detection and STAGE_4_BUILD_RECO
 - Modify: `odysseus/mcp/review_tools.py`
 - Test: `tests/test_review_tools.py` (create if needed, or add to existing)
 
-**Context:** `record_directive_outcomes_tool` currently accepts `directive_batches` (renamed from `edit_directives` in Task 3) and persists them via `save_directive_batches`. After that persistence, two new validations must run: (1) batch count must equal `beam_width` from `SearchState`; (2) when `beam_width >= 3`, at least one batch must have `mutation_strategy == "exploratory"`. The validation happens on the already-parsed `DirectiveBatch` objects, before the loop phase transition. If either check fails, return a descriptive JSON error and do NOT flip `loop_phase` to `"build"`.
+**Context:** `record_directive_outcomes` currently accepts `directive_batches` (renamed from `edit_directives` in Task 3) and persists them via `save_directive_batches`. After that persistence, two new validations must run: (1) batch count must equal `beam_width` from `SearchState`; (2) when `beam_width >= 3`, at least one batch must have `mutation_strategy == "exploratory"`. The validation happens on the already-parsed `DirectiveBatch` objects, before the loop phase transition. If either check fails, return a descriptive JSON error and do NOT flip `loop_phase` to `"build"`.
 
 Steps:
 
@@ -3077,7 +3077,7 @@ class TestRecordDirectiveOutcomesValidatesBatchCount:
     @pytest.mark.asyncio
     async def test_record_directive_outcomes_validates_batch_count(self, tmp_path):
         """3 batches when beam_width=2 → validation error, loop_phase not flipped."""
-        from odysseus.mcp.review_tools import record_directive_outcomes_tool
+        from odysseus.mcp.review_tools import record_directive_outcomes
 
         run_id = "run1"
         _write_search_state(tmp_path, run_id, beam_width=2)
@@ -3089,7 +3089,7 @@ class TestRecordDirectiveOutcomesValidatesBatchCount:
             _make_batch("b3", "exploratory"),  # 3 batches, beam_width=2 → error
         ]
 
-        result_str = await record_directive_outcomes_tool(
+        result_str = await record_directive_outcomes(
             ctx=ctx,
             run_id=run_id,
             outcomes=[],
@@ -3113,7 +3113,7 @@ class TestRecordDirectiveOutcomesValidatesBatchCount:
     @pytest.mark.asyncio
     async def test_record_directive_outcomes_validates_diversity(self, tmp_path):
         """beam_width=3, all targeted → diversity validation error."""
-        from odysseus.mcp.review_tools import record_directive_outcomes_tool
+        from odysseus.mcp.review_tools import record_directive_outcomes
 
         run_id = "run1"
         _write_search_state(tmp_path, run_id, beam_width=3)
@@ -3125,7 +3125,7 @@ class TestRecordDirectiveOutcomesValidatesBatchCount:
             _make_batch("b3", "targeted"),  # none exploratory → error
         ]
 
-        result_str = await record_directive_outcomes_tool(
+        result_str = await record_directive_outcomes(
             ctx=ctx,
             run_id=run_id,
             outcomes=[],
@@ -3149,7 +3149,7 @@ class TestRecordDirectiveOutcomesDiversityNotRequired:
     @pytest.mark.asyncio
     async def test_record_directive_outcomes_diversity_not_required_beam_2(self, tmp_path):
         """beam_width=2, all targeted → OK (diversity rule only applies when beam_width >= 3)."""
-        from odysseus.mcp.review_tools import record_directive_outcomes_tool
+        from odysseus.mcp.review_tools import record_directive_outcomes
 
         run_id = "run1"
         _write_search_state(tmp_path, run_id, beam_width=2)
@@ -3160,7 +3160,7 @@ class TestRecordDirectiveOutcomesDiversityNotRequired:
             _make_batch("b2", "targeted"),
         ]
 
-        result_str = await record_directive_outcomes_tool(
+        result_str = await record_directive_outcomes(
             ctx=ctx,
             run_id=run_id,
             outcomes=[],
@@ -3180,7 +3180,7 @@ class TestRecordDirectiveOutcomesHappyPath:
     @pytest.mark.asyncio
     async def test_record_directive_outcomes_happy_path(self, tmp_path):
         """Correct count + required diversity → success, loop_phase flipped to 'build'."""
-        from odysseus.mcp.review_tools import record_directive_outcomes_tool
+        from odysseus.mcp.review_tools import record_directive_outcomes
 
         run_id = "run1"
         _write_search_state(tmp_path, run_id, beam_width=3)
@@ -3192,7 +3192,7 @@ class TestRecordDirectiveOutcomesHappyPath:
             _make_batch("b3", "exploratory"),  # satisfies diversity
         ]
 
-        result_str = await record_directive_outcomes_tool(
+        result_str = await record_directive_outcomes(
             ctx=ctx,
             run_id=run_id,
             outcomes=[],
@@ -3214,9 +3214,9 @@ class TestRecordDirectiveOutcomesHappyPath:
 Run: `uv run pytest tests/test_review_tools.py -v`
 Expected: FAIL — no validation logic exists yet
 
-- [ ] **Step 6: Implement validation in `record_directive_outcomes_tool`**
+- [ ] **Step 6: Implement validation in `record_directive_outcomes`**
 
-In `odysseus/mcp/review_tools.py`, update the `record_directive_outcomes_tool` function. After the existing directive batches persistence block (the `if directive_batches is not None:` block), add the validation before the loop phase transition:
+In `odysseus/mcp/review_tools.py`, update the `record_directive_outcomes` function. After the existing directive batches persistence block (the `if directive_batches is not None:` block), add the validation before the loop phase transition:
 
 ```python
     # Persist directive batches for Prompt Builder consumption
@@ -3282,7 +3282,7 @@ Expected: ALL PASS
 
 ```bash
 git add odysseus/mcp/review_tools.py tests/test_review_tools.py
-git commit -m "feat: add beam_width batch count and diversity validation to record_directive_outcomes_tool"
+git commit -m "feat: add beam_width batch count and diversity validation to record_directive_outcomes"
 ```
 
 ---
@@ -3396,7 +3396,7 @@ Note: `SearchState.mutation_mode` (two-valued: `targeted | exploratory`) control
 Add a new anti-pattern at the top of the `## Anti-Patterns` list (before anti-pattern 1):
 
 ```markdown
-0. **Do not emit only `targeted` batches when `beam_width >= 3`.** When the beam is wide enough to support exploration, at least one batch must have `mutation_strategy == "exploratory"`. Emitting only `targeted` or `structural` batches at `beam_width >= 3` is a contract violation — `record_directive_outcomes_tool` will reject your output with a descriptive error. Include at least one exploratory batch to avoid local-optima lock-in.
+0. **Do not emit only `targeted` batches when `beam_width >= 3`.** When the beam is wide enough to support exploration, at least one batch must have `mutation_strategy == "exploratory"`. Emitting only `targeted` or `structural` batches at `beam_width >= 3` is a contract violation — `record_directive_outcomes` will reject your output with a descriptive error. Include at least one exploratory batch to avoid local-optima lock-in.
 ```
 
 Renumber the existing anti-patterns 1–5 to 1–5 (the new entry is numbered 0 to preserve existing numbering, but in the actual prompt it should flow as a natural list — renumber all to 1–6 for clarity):
@@ -3406,7 +3406,7 @@ Renumber the existing anti-patterns 1–5 to 1–5 (the new entry is numbered 0 
 
 Avoid these failure modes:
 
-1. **Do not emit only `targeted` batches when `beam_width >= 3`.** When the beam is wide enough to support exploration, at least one batch must have `mutation_strategy == "exploratory"`. Emitting only `targeted` or `structural` batches at `beam_width >= 3` is a contract violation — `record_directive_outcomes_tool` will reject your output with a descriptive error. Include at least one exploratory batch to avoid local-optima lock-in.
+1. **Do not emit only `targeted` batches when `beam_width >= 3`.** When the beam is wide enough to support exploration, at least one batch must have `mutation_strategy == "exploratory"`. Emitting only `targeted` or `structural` batches at `beam_width >= 3` is a contract violation — `record_directive_outcomes` will reject your output with a descriptive error. Include at least one exploratory batch to avoid local-optima lock-in.
 
 2. **Do not apply regression guards to block exploration.** Guards block promotion only. A candidate with a regression flag can and should continue as "refine" if it is structurally novel.
 
@@ -3424,11 +3424,11 @@ Avoid these failure modes:
 In `## Cold-Start Phase (Round 0)`, step 5, replace:
 
 ```diff
--5. Call `record_directive_outcomes_tool` with:
+-5. Call `record_directive_outcomes` with:
 -   - `outcomes`: empty list `[]` (no prior directives to track on cold start)
 -   - `loop_signal`: `{"action": "refine", "reason": "<your reason>"}`
 -   - `edit_directives`: the full list of EditDirective objects from your ReviewResult
-+5. Call `record_directive_outcomes_tool` with:
++5. Call `record_directive_outcomes` with:
 +   - `outcomes`: empty list `[]` (no prior directives to track on cold start)
 +   - `loop_signal`: `{"action": "refine", "reason": "<your reason>"}`
 +   - `directive_batches`: a single-element list containing one `DirectiveBatch` with `directive_batch_id: "b0"`, `parent_version: "v0"` (sentinel for cold start), `directives`: the full list of EditDirective objects from your ReviewResult, `mutation_strategy: "structural"` (initial prompt construction), `priority: 1`
@@ -3439,12 +3439,12 @@ In `## Cold-Start Phase (Round 0)`, step 5, replace:
 Replace the final `Exit verification` section:
 
 ```diff
--When calling `record_directive_outcomes_tool`, include:
+-When calling `record_directive_outcomes`, include:
 -- `loop_signal`: your complete loop signal object (this is how the system receives your convergence decision)
--- `edit_directives`: your complete list of edit directive objects from the ReviewResult (this persists them for the Prompt Builder to retrieve via `get_edit_directives_tool`)
-+When calling `record_directive_outcomes_tool`, include:
+-- `edit_directives`: your complete list of edit directive objects from the ReviewResult (this persists them for the Prompt Builder to retrieve via `get_edit_directives`)
++When calling `record_directive_outcomes`, include:
 +- `loop_signal`: your complete loop signal object (this is how the system receives your convergence decision)
-+- `directive_batches`: your complete list of `DirectiveBatch` objects from the ReviewResult, each with `directive_batch_id`, `parent_version`, `directives`, `mutation_strategy`, and `priority` (this persists them for the Prompt Builder to retrieve via `get_edit_directives_tool`)
++- `directive_batches`: your complete list of `DirectiveBatch` objects from the ReviewResult, each with `directive_batch_id`, `parent_version`, `directives`, `mutation_strategy`, and `priority` (this persists them for the Prompt Builder to retrieve via `get_edit_directives`)
 ```
 
 - [ ] **Step 3: Commit**
@@ -3474,8 +3474,8 @@ Apply the following changes to `odysseus/agents/prompts/prompt_builder_system.md
 **Change 1: Update the Inputs table — `review_directives` row**
 
 ```diff
--| `review_directives` | list[EditDirective] | `get_edit_directives_tool` | Block-level edit directives with `example_content`; retrieved via tool call (round 1+) |
-+| `review_directives` | list[DirectiveBatch] | `get_edit_directives_tool` | Directive batches with `parent_version`, `directives`, and `mutation_strategy`; retrieved via tool call (round 2+) |
+-| `review_directives` | list[EditDirective] | `get_edit_directives` | Block-level edit directives with `example_content`; retrieved via tool call (round 1+) |
++| `review_directives` | list[DirectiveBatch] | `get_edit_directives` | Directive batches with `parent_version`, `directives`, and `mutation_strategy`; retrieved via tool call (round 2+) |
 ```
 
 **Change 2: Replace the Tools table**
@@ -3485,29 +3485,29 @@ Replace the existing `## Tools` table:
 ```diff
  | Tool | Purpose |
  |------|---------|
- | `init_search_state_tool` | Initialize search state for optimization run |
- | `register_candidate_tool` | Register a new prompt candidate |
--| `record_eval_result_tool` | Record eval results for Pareto tracking |
+ | `init_search_state` | Initialize search state for optimization run |
+ | `register_candidate` | Register a new prompt candidate |
+-| `record_eval_result` | Record eval results for Pareto tracking |
  | `advance_round_tool` | Close round, update front, check convergence |
- | `get_search_state_tool` | Read current search state |
- | `save_prompt_tool` | Save compiled prompt text to disk |
- | `get_edit_directives_tool` | Retrieve Review Agent's edit directives (block-level edits, example content) |
+ | `get_search_state` | Read current search state |
+ | `save_prompt` | Save compiled prompt text to disk |
+ | `get_edit_directives` | Retrieve Review Agent's edit directives (block-level edits, example content) |
 -| `run_eval` | Evaluate a prompt version against the dev set |
 +| `run_batch_eval` | Register, evaluate, and record results for all candidates concurrently |
 ```
 
-The `record_eval_result_tool` and `run_eval` rows are removed. `run_batch_eval` replaces both. `register_candidate_tool` is retained for the Phase 1 (v1) flow only. The updated table:
+The `record_eval_result` and `run_eval` rows are removed. `run_batch_eval` replaces both. `register_candidate` is retained for the Phase 1 (v1) flow only. The updated table:
 
 ```markdown
 | Tool | Purpose |
 |------|---------|
-| `init_search_state_tool` | Initialize search state for optimization run |
-| `register_candidate_tool` | Register a new prompt candidate (Phase 1 / v1 only) |
-| `record_eval_result_tool` | Record eval results for Pareto tracking (Phase 1 / v1 only) |
+| `init_search_state` | Initialize search state for optimization run |
+| `register_candidate` | Register a new prompt candidate (Phase 1 / v1 only) |
+| `record_eval_result` | Record eval results for Pareto tracking (Phase 1 / v1 only) |
 | `advance_round_tool` | Close round, update front, check convergence |
-| `get_search_state_tool` | Read current search state |
-| `save_prompt_tool` | Save compiled prompt text to disk |
-| `get_edit_directives_tool` | Retrieve Review Agent's directive batches (round 2+) |
+| `get_search_state` | Read current search state |
+| `save_prompt` | Save compiled prompt text to disk |
+| `get_edit_directives` | Retrieve Review Agent's directive batches (round 2+) |
 | `run_eval` | Evaluate a single prompt version (Phase 1 / v1 only) |
 | `run_batch_eval` | Register, evaluate concurrently, and record results for all candidates (Phase 2+) |
 ```
@@ -3521,11 +3521,11 @@ Replace the opening of `## Phase 2 — Optimization loop`:
 
  Execute on round 2 and every subsequent round.
 
--1. **Receive feedback.** Call `get_edit_directives_tool(run_id=run_id)` to retrieve the Review Agent's block-level edit directives. Read the latest ScoreReport from `eval_score_report`. Apply vocabulary directives (`block_type == 'vocabulary'`) as in Phase 1 step 5: use refined descriptions when compiling Categories and Decision Logic; ignore directives referencing unrecognized route or dimension names.
--2. **Read search state.** Call `get_search_state_tool(search_state_id)`. Note the `mutation_mode` (set by the Review Agent's loop signal) and `pareto_front`.
-+1. **Check for crash recovery.** Call `get_search_state_tool(search_state_id)`. If `active_evals` is non-empty, you are in recovery mode — skip steps 2–5 and go directly to step 6 with an empty candidates list: call `run_batch_eval(run_id=run_id, candidates=[])` to resume in-flight evaluations, then proceed to step 7.
-+2. **Receive directive batches.** Call `get_edit_directives_tool(run_id=run_id)` to retrieve the Review Agent's directive batches (a `list[DirectiveBatch]`). Each batch has a `parent_version`, a `directives` list, and a `mutation_strategy`. Sort batches by `priority` (ascending) before processing. Apply vocabulary directives (`block_type == 'vocabulary'`) within each batch's `directives` list as in Phase 1 step 5.
-+3. **Read search state.** Note `beam_width`, `mutation_mode`, and `pareto_front` from the search state. `beam_width` tells you how many candidates to generate — it should match the number of directive batches returned by `get_edit_directives_tool`.
+-1. **Receive feedback.** Call `get_edit_directives(run_id=run_id)` to retrieve the Review Agent's block-level edit directives. Read the latest ScoreReport from `eval_score_report`. Apply vocabulary directives (`block_type == 'vocabulary'`) as in Phase 1 step 5: use refined descriptions when compiling Categories and Decision Logic; ignore directives referencing unrecognized route or dimension names.
+-2. **Read search state.** Call `get_search_state(search_state_id)`. Note the `mutation_mode` (set by the Review Agent's loop signal) and `pareto_front`.
++1. **Check for crash recovery.** Call `get_search_state(search_state_id)`. If `active_evals` is non-empty, you are in recovery mode — skip steps 2–5 and go directly to step 6 with an empty candidates list: call `run_batch_eval(run_id=run_id, candidates=[])` to resume in-flight evaluations, then proceed to step 7.
++2. **Receive directive batches.** Call `get_edit_directives(run_id=run_id)` to retrieve the Review Agent's directive batches (a `list[DirectiveBatch]`). Each batch has a `parent_version`, a `directives` list, and a `mutation_strategy`. Sort batches by `priority` (ascending) before processing. Apply vocabulary directives (`block_type == 'vocabulary'`) within each batch's `directives` list as in Phase 1 step 5.
++3. **Read search state.** Note `beam_width`, `mutation_mode`, and `pareto_front` from the search state. `beam_width` tells you how many candidates to generate — it should match the number of directive batches returned by `get_edit_directives`.
 ```
 
 **Change 4: Replace the "Select parents" and "Generate child variants" steps**
@@ -3541,23 +3541,23 @@ Replace steps 3–6 of Phase 2 with the new pipelined generation flow:
 -   | `targeted` | Apply Review Agent directives: paraphrase sections, reorder rules, tighten precision, swap or reorder few-shot examples |
 -   | `exploratory` | Make larger structural changes: add/delete sections, completely different example sets, different prompting style |
 -
--5. **Write children.** Call `save_prompt_tool(run_id=run_id, prompt_version="vN", content=<child prompt text>)` for each child (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
+-5. **Write children.** Call `save_prompt(run_id=run_id, prompt_version="vN", content=<child prompt text>)` for each child (increment version number sequentially). Search state is persisted under `outputs/<run_id>/search/`.
 -6. **Evaluate each child.** For each child prompt:
--   - Call `register_candidate_tool(run_id=run_id, prompt_version="vN", parent_version="vP", example_ids=[<complete list of holdout example IDs used in this child prompt>])`. The `example_ids` list must contain every holdout example ID in the child — the full set, not just changed examples.
+-   - Call `register_candidate(run_id=run_id, prompt_version="vN", parent_version="vP", example_ids=[<complete list of holdout example IDs used in this child prompt>])`. The `example_ids` list must contain every holdout example ID in the child — the full set, not just changed examples.
 -   - Call `run_eval(prompt_version="vN", data_source=dev_jsonl_path, backend=backend)`.
 -   - Extract `quality_score` and `cost` from the ScoreReport.
--   - Call `record_eval_result_tool(search_state_id, "vN", quality_score, cost)`.
+-   - Call `record_eval_result(search_state_id, "vN", quality_score, cost)`.
 +4. **Generate all candidates first — no tool calls during generation.** For each directive batch (sorted by `priority`):
-+   a. Identify the batch's `parent_version` — this is the Pareto front member to apply the directives to. Load its prompt text from disk (it was saved by a previous `save_prompt_tool` call).
++   a. Identify the batch's `parent_version` — this is the Pareto front member to apply the directives to. Load its prompt text from disk (it was saved by a previous `save_prompt` call).
 +   b. Apply the batch's `directives` to that parent prompt, following the strategy indicated by `mutation_strategy`:
 +      - `targeted`: apply focused block-level edits (rule tweaks, example substitutions, precision improvements)
 +      - `exploratory`: make broader changes (new rules, different example sets, structural variations)
 +      - `structural`: fundamental reorganization (section reordering, schema changes, major example overhaul)
 +   c. Assign the next sequential version number (e.g., v8, v9, v10).
-+   d. Call `save_prompt_tool(run_id=run_id, prompt_version="vN", content=<child prompt text>)`.
++   d. Call `save_prompt(run_id=run_id, prompt_version="vN", content=<child prompt text>)`.
 +   e. Note the `example_ids` from the directives in this batch for later use in `run_batch_eval`.
 +
-+   **Do not call `register_candidate_tool` or any eval tool during generation.** Complete all candidates before evaluating any of them.
++   **Do not call `register_candidate` or any eval tool during generation.** Complete all candidates before evaluating any of them.
 +
 +5. **Evaluate all candidates with a single `run_batch_eval` call.** Once all candidate prompts are saved, call:
 +
@@ -3574,7 +3574,7 @@ Replace steps 3–6 of Phase 2 with the new pipelined generation flow:
 +   ])
 +   ```
 +
-+   `run_batch_eval` handles registration, concurrent evaluation, and result recording internally. The returned `BatchEvalResult` has `succeeded` and `failed` lists — you do not need to call `register_candidate_tool` or `record_eval_result_tool` separately for Phase 2.
++   `run_batch_eval` handles registration, concurrent evaluation, and result recording internally. The returned `BatchEvalResult` has `succeeded` and `failed` lists — you do not need to call `register_candidate` or `record_eval_result` separately for Phase 2.
 ```
 
 Renumber the remaining steps accordingly:
@@ -3588,7 +3588,7 @@ Replace the `Deterministic tool calls` constraint:
 
 ```diff
 -- **Deterministic tool calls.** Always register a candidate before evaluating it. Always record eval results before advancing the round.
-+- **Tool call ordering.** In Phase 2: generate all candidates (save_prompt_tool calls) before calling run_batch_eval. Call advance_round_tool only after run_batch_eval returns. In Phase 1: register_candidate_tool → run_eval → record_eval_result_tool → advance_round_tool.
++- **Tool call ordering.** In Phase 2: generate all candidates (save_prompt calls) before calling run_batch_eval. Call advance_round_tool only after run_batch_eval returns. In Phase 1: register_candidate → run_eval → record_eval_result → advance_round_tool.
 ```
 
 **Change 6: Update the Entry verification section**
@@ -3596,7 +3596,7 @@ Replace the `Deterministic tool calls` constraint:
 Replace the Phase 2 loop_phase check to mention recovery mode:
 
 ```diff
- If in the optimization loop (round 2+), also confirm `loop_phase` is `"build"` in the search state (call `get_search_state_tool`). If it is `"review"`, stop: the Review Agent should have been dispatched instead.
+ If in the optimization loop (round 2+), also confirm `loop_phase` is `"build"` in the search state (call `get_search_state`). If it is `"review"`, stop: the Review Agent should have been dispatched instead.
 +
 +If `loop_phase` is `"build"` but `active_evals` is non-empty, you are in recovery mode. Proceed immediately to `run_batch_eval(run_id=run_id, candidates=[])` to resume interrupted evaluations.
 ```

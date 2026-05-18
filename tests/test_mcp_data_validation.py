@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.mcp import get_routing_context_tool, save_routing_context, stratified_split_tool, validate_dataset
+from odysseus.mcp import get_routing_context, save_routing_context, stratified_split, validate_dataset
 
 RUN_ID = "test_run"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
@@ -180,13 +180,13 @@ class TestSaveRoutingContext:
 class TestGetRoutingContextTool:
     @pytest.mark.asyncio
     async def test_round_trip_save_then_get(self, tmp_path: Path) -> None:
-        """save_routing_context then get_routing_context_tool returns the same object."""
+        """save_routing_context then get_routing_context returns the same object."""
         _write_transformed_dataset(tmp_path, ["0_simple", "1_complex"])
         rc_json = _routing_context_json(["0_simple", "1_complex"])
 
         with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
             await save_routing_context(ctx=None, run_id=RUN_ID, routing_context_json=rc_json)
-            result = await get_routing_context_tool(ctx=None, run_id=RUN_ID)
+            result = await get_routing_context(ctx=None, run_id=RUN_ID)
 
         from odysseus.agents.routing_context import RoutingContext
 
@@ -197,7 +197,7 @@ class TestGetRoutingContextTool:
 
     @pytest.mark.asyncio
     async def test_missing_file_raises_tool_error(self, tmp_path: Path) -> None:
-        """get_routing_context_tool raises ToolError with a helpful message when file is absent."""
+        """get_routing_context raises ToolError with a helpful message when file is absent."""
         (tmp_path / "outputs" / RUN_ID / "validation").mkdir(parents=True, exist_ok=True)
         expected_path = tmp_path / "outputs" / RUN_ID / "validation" / "routing_context.json"
 
@@ -205,7 +205,7 @@ class TestGetRoutingContextTool:
             patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
             pytest.raises(ToolError) as exc_info,
         ):
-            await get_routing_context_tool(ctx=None, run_id=RUN_ID)
+            await get_routing_context(ctx=None, run_id=RUN_ID)
 
         msg = str(exc_info.value)
         assert "Complete data validation" in msg
@@ -244,7 +244,7 @@ class TestStratifiedSplitToolRouteInRoutes:
             patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
             pytest.raises(ToolError, match="expected.route is not a key of"),
         ):
-            await stratified_split_tool(ctx=None, run_id=RUN_ID, dataset_path=str(dataset))
+            await stratified_split(ctx=None, run_id=RUN_ID, dataset_path=str(dataset))
 
         analysis_dir = tmp_path / "outputs" / RUN_ID / "analysis"
         assert not (analysis_dir / "dev.jsonl").exists()

@@ -284,28 +284,28 @@ class TestSubmitInputReport:
             )
 
 
-def test_build_review_briefing_tool_registered() -> None:
-    """Verify build_review_briefing_tool is a registered MCP tool."""
+def test_build_review_briefing_registered() -> None:
+    """Verify build_review_briefing is a registered MCP tool."""
     from odysseus.mcp import mcp
 
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
-    assert "build_review_briefing_tool" in tool_names
+    assert "build_review_briefing" in tool_names
 
 
-def test_record_directive_outcomes_tool_registered() -> None:
-    """Verify record_directive_outcomes_tool is a registered MCP tool."""
+def test_record_directive_outcomes_registered() -> None:
+    """Verify record_directive_outcomes is a registered MCP tool."""
     from odysseus.mcp import mcp
 
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
-    assert "record_directive_outcomes_tool" in tool_names
+    assert "record_directive_outcomes" in tool_names
 
 
-def test_get_edit_directives_tool_registered() -> None:
-    """Verify get_edit_directives_tool is a registered MCP tool."""
+def test_get_edit_directives_registered() -> None:
+    """Verify get_edit_directives is a registered MCP tool."""
     from odysseus.mcp import mcp
 
     tool_names = [t.name for t in mcp._tool_manager.list_tools()]
-    assert "get_edit_directives_tool" in tool_names
+    assert "get_edit_directives" in tool_names
 
 
 def test_review_agent_iterative_prompt_registered() -> None:
@@ -633,11 +633,11 @@ class TestGuardRejection:
         ):
             await validate_dataset(ctx=None, dataset_path="/some/path.jsonl", run_id="no_such_run")
 
-    async def test_stratified_split_tool_importable_from_data_validation_tools(self):
-        """stratified_split_tool must be importable from data_validation_tools."""
-        from odysseus.mcp.data_validation_tools import stratified_split_tool
+    async def test_stratified_split_importable_from_data_validation_tools(self):
+        """stratified_split must be importable from data_validation_tools."""
+        from odysseus.mcp.data_validation_tools import stratified_split
 
-        assert callable(stratified_split_tool)
+        assert callable(stratified_split)
 
 
 class TestSubmitInputReportPersistence:
@@ -716,11 +716,11 @@ class TestRoutingAnalysisRemoved:
 
         assert "routing_analysis" not in STAGE_REGISTRY
 
-    def test_stratified_split_tool_in_data_validation_stage(self):
-        """stratified_split_tool must appear in the 'data_validation' stage."""
+    def test_stratified_split_in_data_validation_stage(self):
+        """stratified_split must appear in the 'data_validation' stage."""
         from odysseus.mcp import STAGE_REGISTRY
 
-        assert "stratified_split_tool" in STAGE_REGISTRY["data_validation"]
+        assert "stratified_split" in STAGE_REGISTRY["data_validation"]
 
     def test_odysseus_routing_analysis_prompt_not_registered(self):
         """odysseus_routing_analysis prompt must not be registered."""

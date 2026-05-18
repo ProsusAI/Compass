@@ -10,9 +10,9 @@
 - Initial `ideal_point`: `(1.0, 0.0)` (placeholder — refreshed after calibration_complete)
 - Initial `nadir_point`: `(0.0, 1.0)` (placeholder — refreshed after calibration_complete)
 - System prompts: `odysseus_review_agent_cold_start`, `odysseus_prompt_builder`
-- MCP tools: `get_pipeline_status`, `get_search_state_tool`, `init_search_state_tool`,
-  `register_candidate_tool`, `run_batch_eval`, `advance_step_tool`,
-  `build_review_briefing_tool`, `record_directive_outcomes_tool`
+- MCP tools: `get_pipeline_status`, `get_search_state`, `init_search_state`,
+  `register_candidate`, `run_batch_eval`, `advance_step`,
+  `build_review_briefing`, `record_directive_outcomes`
 
 ## Scenario Description
 
@@ -22,10 +22,10 @@ trajectory seeding, covering:
 1. **Calibration phase**: The cold-start Review Agent (`odysseus_review_agent_cold_start` with
    the `emosa` overlay) receives an empty briefing and emits exactly K=5 diverse child
    directives — one per trajectory. The Prompt Builder realises all five seeds via
-   `register_candidate_tool` (round=0, no parents). Batch evaluation scores all five
+   `register_candidate` (round=0, no parents). Batch evaluation scores all five
    candidates.
 
-2. **Advance step**: `advance_step_tool` is called to consolidate the scored seeds.
+2. **Advance step**: `advance_step` is called to consolidate the scored seeds.
    `calibration_complete` seeds each trajectory with its corresponding candidate:
    `current_solution`, `current_quality`, `current_cost`, and `current_energy` are
    populated. The algorithm pocket's `phase` flips to `"search"` and the top-level
@@ -34,7 +34,7 @@ trajectory seeding, covering:
 The scenario validates:
 - The cold-start Review Agent emits ≥ K=5 child variants in a single response.
 - Batch evaluation scores all 5 candidates.
-- After `advance_step_tool`, each of the 5 trajectories has non-null
+- After `advance_step`, each of the 5 trajectories has non-null
   `current_solution`, `current_quality`, `current_cost`, and `current_energy`.
 - `algorithm_state.phase` flips from `"calibration"` to `"search"`.
 - Top-level `loop_phase` flips to `"review"`.
@@ -53,7 +53,7 @@ You have full knowledge of the expected flow and will verify state after each to
 - K=5 weight vectors: `[(0.9, 0.1), (0.7, 0.3), (0.5, 0.5), (0.3, 0.7), (0.1, 0.9)]`.
 - All trajectories start with `current_solution=None` (calibration phase).
 - You know the EMOSA calibration loop: cold-start review → build (K=5 seeds) → batch eval →
-  advance_step_tool (seeds trajectories, flips phase to "search" + loop_phase to "review").
+  advance_step (seeds trajectories, flips phase to "search" + loop_phase to "review").
 
 **Behaviour:**
 1. Start by calling `get_pipeline_status` to confirm Stage 4 calibration phase is active and
@@ -61,14 +61,14 @@ You have full knowledge of the expected flow and will verify state after each to
 2. Invoke the cold-start Review Agent. Confirm it emits ≥ 5 child directives.
 3. Call `get_pipeline_status` again and confirm phase transitions to `warmup_build` or
    `calibration` build dispatch.
-4. Invoke the Prompt Builder and register all 5 seed candidates via `register_candidate_tool`.
+4. Invoke the Prompt Builder and register all 5 seed candidates via `register_candidate`.
 5. Call `run_batch_eval` to score all 5 candidates concurrently.
-6. Call `advance_step_tool`. Confirm the result shows:
+6. Call `advance_step`. Confirm the result shows:
    - `algorithm_state.phase == "search"`
    - `loop_phase == "review"`
    - `step_count == 1`
    - `total_evals == 5`
-7. Call `get_search_state_tool` and verify each trajectory in `algorithm_state.trajectories`
+7. Call `get_search_state` and verify each trajectory in `algorithm_state.trajectories`
    has non-null `current_solution`, `current_quality`, `current_cost`, and `current_energy`.
 
 **Opening message:** "Please initialise a new search state with `algorithm='emosa'`,
@@ -90,14 +90,14 @@ completes, verify all 5 trajectories are seeded and `loop_phase` has flipped to 
 - [ ] The Prompt Builder registers exactly 5 seed candidates (one per trajectory, round=0, no
       parents)
 - [ ] `run_batch_eval` evaluates all 5 candidates concurrently and returns 5 scored results
-- [ ] No `advance_step_tool` call is made before all 5 candidates are scored
+- [ ] No `advance_step` call is made before all 5 candidates are scored
 
 ### Advance Step — Trajectory Seeding
-- [ ] `advance_step_tool` is called once after all 5 candidates are scored
-- [ ] After `advance_step_tool`, `algorithm_state["phase"] == "search"`
-- [ ] After `advance_step_tool`, top-level `loop_phase == "review"`
-- [ ] After `advance_step_tool`, `algorithm_state["step_count"] == 1`
-- [ ] After `advance_step_tool`, `algorithm_state["total_evals"] == 5`
+- [ ] `advance_step` is called once after all 5 candidates are scored
+- [ ] After `advance_step`, `algorithm_state["phase"] == "search"`
+- [ ] After `advance_step`, top-level `loop_phase == "review"`
+- [ ] After `advance_step`, `algorithm_state["step_count"] == 1`
+- [ ] After `advance_step`, `algorithm_state["total_evals"] == 5`
 
 ### Per-Trajectory State
 - [ ] Each of the 5 entries in `algorithm_state["trajectories"]` has:
@@ -108,7 +108,7 @@ completes, verify all 5 trajectories are seeded and `loop_phase` has flipped to 
   - `acceptance_history == [True]` (calibration acceptance is unconditional)
 
 ### Invariants
-- [ ] `len(algorithm_state["trajectories"]) == 5` before and after `advance_step_tool`
+- [ ] `len(algorithm_state["trajectories"]) == 5` before and after `advance_step`
 - [ ] No top-level `trajectories`, `temperature`, or `step_count` fields appear on the
       SearchState root — they live inside `algorithm_state`
 - [ ] `algorithm_state["ideal_point"]` and `algorithm_state["nadir_point"]` are updated from

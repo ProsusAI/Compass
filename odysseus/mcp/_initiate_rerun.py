@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from odysseus.agents.prompt_builder.search import Candidate, select_best
+from odysseus.agents.prompt_builder.search import Candidate
 
 
 def initiate_rerun_logic(
@@ -16,16 +16,27 @@ def initiate_rerun_logic(
     run_id: str,
     source_prompt_version: str | None = None,
 ) -> dict:
-    """Validate Stage 4 is complete, select the best prompt, and write rerun_config.json.
+    """Validate Stage 4 is complete and write rerun_config.json.
+
+    This function supports a two-call flow:
+
+    1. First call (source_prompt_version=None): returns
+       ``{"action_required": "version_selection", "candidates": [...], "message": ...}``
+       so the caller can present the elite set to the user and collect their choice.
+    2. Second call (source_prompt_version=<chosen version>): renames
+       search_state.json and writes rerun_config.json, then returns
+       ``{"source_prompt_version": ..., "original_backend": ..., "message": ...}``.
 
     Args:
         outputs_dir: Path to the outputs directory (project_dir/outputs).
         run_id: Pipeline run identifier.
-        source_prompt_version: Override the source prompt version. If None, the best
-            candidate on the Pareto front is selected automatically.
+        source_prompt_version: The prompt version to use for the rerun.  When
+            None the function returns the candidate list for user selection instead
+            of executing the rerun.
 
     Returns:
-        Dict with keys: source_prompt_version, original_backend, message.
+        On version_selection: dict with action_required, candidates, and message.
+        On rerun execution: dict with source_prompt_version, original_backend, and message.
 
     Raises:
         ValueError: If Stage 4 is not complete (search_state.json missing or not converged).
@@ -51,17 +62,35 @@ def initiate_rerun_logic(
 
     original_backend: str = data.get("backend", "unknown")
 
-    # Select source prompt version
+    # Return candidate list for user selection if no version provided
     if source_prompt_version is None:
-        # Look for elite_set first (new canonical key), fall back to pareto_front
-        # for state files written before the cross-branch rename.
-        elite_set_data: list[dict] = data.get("elite_set") or data.get("pareto_front", [])
+        elite_set_data: list[dict] = data.get("elite_set", data.get("pareto_front", []))
         if not elite_set_data:
             raise ValueError(
-                f"No candidates on elite set for run '{run_id}'. Cannot select best prompt version automatically."
+                f"No candidates in elite set for run '{run_id}'. Cannot list candidates for version selection."
             )
         front = [Candidate.model_validate(c) for c in elite_set_data]
-        source_prompt_version = select_best(front)
+        candidate_dicts = [
+            {
+                "prompt_version": c.prompt_version,
+                "quality_score": c.quality_score,
+                "cost": c.cost,
+                "round_introduced": c.round_introduced,
+            }
+            for c in front
+        ]
+        candidates = sorted(
+            candidate_dicts,
+            key=lambda c: (-float(c["quality_score"]), float(c["cost"])),
+        )
+        return {
+            "action_required": "version_selection",
+            "candidates": candidates,
+            "message": (
+                "Choose a source_prompt_version from the candidates above, "
+                "then call initiate_rerun again with your choice."
+            ),
+        }
 
     # Rename search_state.json to search_state_original.json so _check_stage_4
     # sees Stage 4 as incomplete (required for rerun to proceed through Stage 4)

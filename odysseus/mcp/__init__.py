@@ -1,22 +1,22 @@
 """MCP server package for Odysseus."""
 
 from odysseus.agents.pipeline.status import get_pipeline_status as _get_pipeline_status  # noqa: F401
-from odysseus.agents.prompt_builder.search_ops import get_search_state  # noqa: F401
+from odysseus.agents.prompt_builder.search_ops import get_search_state as _get_search_state_ops  # noqa: F401
 from odysseus.eval.backends.registry import BackendRegistry  # noqa: F401
 
 # Re-export tool functions so existing ``from odysseus.mcp import <tool>`` works.
 from odysseus.mcp.backend_setup_tools import get_default_pricing
 from odysseus.mcp.data_validation_tools import (
     detect_and_parse_dataset,
-    get_routing_context_tool,
+    get_routing_context,
     save_routing_context,
-    stratified_split_tool,
+    stratified_split,
     transform_dataset,
     validate_dataset,
 )
 from odysseus.mcp.final_report_tools import (
-    build_final_report_briefing_tool,
-    filter_holdout_dataset_tool,
+    build_final_report_briefing,
+    filter_holdout_dataset,
     run_holdout_eval,
     save_final_report,
 )
@@ -28,13 +28,13 @@ from odysseus.mcp.orchestrator_tools import (
     start_stage,
 )
 from odysseus.mcp.prompt_building_tools import (
-    advance_step_tool,
-    get_child_variants_tool,
-    get_edit_directives_tool,
-    get_search_state_tool,
-    init_search_state_tool,
-    record_eval_result_tool,
-    register_candidate_tool,
+    advance_step,
+    get_child_variants,
+    get_edit_directives,
+    get_search_state,
+    init_search_state,
+    record_eval_result,
+    register_candidate,
     run_batch_eval,
     run_eval,
 )
@@ -59,11 +59,13 @@ from odysseus.mcp.resources import (
     review_agent_guidelines,
 )
 from odysseus.mcp.review_tools import (
-    build_review_briefing_tool,
-    get_prompt_text_tool,
-    get_score_report_tool,
-    query_holdout_examples_tool,
-    record_directive_outcomes_tool,
+    build_review_briefing,
+    get_dataset_oracle_distribution,
+    get_per_class_recall,
+    get_prompt_text,
+    get_score_report,
+    query_holdout_examples,
+    record_directive_outcomes,
 )
 from odysseus.mcp.server import (
     _PROJECT_ROOT,
@@ -85,33 +87,35 @@ __all__ = [
     "mcp",
     # Tools
     "STAGE_REGISTRY",
-    "advance_step_tool",
-    "build_final_report_briefing_tool",
-    "build_review_briefing_tool",
+    "advance_step",
+    "build_final_report_briefing",
+    "build_review_briefing",
     "complete_stage",
     "detect_and_parse_dataset",
-    "filter_holdout_dataset_tool",
+    "filter_holdout_dataset",
+    "get_dataset_oracle_distribution",
     "get_default_pricing",
-    "get_child_variants_tool",
-    "get_edit_directives_tool",
+    "get_child_variants",
+    "get_edit_directives",
+    "get_per_class_recall",
     "get_pipeline_status",
-    "get_prompt_text_tool",
-    "get_routing_context_tool",
-    "get_score_report_tool",
-    "get_search_state_tool",
-    "init_search_state_tool",
+    "get_prompt_text",
+    "get_routing_context",
+    "get_score_report",
+    "get_search_state",
+    "init_search_state",
     "optimize_routing_prompt",
-    "query_holdout_examples_tool",
-    "record_directive_outcomes_tool",
-    "record_eval_result_tool",
-    "register_candidate_tool",
+    "query_holdout_examples",
+    "record_directive_outcomes",
+    "record_eval_result",
+    "register_candidate",
     "run_batch_eval",
     "run_eval",
     "run_holdout_eval",
     "save_final_report",
     "save_routing_context",
     "start_stage",
-    "stratified_split_tool",
+    "stratified_split",
     "submit_input_report",
     "transform_dataset",
     "validate_dataset",

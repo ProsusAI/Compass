@@ -253,7 +253,7 @@ class TestSubagentInstruction:
         assert "detect_and_parse_dataset" in instr
         assert "transform_dataset" in instr
         assert "save_routing_context" in instr
-        assert "stratified_split_tool" in instr
+        assert "stratified_split" in instr
 
     def test_stage4_has_subagent_instruction(self, tmp_path: Path) -> None:
         """Stage 4 initial dispatch has a subagent instruction (cold-start on trunk)."""
@@ -271,9 +271,9 @@ class TestSubagentInstruction:
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
         assert "optimize_routing_prompt" not in tools
-        assert "build_review_briefing_tool" in tools
-        assert "record_directive_outcomes_tool" in tools
-        assert "get_search_state_tool" in tools
+        assert "build_review_briefing" in tools
+        assert "record_directive_outcomes" in tools
+        assert "get_search_state" in tools
 
     def test_no_runs_has_subagent_instruction(self, tmp_path: Path) -> None:
         result = get_pipeline_status(tmp_path, run_id=None)
@@ -281,7 +281,7 @@ class TestSubagentInstruction:
         assert instr is not None
 
     def test_stage2_available_tools_complete(self, tmp_path: Path) -> None:
-        """available_tools for stage 2 includes all stage tools including stratified_split_tool."""
+        """available_tools for stage 2 includes all stage tools including stratified_split."""
         _setup_stage1(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1")
         tools = result["available_tools"]
@@ -289,7 +289,7 @@ class TestSubagentInstruction:
         assert "detect_and_parse_dataset" in tools
         assert "transform_dataset" in tools
         assert "save_routing_context" in tools
-        assert "stratified_split_tool" in tools
+        assert "stratified_split" in tools
 
     def test_stage5_has_subagent_instruction(self, tmp_path: Path) -> None:
         """Stage 5 (Final Report) has a subagent instruction."""
@@ -299,7 +299,7 @@ class TestSubagentInstruction:
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "HARD_STOP" in instr
-        assert "build_final_report_briefing_tool" in instr
+        assert "build_final_report_briefing" in instr
         assert "save_final_report" in instr
 
 
@@ -329,12 +329,12 @@ class TestStage4ThreePhaseDetection:
         instr = result.get("subagent_instruction", "")
         assert instr is not None
         # Review phase instruction contains review tools
-        assert "build_review_briefing_tool" in instr
+        assert "build_review_briefing" in instr
 
 
     def test_normal_loop_review_when_v1_filename_absent(self, tmp_path: Path) -> None:
         """Regression: cold-start can emit variant_id='v2' (not 'v1'), so prompts/v1.txt
-        never exists. After advance_step_tool runs, loop_phase='review' must route to
+        never exists. After advance_step runs, loop_phase='review' must route to
         the Review Agent — not back to build_v1. State.round is the source of truth."""
         _setup_stage4_cold_start_done(tmp_path, "r1")
         (tmp_path / "r1" / "prompts").mkdir(parents=True, exist_ok=True)
@@ -345,7 +345,7 @@ class TestStage4ThreePhaseDetection:
         instr = result.get("subagent_instruction", "")
         assert instr is not None
         # Review phase instruction routes to review stage, not build
-        assert "build_review_briefing_tool" in instr
+        assert "build_review_briefing" in instr
 
 
     def test_normal_loop_build_phase(self, tmp_path: Path) -> None:
@@ -360,7 +360,7 @@ class TestStage4ThreePhaseDetection:
         instr = result.get("subagent_instruction", "")
         assert instr is not None
         # Build phase instruction contains build tools
-        assert "register_candidate_tool" in instr
+        assert "register_candidate" in instr
 
     def test_stage4_complete_when_converged(self, tmp_path: Path) -> None:
         _setup_stage4_converged(tmp_path, "r1")
@@ -378,9 +378,9 @@ class TestStage4ThreePhaseDetection:
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
-        assert "build_review_briefing_tool" in tools
-        assert "record_directive_outcomes_tool" in tools
-        assert "get_search_state_tool" in tools
+        assert "build_review_briefing" in tools
+        assert "record_directive_outcomes" in tools
+        assert "get_search_state" in tools
 
     def test_build_phase_available_tools(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
@@ -391,18 +391,18 @@ class TestStage4ThreePhaseDetection:
         (search / "build_dispatched.json").write_text(json.dumps({"round": 1}))
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
-        assert "init_search_state_tool" in tools
-        assert "register_candidate_tool" in tools
+        assert "init_search_state" in tools
+        assert "register_candidate" in tools
         assert "run_eval" in tools
-        assert "build_review_briefing_tool" not in tools
+        assert "build_review_briefing" not in tools
 
     def test_review_phase_available_tools(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
-        assert "build_review_briefing_tool" in tools
-        assert "record_directive_outcomes_tool" in tools
-        assert "register_candidate_tool" not in tools
+        assert "build_review_briefing" in tools
+        assert "record_directive_outcomes" in tools
+        assert "register_candidate" not in tools
 
 
 class TestStage3PricingValidation:
@@ -564,11 +564,11 @@ class TestStage4RerunMode:
         self._setup_rerun_ready(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
-        assert "init_search_state_tool" in tools
-        assert "register_candidate_tool" in tools
+        assert "init_search_state" in tools
+        assert "register_candidate" in tools
         assert "run_eval" in tools
-        assert "advance_step_tool" in tools
-        assert "build_review_briefing_tool" not in tools
+        assert "advance_step" in tools
+        assert "build_review_briefing" not in tools
 
     def test_normal_stage4_unaffected_without_rerun_config(self, tmp_path: Path) -> None:
         """Without rerun_config.json, Stage 4 uses normal cold-start detection on trunk."""
@@ -610,19 +610,19 @@ class TestStage5FinalReport:
         instr = result["subagent_instruction"]
         assert instr is not None
         assert "HARD_STOP" in instr
-        assert "build_final_report_briefing_tool" in instr
+        assert "build_final_report_briefing" in instr
         assert "save_final_report" in instr
         assert "run_holdout_eval" in instr
-        assert "filter_holdout_dataset_tool" in instr
+        assert "filter_holdout_dataset" in instr
 
     def test_stage5_available_tools(self, tmp_path: Path) -> None:
         """Stage 5 available_tools includes all final report tools."""
         _setup_stage4_converged(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
-        assert "filter_holdout_dataset_tool" in tools
+        assert "filter_holdout_dataset" in tools
         assert "run_holdout_eval" in tools
-        assert "build_final_report_briefing_tool" in tools
+        assert "build_final_report_briefing" in tools
         assert "save_final_report" in tools
 
     def test_pipeline_complete_after_stage5(self, tmp_path: Path) -> None:
