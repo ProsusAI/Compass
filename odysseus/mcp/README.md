@@ -11,9 +11,9 @@ MCP server package. Thin adapter layer — each tool delegates to an agent modul
 | [`input_report_tools.py`](input_report_tools.py) | `submit_input_report` |
 | [`data_validation_tools.py`](data_validation_tools.py) | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context` |
 | [`backend_setup_tools.py`](backend_setup_tools.py) | `get_default_pricing` |
-| [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state_tool` (no `algorithm`/`algorithm_state` — hardcoded per branch), `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `get_child_variants_tool`, `get_edit_directives_tool` |
-| [`review_tools.py`](review_tools.py) | `build_review_briefing_tool`, `record_directive_outcomes_tool` |
-| [`final_report_tools.py`](final_report_tools.py) | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report` |
+| [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state` (no `algorithm`/`algorithm_state` — hardcoded per branch), `register_candidate`, `run_eval`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `get_child_variants`, `get_edit_directives` |
+| [`review_tools.py`](review_tools.py) | `build_review_briefing`, `record_directive_outcomes` |
+| [`final_report_tools.py`](final_report_tools.py) | `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report` |
 | [`resources.py`](resources.py) | MCP resource definitions (`odysseus://agents/...`, `odysseus://backends/...`) |
 | [`prompts.py`](prompts.py) | MCP prompt definitions (`odysseus_routing_input`, `odysseus_data_validation`, etc.) |
 
@@ -34,19 +34,19 @@ The orchestrator controls scoping via two tools:
 | `input_report` | `submit_input_report`, `get_pipeline_status` | |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_pipeline_status` | |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` | |
-| `prompt_building` | `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `get_edit_directives_tool`, `get_child_variants_tool`, `save_prompt_tool`, `get_pipeline_status` | |
-| `review_cold` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `get_pipeline_status` | No `get_prompt_text_tool` / `query_holdout_examples_tool` — cold sub-agents have no candidate to inspect |
-| `review` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `query_holdout_examples_tool`, `get_prompt_text_tool`, `get_search_state_tool`, `run_eval`, `get_pipeline_status` | Steady-review toolbelt; sub-agents call `record_directive_outcomes_tool` (single-slot for hill-climb; pass `trajectory_id=<N>` for EMOSA K-way fanout) |
-| `calibration` | `build_review_briefing_tool`, `record_directive_outcomes_tool`, `get_search_state_tool`, `init_search_state_tool`, `register_candidate_tool`, `run_batch_eval`, `record_eval_result_tool`, `advance_step_tool`, `save_prompt_tool`, `get_child_variants_tool`, `get_edit_directives_tool`, `signal_eval_complete_tool`, `get_pipeline_status` | EMOSA-only — K-seed calibration phase; no `get_prompt_text_tool` / `query_holdout_examples_tool` |
-| `final_report` | `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `get_pipeline_status` | |
+| `prompt_building` | `init_search_state`, `register_candidate`, `run_eval`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `get_edit_directives`, `get_child_variants`, `save_prompt`, `get_pipeline_status` | |
+| `review_cold` | `build_review_briefing`, `record_directive_outcomes`, `get_search_state`, `get_pipeline_status` | No `get_prompt_text` / `query_holdout_examples` — cold sub-agents have no candidate to inspect |
+| `review` | `build_review_briefing`, `record_directive_outcomes`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `run_eval`, `get_pipeline_status` | Steady-review toolbelt; sub-agents call `record_directive_outcomes` (single-slot for hill-climb; pass `trajectory_id=<N>` for EMOSA K-way fanout) |
+| `calibration` | `build_review_briefing`, `record_directive_outcomes`, `get_search_state`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `save_prompt`, `get_child_variants`, `get_edit_directives`, `signal_eval_complete`, `get_pipeline_status` | EMOSA-only — K-seed calibration phase; no `get_prompt_text` / `query_holdout_examples` |
+| `final_report` | `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `get_pipeline_status` | |
 
-### `record_directive_outcomes_tool` — recording review result (variants, loop signal, ranking, promotions, regression guards)
+### `record_directive_outcomes` — recording review result (variants, loop signal, ranking, promotions, regression guards)
 
-Records the Review Agent's output fields (`loop_signal`, `child_variants`, `candidate_ranking`, `promotion_decisions`, `regression_guards`). Directive outcomes (`directive_history_update`) are no longer passed here — they are synthesized wholly in code from `batch_outcomes` by `build_review_briefing_tool`. No `directive_history.json` file is persisted.
+Records the Review Agent's output fields (`loop_signal`, `child_variants`, `candidate_ranking`, `promotion_decisions`, `regression_guards`). Directive outcomes (`directive_history_update`) are no longer passed here — they are synthesized wholly in code from `batch_outcomes` by `build_review_briefing`. No `directive_history.json` file is persisted.
 
 When `trajectory_id: int` is passed (EMOSA K-way fanout), the tool writes per-trajectory child variant files (`child_variants_t<N>.json`) instead of the single-slot `child_variants.json` sentinel, and calls `record_trajectory_dispatched` to mark the slot as complete. Variant ids use the format `cv-{round}-t{trajectory_id}-{i}`. Passing `trajectory_id=None` (default) keeps the original single-slot behaviour for all other strategies.
 
-### `get_child_variants_tool` / `get_edit_directives_tool` — per-trajectory source resolution (EMOSA)
+### `get_child_variants` / `get_edit_directives`
 
 Both readers prefer per-trajectory files when present: if any `child_variants_t<N>.json` exist under `outputs/<run_id>/search/`, they call `load_all_trajectory_child_variants` and return variants sorted by `trajectory_id`. Otherwise they fall back to the single-slot `child_variants.json` written during calibration and non-EMOSA strategies.
 

@@ -9,9 +9,13 @@ from mcp.server.fastmcp.exceptions import ToolError
 
 import odysseus.project_dir as _project_dir_mod
 from odysseus.agents.eval_runner import run_eval
-from odysseus.agents.final_report.preprocessor import build_final_report_briefing
+from odysseus.agents.final_report.preprocessor import (
+    build_final_report_briefing as _build_final_report_briefing_impl,
+)
 from odysseus.agents.pipeline.guards import check_artifacts
-from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
+from odysseus.agents.prompt_builder.holdout_filter import (
+    filter_holdout_dataset as _filter_holdout_dataset_impl,
+)
 from odysseus.agents.prompt_builder.search_ops import get_candidate_example_ids, get_search_state
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import ScoreReport
@@ -98,7 +102,7 @@ def _compute_baselines(
 
 
 @mcp.tool()
-async def filter_holdout_dataset_tool(
+async def filter_holdout_dataset(
     ctx: Context,
     holdout_jsonl_path: str,
     exclude_ids: list[str],
@@ -130,7 +134,7 @@ async def filter_holdout_dataset_tool(
     )
 
     try:
-        filtered_path = filter_holdout_dataset(
+        filtered_path = _filter_holdout_dataset_impl(
             holdout_jsonl_path=holdout_jsonl_path,
             exclude_ids=exclude_ids,
         )
@@ -229,7 +233,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
     # Auto-filter holdout dataset to exclude few-shot examples
     example_ids = get_candidate_example_ids(run_id, prompt_version)
     if example_ids:
-        data_source = filter_holdout_dataset(
+        data_source = _filter_holdout_dataset_impl(
             holdout_jsonl_path=holdout_path,
             exclude_ids=example_ids,
         )
@@ -316,7 +320,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
 
 
 @mcp.tool()
-async def build_final_report_briefing_tool(ctx: Context, run_id: str) -> str:
+async def build_final_report_briefing(ctx: Context, run_id: str) -> str:
     """[Stage 5: Final Report] Build a structured briefing from all pipeline artifacts.
 
     Pre-processes numerical data, metric comparisons, error analysis,
@@ -343,7 +347,7 @@ async def build_final_report_briefing_tool(ctx: Context, run_id: str) -> str:
             hint="Run holdout evaluation first (run_holdout_eval).",
         )
 
-    briefing = build_final_report_briefing(
+    briefing = _build_final_report_briefing_impl(
         run_id=run_id,
         run_dir=run_dir,
         project_dir=project_dir,

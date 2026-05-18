@@ -81,7 +81,7 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
             "detect_and_parse_dataset",
             "transform_dataset",
             "save_routing_context",
-            "stratified_split_tool",
+            "stratified_split",
         ],
         ["odysseus_data_validation"],
         STAGE_2_INSTRUCTION,
@@ -98,10 +98,10 @@ _NEXT_ACTION: dict[int, tuple[str, list[str], list[str], str | None]] = {
         "The refinement loop has converged. Run holdout evaluation and generate the final report. "
         "REQUIRED: activate prompt 'odysseus_final_report' before calling any stage 5 tools.",
         [
-            "filter_holdout_dataset_tool",
+            "filter_holdout_dataset",
             "list_pareto_candidates",
             "run_holdout_eval",
-            "build_final_report_briefing_tool",
+            "build_final_report_briefing",
             "save_final_report",
         ],
         ["odysseus_final_report"],

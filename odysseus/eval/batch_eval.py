@@ -446,7 +446,7 @@ async def run_batch_eval_impl(
     Normal mode (``candidates`` non-empty):
 
     1. Add each candidate to ``active_evals``. The caller must have already
-       registered them via ``register_candidate_tool`` — ``run_batch_eval``
+       registered them via ``register_candidate`` — ``run_batch_eval``
        no longer registers internally, mirroring ``run_eval``'s contract.
     2. Flip ``eval_status`` to ``"running"`` immediately before dispatch.
     3. Create a single shared ``TokenBucketRateLimiter``.
@@ -478,7 +478,7 @@ async def run_batch_eval_impl(
 
     # ---------------------------------------------------------------------- #
     # Step 1: Add each candidate to active_evals.
-    # Caller must have already registered them via register_candidate_tool.
+    # Caller must have already registered them via register_candidate.
     # ---------------------------------------------------------------------- #
     for c in candidates:
         _add_to_active_evals(run_id, c.prompt_version, eff_output_dir)

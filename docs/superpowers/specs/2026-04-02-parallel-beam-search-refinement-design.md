@@ -166,17 +166,17 @@ class Candidate(BaseModel):
 
 When `beam_width >= 3`, at least one `DirectiveBatch` in `ReviewResult.directive_batches` must have `mutation_strategy == "exploratory"`. This is validated in `record_directive_outcomes`.
 
-**Violation handling:** If the rule is violated, `record_directive_outcomes_tool` rejects the `ReviewResult` with a validation error describing the constraint. The Review Agent must re-emit with at least one exploratory batch. This avoids the need for synthetic directive generation.
+**Violation handling:** If the rule is violated, `record_directive_outcomes` rejects the `ReviewResult` with a validation error describing the constraint. The Review Agent must re-emit with at least one exploratory batch. This avoids the need for synthetic directive generation.
 
 When the Pareto front has a single member, all batches necessarily share the same `parent_version`. Diversity enforcement still applies (requiring one exploratory mutation strategy) but multi-parent branching provides no additional benefit until the front has >= 2 members.
 
 ### Directive Batch Persistence
 
-`record_directive_outcomes_tool` (in `odysseus/mcp/review_tools.py`) currently accepts a flat `edit_directives: list[dict]` parameter and persists via `save_edit_directives`. This changes to accept `directive_batches: list[dict]` instead (parameter renamed from `edit_directives` to `directive_batches`). The underlying persistence functions `save_edit_directives` and `load_edit_directives` in `odysseus/agents/review/ops.py` are renamed to `save_directive_batches` and `load_directive_batches` respectively. Persistence path remains `outputs/<run_id>/search/edit_directives.json` but the serialization format changes from `list[EditDirective]` to `list[DirectiveBatch]`.
+`record_directive_outcomes` (in `odysseus/mcp/review_tools.py`) currently accepts a flat `edit_directives: list[dict]` parameter and persists via `save_edit_directives`. This changes to accept `directive_batches: list[dict]` instead (parameter renamed from `edit_directives` to `directive_batches`). The underlying persistence functions `save_edit_directives` and `load_edit_directives` in `odysseus/agents/review/ops.py` are renamed to `save_directive_batches` and `load_directive_batches` respectively. Persistence path remains `outputs/<run_id>/search/edit_directives.json` but the serialization format changes from `list[EditDirective]` to `list[DirectiveBatch]`.
 
-`get_edit_directives_tool` is updated to return `list[DirectiveBatch]` instead of `list[EditDirective]`. The Prompt Builder consumes these batches directly.
+`get_edit_directives` is updated to return `list[DirectiveBatch]` instead of `list[EditDirective]`. The Prompt Builder consumes these batches directly.
 
-Cold-start v1 does not use `get_edit_directives_tool` (it generates from seed examples), so no backward compatibility shim is needed.
+Cold-start v1 does not use `get_edit_directives` (it generates from seed examples), so no backward compatibility shim is needed.
 
 ### Review Agent System Prompt Updates
 
@@ -294,8 +294,8 @@ STAGE_4_BUILD_RECOVERING_INSTRUCTION: str = (
     "RECOVERY MODE: active_evals is non-empty. The sub-agent must call run_batch_eval "
     "with an empty candidates list to resume in-flight evaluations before calling "
     "advance_round.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_edit_directives_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "Sub-agent tools: get_pipeline_status, get_search_state, get_edit_directives, "
+    "init_search_state, register_candidate, record_eval_result, "
     "advance_round_tool, run_batch_eval\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
@@ -439,7 +439,7 @@ When called with `candidates=[]` and `active_evals` is non-empty:
 
 ### Tool Registration
 
-`run_batch_eval` replaces `run_eval` in `_BUILD_TOOLS` (in `status.py`). The individual `register_candidate_tool` and `record_eval_result_tool` tools remain registered for backward compatibility with cold-start v1 generation, which uses a simpler single-candidate flow.
+`run_batch_eval` replaces `run_eval` in `_BUILD_TOOLS` (in `status.py`). The individual `register_candidate` and `record_eval_result` tools remain registered for backward compatibility with cold-start v1 generation, which uses a simpler single-candidate flow.
 
 `run_batch_eval` must also be added to `STAGE_REGISTRY["prompt_building"]` in `odysseus/mcp/server.py`, which gates tool availability per stage. Without this, the tool will be invisible to sub-agents during the build phase. `_RERUN_TOOLS` is unchanged and retains `run_eval` (rerun mode is single-candidate).
 
@@ -473,14 +473,14 @@ advance_round(run_id)                                 # 1 tool call
 
 Two tool calls for the eval+advance cycle regardless of beam width. Generation is LLM-driven reasoning only (no tool calls), keeping the context window cost flat.
 
-The Prompt Builder reads `beam_width` from `get_search_state_tool` at the start of each build phase to know how many candidates to generate.
+The Prompt Builder reads `beam_width` from `get_search_state` at the start of each build phase to know how many candidates to generate.
 
 ### Prompt Builder System Prompt Updates
 
 The Prompt Builder system prompt (`odysseus/agents/prompts/prompt_builder_system.md`) requires updates:
 
-1. **Tool usage** — replace the sequential `register_candidate_tool` → `run_eval` → `record_eval_result_tool` pattern with the new `run_batch_eval` tool, including its input format (`BatchEvalCandidate`).
-2. **Directive consumption** — `get_edit_directives_tool` now returns `list[DirectiveBatch]` instead of `list[EditDirective]`. The system prompt must instruct the agent to iterate over batches, applying each batch's `directives` to its `parent_version`.
+1. **Tool usage** — replace the sequential `register_candidate` → `run_eval` → `record_eval_result` pattern with the new `run_batch_eval` tool, including its input format (`BatchEvalCandidate`).
+2. **Directive consumption** — `get_edit_directives` now returns `list[DirectiveBatch]` instead of `list[EditDirective]`. The system prompt must instruct the agent to iterate over batches, applying each batch's `directives` to its `parent_version`.
 3. **Recovery mode** — instruct the agent that if `active_evals` is non-empty in the search state, it should call `run_batch_eval` with an empty candidates list to resume.
 4. **Generation loop** — the prompt should emphasize generating all candidates before calling `run_batch_eval` (two tool calls for the eval+advance cycle).
 
@@ -495,7 +495,7 @@ The Prompt Builder system prompt (`odysseus/agents/prompts/prompt_builder_system
    → loop_phase="review", active_evals=[], dispatches Review Agent
 
 2. Review Agent:
-   a. call build_review_briefing_tool
+   a. call build_review_briefing
       → receives ReviewBriefing{beam_width=3, batch_outcomes=[...prior round outcomes...]}
    b. analyzes candidates, pareto front, diminishing returns
    c. emits ReviewResult{directive_batches=[
@@ -503,7 +503,7 @@ The Prompt Builder system prompt (`odysseus/agents/prompts/prompt_builder_system
         DirectiveBatch{id="b2", parent_version="v3", mutation_strategy="exploratory", priority=2},
         DirectiveBatch{id="b3", parent_version="v5", mutation_strategy="targeted", priority=3},
       ]}
-   d. call record_directive_outcomes_tool
+   d. call record_directive_outcomes
       → validates: 3 batches == beam_width=3 ✓
       → validates: at least 1 exploratory ✓ (b2)
       → flips loop_phase to "build"
@@ -511,8 +511,8 @@ The Prompt Builder system prompt (`odysseus/agents/prompts/prompt_builder_system
 3. Orchestrator dispatches Prompt Builder
 
 4. Prompt Builder:
-   a. call get_search_state_tool  → beam_width=3
-      call get_edit_directives_tool  → directive_batches=[b1, b2, b3]
+   a. call get_search_state  → beam_width=3
+      call get_edit_directives  → directive_batches=[b1, b2, b3]
    b. generate v8 from v5 + b1.directives
    c. generate v9 from v3 + b2.directives
    d. generate v10 from v5 + b3.directives
@@ -554,7 +554,7 @@ The Prompt Builder system prompt (`odysseus/agents/prompts/prompt_builder_system
    → dispatches Prompt Builder with STAGE_4_BUILD_RECOVERING_INSTRUCTION
 
 3. Prompt Builder:
-   a. call get_search_state_tool → sees active_evals non-empty
+   a. call get_search_state → sees active_evals non-empty
    b. call run_batch_eval(run_id, candidates=[])  # recovery mode
       → loads pending_candidates
       → v8: scored → skip

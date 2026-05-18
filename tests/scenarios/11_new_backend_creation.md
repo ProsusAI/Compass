@@ -3,7 +3,7 @@
 ## Setup
 - Dataset: `tests/scenarios/data/full_pipeline_dataset.jsonl`
 - System prompts: `odysseus_routing_input`, `odysseus_data_validation`, `odysseus_backend_setup`, `odysseus_prompt_builder`, `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start`, `odysseus_final_report`
-- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_default_pricing`, `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `build_review_briefing_tool`, `record_directive_outcomes_tool`, `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
+- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 - Backend profile: Created during scenario (label: `openai-mini`)
 - Eval backend for actual runs: `tests/scenarios/data/backends/mock-echo.yaml`
 
@@ -43,7 +43,7 @@ You are an ML engineer setting up a new cost-optimized backend for routing evalu
 
 ### Stage 2 — Data Validation
 - [ ] `validate_dataset` called; all findings pass
-- [ ] Routing context saved with 3 routes; `stratified_split_tool` called
+- [ ] Routing context saved with 3 routes; `stratified_split` called
 
 ### Stage 3 — Backend Setup (New Backend Creation)
 - [ ] Backend Setup agent presented the user with backend options (new vs existing)
@@ -53,14 +53,14 @@ You are an ML engineer setting up a new cost-optimized backend for routing evalu
 - [ ] Stage completed successfully
 
 ### Stage 4 — Prompt Builder + Eval Runner
-- [ ] `init_search_state_tool` called (with mock-echo for actual eval)
-- [ ] `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `save_prompt_tool` all called
+- [ ] `init_search_state` called (with mock-echo for actual eval)
+- [ ] `run_eval`, `record_eval_result`, `advance_step`, `save_prompt` all called
 
 ### Stage 5 — Holdout Validation
-- [ ] `filter_holdout_dataset_tool` and `run_holdout_eval` called
+- [ ] `filter_holdout_dataset` and `run_holdout_eval` called
 
 ### Stage 6 — Final Report
-- [ ] `build_final_report_briefing_tool` and `save_final_report` called
+- [ ] `build_final_report_briefing` and `save_final_report` called
 
 ### Pipeline Integrity
 - [ ] New backend `openai-mini` was registered without error

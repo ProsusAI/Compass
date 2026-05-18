@@ -46,7 +46,7 @@ _SNAP_STAGE_2 = (
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
     "Sub-agent tools: get_pipeline_status, validate_dataset, "
     "detect_and_parse_dataset, transform_dataset, save_routing_context, "
-    "stratified_split_tool, save_proposed_mapping\n"
+    "stratified_split, save_proposed_mapping\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
@@ -81,8 +81,8 @@ _SNAP_STAGE_3 = (
 _SNAP_STAGE_4_COLD = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "build_review_briefing_tool, record_directive_outcomes_tool\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state, "
+    "build_review_briefing, record_directive_outcomes\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
@@ -94,10 +94,10 @@ _SNAP_STAGE_4_COLD = (
 _S4_BUILD_BODY = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
-    "get_child_variants_tool, get_edit_directives_tool, get_prompt_text_tool, get_score_report_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
-    "advance_step_tool, save_prompt_tool, run_eval"
+    "Sub-agent tools: get_pipeline_status, get_search_state, get_routing_context, "
+    "get_child_variants, get_edit_directives, get_prompt_text, get_score_report, "
+    "init_search_state, register_candidate, record_eval_result, "
+    "advance_step, save_prompt, run_eval"
 )
 _S4_BUILD_TAIL = (
     "\n"
@@ -113,9 +113,9 @@ _S4_BUILD_TAIL = (
 _S4_DISPATCH_CTX = (
     "<DISPATCH_CONTEXT>\n"
     "This is an optimization round (round 2+ in the refinement loop). A search state already exists for this run.\n"
-    "- Begin by calling get_search_state_tool (NOT init_search_state_tool).\n"
+    "- Begin by calling get_search_state (NOT init_search_state).\n"
     "- Skip Phase 1 of your system prompt entirely. Proceed directly to Phase 2.\n"
-    "- Calling init_search_state_tool now would clobber the optimization history.\n"
+    "- Calling init_search_state now would clobber the optimization history.\n"
     "</DISPATCH_CONTEXT>\n\n"
 )
 _S4_RECOVERY_PARA = (
@@ -133,9 +133,9 @@ _SNAP_BUILD_RECOVER = _S4_BUILD_BODY + ", run_batch_eval" + _S4_RECOVERY_PARA + 
 _SNAP_STAGE_4_RERUN = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, get_routing_context_tool, "
-    "get_prompt_text_tool, init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
-    "advance_step_tool, save_prompt_tool, run_eval\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state, get_routing_context, "
+    "get_prompt_text, init_search_state, register_candidate, record_eval_result, "
+    "advance_step, save_prompt, run_eval\n"
     "Your tools: get_pipeline_status only\n\n"
     "NOTE: This is a rerun — the Prompt Builder Rerun agent will restructure the existing prompt "
     "for the new backend. Source prompt version: '{source_prompt_version}'. "
@@ -150,9 +150,9 @@ _SNAP_STAGE_4_RERUN = (
 _SNAP_STAGE_4_REVIEW = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 review-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "build_review_briefing_tool, record_directive_outcomes_tool, "
-    "get_prompt_text_tool, query_holdout_examples_tool\n"
+    "Sub-agent tools: get_pipeline_status, get_search_state, "
+    "build_review_briefing, record_directive_outcomes, "
+    "get_prompt_text, query_holdout_examples\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"
@@ -164,9 +164,9 @@ _SNAP_STAGE_4_REVIEW = (
 _SNAP_STAGE_5 = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 5 tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
-    "Sub-agent tools: get_pipeline_status, filter_holdout_dataset_tool, "
+    "Sub-agent tools: get_pipeline_status, filter_holdout_dataset, "
     "list_pareto_candidates, run_holdout_eval, "
-    "build_final_report_briefing_tool, save_final_report\n"
+    "build_final_report_briefing, save_final_report\n"
     "Your tools: get_pipeline_status only\n\n"
     "POST-EXIT: After the sub-agent returns, call complete_stage(run_id='{run_id}'), "
     "then call start_stage(run_id='{run_id}') to get the next dispatch.\n"

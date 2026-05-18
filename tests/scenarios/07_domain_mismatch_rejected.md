@@ -35,8 +35,8 @@ You are a product analyst who has misunderstood what this tool does — you thin
 
 ### Downstream Stages — Must NOT Execute
 - [ ] `validate_dataset` was NOT called
-- [ ] `stratified_split_tool` was NOT called
-- [ ] `init_search_state_tool` was NOT called
+- [ ] `stratified_split` was NOT called
+- [ ] `init_search_state` was NOT called
 - [ ] `run_eval` was NOT called
 - [ ] `save_final_report` was NOT called
 - [ ] No pipeline stages beyond Stage 1 were entered

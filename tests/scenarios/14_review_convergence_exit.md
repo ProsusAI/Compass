@@ -4,7 +4,7 @@
 - Fixture directory: `tests/scenarios/data/review/ghi789/`
 - Search state ID: `ghi789`
 - System prompts: `odysseus_review_agent_iterative`
-- MCP tools: `build_review_briefing_tool`, `record_directive_outcomes_tool`
+- MCP tools: `build_review_briefing`, `record_directive_outcomes`
 
 ## Scenario Description
 After 4 optimization rounds, the search has stagnated. The oracle-captured ratios for all candidates exceed 0.9, prompt diversity is collapsing (candidates are converging toward nearly identical phrasings), and the Pareto front has not improved in the last 2 rounds. The pipeline orchestrator activates the Review Agent for round 4.
@@ -33,7 +33,7 @@ You are a pipeline orchestrator handing off round 4 results to the Review Agent.
 ## Verification Criteria
 
 ### Tool Calls
-- [ ] `build_review_briefing_tool` was called with `search_state_id="ghi789"` and `output_dir="tests/scenarios/data/review"`
+- [ ] `build_review_briefing` was called with `search_state_id="ghi789"` and `output_dir="tests/scenarios/data/review"`
 
 ### Convergence Detection
 - [ ] The `ReviewResult` indicates that convergence or stagnation was detected

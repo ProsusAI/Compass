@@ -8,7 +8,7 @@ Redesign the Stage 5 final report to surface actionable information first (inver
 
 ### `DatasetOverview.route_distribution` type mismatch
 
-**Problem:** `stratified_split()` in `split.py` produces `route_distribution` as `dict[str, dict[str, int]]` (nested with dev/holdout counts), but `DatasetOverview` in `models.py` declares it as `dict[str, int]`. The preprocessor passes it through without transforming, causing Pydantic validation failure in `build_final_report_briefing_tool`.
+**Problem:** `stratified_split()` in `split.py` produces `route_distribution` as `dict[str, dict[str, int]]` (nested with dev/holdout counts), but `DatasetOverview` in `models.py` declares it as `dict[str, int]`. The preprocessor passes it through without transforming, causing Pydantic validation failure in `build_final_report_briefing`.
 
 **Root cause:** `_load_dataset_overview()` in `preprocessor.py` (line ~131) reads the nested dict from `split_report.json` and passes it directly to `DatasetOverview`.
 
@@ -394,7 +394,7 @@ if baseline_data:
 - `holdout_examples`: already loaded from `analysis/holdout.jsonl` (used for the eval itself)
 - `eval_results`: available from `results.jsonl` after eval completes
 
-#### `build_final_report_briefing_tool` — no artifact check change needed
+#### `build_final_report_briefing` — no artifact check change needed
 
 The `baseline_comparison` field is optional (`| None = None`), so a missing `baseline_comparison.json` simply results in `None` — consistent with the graceful degradation pattern used throughout the preprocessor.
 

@@ -18,12 +18,12 @@ Read all inputs from the subagent instruction context.
 
 | Tool | Purpose |
 |------|---------|
-| `init_search_state_tool` | Initialize search state for this single-round rerun |
-| `register_candidate_tool` | Register the restructured prompt as a candidate |
-| `record_eval_result_tool` | Record the eval result for Pareto tracking |
-| `advance_step_tool` | Close the round and force convergence |
-| `get_search_state_tool` | Read current search state |
-| `save_prompt_tool` | Save the restructured prompt to disk |
+| `init_search_state` | Initialize search state for this single-round rerun |
+| `register_candidate` | Register the restructured prompt as a candidate |
+| `record_eval_result` | Record the eval result for Pareto tracking |
+| `advance_step` | Close the round and force convergence |
+| `get_search_state` | Read current search state |
+| `save_prompt` | Save the restructured prompt to disk |
 | `run_eval` | Evaluate the restructured prompt against the dev set |
 
 > `optimize_routing_prompt` is the pipeline entry-point for orchestrators — do not call it.
@@ -48,9 +48,9 @@ Read all inputs from the subagent instruction context.
 
 4. **Initialize search state.**
    ```
-   init_search_state_tool(run_id=run_id, backend=new_backend, max_rounds=1, stagnation_limit=0, convergence_limit=1)
+   init_search_state(run_id=run_id, backend=new_backend, max_rounds=1, stagnation_limit=0, convergence_limit=1)
    ```
-   Store the returned `search_state_id`. `convergence_limit=1` and `stagnation_limit=0` are required — `advance_step_tool` converges after a single round.
+   Store the returned `search_state_id`. `convergence_limit=1` and `stagnation_limit=0` are required — `advance_step` converges after a single round.
 
 5. **Determine next version.** Scan `outputs/<run_id>/prompts/` for the highest existing version number (e.g. source `v3` → new `v4`).
 
@@ -63,27 +63,27 @@ Read all inputs from the subagent instruction context.
    | Anthropic/Bedrock | OpenAI | XML structure → Markdown headers + `**bold**`; `<example>` blocks → `User:`/`Assistant:` turns |
    | OpenAI | Anthropic/Bedrock | Markdown headers → XML tags; `User:`/`Assistant:` turns → `<example>` blocks; `**bold**` → `<important>` |
 
-7. **Save.** `save_prompt_tool(run_id=run_id, prompt_version="v<N>", content=<restructured text>)`.
+7. **Save.** `save_prompt(run_id=run_id, prompt_version="v<N>", content=<restructured text>)`.
 
-8. **Register candidate.** `register_candidate_tool(run_id=run_id, prompt_version="v<N>", example_ids=[])`.
+8. **Register candidate.** `register_candidate(run_id=run_id, prompt_version="v<N>", example_ids=[])`.
 
 9. **Evaluate.** `run_eval(prompt_version="v<N>", data_source=outputs/<run_id>/analysis/dev.jsonl, backend=new_backend)`.
 
 10. **Extract scores.** From ScoreReport: `quality_score` from `metrics.quality_change`; `cost` from `metrics.cost_change_with_overhead`. Both are signed fractions — pass through unchanged. Do NOT use `metrics.accuracy`.
 
-11. **Record result.** `record_eval_result_tool(search_state_id, "v<N>", quality_score, cost)`.
+11. **Record result.** `record_eval_result(search_state_id, "v<N>", quality_score, cost)`.
 
-12. **Advance round.** `advance_step_tool(search_state_id)`. The returned `RoundSummary` must have `converged: true`.
+12. **Advance round.** `advance_step(search_state_id)`. The returned `RoundSummary` must have `converged: true`.
 
 ## Constraints
 
 - **Format only, never content.** Any change to routing logic, decision rules, examples, or output format instructions is a bug.
-- **Single round.** Call `advance_step_tool` exactly once.
+- **Single round.** Call `advance_step` exactly once.
 - **Holdout isolation.** Evaluate against dev split only.
 - **Versioning.** Increment version from source (source `v3` → new `v4`).
 
 ## Exit verification
 
-After `advance_step_tool`, verify `converged: true`. If not, report error and abort. Call `get_pipeline_status` and confirm Stage 4 shows `status: complete`. Exit.
+After `advance_step`, verify `converged: true`. If not, report error and abort. Call `get_pipeline_status` and confirm Stage 4 shows `status: complete`. Exit.
 
 Do not attempt review-phase work. Do not spawn sub-agents.

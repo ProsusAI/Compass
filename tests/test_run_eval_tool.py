@@ -186,7 +186,7 @@ async def test_run_eval_permission_error_raises_tool_error() -> None:
 # Pre-flight check
 # ---------------------------------------------------------------------------
 
-GET_SEARCH_STATE = "odysseus.mcp.prompt_building_tools.get_search_state"
+GET_SEARCH_STATE = "odysseus.mcp.prompt_building_tools._get_search_state_impl"
 BACKEND_REGISTRY = "odysseus.mcp.prompt_building_tools.BackendRegistry"
 
 

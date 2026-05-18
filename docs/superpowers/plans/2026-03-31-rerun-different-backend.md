@@ -73,8 +73,8 @@ _STAGE_4_RERUN_INSTRUCTION: str = (
     "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the <stage_system_prompt> below as its system prompt.\n\n"
     "PRE-DISPATCH: Call start_stage(run_id='{run_id}', stage='prompt_building') BEFORE spawning the sub-agent.\n\n"
-    "Sub-agent tools: get_pipeline_status, get_search_state_tool, "
-    "init_search_state_tool, register_candidate_tool, record_eval_result_tool, "
+    "Sub-agent tools: get_pipeline_status, get_search_state, "
+    "init_search_state, register_candidate, record_eval_result, "
     "advance_round_tool, run_eval\n"
     "Your tools: get_pipeline_status only\n\n"
     "NOTE: This is a rerun — the Prompt Builder Rerun agent will restructure the existing prompt "
@@ -374,11 +374,11 @@ class TestStage4RerunMode:
         self._setup_rerun_ready(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         tools = result["available_tools"]
-        assert "init_search_state_tool" in tools
-        assert "register_candidate_tool" in tools
+        assert "init_search_state" in tools
+        assert "register_candidate" in tools
         assert "run_eval" in tools
         assert "advance_round_tool" in tools
-        assert "build_review_briefing_tool" not in tools
+        assert "build_review_briefing" not in tools
 
     def test_normal_stage4_unaffected_without_rerun_config(self, tmp_path: Path) -> None:
         """Without rerun_config.json, Stage 4 still uses the three-phase detection."""
@@ -415,10 +415,10 @@ In `odysseus/agents/pipeline/status.py`, at the top of `_next_action_for_stage_4
             f"the source prompt (version {source_version}) for the new backend ({new_backend}). "
             "REQUIRED: activate prompt 'odysseus_prompt_builder_rerun' before calling any build tools.",
             [
-                "get_search_state_tool",
-                "init_search_state_tool",
-                "register_candidate_tool",
-                "record_eval_result_tool",
+                "get_search_state",
+                "init_search_state",
+                "register_candidate",
+                "record_eval_result",
                 "advance_round_tool",
                 "run_eval",
             ],
@@ -1052,12 +1052,12 @@ Read all inputs from the subagent instruction context.
 
 | Tool | Purpose |
 |------|---------|
-| `init_search_state_tool` | Initialize search state for this single-round rerun |
-| `register_candidate_tool` | Register the restructured prompt as a candidate |
-| `record_eval_result_tool` | Record the eval result for Pareto tracking |
+| `init_search_state` | Initialize search state for this single-round rerun |
+| `register_candidate` | Register the restructured prompt as a candidate |
+| `record_eval_result` | Record the eval result for Pareto tracking |
 | `advance_round_tool` | Close the round and force convergence |
-| `get_search_state_tool` | Read current search state |
-| `save_prompt_tool` | Save the restructured prompt to disk |
+| `get_search_state` | Read current search state |
+| `save_prompt` | Save the restructured prompt to disk |
 | `run_eval` | Evaluate the restructured prompt against the dev set |
 
 > Note: `optimize_routing_prompt` is the pipeline entry-point tool for orchestrators. Do not call it.
@@ -1086,7 +1086,7 @@ Execute these steps exactly in order.
 
 4. **Initialize search state.** Call:
    ```
-   init_search_state_tool(run_id=run_id, backend=new_backend, max_rounds=1, stagnation_limit=0, convergence_limit=1)
+   init_search_state(run_id=run_id, backend=new_backend, max_rounds=1, stagnation_limit=0, convergence_limit=1)
    ```
    Store the returned `search_state_id`.
    Note: `convergence_limit=1` and `stagnation_limit=0` are required — `advance_round_tool` will
@@ -1110,16 +1110,16 @@ Execute these steps exactly in order.
    | Anthropic/Bedrock | OpenAI | Replace XML structure with Markdown headers and `User:`/`Assistant:` example turns; replace `<important>` with `**bold**` |
    | OpenAI | Anthropic/Bedrock | Replace Markdown headers with XML tags; replace `User:`/`Assistant:` turns with `<example>` blocks; replace `**bold**` with `<important>` tags |
 
-7. **Save the restructured prompt.** Call `save_prompt_tool(run_id=run_id, prompt_version="v<N>", content=<restructured text>)`.
+7. **Save the restructured prompt.** Call `save_prompt(run_id=run_id, prompt_version="v<N>", content=<restructured text>)`.
 
-8. **Register candidate.** Call `register_candidate_tool(run_id=run_id, prompt_version="v<N>", example_ids=[])`.
+8. **Register candidate.** Call `register_candidate(run_id=run_id, prompt_version="v<N>", example_ids=[])`.
    (Example IDs are not tracked for rerun — pass an empty list.)
 
 9. **Evaluate.** Call `run_eval(prompt_version="v<N>", data_source=outputs/<run_id>/analysis/dev.jsonl, backend=new_backend)`.
 
 10. **Extract scores.** From the ScoreReport: extract `quality_score` from `metrics` (use `primary_metric_name` if set, otherwise the first metric) and `cost` from `summary.total_cost`.
 
-11. **Record result.** Call `record_eval_result_tool(search_state_id, "v<N>", quality_score, cost)`.
+11. **Record result.** Call `record_eval_result(search_state_id, "v<N>", quality_score, cost)`.
 
 12. **Advance round.** Call `advance_round_tool(search_state_id)`.
     The returned `RoundSummary` will have `converged: true` (because `convergence_limit=1`).

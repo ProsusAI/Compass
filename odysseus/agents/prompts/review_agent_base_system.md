@@ -8,13 +8,13 @@ You do not call eval. You do not write full prompts. You produce directives; the
 
 ## Inputs — the ReviewBriefing
 
-Call `build_review_briefing_tool(run_id, selection_hint=<see overlay>)` — the briefing is self-contained and includes all data you need; do not use Bash or read files.
+Call `build_review_briefing(run_id, selection_hint=<see overlay>)` — the briefing is self-contained and includes all data you need; do not use Bash or read files.
 
 | Field | Type | Purpose |
 |-------|------|---------|
 | `elite_set` | list | Current non-dominated candidates |
 | `candidate_analysis` | list | Per-elite metric deltas vs. parent, confusion deltas, token cost |
-| `confusion_analysis` | list | Top-N confusion cells with quality/cost impact and sample `example_id`s; use `get_confusion_cell_tool` for the full row list |
+| `confusion_analysis` | list | Top-N confusion cells with quality/cost impact and sample `example_id`s; use `get_confusion_cell` for the full row list |
 | `threshold_targets` | list | User-declared goals grouped by axis (quality / cost / other) with capture ratios |
 | `target_progress` | list | Per-target progress; each entry carries `source_version`; `single_candidate_meets_all` is the loop-exit gate |
 | `stagnation_signal` | object | Stagnation indicator; your overlay tells you how to read it |
@@ -53,7 +53,7 @@ Every directive in `directives: list[EditDirective]` must use exactly these fiel
 
 ## Output
 
-Call `record_directive_outcomes_tool` with each ReviewResult field as a **separate parameter** to avoid MCP argument-size limits:
+Call `record_directive_outcomes` with each ReviewResult field as a **separate parameter** to avoid MCP argument-size limits:
 
 - `loop_signal` ← `loop_signal`
 - `child_variants` ← `child_variants`
@@ -104,13 +104,13 @@ When `block_type == "contrast_pair"`, populate `contrast_pair_content` with:
 
 Call these only when you need more than the briefing summary provides.
 
-- Need full per-row errors for a candidate? → `get_score_report_tool(version="v3.2")`.
-- Drilling into a confusion cell? → `get_confusion_cell_tool(true_route="X", predicted_route="Y")`.
-- Looking at older directive outcomes? → `get_directive_history_tool(since_round=3)`.
-- Need full body of a child variant directive? → `get_round_child_variants_tool(round=4, with_directive_bodies=True)`.
-- Round-level batch outcomes? → `get_batch_outcomes_tool(round=4)`.
-- Need per-route oracle aggregates or row-level cost/quality? → `get_dataset_oracle_distribution_tool(run_id, route="X")` (or `example_ids=[...]`).
-- Need the full per-class recall table (including low-support routes)? → `get_per_class_recall_tool(run_id)`.
+- Need full per-row errors for a candidate? → `get_score_report(version="v3.2")`.
+- Drilling into a confusion cell? → `get_confusion_cell(true_route="X", predicted_route="Y")`.
+- Looking at older directive outcomes? → `get_directive_history(since_round=3)`.
+- Need full body of a child variant directive? → `get_round_child_variants(round=4, with_directive_bodies=True)`.
+- Round-level batch outcomes? → `get_batch_outcomes(round=4)`.
+- Need per-route oracle aggregates or row-level cost/quality? → `get_dataset_oracle_distribution(run_id, route="X")` (or `example_ids=[...]`).
+- Need the full per-class recall table (including low-support routes)? → `get_per_class_recall(run_id)`.
 
 ## Self-check before emitting
 

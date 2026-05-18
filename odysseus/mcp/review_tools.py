@@ -76,7 +76,7 @@ def _select_confusion_candidates(state: SearchState) -> list[str]:
 
 
 @mcp.tool()
-async def build_review_briefing_tool(
+async def build_review_briefing(
     ctx: Context,
     run_id: str,
     candidate_versions: list[str] | None = None,
@@ -121,7 +121,8 @@ async def build_review_briefing_tool(
         load_round_reports,
         update_cell_attempt_history,
     )
-    from odysseus.agents.review.preprocessor import build_review_briefing, parse_user_targets
+    from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
+    from odysseus.agents.review.preprocessor import parse_user_targets
     from odysseus.prompts.manager import FilePromptManager
 
     project_dir = await _resolve_project_dir(ctx)
@@ -299,7 +300,7 @@ async def build_review_briefing_tool(
     cell_attempt_history = load_cell_attempt_history(run_id, output_dir=out)
 
     # Build briefing
-    briefing = build_review_briefing(
+    briefing = _build_review_briefing_impl(
         search_state=state,
         score_reports=score_reports,
         historical_reports=historical,
@@ -343,7 +344,7 @@ async def build_review_briefing_tool(
 
 
 @mcp.tool()
-async def record_directive_outcomes_tool(
+async def record_directive_outcomes(
     ctx: Context,
     run_id: str,
     loop_signal: dict[str, Any] | None = None,
@@ -465,10 +466,7 @@ async def record_directive_outcomes_tool(
         # Cold-start: parent_version is infrastructure, not agent responsibility.
         # Coerce unconditionally so agents need not set it on round 0.
         if current_round == 0:
-            parsed_variants = [
-                v.model_copy(update={"parent_version": INITIAL_PARENT_VERSION})
-                for v in parsed_variants
-            ]
+            parsed_variants = [v.model_copy(update={"parent_version": INITIAL_PARENT_VERSION}) for v in parsed_variants]
             if loop_signal is None:
                 loop_signal = {"action": "refine", "reason": "cold_start_default"}
 
@@ -553,7 +551,7 @@ async def record_directive_outcomes_tool(
 
 
 @mcp.tool()
-async def query_holdout_examples_tool(
+async def query_holdout_examples(
     ctx: Context,
     run_id: str,
     route: str | None = None,
@@ -603,7 +601,7 @@ async def query_holdout_examples_tool(
 
 
 @mcp.tool()
-async def get_prompt_text_tool(
+async def get_prompt_text(
     ctx: Context,
     version: str,
     run_id: str,
@@ -637,7 +635,7 @@ async def get_prompt_text_tool(
 
 
 @mcp.tool()
-async def get_score_report_tool(
+async def get_score_report(
     ctx: Context,
     version: str,
     run_id: str,
@@ -665,4 +663,630 @@ async def get_score_report_tool(
     if not report_path.exists():
         return json.dumps({"error": f"ScoreReport for version '{version}' not found"})
 
-    return json.dumps(_load_score_report_dict(report_path))
+    metrics = data.get("metrics", {})
+    summary = data.get("summary", {})
+    errors = data.get("errors", [])[:top_k_errors]
+    diff = data.get("diff")
+
+    lines = [f"## Score report — `{version}`", ""]
+    if metrics:
+        lines += ["### Metrics", "", "| metric | value |", "|---|---|"]
+        for k, v in metrics.items():
+            lines.append(f"| {k} | {v:.4f}" if isinstance(v, float) else f"| {k} | {v} |")
+    if summary:
+        total = summary.get("total", "?")
+        succeeded = summary.get("succeeded", "?")
+        failed = summary.get("failed", "?")
+        cost = summary.get("total_cost", "?")
+        lines += ["", f"total={total} succeeded={succeeded} failed={failed} cost={cost}"]
+    if errors:
+        lines += ["", f"### Top {len(errors)} errors", "", "| example_id | error | retries |", "|---|---|---|"]
+        for e in errors:
+            eid = e.get("example_id", "?")
+            err = str(e.get("error", "")).replace("|", "\\|")[:120]
+            retries = e.get("retries", 0)
+            lines.append(f"| {eid} | {err} | {retries} |")
+    if diff:
+        md = diff.get("metric_diffs", [])
+        if md:
+            lines += ["", "### Diff vs previous", "", "| metric | old | new | delta |", "|---|---|---|---|"]
+            for d in md:
+                lines.append(
+                    f"| {d.get('metric_name', '?')} | {d.get('old_value', '?')} "
+                    f"| {d.get('new_value', '?')} | {d.get('delta', '?')} |"
+                )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_confusion_cell(
+    ctx: Context,
+    run_id: str,
+    true_route: str,
+    predicted_route: str,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Review] Return markdown detail for a single confusion cell.
+
+    Args:
+        run_id: Pipeline run identifier.
+        true_route: The ground-truth route label.
+        predicted_route: The predicted route label.
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        Markdown with cell-level confusion impact fields.
+    """
+    # Recompute via full briefing builder; slice out the matching cell.
+    from odysseus.agents.prompt_builder.search_ops import get_search_state
+    from odysseus.agents.review.ops import (
+        load_cell_attempt_history,
+        load_child_variants,
+        load_round_reports,
+    )
+    from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
+    from odysseus.agents.review.preprocessor import parse_user_targets
+    from odysseus.prompts.manager import FilePromptManager
+
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    try:
+        state = get_search_state(run_id=run_id, output_dir=out)
+    except FileNotFoundError:
+        return "search_state.json not found — Stage 4 not initialised."
+
+    from odysseus.agents.prompt_builder.search_ops import _load_pending
+
+    pending = _load_pending(run_id, out)
+    candidate_versions = [c.prompt_version for c in pending]
+    parent_versions = {c.prompt_version: c.parent_version for c in pending}
+
+    all_versions: set[str] = set(candidate_versions)
+    for c in state.elite_set:
+        all_versions.add(c.prompt_version)
+    for p in parent_versions.values():
+        if p:
+            all_versions.add(p)
+
+    historical = load_round_reports(run_id, output_dir=out)
+    report_paths: dict[str, str] = {}
+    for v in candidate_versions:
+        rp = out / run_id / "eval" / v / "report.json"
+        if rp.exists():
+            report_paths[v] = str(rp)
+
+    score_reports: dict[str, Any] = {}
+    for v in all_versions:
+        if v in report_paths:
+            rp = Path(report_paths[v])
+            if rp.exists():
+                score_reports[v] = _load_score_report_dict(rp, rp.parent / "results.jsonl")
+        elif v not in score_reports:
+            for rd in historical.values():
+                if v in rd:
+                    synth = out / run_id / "eval" / v / "report.json"
+                    synth_r = synth.parent / "results.jsonl"
+                    row = rd[v]
+                    _sk = {"errors", "diff", "report_path", "results_path"}
+                    if _sk.issubset(row.keys()):
+                        score_reports[v] = row
+                    else:
+                        from odysseus.eval.models import RunReport
+
+                        rr = RunReport.model_validate(row)
+                        from odysseus.eval.models import ScoreReport
+
+                        score_reports[v] = ScoreReport.from_run_report(
+                            report=rr, report_path=str(synth), results_path=str(synth_r), previous_report=None
+                        ).model_dump(mode="json")
+                    break
+
+    run_prompts_dir = out / run_id / "prompts"
+    project_prompts_dir = project_dir / "prompts"
+    prompt_texts: dict[str, str] = {}
+    for v in all_versions:
+        for pd in (run_prompts_dir, project_prompts_dir):
+            try:
+                prompt_texts[v] = FilePromptManager(pd).load(v)
+                break
+            except FileNotFoundError:
+                continue
+
+    cv_list = load_child_variants(run_id, output_dir=out) or None
+
+    routing_context = None
+    rc_path = out / run_id / "validation" / "routing_context.json"
+    if rc_path.exists():
+        from odysseus.agents.routing_context import RoutingContext
+
+        routing_context = RoutingContext.model_validate_json(rc_path.read_text(encoding="utf-8"))
+
+    user_targets = None
+    ir_path = out / run_id / "validation" / "input_report.md"
+    if ir_path.exists():
+        user_targets = parse_user_targets(ir_path.read_text(encoding="utf-8"))
+
+    full_oracle: dict[str, float] | None = None
+    op = out / run_id / "eval" / "oracle_metrics.json"
+    if op.exists():
+        full_oracle = json.loads(op.read_text(encoding="utf-8"))
+
+    dev_oracle: dict[str, float] | None = None
+    dop = out / run_id / "eval" / "dev_oracle_metrics.json"
+    if dop.exists():
+        dev_oracle = json.loads(dop.read_text(encoding="utf-8"))
+
+    eval_results = None
+    examples = None
+    selected = _select_confusion_candidates(state)
+    if selected:
+        from odysseus.eval.models import EvalResult, Example
+
+        all_er: list[EvalResult] = []
+        for v in selected:
+            rsp = out / run_id / "eval" / v / "results.jsonl"
+            if rsp.exists():
+                for line in rsp.read_text(encoding="utf-8").splitlines():
+                    s = line.strip()
+                    if not s:
+                        continue
+                    try:
+                        row2 = json.loads(s)
+                    except json.JSONDecodeError:
+                        continue
+                    if row2.get("__meta__"):
+                        continue
+                    try:
+                        all_er.append(EvalResult.model_validate(row2))
+                    except Exception:
+                        continue
+        if all_er:
+            eval_results = all_er
+        dev_p = out / run_id / "analysis" / "dev.jsonl"
+        if dev_p.exists():
+            loaded: list[Example] = []
+            for line in dev_p.read_text(encoding="utf-8").splitlines():
+                s = line.strip()
+                if not s:
+                    continue
+                try:
+                    loaded.append(Example.model_validate_json(s))
+                except Exception:
+                    continue
+            if loaded:
+                examples = loaded
+
+    cell_hist = load_cell_attempt_history(run_id, output_dir=out)
+
+    briefing = _build_review_briefing_impl(
+        search_state=state,
+        score_reports=score_reports,
+        historical_reports=historical,
+        prompt_texts=prompt_texts,
+        candidate_versions=candidate_versions,
+        parent_versions=parent_versions,
+        routing_context=routing_context,
+        child_variants=cv_list,
+        pending_candidates=pending,
+        user_targets=user_targets,
+        full_dataset_oracle=full_oracle,
+        dev_oracle=dev_oracle,
+        eval_results=eval_results,
+        examples=examples,
+        run_dir=out / run_id,
+        cell_attempt_history=cell_hist or None,
+    )
+
+    cell = next(
+        (c for c in briefing.confusion_analysis if c.true_route == true_route and c.predicted_route == predicted_route),
+        None,
+    )
+    if cell is None:
+        return f"No confusion cell found for `{true_route}` → `{predicted_route}`."
+
+    lines = [
+        f"## Confusion cell: `{true_route}` → `{predicted_route}`",
+        "",
+        f"- count: {cell.count}",
+        f"- support: {cell.support}",
+        f"- misroute_rate: {cell.misroute_rate:.3f}",
+        f"- quality_impact: {cell.quality_impact:.3f}",
+        f"- cost_impact: {cell.cost_impact:.3f}",
+        f"- persistence_rate: {cell.persistence_rate:.3f}",
+        f"- attempt_count: {cell.attempt_count}",
+        f"- failed_attempt_count: {cell.failed_attempt_count}",
+        f"- best_outcome: {cell.best_outcome}",
+        f"- effective_impact: {cell.effective_impact:.3f}",
+    ]
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_directive_history(
+    ctx: Context,
+    run_id: str,
+    since_round: int | None = None,
+    limit: int = 20,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Review] Return markdown table of DirectiveOutcomes from prior rounds.
+
+    Args:
+        run_id: Pipeline run identifier.
+        since_round: Only include rounds >= this value (default: all rounds).
+        limit: Max rows (default 20).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        Markdown table of directive outcomes loaded from round reports.
+    """
+    from odysseus.agents.review.ops import load_round_reports
+
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    historical = load_round_reports(run_id, output_dir=out)
+    if not historical:
+        return "No round reports found."
+
+    rows: list[tuple[int, str, str, str, str]] = []
+    for rnd, versions in sorted(historical.items()):
+        if since_round is not None and rnd < since_round:
+            continue
+        for version, report_data in versions.items():
+            if not isinstance(report_data, dict):
+                continue
+            metrics = report_data.get("metrics", {})
+            quality = metrics.get("quality_change", metrics.get("accuracy", "?"))
+            cost = metrics.get("cost_change_with_overhead", metrics.get("cost_change", "?"))
+            rows.append((rnd, version, str(quality), str(cost), "—"))
+
+    rows = rows[:limit]
+    if not rows:
+        return "No directive history found matching criteria."
+
+    lines = [
+        "## Directive history",
+        "",
+        "| round | version | quality | cost | outcome |",
+        "|---|---|---|---|---|",
+    ]
+    for rnd, ver, q, c, outcome in rows:
+        lines.append(f"| {rnd} | `{ver}` | {q} | {c} | {outcome} |")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_batch_outcomes(
+    ctx: Context,
+    run_id: str,
+    round: int | None = None,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Review] Return markdown of BatchOutcomes for one round or all rounds.
+
+    Args:
+        run_id: Pipeline run identifier.
+        round: Specific round to load (default: all rounds).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        Markdown table of batch outcomes loaded from round reports.
+    """
+    from odysseus.agents.review.ops import load_round_reports
+
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    historical = load_round_reports(run_id, output_dir=out)
+    if not historical:
+        return "No round reports found."
+
+    lines = ["## Batch outcomes", ""]
+    found_any = False
+    for rnd, versions in sorted(historical.items()):
+        if round is not None and rnd != round:
+            continue
+        lines.append(f"### Round {rnd}")
+        lines += ["", "| version | quality | cost | errors |", "|---|---|---|---|"]
+        for version, report_data in versions.items():
+            if not isinstance(report_data, dict):
+                continue
+            metrics = report_data.get("metrics", {})
+            quality = metrics.get("quality_change", metrics.get("accuracy", "?"))
+            cost = metrics.get("cost_change_with_overhead", metrics.get("cost_change", "?"))
+            summary = report_data.get("summary", {})
+            nerrors = summary.get("failed", "?")
+            lines.append(f"| `{version}` | {quality} | {cost} | {nerrors} |")
+        lines.append("")
+        found_any = True
+
+    if not found_any:
+        return f"No batch outcomes found for round {round}."
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_round_child_variants(
+    ctx: Context,
+    run_id: str,
+    round: int,
+    with_directive_bodies: bool = False,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Review] Return markdown of child variants for a specific round.
+
+    Args:
+        run_id: Pipeline run identifier.
+        round: Round number to load child variants for.
+        with_directive_bodies: Include full directive text (default False).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        Markdown grouped by variant_id with directives listed.
+    """
+    from odysseus.agents.review.ops import (
+        load_child_variants,
+    )
+
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    variants = load_child_variants(run_id, output_dir=out)
+
+    if not variants:
+        return f"No child variants found for run `{run_id}`."
+
+    lines = [f"## Child variants — round {round}", ""]
+    for cv in variants:
+        vid = cv.variant_id or "(unassigned)"
+        hyp = cv.hypothesis or "(no hypothesis)"
+        lines.append(f"### `{vid}`")
+        lines.append(f"**hypothesis:** {hyp}")
+        lines.append("")
+        if cv.parent_version:
+            lines.append(f"parent: `{cv.parent_version}`")
+        if cv.target_confusion_cell:
+            lines.append(f"target_confusion_cell: `{cv.target_confusion_cell}`")
+        lines.append("")
+        lines.append("**directives:**")
+        for d in cv.directives:
+            if with_directive_bodies:
+                lines.append(f"- `{d.directive_id}` [{d.block_type}] ({d.priority}): {d.directive}")
+            else:
+                lines.append(f"- `{d.directive_id}` [{d.block_type}] ({d.priority})")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_dataset_oracle_distribution(
+    ctx: Context,
+    run_id: str,
+    route: str | None = None,
+    example_ids: list[str] | None = None,
+    limit: int = 50,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Review] Return per-route oracle distribution aggregates and optional row-level detail.
+
+    Args:
+        run_id: Pipeline run identifier.
+        route: Filter row-level output to examples whose oracle_route matches this value.
+        example_ids: Filter row-level output to these specific example ids (takes precedence over route).
+        limit: Maximum number of rows to include in the rows section (default 50).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        Markdown with aggregates table and (when filtered) row-level cost/quality detail.
+    """
+    from collections import defaultdict
+
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    dev_path = out / run_id / "analysis" / "dev.jsonl"
+    if not dev_path.exists():
+        return (
+            f"## Oracle distribution — `{run_id}`\n\n"
+            f"`dev.jsonl` not found at `{dev_path}`. "
+            "Oracle distribution is only available after Stage 2 (Data Analysis) has completed."
+        )
+
+    # Parse all rows
+    raw_rows: list[dict[str, Any]] = []
+    for line in dev_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            raw_rows.append(json.loads(stripped))
+        except json.JSONDecodeError:
+            continue
+
+    if not raw_rows:
+        return f"## Oracle distribution — `{run_id}`\n\n`dev.jsonl` is empty."
+
+    # --- Aggregates (always computed) ---
+    route_n: dict[str, int] = defaultdict(int)
+    route_costs: dict[str, list[float]] = defaultdict(list)
+    route_qualities: dict[str, list[float]] = defaultdict(list)
+    pareto_counts: dict[str, int] = defaultdict(int)
+    ties_cheaper: dict[str, int] = defaultdict(int)
+
+    for row in raw_rows:
+        expected = row.get("expected", {})
+        oracle_route = expected.get("route", "")
+        routes_data: dict[str, Any] = expected.get("routes", {})
+        if not oracle_route or not routes_data:
+            continue
+
+        route_n[oracle_route] += 1
+        oracle_entry = routes_data.get(oracle_route, {})
+        oracle_cost = oracle_entry.get("cost") or 0.0
+        oracle_quality = oracle_entry.get("quality_score") or 0.0
+        route_costs[oracle_route].append(oracle_cost)
+        route_qualities[oracle_route].append(oracle_quality)
+
+        # Pareto: oracle_route is pareto-optimal if no other route strictly dominates it
+        # (lower cost AND >= quality, with at least one strict)
+        is_pareto = True
+        for r_name, r_entry in routes_data.items():
+            if r_name == oracle_route:
+                continue
+            r_cost = r_entry.get("cost") or 0.0
+            r_quality = r_entry.get("quality_score") or 0.0
+            if (
+                r_cost <= oracle_cost
+                and r_quality >= oracle_quality
+                and (r_cost < oracle_cost or r_quality > oracle_quality)
+            ):
+                is_pareto = False
+                break
+        if is_pareto:
+            pareto_counts[oracle_route] += 1
+
+        # Ties with cheaper: a cheaper route ties or exceeds oracle quality
+        for r_name, r_entry in routes_data.items():
+            if r_name == oracle_route:
+                continue
+            r_cost = r_entry.get("cost") or 0.0
+            r_quality = r_entry.get("quality_score") or 0.0
+            if r_cost < oracle_cost and r_quality >= oracle_quality:
+                ties_cheaper[oracle_route] += 1
+                break
+
+    all_routes = sorted(set(route_n.keys()))
+
+    lines: list[str] = [f"## Oracle distribution — `{run_id}`", ""]
+    lines += [
+        "### Aggregates",
+        "",
+        "| route | n_labeled | mean_oracle_cost | mean_oracle_quality"
+        " | pareto_optimal_count | ties_with_cheaper_route_count |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in all_routes:
+        n = route_n[r]
+        mean_cost = sum(route_costs[r]) / n if n else 0.0
+        mean_qual = sum(route_qualities[r]) / n if n else 0.0
+        pareto = pareto_counts.get(r, 0)
+        ties = ties_cheaper.get(r, 0)
+        lines.append(f"| {r} | {n} | {mean_cost:.4f} | {mean_qual:.4f} | {pareto} | {ties} |")
+
+    # --- Row-level detail (only when filtered) ---
+    if example_ids is not None or route is not None:
+        example_id_set = set(example_ids) if example_ids else None
+
+        filtered: list[dict[str, Any]] = []
+        for row in raw_rows:
+            row_id = row.get("id", "")
+            expected = row.get("expected", {})
+            oracle_route = expected.get("route", "")
+            if example_id_set is not None:
+                if row_id in example_id_set:
+                    filtered.append(row)
+            else:
+                if oracle_route == route:
+                    filtered.append(row)
+            if len(filtered) >= limit:
+                break
+
+        lines += ["", f"### Rows ({len(filtered)} shown)", ""]
+        for row in filtered:
+            row_id = row.get("id", "?")
+            expected = row.get("expected", {})
+            oracle_route_val = expected.get("route", "?")
+            routes_data = expected.get("routes", {})
+            lines.append(f"**{row_id}** — oracle_route: `{oracle_route_val}`")
+            lines.append("")
+            lines.append("| route | cost | quality_score |")
+            lines.append("|---|---|---|")
+            for r_name in sorted(routes_data.keys()):
+                r_entry = routes_data[r_name]
+                r_cost = r_entry.get("cost", "—")
+                r_qual = r_entry.get("quality_score", "—")
+                cost_str = f"{r_cost:.4f}" if isinstance(r_cost, float) else str(r_cost)
+                qual_str = f"{r_qual:.4f}" if isinstance(r_qual, float) else str(r_qual)
+                lines.append(f"| {r_name} | {cost_str} | {qual_str} |")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def get_per_class_recall(
+    ctx: Context,
+    run_id: str,
+    round_id: int | None = None,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Review] Return the full per-class recall table for all routes without filtering.
+
+    Use this when the briefing footer indicates routes were hidden from the summary view.
+
+    Args:
+        run_id: Pipeline run identifier.
+        round_id: Round number to use (default: latest round from search state).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        Markdown table with all routes: route | recall | support | trend (last 3) | regression.
+    """
+    from odysseus.agents.prompt_builder.search_ops import get_search_state
+    from odysseus.agents.review.ops import load_round_reports
+    from odysseus.agents.review.preprocessor import extract_per_class_recall
+
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    try:
+        state = get_search_state(run_id=run_id, output_dir=out)
+    except FileNotFoundError:
+        return "search_state.json not found — Stage 4 not initialised."
+
+    current_round = round_id if round_id is not None else state.round
+    historical = load_round_reports(run_id, output_dir=out)
+
+    # Build current round reports from pending candidates + elite set
+    pending = _load_pending(run_id, out)
+    candidate_versions = [c.prompt_version for c in pending]
+    all_versions: set[str] = set(candidate_versions)
+    for c in state.elite_set:
+        all_versions.add(c.prompt_version)
+
+    import contextlib
+
+    current_reports: dict[str, Any] = {}
+    for version in all_versions:
+        rp = out / run_id / "eval" / version / "report.json"
+        if rp.exists():
+            with contextlib.suppress(Exception):
+                current_reports[version] = _load_score_report_dict(rp, rp.parent / "results.jsonl")
+        else:
+            for rd in historical.values():
+                if version in rd:
+                    current_reports[version] = rd[version]
+                    break
+
+    per_class_recall = extract_per_class_recall(
+        current_reports=current_reports,
+        historical_reports=historical,
+        current_round=current_round,
+    )
+
+    if not per_class_recall:
+        return f"## Full per-class recall — `{run_id}` round {current_round}\n\nNo recall data available."
+
+    lines = [
+        f"## Full per-class recall — `{run_id}` round {current_round}",
+        "",
+        "| route | recall | support | trend (last 3) | regression |",
+        "|---|---|---|---|---|",
+    ]
+    for route, entry in sorted(per_class_recall.items()):
+        trend_str = " → ".join(f"{v:.2f}" for v in entry.trend[-3:]) if entry.trend else "—"
+        lines.append(f"| {route} | {entry.recall:.3f} | {entry.support} | {trend_str} | {entry.regression_flag} |")
+    return "\n".join(lines)

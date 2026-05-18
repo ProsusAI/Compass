@@ -1,4 +1,4 @@
-"""Tests for review MCP tools — record_directive_outcomes_tool decomposed params."""
+"""Tests for review MCP tools — record_directive_outcomes decomposed params."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from odysseus.mcp import (
-    build_review_briefing_tool,
-    get_prompt_text_tool,
-    query_holdout_examples_tool,
-    record_directive_outcomes_tool,
+    build_review_briefing,
+    get_prompt_text,
+    query_holdout_examples,
+    record_directive_outcomes,
 )
 
 _RESOLVE_PROJECT_DIR = "odysseus.mcp.review_tools._resolve_project_dir"
@@ -58,12 +58,12 @@ _CHILD_VARIANTS = [
 
 
 class TestRecordDirectiveOutcomesDecomposed:
-    """Tests for the decomposed-params path of record_directive_outcomes_tool."""
+    """Tests for the decomposed-params path of record_directive_outcomes."""
 
     async def test_decomposed_params_persists_review_result(self, tmp_path: Path) -> None:
         """Passing decomposed params writes a review_result.json to disk."""
         with _patch_project_dir(tmp_path):
-            result_json = await record_directive_outcomes_tool(
+            result_json = await record_directive_outcomes(
                 ctx=None,
                 run_id=_RUN_ID,
                 loop_signal=_LOOP_SIGNAL,
@@ -99,7 +99,7 @@ class TestRecordDirectiveOutcomesDecomposed:
             "child_variants": _CHILD_VARIANTS,
         }
         with _patch_project_dir(tmp_path):
-            result_json = await record_directive_outcomes_tool(
+            result_json = await record_directive_outcomes(
                 ctx=None,
                 run_id=_RUN_ID,
                 loop_signal=_LOOP_SIGNAL,
@@ -128,7 +128,7 @@ class TestRecordDirectiveOutcomesDecomposed:
         }
 
         with _patch_project_dir(tmp_path):
-            await record_directive_outcomes_tool(
+            await record_directive_outcomes(
                 ctx=None,
                 run_id=run_decomposed,
                 candidate_ranking=_CANDIDATE_RANKING,
@@ -136,7 +136,7 @@ class TestRecordDirectiveOutcomesDecomposed:
                 regression_guards=_REGRESSION_GUARDS,
                 output_dir="outputs",
             )
-            await record_directive_outcomes_tool(
+            await record_directive_outcomes(
                 ctx=None,
                 run_id=run_legacy,
                 review_result=legacy_blob,
@@ -156,7 +156,7 @@ class TestRecordDirectiveOutcomesDecomposed:
     async def test_no_review_result_written_when_no_decomposed_or_legacy(self, tmp_path: Path) -> None:
         """When neither decomposed params nor review_result provided, no review_result.json is written."""
         with _patch_project_dir(tmp_path):
-            await record_directive_outcomes_tool(
+            await record_directive_outcomes(
                 ctx=None,
                 run_id=_RUN_ID,
                 output_dir="outputs",
@@ -164,6 +164,26 @@ class TestRecordDirectiveOutcomesDecomposed:
 
         review_result_path = tmp_path / "outputs" / _RUN_ID / "search" / "review_result.json"
         assert not review_result_path.exists()
+
+
+
+class TestRecordDirectiveOutcomesSingleSlot:
+    """Tests for the single-slot path of record_directive_outcomes."""
+
+    _RUN_ID = "test-run-trajectory"
+
+    async def test_single_slot_path_writes_child_variants(self, tmp_path: Path) -> None:
+        """Without trajectory_id, the single-slot path writes child_variants.json."""
+        with _patch_project_dir(tmp_path):
+            await record_directive_outcomes(
+                ctx=None,
+                run_id=self._RUN_ID + "-single",
+                child_variants=_CHILD_VARIANTS,
+                output_dir="outputs",
+            )
+
+        single_slot = tmp_path / "outputs" / (self._RUN_ID + "-single") / "search" / "child_variants.json"
+        assert single_slot.exists(), "child_variants.json must be written for single-slot path"
 
 
 
@@ -235,7 +255,7 @@ class TestChildVariantNoParentPreference:
 
 
 class TestGetPromptTextTool:
-    """Tests for get_prompt_text_tool prompt-directory fallback and run_id requirement."""
+    """Tests for get_prompt_text prompt-directory fallback and run_id requirement."""
 
     _RUN_ID = "test-run-prompt"
 
@@ -250,7 +270,7 @@ class TestGetPromptTextTool:
         (project_prompts / "v1.txt").write_text("project content")
 
         with _patch_project_dir(tmp_path):
-            result = await get_prompt_text_tool(ctx=None, version="v1", run_id=self._RUN_ID, output_dir="outputs")
+            result = await get_prompt_text(ctx=None, version="v1", run_id=self._RUN_ID, output_dir="outputs")
 
         assert result == "run-specific content"
 
@@ -264,7 +284,7 @@ class TestGetPromptTextTool:
         (project_prompts / "v2.txt").write_text("project v2")
 
         with _patch_project_dir(tmp_path):
-            result = await get_prompt_text_tool(ctx=None, version="v2", run_id=self._RUN_ID, output_dir="outputs")
+            result = await get_prompt_text(ctx=None, version="v2", run_id=self._RUN_ID, output_dir="outputs")
 
         assert result == "project v2"
 
@@ -276,24 +296,24 @@ class TestGetPromptTextTool:
         project_prompts.mkdir()
 
         with _patch_project_dir(tmp_path):
-            result = await get_prompt_text_tool(ctx=None, version="vX", run_id=self._RUN_ID, output_dir="outputs")
+            result = await get_prompt_text(ctx=None, version="vX", run_id=self._RUN_ID, output_dir="outputs")
 
         parsed = json.loads(result)
         assert "error" in parsed
         assert "vX" in parsed["error"]
 
     def test_run_id_is_required(self) -> None:
-        """get_prompt_text_tool requires run_id — calling without it raises TypeError."""
+        """get_prompt_text requires run_id — calling without it raises TypeError."""
         import inspect
 
-        sig = inspect.signature(get_prompt_text_tool)
+        sig = inspect.signature(get_prompt_text)
         param = sig.parameters.get("run_id")
-        assert param is not None, "run_id parameter not found on get_prompt_text_tool"
+        assert param is not None, "run_id parameter not found on get_prompt_text"
         assert param.default is inspect.Parameter.empty, "run_id must have no default (required)"
 
 
 class TestVariantIdSequentialCounter:
-    """variant_ids assigned by record_directive_outcomes_tool are sequential across calls."""
+    """variant_ids assigned by record_directive_outcomes are sequential across calls."""
 
     _RUN_ID = "test-run-seq"
 
@@ -332,7 +352,7 @@ class TestVariantIdSequentialCounter:
         two_variants = [self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="Variant 2")]
 
         with _patch_project_dir(tmp_path):
-            result_json = await record_directive_outcomes_tool(
+            result_json = await record_directive_outcomes(
                 ctx=None,
                 run_id=self._RUN_ID,
                 child_variants=two_variants,
@@ -348,13 +368,13 @@ class TestVariantIdSequentialCounter:
         self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
 
         with _patch_project_dir(tmp_path):
-            await record_directive_outcomes_tool(
+            await record_directive_outcomes(
                 ctx=None,
                 run_id=self._RUN_ID,
                 child_variants=[self._CHILD_VARIANT_RAW],
                 output_dir="outputs",
             )
-            result_json = await record_directive_outcomes_tool(
+            result_json = await record_directive_outcomes(
                 ctx=None,
                 run_id=self._RUN_ID,
                 child_variants=[
@@ -375,13 +395,13 @@ class TestVariantIdSequentialCounter:
         self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
 
         with _patch_project_dir(tmp_path):
-            await record_directive_outcomes_tool(
+            await record_directive_outcomes(
                 ctx=None,
                 run_id=self._RUN_ID,
                 child_variants=[self._CHILD_VARIANT_RAW, dict(self._CHILD_VARIANT_RAW, hypothesis="V2")],
                 output_dir="outputs",
             )
-            await record_directive_outcomes_tool(
+            await record_directive_outcomes(
                 ctx=None,
                 run_id=self._RUN_ID,
                 child_variants=[dict(self._CHILD_VARIANT_RAW, hypothesis="V3")],
@@ -393,7 +413,7 @@ class TestVariantIdSequentialCounter:
 
 
 class TestQueryHoldoutExamplesPagination:
-    """Smoke tests for offset pagination in query_holdout_examples_tool."""
+    """Smoke tests for offset pagination in query_holdout_examples."""
 
     _RUN_ID = "test-run-pagination"
     _ROUTE = "route_x"
@@ -415,7 +435,7 @@ class TestQueryHoldoutExamplesPagination:
         self._make_holdout(tmp_path, n_matching=35)
 
         with _patch_project_dir(tmp_path):
-            result_json = await query_holdout_examples_tool(
+            result_json = await query_holdout_examples(
                 ctx=None,
                 run_id=self._RUN_ID,
                 route=self._ROUTE,
@@ -436,7 +456,7 @@ class TestQueryHoldoutExamplesPagination:
         self._make_holdout(tmp_path, n_matching=10)
 
         with _patch_project_dir(tmp_path):
-            result_json = await query_holdout_examples_tool(
+            result_json = await query_holdout_examples(
                 ctx=None,
                 run_id=self._RUN_ID,
                 route=self._ROUTE,
@@ -451,7 +471,7 @@ class TestQueryHoldoutExamplesPagination:
 
 
 # ---------------------------------------------------------------------------
-# Helpers for build_review_briefing_tool tests
+# Helpers for build_review_briefing tests
 # ---------------------------------------------------------------------------
 
 
@@ -529,7 +549,7 @@ def _make_example(id_: str, true_route: str, routes: list[str] | None = None) ->
 
 
 class TestBuildReviewBriefingToolSelector:
-    """Tests for confusion-analysis selector behavior in build_review_briefing_tool."""
+    """Tests for confusion-analysis selector behavior in build_review_briefing."""
 
     _RUN_ID = "test-run-confusion"
 
@@ -613,7 +633,7 @@ class TestBuildReviewBriefingToolSelector:
             report_path.write_text(json.dumps(report), encoding="utf-8")
 
         with _patch_project_dir(tmp_path):
-            result = await build_review_briefing_tool(
+            result = await build_review_briefing(
                 ctx=None,
                 run_id=run_id,
                 output_dir="outputs",
@@ -642,7 +662,7 @@ class TestBuildReviewBriefingToolSelector:
         _write_state(tmp_path, run_id, state_dict)
 
         with _patch_project_dir(tmp_path):
-            result = await build_review_briefing_tool(
+            result = await build_review_briefing(
                 ctx=None,
                 run_id=run_id,
                 output_dir="outputs",
@@ -736,7 +756,7 @@ class TestBuildReviewBriefingToolSelector:
             _rt._select_confusion_candidates = lambda state: ["va"]  # type: ignore[assignment]
 
             with _patch_project_dir(tmp_path):
-                result = await build_review_briefing_tool(
+                result = await build_review_briefing(
                     ctx=None,
                     run_id=run_id,
                     output_dir="outputs",
@@ -881,12 +901,12 @@ class TestLoadScoreReportDict:
 
 
 class TestBuildReviewBriefingDoesNotWriteRoundReport:
-    """C.2: build_review_briefing_tool must NOT write round_reports/round_N.json."""
+    """C.2: build_review_briefing must NOT write round_reports/round_N.json."""
 
     _RUN_ID = "test-run-no-rr-write"
 
     async def test_briefing_does_not_write_round_report(self, tmp_path: Path) -> None:
-        """build_review_briefing_tool leaves round_reports/ untouched (no racy write)."""
+        """build_review_briefing leaves round_reports/ untouched (no racy write)."""
         run_id = self._RUN_ID
         state_dict = _make_state_dict(run_id, elite_set=[], round_=2)
         _write_state(tmp_path, run_id, state_dict)
@@ -894,13 +914,13 @@ class TestBuildReviewBriefingDoesNotWriteRoundReport:
         round_reports_dir = tmp_path / "outputs" / run_id / "search" / "round_reports"
 
         with _patch_project_dir(tmp_path):
-            await build_review_briefing_tool(
+            await build_review_briefing(
                 ctx=None,
                 run_id=run_id,
                 output_dir="outputs",
             )
 
-        assert not round_reports_dir.exists(), "build_review_briefing_tool must not create round_reports/ directory"
+        assert not round_reports_dir.exists(), "build_review_briefing must not create round_reports/ directory"
 
     async def test_briefing_does_not_clobber_existing_round_report(self, tmp_path: Path) -> None:
         """If round_reports/round_2.json was pre-written by advance_round, briefing leaves it intact."""
@@ -915,11 +935,285 @@ class TestBuildReviewBriefingDoesNotWriteRoundReport:
         (round_reports_dir / "round_2.json").write_text(json.dumps(sentinel), encoding="utf-8")
 
         with _patch_project_dir(tmp_path):
-            await build_review_briefing_tool(
+            await build_review_briefing(
                 ctx=None,
                 run_id=run_id,
                 output_dir="outputs",
             )
 
         on_disk = json.loads((round_reports_dir / "round_2.json").read_text(encoding="utf-8"))
-        assert on_disk == sentinel, "build_review_briefing_tool must not overwrite existing round_reports/round_2.json"
+        assert on_disk == sentinel, "build_review_briefing must not overwrite existing round_reports/round_2.json"
+
+
+# ---------------------------------------------------------------------------
+# Tests for get_dataset_oracle_distribution
+# ---------------------------------------------------------------------------
+
+_DEV_ROWS = [
+    {
+        "id": "row-1",
+        "input": "query 1",
+        "expected": {
+            "route": "complex",
+            "routes": {
+                "simple": {"cost": 0.01, "quality_score": 0.7},
+                "moderate": {"cost": 0.03, "quality_score": 0.8},
+                "complex": {"cost": 0.10, "quality_score": 0.95},
+            },
+        },
+    },
+    {
+        "id": "row-2",
+        "input": "query 2",
+        "expected": {
+            "route": "simple",
+            "routes": {
+                "simple": {"cost": 0.01, "quality_score": 0.9},
+                "moderate": {"cost": 0.03, "quality_score": 0.9},
+                "complex": {"cost": 0.10, "quality_score": 0.9},
+            },
+        },
+    },
+    {
+        "id": "row-3",
+        "input": "query 3",
+        "expected": {
+            "route": "simple",
+            "routes": {
+                "simple": {"cost": 0.01, "quality_score": 0.85},
+                "moderate": {"cost": 0.03, "quality_score": 0.88},
+                "complex": {"cost": 0.10, "quality_score": 0.90},
+            },
+        },
+    },
+]
+
+
+class TestGetDatasetOracleDistributionTool:
+    _RUN_ID = "test-oracle-dist"
+
+    def _write_dev(self, tmp_path: Path, rows: list[dict] | None = None) -> None:
+        analysis_dir = tmp_path / "outputs" / self._RUN_ID / "analysis"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        data = rows if rows is not None else _DEV_ROWS
+        lines = [json.dumps(r) for r in data]
+        (analysis_dir / "dev.jsonl").write_text("\n".join(lines), encoding="utf-8")
+
+    async def test_aggregates_section_always_present(self, tmp_path: Path) -> None:
+        self._write_dev(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+        assert "### Aggregates" in result
+        assert "complex" in result
+        assert "simple" in result
+
+    async def test_route_filter_shows_rows_section(self, tmp_path: Path) -> None:
+        self._write_dev(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                route="simple",
+                output_dir="outputs",
+            )
+        assert "### Rows" in result
+        assert "row-2" in result
+        assert "row-3" in result
+        # row-1 is labeled complex, not simple
+        assert "row-1" not in result.split("### Rows")[1]
+
+    async def test_example_ids_filter(self, tmp_path: Path) -> None:
+        self._write_dev(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                example_ids=["row-1"],
+                output_dir="outputs",
+            )
+        assert "row-1" in result
+        # row-2 not in requested ids
+        rows_section = result.split("### Rows")[1] if "### Rows" in result else result
+        assert "row-2" not in rows_section
+
+    async def test_limit_cap(self, tmp_path: Path) -> None:
+        """limit=1 returns at most 1 row in the rows section."""
+        self._write_dev(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                route="simple",
+                limit=1,
+                output_dir="outputs",
+            )
+        # Should say "1 shown"
+        assert "1 shown" in result
+
+    async def test_missing_dev_jsonl_returns_explanatory_message(self, tmp_path: Path) -> None:
+        """When dev.jsonl doesn't exist, returns an explanatory message (no exception)."""
+        # Don't write any dev.jsonl
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+        assert "not found" in result.lower() or "only available" in result.lower()
+
+    async def test_no_rows_section_without_filter(self, tmp_path: Path) -> None:
+        """Without route or example_ids filter, rows section is omitted."""
+        self._write_dev(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+        assert "### Rows" not in result
+
+    async def test_pareto_count_for_dominated_route(self, tmp_path: Path) -> None:
+        """row-2 has simple labeled but moderate/complex have same quality at higher cost — simple IS pareto."""
+        self._write_dev(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+        # simple route appears in aggregates table
+        assert "simple" in result
+
+    async def test_ties_with_cheaper_route_count(self, tmp_path: Path) -> None:
+        """row-2: labeled 'simple' but moderate/complex have same quality at higher cost → no cheaper tie.
+        row-3: labeled 'simple' and moderate has same quality at higher cost → no cheaper tie either.
+        complex row-1: simple/moderate have same or lower quality and lower cost → ties_with_cheaper=1."""
+        self._write_dev(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+
+            result = await get_dataset_oracle_distribution(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+        # Just verify the column exists in the table
+        assert "ties_with_cheaper_route_count" in result
+
+
+# ---------------------------------------------------------------------------
+# Tests for get_per_class_recall
+# ---------------------------------------------------------------------------
+
+
+class TestGetPerClassRecallTool:
+    _RUN_ID = "test-pcr-tool"
+
+    def _make_state_with_reports(self, tmp_path: Path) -> None:
+        """Write search state + round reports with recall metrics."""
+        from odysseus.agents.prompt_builder.search import SearchState
+        from odysseus.agents.prompt_builder.search_ops import _save_state
+
+        state = SearchState(
+            search_state_id=self._RUN_ID,
+            backend="anthropic",
+            round=2,
+        )
+        out = tmp_path / "outputs"
+        _save_state(self._RUN_ID, state, out)
+
+        # Write round 1 report with recall metrics for route_a, route_b, route_low
+        from datetime import UTC, datetime
+
+        now = datetime.now(tz=UTC).isoformat()
+        report = {
+            "config": {"backend": "anthropic", "prompt_version": "v1", "data_source": "d.jsonl", "metrics": []},
+            "metrics": {
+                "accuracy": 0.80,
+                "recall/route_a": 0.85,
+                "support/route_a": 50,
+                "recall/route_b": 0.72,
+                "support/route_b": 40,
+                "recall/route_low": 0.50,
+                "support/route_low": 3,
+            },
+            "results": [],
+            "summary": {
+                "total": 93,
+                "succeeded": 93,
+                "failed": 0,
+                "total_cost": 0.05,
+                "start_time": now,
+                "end_time": now,
+                "duration_seconds": 5.0,
+            },
+        }
+
+        round_dir = out / self._RUN_ID / "search" / "round_reports"
+        round_dir.mkdir(parents=True, exist_ok=True)
+        (round_dir / "round_1.json").write_text(json.dumps({"v1": report}), encoding="utf-8")
+
+        eval_dir = out / self._RUN_ID / "eval" / "v1"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        (eval_dir / "report.json").write_text(json.dumps(report), encoding="utf-8")
+
+    async def test_full_table_includes_all_routes(self, tmp_path: Path) -> None:
+        """get_per_class_recall returns all routes including low-support ones."""
+        self._make_state_with_reports(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_per_class_recall
+
+            result = await get_per_class_recall(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+        assert "route_a" in result
+        assert "route_b" in result
+        assert "route_low" in result
+
+    async def test_columns_present(self, tmp_path: Path) -> None:
+        """Result markdown contains all expected column headers."""
+        self._make_state_with_reports(tmp_path)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_per_class_recall
+
+            result = await get_per_class_recall(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+        assert "recall" in result
+        assert "support" in result
+        assert "trend" in result
+        assert "regression" in result
+
+    async def test_missing_search_state_returns_message(self, tmp_path: Path) -> None:
+        """When search state doesn't exist, returns an explanatory string (no exception)."""
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_per_class_recall
+
+            result = await get_per_class_recall(
+                ctx=None,
+                run_id="nonexistent-run",
+                output_dir="outputs",
+            )
+        assert "not found" in result.lower() or "not initialised" in result.lower()

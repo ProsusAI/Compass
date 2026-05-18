@@ -61,8 +61,8 @@ If the overlay does not answer one of these, stop and report an error — do not
 
 ## Emitting results
 
-Call `record_directive_outcomes_tool` with each field as a separate parameter.
+Call `record_directive_outcomes` with each field as a separate parameter.
 
 **`loop_signal`** — always `{"action": "refine", "reason": "..."}` for a normal cold-start dispatch. Valid actions are `"refine"` and `"exit"` only. **Never use `"continue"` or `"signal"` — these are not valid and will cause a validation error.**
 
-**No Bash.** Do not use shell commands or read files from disk. `build_review_briefing_tool` provides all needed data.
+**No Bash.** Do not use shell commands or read files from disk. `build_review_briefing` provides all needed data.

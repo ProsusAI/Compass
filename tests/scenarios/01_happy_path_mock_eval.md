@@ -3,7 +3,7 @@
 ## Setup
 - Dataset: `tests/scenarios/data/full_pipeline_dataset.jsonl`
 - System prompts: `odysseus_routing_input`, `odysseus_data_validation`, `odysseus_backend_setup`, `odysseus_prompt_builder`, `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start`, `odysseus_final_report`
-- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_default_pricing`, `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `build_review_briefing_tool`, `record_directive_outcomes_tool`, `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
+- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 - Backend profile: `tests/scenarios/data/backends/mock-echo.yaml`
 
 ## Scenario Description
@@ -38,7 +38,7 @@ You are an ML engineer who has already assembled all required information for a 
 ### Stage 2 — Data Validation
 - [ ] `detect_and_parse_dataset` or `validate_dataset` was called with the correct dataset path
 - [ ] All schema findings have status `pass` (no blocking errors)
-- [ ] `stratified_split_tool` was called, producing dev and holdout splits
+- [ ] `stratified_split` was called, producing dev and holdout splits
 - [ ] `save_routing_context` was called with a routing context containing 3 routes (haiku, sonnet, opus)
 
 ### Stage 3 — Backend Setup
@@ -47,20 +47,20 @@ You are an ML engineer who has already assembled all required information for a 
 - [ ] Stage completes without requesting additional user input
 
 ### Stage 4 — Prompt Builder + Eval Runner
-- [ ] `init_search_state_tool` was called with `backend="mock-echo"`
+- [ ] `init_search_state` was called with `backend="mock-echo"`
 - [ ] At least one candidate compiled with route definitions for haiku, sonnet, and opus
 - [ ] `run_eval` was called with the dev dataset and mock-echo backend
-- [ ] `record_eval_result_tool` was called with scores from the ScoreReport
-- [ ] `advance_step_tool` was called at least once
-- [ ] Review Agent (`build_review_briefing_tool`) was called between rounds
-- [ ] `save_prompt_tool` called to persist the best candidate
+- [ ] `record_eval_result` was called with scores from the ScoreReport
+- [ ] `advance_step` was called at least once
+- [ ] Review Agent (`build_review_briefing`) was called between rounds
+- [ ] `save_prompt` called to persist the best candidate
 
 ### Stage 5 — Holdout Validation
-- [ ] `filter_holdout_dataset_tool` was called to exclude few-shot examples
+- [ ] `filter_holdout_dataset` was called to exclude few-shot examples
 - [ ] `run_holdout_eval` was called with the filtered holdout set and mock-echo backend
 
 ### Stage 6 — Final Report
-- [ ] `build_final_report_briefing_tool` was called
+- [ ] `build_final_report_briefing` was called
 - [ ] `save_final_report` was called and returned a report path
 - [ ] Final report includes holdout evaluation results
 

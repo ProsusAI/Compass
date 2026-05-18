@@ -94,8 +94,8 @@ A dedicated "b" version of the Prompt Builder system prompt. Same tools, same re
 - Reads provider-specific conventions (same resources as the normal builder)
 - Restructures prompt formatting to match the new backend's conventions (XML tags ↔ markdown headers, example block formatting, emphasis style)
 - Saves restructured prompt as the next version
-- Registers candidate, runs single eval, records result. The single candidate must be registered via `register_candidate_tool` and scored via `record_eval_result_tool` so it lands on the Pareto front. Stage 5's `list_pareto_candidates` auto-selects from a single-candidate front.
-- Calls `init_search_state_tool` with `max_rounds=1`, `stagnation_limit=0`, `convergence_limit=1` (note: the `SearchState` validator enforces `convergence_limit > stagnation_limit`, so `stagnation_limit` must be set to `0`)
+- Registers candidate, runs single eval, records result. The single candidate must be registered via `register_candidate` and scored via `record_eval_result` so it lands on the Pareto front. Stage 5's `list_pareto_candidates` auto-selects from a single-candidate front.
+- Calls `init_search_state` with `max_rounds=1`, `stagnation_limit=0`, `convergence_limit=1` (note: the `SearchState` validator enforces `convergence_limit > stagnation_limit`, so `stagnation_limit` must be set to `0`)
 - Calls `advance_round_tool` which converges immediately
 
 **Hard constraint:** Content must not change — same routing objective, same decision rules, same examples, same output format. Only structural/formatting changes allowed.

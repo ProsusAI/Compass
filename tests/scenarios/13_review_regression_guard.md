@@ -4,7 +4,7 @@
 - Fixture directory: `tests/scenarios/data/review/def456/`
 - Search state ID: `def456`
 - System prompts: `odysseus_review_agent_iterative`
-- MCP tools: `build_review_briefing_tool`, `record_directive_outcomes_tool`
+- MCP tools: `build_review_briefing`, `record_directive_outcomes`
 
 ## Scenario Description
 The Prompt Builder has completed round 2 and produced candidate `v3`. `v3` improves overall quality score (0.82 vs the previous best `v2` at 0.78) but dramatically drops recall on the `opus` route — the rarest class — from 0.75 to 0.45. This is a classic quality/recall trade-off where headline metrics improve while rare-class performance regresses.
@@ -35,7 +35,7 @@ You are a pipeline orchestrator handing off round 2 results to the Review Agent.
 ## Verification Criteria
 
 ### Tool Calls
-- [ ] `build_review_briefing_tool` was called with `search_state_id="def456"`, `v3` listed as a candidate, and `output_dir="tests/scenarios/data/review"`
+- [ ] `build_review_briefing` was called with `search_state_id="def456"`, `v3` listed as a candidate, and `output_dir="tests/scenarios/data/review"`
 
 ### Regression Detection
 - [ ] `regression_guards` in the `ReviewResult` contains at least one entry for `v3`

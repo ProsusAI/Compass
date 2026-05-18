@@ -3,7 +3,7 @@
 ## Setup
 - Dataset: `tests/scenarios/data/two_route_dataset.jsonl`
 - System prompts: `odysseus_routing_input`, `odysseus_data_validation`, `odysseus_backend_setup`, `odysseus_prompt_builder`, `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start`, `odysseus_final_report`
-- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split_tool`, `get_default_pricing`, `init_search_state_tool`, `register_candidate_tool`, `run_eval`, `record_eval_result_tool`, `advance_step_tool`, `get_search_state_tool`, `save_prompt_tool`, `build_review_briefing_tool`, `record_directive_outcomes_tool`, `filter_holdout_dataset_tool`, `run_holdout_eval`, `build_final_report_briefing_tool`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
+- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 - Backend profile: `tests/scenarios/data/backends/mock-echo.yaml`
 
 ## Scenario Description
@@ -38,26 +38,26 @@ You are a data engineer running a binary routing optimization: simple queries go
 - [ ] `validate_dataset` called with the two-route dataset
 - [ ] Schema findings all pass
 - [ ] Routing context saved with exactly 2 routes (haiku, opus)
-- [ ] `stratified_split_tool` called; dev and holdout splits respect the 2-route structure
+- [ ] `stratified_split` called; dev and holdout splits respect the 2-route structure
 
 ### Stage 3 — Backend Setup
 - [ ] Backend resolved as `mock-echo`
 - [ ] Stage completes without requesting additional input
 
 ### Stage 4 — Prompt Builder + Eval Runner
-- [ ] `init_search_state_tool` called with `backend="mock-echo"`
+- [ ] `init_search_state` called with `backend="mock-echo"`
 - [ ] Compiled prompt contains route definitions for exactly 2 tiers (haiku, opus) — no sonnet route generated
 - [ ] `run_eval` called with dev dataset
 - [ ] ScoreReport received with per-class scores for haiku and opus (no sonnet class)
-- [ ] `record_eval_result_tool`, `advance_step_tool` called
-- [ ] `save_prompt_tool` called
+- [ ] `record_eval_result`, `advance_step` called
+- [ ] `save_prompt` called
 
 ### Stage 5 — Holdout Validation
-- [ ] `filter_holdout_dataset_tool` called
+- [ ] `filter_holdout_dataset` called
 - [ ] `run_holdout_eval` called; holdout report reflects 2-class scoring
 
 ### Stage 6 — Final Report
-- [ ] `build_final_report_briefing_tool` and `save_final_report` called
+- [ ] `build_final_report_briefing` and `save_final_report` called
 - [ ] Report reflects 2-route structure throughout
 
 ### Pipeline Integrity
