@@ -70,7 +70,7 @@ def assemble_review_prompt(
     overlay = _load_prompt(overlay_name)
     if phase == "post_coldstart":
         iterative_base = _load_prompt("review_agent_iterative_base_system")
-        post_override = _load_prompt("review_agent_post_coldstart_base_system")
+        post_override = _load_prompt("review_agent_post_coldstart_overlay_beam")
         return f"{base}\n\n---\n\n{iterative_base}\n\n---\n\n{post_override}\n\n---\n\n{overlay}"
     phase_base = _load_prompt(f"review_agent_{phase}_base_system")
     return f"{base}\n\n---\n\n{phase_base}\n\n---\n\n{overlay}"
