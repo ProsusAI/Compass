@@ -116,7 +116,6 @@ async def build_review_briefing_tool(
     """
     from odysseus.agents.prompt_builder.search_ops import get_search_state
     from odysseus.agents.review.ops import (
-        load_all_trajectory_child_variants,
         load_cell_attempt_history,
         load_child_variants,
         load_round_reports,
@@ -215,10 +214,13 @@ async def build_review_briefing_tool(
             except FileNotFoundError:
                 continue
 
-    # Load child variants for batch outcome tracking. Prefer per-trajectory files
-    # (EMOSA K-way fanout) when present; otherwise fall back to the single-slot sentinel.
+    # Load child variants for batch outcome tracking.
     search_dir_for_load = out / run_id / "search"
     if search_dir_for_load.exists() and any(search_dir_for_load.glob("child_variants_t*.json")):
+        from odysseus.agents.review.ops import (
+            load_all_trajectory_child_variants,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+
         child_variants = load_all_trajectory_child_variants(run_id, output_dir=out) or None
     else:
         child_variants = load_child_variants(run_id, output_dir=out) or None
@@ -403,11 +405,7 @@ async def record_directive_outcomes_tool(
         RankedCandidate,
         RegressionFlag,
     )
-    from odysseus.agents.review.ops import (
-        record_trajectory_dispatched,
-        save_child_variants,
-        save_trajectory_child_variants,
-    )
+    from odysseus.agents.review.ops import save_child_variants
 
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
@@ -475,6 +473,11 @@ async def record_directive_outcomes_tool(
                 loop_signal = {"action": "refine", "reason": "cold_start_default"}
 
         if trajectory_id is not None:
+            from odysseus.agents.review.ops import (
+                record_trajectory_dispatched,  # pyright: ignore[reportAttributeAccessIssue]
+                save_trajectory_child_variants,  # pyright: ignore[reportAttributeAccessIssue]
+            )
+
             # EMOSA K-way fanout: use per-trajectory variant ids and file.
             for i, v in enumerate(parsed_variants):
                 if v.variant_id is None:
