@@ -559,7 +559,7 @@ def gen_emosa_steady_state():
         return max(wq * norm_q, wc * norm_c)
 
     trajectories = []
-    for i, (wv, quality, cost) in enumerate(zip(weight_vectors, seed_qualities, seed_costs)):
+    for i, (wv, quality, cost) in enumerate(zip(weight_vectors, seed_qualities, seed_costs, strict=True)):
         energy = _tchebycheff_energy(quality, cost, wv, ideal_point, nadir_point)
         trajectories.append(
             {
@@ -600,7 +600,7 @@ def gen_emosa_steady_state():
                 "cost": c,
                 "round_introduced": 0,
             }
-            for i, (q, c) in enumerate(zip(seed_qualities, seed_costs))
+            for i, (q, c) in enumerate(zip(seed_qualities, seed_costs, strict=True))
         ],
         "round_history": [],
         "stagnation_count": 0,

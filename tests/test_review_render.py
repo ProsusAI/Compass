@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
+from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.review.models import (
     BatchOutcome,
     CandidateAnalysis,
@@ -21,7 +20,6 @@ from odysseus.agents.review.models import (
     UserTargetProgress,
 )
 from odysseus.agents.review.render import render_briefing_summary
-from odysseus.agents.prompt_builder.search import Candidate
 from odysseus.agents.routing_context import RouteDefinition, RouteOrdering, RoutingContext, RoutingDimension
 from odysseus.eval.models import ErrorBreakdown, RunSummary, ScoreReport
 

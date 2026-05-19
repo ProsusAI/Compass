@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -795,20 +795,16 @@ class TestBuildReviewBriefingToolSelector:
                 for line in rsp.read_text(encoding="utf-8").splitlines():
                     s = line.strip()
                     if s:
-                        try:
+                        with suppress(Exception):
                             all_er.append(EvalResult.model_validate(json.loads(s)))
-                        except Exception:
-                            pass
         loaded_examples: list[Example] = []
         dev_p = out / run_id / "analysis" / "dev.jsonl"
         if dev_p.exists():
             for line in dev_p.read_text(encoding="utf-8").splitlines():
                 s = line.strip()
                 if s:
-                    try:
+                    with suppress(Exception):
                         loaded_examples.append(Example.model_validate_json(s))
-                    except Exception:
-                        pass
         briefing = _build_review_briefing_impl(
             search_state=state,
             score_reports=score_reports,
@@ -949,7 +945,7 @@ class TestBuildReviewBriefingToolSelector:
             _rt._select_confusion_candidates = lambda state: ["va"]  # type: ignore[assignment]
 
             with _patch_project_dir(tmp_path):
-                result = await build_review_briefing(
+                await build_review_briefing(
                     ctx=None,
                     run_id=run_id,
                     output_dir="outputs",
@@ -973,20 +969,16 @@ class TestBuildReviewBriefingToolSelector:
                 for line in rsp.read_text(encoding="utf-8").splitlines():
                     s = line.strip()
                     if s:
-                        try:
+                        with suppress(Exception):
                             all_er.append(EvalResult.model_validate(json.loads(s)))
-                        except Exception:
-                            pass
             loaded_examples: list[Example] = []
             dev_p = out / run_id / "analysis" / "dev.jsonl"
             if dev_p.exists():
                 for line in dev_p.read_text(encoding="utf-8").splitlines():
                     s = line.strip()
                     if s:
-                        try:
+                        with suppress(Exception):
                             loaded_examples.append(Example.model_validate_json(s))
-                        except Exception:
-                            pass
             briefing = _build_review_briefing_impl(
                 search_state=state,
                 score_reports=score_reports,

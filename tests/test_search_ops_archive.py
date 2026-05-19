@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 import pytest
 
@@ -27,7 +28,7 @@ def _make_candidate(
     quality_score: float = 0.9,
     cost: float = 0.01,
     round_introduced: int = 1,
-    eval_status: str = "complete",
+    eval_status: Literal["pending", "running", "complete", "failed"] = "complete",
 ) -> Candidate:
     return Candidate(
         prompt_version=prompt_version,

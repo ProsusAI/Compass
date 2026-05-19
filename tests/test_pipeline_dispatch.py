@@ -34,7 +34,6 @@ class TestBuildDispatchMarker:
         record_build_dispatched(_RUN_ID, round=2, output_dir=tmp_path)
         marker = tmp_path / _RUN_ID / "search" / "build_dispatched.json"
         assert marker.is_file()
-        import json
 
         data = json.loads(marker.read_text())
         assert data["round"] == 2
@@ -71,7 +70,6 @@ class TestReviewDispatchMarker:
         record_review_dispatched(_RUN_ID, round=5, output_dir=tmp_path)
         marker = tmp_path / _RUN_ID / "search" / "review_dispatched.json"
         assert marker.is_file()
-        import json
 
         data = json.loads(marker.read_text())
         assert data["round"] == 5
@@ -150,5 +148,4 @@ class TestReviewFanoutStatus:
         status = review_fanout_status(_RUN_ID, algorithm="hill_climb", expected=1, output_dir=tmp_path)
         assert status.not_dispatched == [0]
         assert not status.is_complete
-
 
