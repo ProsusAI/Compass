@@ -81,21 +81,6 @@ def load_child_variants(
     return [ChildVariant.model_validate(v) for v in data]
 
 
-def save_round_report(
-    run_id: str,
-    round_num: int,
-    reports: dict[str, dict[str, Any]],
-    *,
-    output_dir: Path | None = None,
-) -> None:
-    if output_dir is None:
-        output_dir = _default_output_dir()
-    dir_path = _round_reports_dir(run_id, output_dir)
-    dir_path.mkdir(parents=True, exist_ok=True)
-    path = dir_path / f"round_{round_num}.json"
-    path.write_text(json.dumps(reports, indent=2), encoding="utf-8")
-
-
 def load_round_reports(
     run_id: str,
     *,

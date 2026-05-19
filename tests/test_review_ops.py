@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
 from odysseus.agents.review.models import (
@@ -16,7 +17,6 @@ from odysseus.agents.review.ops import (
     load_historical_eval_reports,
     load_round_reports,
     save_child_variants,
-    save_round_report,
 )
 
 # ---------------------------------------------------------------------------
@@ -42,6 +42,17 @@ def _make_child_variant(variant_id: str | None = None) -> ChildVariant:
         hypothesis="Test hypothesis",
         directives=[_make_edit_directive("d1")],
     )
+
+
+def _write_round_report_fixture(
+    tmp_path: Path,
+    run_id: str,
+    round_num: int,
+    reports: dict[str, dict[str, Any]],
+) -> None:
+    path = tmp_path / run_id / "search" / "round_reports" / f"round_{round_num}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(reports, indent=2), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -85,23 +96,23 @@ class TestSaveLoadChildVariants:
 # ---------------------------------------------------------------------------
 
 
-class TestSaveLoadRoundReports:
-    def test_save_single_round(self, tmp_path: Path) -> None:
+class TestLoadRoundReports:
+    def test_loads_single_round(self, tmp_path: Path) -> None:
         reports = {
             "v2": {"accuracy": 0.85, "cost": 1.2},
         }
-        save_round_report("state-abc", 1, reports, output_dir=tmp_path)
+        _write_round_report_fixture(tmp_path, "state-abc", 1, reports)
         loaded = load_round_reports("state-abc", output_dir=tmp_path)
 
         assert 1 in loaded
         assert loaded[1]["v2"]["accuracy"] == 0.85
 
-    def test_save_multiple_rounds(self, tmp_path: Path) -> None:
+    def test_loads_multiple_rounds(self, tmp_path: Path) -> None:
         round1 = {"v2": {"accuracy": 0.80}}
         round2 = {"v3": {"accuracy": 0.85}, "v4": {"accuracy": 0.82}}
 
-        save_round_report("state-abc", 1, round1, output_dir=tmp_path)
-        save_round_report("state-abc", 2, round2, output_dir=tmp_path)
+        _write_round_report_fixture(tmp_path, "state-abc", 1, round1)
+        _write_round_report_fixture(tmp_path, "state-abc", 2, round2)
 
         loaded = load_round_reports("state-abc", output_dir=tmp_path)
 
@@ -115,15 +126,9 @@ class TestSaveLoadRoundReports:
         result = load_round_reports("nonexistent-state", output_dir=tmp_path)
         assert result == {}
 
-    def test_creates_directory_structure(self, tmp_path: Path) -> None:
-        save_round_report("state-new", 1, {"v2": {}}, output_dir=tmp_path)
-
-        expected_path = tmp_path / "state-new" / "search" / "round_reports" / "round_1.json"
-        assert expected_path.exists()
-
     def test_round_numbers_parsed_correctly(self, tmp_path: Path) -> None:
-        save_round_report("state-abc", 5, {"v10": {"score": 0.9}}, output_dir=tmp_path)
-        save_round_report("state-abc", 10, {"v11": {"score": 0.91}}, output_dir=tmp_path)
+        _write_round_report_fixture(tmp_path, "state-abc", 5, {"v10": {"score": 0.9}})
+        _write_round_report_fixture(tmp_path, "state-abc", 10, {"v11": {"score": 0.91}})
 
         loaded = load_round_reports("state-abc", output_dir=tmp_path)
 
@@ -133,25 +138,14 @@ class TestSaveLoadRoundReports:
 
     def test_rounds_returned_in_sorted_order(self, tmp_path: Path) -> None:
         # Save out-of-order to ensure sorting is applied on load
-        save_round_report("state-abc", 3, {"v5": {}}, output_dir=tmp_path)
-        save_round_report("state-abc", 1, {"v3": {}}, output_dir=tmp_path)
-        save_round_report("state-abc", 2, {"v4": {}}, output_dir=tmp_path)
+        _write_round_report_fixture(tmp_path, "state-abc", 3, {"v5": {}})
+        _write_round_report_fixture(tmp_path, "state-abc", 1, {"v3": {}})
+        _write_round_report_fixture(tmp_path, "state-abc", 2, {"v4": {}})
 
         loaded = load_round_reports("state-abc", output_dir=tmp_path)
         keys = list(loaded.keys())
 
         assert keys == [1, 2, 3]
-
-
-# ---------------------------------------------------------------------------
-# run_id path tests
-# ---------------------------------------------------------------------------
-
-
-class TestRunIdPaths:
-    def test_round_report_uses_run_id_path(self, tmp_path: Path) -> None:
-        save_round_report("abc12345", 1, {"v1": {"score": 0.8}}, output_dir=tmp_path)
-        assert (tmp_path / "abc12345" / "search" / "round_reports" / "round_1.json").is_file()
 
 
 class TestLoadHistoricalEvalReports:
@@ -190,7 +184,7 @@ class TestLoadHistoricalEvalReports:
         eval_v1 = tmp_path / "state-abc" / "eval" / "v1"
         eval_v1.mkdir(parents=True, exist_ok=True)
         (eval_v1 / "report.json").write_text(json.dumps({"metrics": {"accuracy": 0.8}}), encoding="utf-8")
-        save_round_report("state-abc", 2, {"v2": {"metrics": {"accuracy": 0.9}}}, output_dir=tmp_path)
+        _write_round_report_fixture(tmp_path, "state-abc", 2, {"v2": {"metrics": {"accuracy": 0.9}}})
 
         loaded = load_historical_eval_reports("state-abc", state, output_dir=tmp_path)
 

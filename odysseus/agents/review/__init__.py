@@ -28,7 +28,6 @@ from odysseus.agents.review.ops import (
     load_child_variants,
     load_round_reports,
     save_child_variants,
-    save_round_report,
 )
 from odysseus.agents.review.preprocessor import build_review_briefing
 
@@ -57,5 +56,4 @@ __all__ = [
     "load_child_variants",
     "load_round_reports",
     "save_child_variants",
-    "save_round_report",
 ]
