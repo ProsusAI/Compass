@@ -168,10 +168,12 @@ async def build_review_briefing(
         scored_for_calib = [c for c in pending_for_calib if c.eval_status in ("complete", None)]
         num_traj = state.algorithm_state.get("num_trajectories", 0)
         if num_traj and len(scored_for_calib) >= num_traj:
-            from odysseus.agents.prompt_builder.search_ops import _calibration_complete
+            from odysseus.agents.prompt_builder import search_ops as _search_ops
 
-            _calibration_complete(run_id, state, out)
-            state = get_search_state(run_id=run_id, output_dir=out)
+            calibration_complete = getattr(_search_ops, "_calibration_complete", None)
+            if calibration_complete is not None:
+                calibration_complete(run_id, state, out)
+                state = get_search_state(run_id=run_id, output_dir=out)
 
     # Auto-discover pending candidates
     pending_candidates_list = _load_pending(run_id, out)
@@ -652,31 +654,33 @@ async def get_prompt_text(
 @mcp.tool()
 async def get_score_report(
     ctx: Context,
-    version: str,
     run_id: str,
+    version: str,
+    top_k_errors: int = 30,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Refinement Loop] Retrieve the ScoreReport for an evaluated prompt version.
-
-    Reads outputs/<run_id>/eval/<version>/report.json and returns a
-    ScoreReport-shaped dict (errors, diff, report_path, results_path),
-    converting from RunReport on the fly if needed.
+    """[Stage 4: Review] Return a markdown ScoreReport for a candidate version.
 
     Args:
-        version: Prompt version string (e.g., "v3").
         run_id: Pipeline run identifier.
+        version: Prompt version (e.g. "v3").
+        top_k_errors: Max error rows to include (default 30).
         output_dir: Output directory (default "outputs").
 
     Returns:
-        JSON-serialized ScoreReport dict, or {"error": "..."} if the report
-        does not exist.
+        Markdown with metrics table, summary line, top-K errors, and diff if present.
     """
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
 
     report_path = out / run_id / "eval" / version / "report.json"
     if not report_path.exists():
-        return json.dumps({"error": f"ScoreReport for version '{version}' not found"})
+        return f"No report found for version `{version}` at `{report_path}`."
+    results_path = report_path.parent / "results.jsonl"
+    try:
+        data = _load_score_report_dict(report_path, results_path)
+    except Exception as exc:
+        return f"Failed to load report: {exc}"
 
     score_report = ScoreReport.model_validate(data)
     if top_k_errors < len(score_report.errors):

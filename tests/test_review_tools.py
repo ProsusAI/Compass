@@ -1187,6 +1187,32 @@ class TestGetScoreReportTool:
         assert "0.95" not in result
         assert "## Score report" in result
 
+    async def test_top_k_errors_truncates_rendered_errors(self, tmp_path: Path) -> None:
+        report_dir = tmp_path / "outputs" / self._RUN_ID / "eval" / "v6"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        score_report = TestLoadScoreReportDict()._minimal_score_report_dict(
+            str(report_dir / "report.json"),
+            str(report_dir / "results.jsonl"),
+        )
+        score_report["errors"] = [
+            {"example_id": "e1", "error": "first failure", "retries": 0},
+            {"example_id": "e2", "error": "second failure", "retries": 1},
+        ]
+        (report_dir / "report.json").write_text(json.dumps(score_report), encoding="utf-8")
+        (report_dir / "results.jsonl").write_text("", encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            result = await get_score_report(
+                ctx=None,
+                run_id=self._RUN_ID,
+                version="v6",
+                top_k_errors=1,
+                output_dir="outputs",
+            )
+
+        assert "first failure" in result
+        assert "second failure" not in result
+
 
 class TestBuildReviewBriefingDoesNotWriteRoundReport:
     """C.2: build_review_briefing must NOT write round_reports/round_N.json."""
