@@ -1114,6 +1114,15 @@ def enrich_confusion_with_history(
     return enriched
 
 
+def _filter_cell_attempt_history_for_impacts(
+    impacts: list[ConfusionImpact],
+    cell_history: dict[str, list[dict[str, Any]]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Keep only history entries for confusion cells still present in the briefing."""
+    active_cells = {f"{ci.true_route}/{ci.predicted_route}" for ci in impacts}
+    return {key: entries for key, entries in cell_history.items() if key in active_cells}
+
+
 def _synthesize_directive_outcomes(
     batch_outcomes: list[BatchOutcome],
 ) -> list[DirectiveOutcome]:
@@ -1347,11 +1356,11 @@ def build_review_briefing(
 
     if child_variants and pending_candidates is not None:
         # Build a lookup: source_directive_batch_id -> Candidate
-        candidate_by_variant = {
-            c.source_directive_batch_id: c
-            for c in pending_candidates
-            if getattr(c, "source_directive_batch_id", None) is not None
-        }
+        candidate_by_variant: dict[str, Candidate] = {}
+        for candidate in pending_candidates:
+            source_directive_batch_id = getattr(candidate, "source_directive_batch_id", None)
+            if isinstance(source_directive_batch_id, str):
+                candidate_by_variant[source_directive_batch_id] = candidate
 
         # best_ever_quality for is_new_best check
         best_ever_quality: float = getattr(search_state, "best_ever_quality", 0.0)
@@ -1465,7 +1474,8 @@ def build_review_briefing(
         )
 
     if confusion_analysis and cell_attempt_history:
-        confusion_analysis = enrich_confusion_with_history(confusion_analysis, cell_attempt_history)
+        filtered_history = _filter_cell_attempt_history_for_impacts(confusion_analysis, cell_attempt_history)
+        confusion_analysis = enrich_confusion_with_history(confusion_analysis, filtered_history)
 
     algorithm = getattr(search_state, "algorithm", "hill_climb")
     beam_overrides: dict[str, Any] = {}

@@ -143,7 +143,7 @@ async def build_review_briefing(
     from odysseus.agents.review.ops import (
         load_cell_attempt_history,
         load_child_variants,
-        load_round_reports,
+        load_historical_eval_reports,
         update_cell_attempt_history,
     )
     from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
@@ -191,7 +191,7 @@ async def build_review_briefing(
             all_versions.add(parent)
 
     # Load historical round reports
-    historical = load_round_reports(run_id, output_dir=out)
+    historical = load_historical_eval_reports(run_id, state, output_dir=out)
 
     # Auto-discover report_paths from disk if not provided
     if report_paths is None:
@@ -708,7 +708,7 @@ async def get_confusion_cell(
     from odysseus.agents.review.ops import (
         load_cell_attempt_history,
         load_child_variants,
-        load_round_reports,
+        load_historical_eval_reports,
     )
     from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
     from odysseus.agents.review.preprocessor import parse_user_targets
@@ -735,7 +735,7 @@ async def get_confusion_cell(
         if p:
             all_versions.add(p)
 
-    historical = load_round_reports(run_id, output_dir=out)
+    historical = load_historical_eval_reports(run_id, state, output_dir=out)
     report_paths: dict[str, str] = {}
     for v in candidate_versions:
         rp = out / run_id / "eval" / v / "report.json"
@@ -906,6 +906,10 @@ async def get_directive_history(
 
     Returns:
         Markdown table of directive outcomes loaded from round reports.
+
+    Note: relies on legacy ``outputs/<run_id>/search/round_reports/``; on fresh
+    runs without a writer this returns empty. See follow-up task to either
+    synthesize from eval reports or deprecate.
     """
     from odysseus.agents.review.ops import load_round_reports
 
@@ -959,6 +963,10 @@ async def get_batch_outcomes(
 
     Returns:
         Markdown table of batch outcomes loaded from round reports.
+
+    Note: relies on legacy ``outputs/<run_id>/search/round_reports/``; on fresh
+    runs without a writer this returns empty. See follow-up task to either
+    synthesize from eval reports or deprecate.
     """
     from odysseus.agents.review.ops import load_round_reports
 
@@ -1222,7 +1230,7 @@ async def get_per_class_recall(
         Markdown table with all routes: route | recall | support | trend (last 3) | regression.
     """
     from odysseus.agents.prompt_builder.search_ops import get_search_state
-    from odysseus.agents.review.ops import load_round_reports
+    from odysseus.agents.review.ops import load_historical_eval_reports
     from odysseus.agents.review.preprocessor import extract_per_class_recall
 
     project_dir = await _resolve_project_dir(ctx)
@@ -1234,7 +1242,7 @@ async def get_per_class_recall(
         return "search_state.json not found — Stage 4 not initialised."
 
     current_round = round_id if round_id is not None else state.round
-    historical = load_round_reports(run_id, output_dir=out)
+    historical = load_historical_eval_reports(run_id, state, output_dir=out)
 
     # Build current round reports from pending candidates + elite set
     pending = _load_pending(run_id, out)

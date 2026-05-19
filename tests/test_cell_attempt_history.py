@@ -18,7 +18,10 @@ from odysseus.agents.review.ops import (
     save_cell_attempt_history,
     update_cell_attempt_history,
 )
-from odysseus.agents.review.preprocessor import enrich_confusion_with_history
+from odysseus.agents.review.preprocessor import (
+    _filter_cell_attempt_history_for_impacts,
+    enrich_confusion_with_history,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -238,6 +241,20 @@ def test_enrich_last_attempted_round_none_when_no_round_field() -> None:
     }
     result = enrich_confusion_with_history([ci], history)
     assert result[0].last_attempted_round is None
+
+
+def test_filter_cell_attempt_history_for_impacts_keeps_only_active_cells() -> None:
+    impacts = [
+        _make_confusion_impact(true_route="route_a", predicted_route="route_b"),
+    ]
+    history = {
+        "route_a/route_b": [{"outcome": "no_effect"}],
+        "route_x/route_y": [{"outcome": "regressed"}],
+    }
+
+    filtered = _filter_cell_attempt_history_for_impacts(impacts, history)
+
+    assert filtered == {"route_a/route_b": [{"outcome": "no_effect"}]}
 
 
 # ---------------------------------------------------------------------------

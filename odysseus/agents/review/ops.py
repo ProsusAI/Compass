@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from odysseus.agents.pipeline import paths
+from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.review.models import (
     ChildVariant,
 )
@@ -107,6 +108,44 @@ def load_round_reports(
         round_num = int(path.stem.split("_")[1])
         result[round_num] = json.loads(path.read_text(encoding="utf-8"))
     return result
+
+
+def load_historical_eval_reports(
+    run_id: str,
+    state: SearchState,
+    *,
+    output_dir: Path | None = None,
+) -> dict[int, dict[str, dict[str, Any]]]:
+    """Load round-grouped historical reports from per-version eval artifacts.
+
+    Uses ``state.round_history[*].candidates_evaluated`` as the round->version map.
+    Falls back per missing version to legacy ``search/round_reports/round_N.json``
+    during the transition off that store.
+    """
+    if output_dir is None:
+        output_dir = _default_output_dir()
+
+    legacy_reports = load_round_reports(run_id, output_dir=output_dir)
+    historical: dict[int, dict[str, dict[str, Any]]] = {}
+    run_dir = output_dir / run_id
+
+    for summary in state.round_history:
+        round_reports: dict[str, dict[str, Any]] = {}
+        legacy_round = legacy_reports.get(summary.round, {})
+        for version in summary.candidates_evaluated:
+            report_path = run_dir / "eval" / version / "report.json"
+            if report_path.exists():
+                round_reports[version] = json.loads(report_path.read_text(encoding="utf-8"))
+                continue
+            # Migration fallback for older runs that still have round_reports but
+            # are missing per-version eval artifacts.
+            legacy_report = legacy_round.get(version)
+            if isinstance(legacy_report, dict):
+                round_reports[version] = legacy_report
+        if round_reports:
+            historical[summary.round] = round_reports
+
+    return historical
 
 
 def _cell_attempt_history_path(run_id: str, output_dir: Path) -> Path:

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
 from odysseus.agents.review.models import (
     ChildVariant,
     EditDirective,
@@ -11,6 +13,7 @@ from odysseus.agents.review.models import (
 )
 from odysseus.agents.review.ops import (
     load_child_variants,
+    load_historical_eval_reports,
     load_round_reports,
     save_child_variants,
     save_round_report,
@@ -149,6 +152,50 @@ class TestRunIdPaths:
     def test_round_report_uses_run_id_path(self, tmp_path: Path) -> None:
         save_round_report("abc12345", 1, {"v1": {"score": 0.8}}, output_dir=tmp_path)
         assert (tmp_path / "abc12345" / "search" / "round_reports" / "round_1.json").is_file()
+
+
+class TestLoadHistoricalEvalReports:
+    @staticmethod
+    def _state() -> SearchState:
+        return SearchState(
+            search_state_id="state-abc",
+            backend="anthropic",
+            round=3,
+            round_history=[
+                RoundSummary(round=1, candidates_evaluated=["v1"], new_elite_entries=1, elite_size=1),
+                RoundSummary(round=2, candidates_evaluated=["v2", "v3"], new_elite_entries=1, elite_size=2),
+            ],
+        )
+
+    def test_loads_reports_from_eval_artifacts(self, tmp_path: Path) -> None:
+        state = self._state()
+        eval_v1 = tmp_path / "state-abc" / "eval" / "v1"
+        eval_v2 = tmp_path / "state-abc" / "eval" / "v2"
+        eval_v3 = tmp_path / "state-abc" / "eval" / "v3"
+        eval_v1.mkdir(parents=True, exist_ok=True)
+        eval_v2.mkdir(parents=True, exist_ok=True)
+        eval_v3.mkdir(parents=True, exist_ok=True)
+        (eval_v1 / "report.json").write_text(json.dumps({"metrics": {"accuracy": 0.8}}), encoding="utf-8")
+        (eval_v2 / "report.json").write_text(json.dumps({"metrics": {"accuracy": 0.9}}), encoding="utf-8")
+        (eval_v3 / "report.json").write_text(json.dumps({"metrics": {"accuracy": 0.7}}), encoding="utf-8")
+
+        loaded = load_historical_eval_reports("state-abc", state, output_dir=tmp_path)
+
+        assert loaded[1]["v1"]["metrics"]["accuracy"] == 0.8
+        assert loaded[2]["v2"]["metrics"]["accuracy"] == 0.9
+        assert loaded[2]["v3"]["metrics"]["accuracy"] == 0.7
+
+    def test_falls_back_to_legacy_round_reports_when_eval_missing(self, tmp_path: Path) -> None:
+        state = self._state()
+        eval_v1 = tmp_path / "state-abc" / "eval" / "v1"
+        eval_v1.mkdir(parents=True, exist_ok=True)
+        (eval_v1 / "report.json").write_text(json.dumps({"metrics": {"accuracy": 0.8}}), encoding="utf-8")
+        save_round_report("state-abc", 2, {"v2": {"metrics": {"accuracy": 0.9}}}, output_dir=tmp_path)
+
+        loaded = load_historical_eval_reports("state-abc", state, output_dir=tmp_path)
+
+        assert loaded[1]["v1"]["metrics"]["accuracy"] == 0.8
+        assert loaded[2]["v2"]["metrics"]["accuracy"] == 0.9
 
 
 # ---------------------------------------------------------------------------

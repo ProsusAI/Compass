@@ -1236,6 +1236,69 @@ class TestBuildReviewBriefingSurface:
         assert "## Elite set" in result
         assert not result.lstrip().startswith("{")
 
+    async def test_derives_history_without_round_reports_on_disk(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime
+
+        now = datetime.now(tz=UTC).isoformat()
+        state_dict = _make_state_dict(
+            self._RUN_ID + "-history",
+            elite_set=[
+                {
+                    "prompt_version": "v1",
+                    "parent_version": None,
+                    "quality_score": 0.85,
+                    "cost": 0.02,
+                    "round_introduced": 1,
+                    "example_ids": [],
+                }
+            ],
+            round_=2,
+        )
+        state_dict["round_history"] = [
+            {
+                "round": 1,
+                "candidates_evaluated": ["v1"],
+                "new_elite_entries": 1,
+                "elite_size": 1,
+                "target_improvement": 0.05,
+            }
+        ]
+        _write_state(tmp_path, self._RUN_ID + "-history", state_dict)
+
+        eval_dir = tmp_path / "outputs" / (self._RUN_ID + "-history") / "eval" / "v1"
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        report = {
+            "config": {
+                "backend": "anthropic",
+                "prompt_version": "v1",
+                "data_source": "d.jsonl",
+                "metrics": [{"name": "accuracy"}],
+            },
+            "metrics": {"accuracy": 0.8, "recall/route_a": 0.75, "support/route_a": 10},
+            "results": [],
+            "summary": {
+                "total": 10,
+                "succeeded": 10,
+                "failed": 0,
+                "total_cost": 0.01,
+                "start_time": now,
+                "end_time": now,
+                "duration_seconds": 1.0,
+            },
+        }
+        (eval_dir / "report.json").write_text(json.dumps(report), encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            result = await build_review_briefing(
+                ctx=None,
+                run_id=self._RUN_ID + "-history",
+                output_dir="outputs",
+            )
+
+        assert "## Per-class recall" in result
+        round_reports_dir = tmp_path / "outputs" / (self._RUN_ID + "-history") / "search" / "round_reports"
+        assert not round_reports_dir.exists()
+
 
 # ---------------------------------------------------------------------------
 # Tests for get_dataset_oracle_distribution
@@ -1410,15 +1473,24 @@ class TestGetDatasetOracleDistributionTool:
 class TestGetPerClassRecallTool:
     _RUN_ID = "test-pcr-tool"
 
-    def _make_state_with_reports(self, tmp_path: Path) -> None:
-        """Write search state + round reports with recall metrics."""
-        from odysseus.agents.prompt_builder.search import SearchState
+    def _make_state_with_reports(self, tmp_path: Path, *, write_legacy_round_reports: bool = True) -> None:
+        """Write search state + eval reports with recall metrics."""
+        from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
         from odysseus.agents.prompt_builder.search_ops import _save_state
 
         state = SearchState(
             search_state_id=self._RUN_ID,
             backend="anthropic",
             round=2,
+            round_history=[
+                RoundSummary(
+                    round=1,
+                    candidates_evaluated=["v1"],
+                    new_elite_entries=1,
+                    elite_size=1,
+                    target_improvement=0.05,
+                )
+            ],
         )
         out = tmp_path / "outputs"
         _save_state(self._RUN_ID, state, out)
@@ -1450,9 +1522,10 @@ class TestGetPerClassRecallTool:
             },
         }
 
-        round_dir = out / self._RUN_ID / "search" / "round_reports"
-        round_dir.mkdir(parents=True, exist_ok=True)
-        (round_dir / "round_1.json").write_text(json.dumps({"v1": report}), encoding="utf-8")
+        if write_legacy_round_reports:
+            round_dir = out / self._RUN_ID / "search" / "round_reports"
+            round_dir.mkdir(parents=True, exist_ok=True)
+            (round_dir / "round_1.json").write_text(json.dumps({"v1": report}), encoding="utf-8")
 
         eval_dir = out / self._RUN_ID / "eval" / "v1"
         eval_dir.mkdir(parents=True, exist_ok=True)
@@ -1497,3 +1570,19 @@ class TestGetPerClassRecallTool:
                 output_dir="outputs",
             )
         assert "not found" in result.lower() or "not initialised" in result.lower()
+
+    async def test_uses_eval_history_without_round_reports_on_disk(self, tmp_path: Path) -> None:
+        self._make_state_with_reports(tmp_path, write_legacy_round_reports=False)
+        with _patch_project_dir(tmp_path):
+            from odysseus.mcp.review_tools import get_per_class_recall
+
+            result = await get_per_class_recall(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+
+        assert "route_a" in result
+        assert "route_b" in result
+        round_reports_dir = tmp_path / "outputs" / self._RUN_ID / "search" / "round_reports"
+        assert not round_reports_dir.exists()
