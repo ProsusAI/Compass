@@ -12,7 +12,6 @@ from odysseus.agents.prompt_builder.search import (
     compute_front_improvement,
     compute_pareto_front,
     dominates,
-    select_best,
     update_pareto_front,
     validate_elite_set,
 )
@@ -659,43 +658,6 @@ class TestParetoAlgorithms:
         result = compute_pareto_front([c1, c2, c3])
         versions = {c.prompt_version for c in result}
         assert versions == {"v1", "v2", "v3"}
-
-
-# ---------------------------------------------------------------------------
-# Task 5: select_best helper
-# ---------------------------------------------------------------------------
-
-
-class TestSelectBest:
-    def test_single_candidate(self) -> None:
-        c = _candidate(prompt_version="v1", quality_score=0.9, cost=0.01)
-        assert select_best([c]) == "v1"
-
-    def test_highest_quality_wins(self) -> None:
-        low = _candidate(prompt_version="v1", quality_score=0.7, cost=0.005)
-        high = _candidate(prompt_version="v2", quality_score=0.95, cost=0.05)
-        assert select_best([low, high]) == "v2"
-
-    def test_tie_broken_by_lowest_cost(self) -> None:
-        cheap = _candidate(prompt_version="v-cheap", quality_score=0.9, cost=0.005)
-        pricey = _candidate(prompt_version="v-pricey", quality_score=0.9, cost=0.05)
-        assert select_best([cheap, pricey]) == "v-cheap"
-
-    def test_empty_front_raises_value_error(self) -> None:
-        with pytest.raises(ValueError, match="empty"):
-            select_best([])
-
-    def test_multiple_candidates_correct_selection(self) -> None:
-        c1 = _candidate(prompt_version="v1", quality_score=0.80, cost=0.01)
-        c2 = _candidate(prompt_version="v2", quality_score=0.95, cost=0.02)
-        c3 = _candidate(prompt_version="v3", quality_score=0.95, cost=0.005)
-        # v3 and v2 tie on quality; v3 wins on lower cost
-        assert select_best([c1, c2, c3]) == "v3"
-
-    def test_order_independent(self) -> None:
-        c1 = _candidate(prompt_version="v1", quality_score=0.9, cost=0.01)
-        c2 = _candidate(prompt_version="v2", quality_score=0.85, cost=0.005)
-        assert select_best([c1, c2]) == select_best([c2, c1])
 
 
 # ---------------------------------------------------------------------------

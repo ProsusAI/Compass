@@ -8,7 +8,6 @@ from odysseus.agents.prompt_builder.search import (
     RoundSummary,
     SearchState,
     dominates,
-    select_best,
     update_pareto_front,
 )
 from odysseus.agents.prompt_builder.search_ops import (
@@ -31,7 +30,6 @@ __all__ = [
     "init_search_state",
     "record_eval_result",
     "register_candidate",
-    "select_best",
     "set_loop_phase",
     "update_pareto_front",
 ]

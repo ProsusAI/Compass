@@ -320,32 +320,6 @@ def update_pareto_front(
 
 
 # ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Selection helper
-# ---------------------------------------------------------------------------
-
-
-def select_best(front: list[Candidate]) -> str:
-    """Return the prompt_version of the best candidate on the Pareto front.
-
-    Best is defined as highest quality_score; ties broken by lowest cost.
-
-    Args:
-        front: Non-empty list of Pareto-front candidates.
-
-    Returns:
-        The prompt_version string of the best candidate.
-
-    Raises:
-        ValueError: If front is empty.
-    """
-    if not front:
-        raise ValueError("Cannot select best from an empty Pareto front")
-    best = max(front, key=lambda c: (c.quality_score, -c.cost))
-    return best.prompt_version
-
-
-# ---------------------------------------------------------------------------
 # Beam search elite set primitives
 # ---------------------------------------------------------------------------
 

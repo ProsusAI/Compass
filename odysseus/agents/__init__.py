@@ -46,7 +46,6 @@ from odysseus.agents.prompt_builder import (
     RoundSummary,
     SearchState,
     dominates,
-    select_best,
     update_pareto_front,
 )
 
@@ -129,7 +128,6 @@ __all__ = [
     "RoundSummary",
     "SearchState",
     "dominates",
-    "select_best",
     "update_pareto_front",
     # Review
     "BatchOutcome",
