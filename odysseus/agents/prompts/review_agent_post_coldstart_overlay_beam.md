@@ -14,7 +14,7 @@ You **must** emit exactly one `ChildVariant` per scored elite member, using that
 - **No two-parent merges this round.** `secondary_parent_version` must be `null` on every variant.
 - **Failed cold-start variants** (where `eval_status != "complete"` for that elite member) are skipped — do not emit a child for them.
 
-For each protected parent, run the iterative diagnostic workflow (steps 1–4 of the iterative base) **scoped to that parent's score report and `top_confusion_cells`**, then produce one bundled `ChildVariant` whose hypothesis is the highest-impact fix you can ground in that parent's data. Two different parents may target the same confusion cell — the per-parent diversity rule from the iterative base is auto-satisfied this round because each parent gets exactly one child.
+For each protected parent, run the iterative diagnostic workflow (steps 1–4 of the iterative base) **scoped to that parent's score report and `top_confusion_cells`** — fetched via `get_score_report(version=parent)`, `get_confusion_cell(...)`, and `query_eval_results(version=parent, ...)` for per-example detail. Never read `results.jsonl` directly. Produce one bundled `ChildVariant` whose hypothesis is the highest-impact fix you can ground in that parent's data. Two different parents may target the same confusion cell — the per-parent diversity rule from the iterative base is auto-satisfied this round because each parent gets exactly one child.
 
 ## Parent Selection Override
 
