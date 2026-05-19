@@ -15,7 +15,7 @@ Compile classification/routing prompts using model-specific best practices, then
 | Step | Tool / Source | Binds |
 |------|--------------|-------|
 | 1 | `get_pipeline_status` (already called) — Stage-2 `artifacts` | `dev_jsonl_path`, `holdout_jsonl_path`; `run_id` from response |
-| 2 | `get_routing_context(run_id)` | `routing_context` (domain, routes, dimensions, route_ordering, routing_dimensions) |
+| 2 | `get_routing_context(run_id)` | `routing_context` markdown summary (`## Routing context`, `### Routes`, optional `### Routing dimensions`, optional ordering bullet) |
 | 3 | `get_search_state(run_id)` | `backend`, `round`, `loop_phase`, `mutation_mode`, `pareto_front` |
 | 4 | `get_child_variants(run_id)` | `child_variants` |
 | 5 | `get_prompt_text(run_id, version=<parent_version>)` per unique parent (round 2+ only; skip `"base"`) | `parent_prompts[<version>]` |
@@ -81,20 +81,20 @@ Execute these steps exactly in order on round 1.
    **Extract directives from the variant:**
    - Filter to `block_type == 'example'`: extract `example_content` for few-shot examples. Collect `example_id` from each for backend tracking — do **not** include in prompt text.
    - Filter to `block_type == 'rule'`: use these to inform the Decision Logic section. Each rule directive's `directive` string describes a classification rule or disambiguation policy to encode.
-   - Filter to `block_type == 'vocabulary'`: each has a `block_identifier` (format: `"route:<name>"` or `"dimension:<name>"`) and a refined description. Use the refined description instead of the original `routing_context` description when compiling Categories and Decision Logic. Ignore directives referencing unrecognized route or dimension names.
+   - Filter to `block_type == 'vocabulary'`: each has a `block_identifier` (format: `"route:<name>"` or `"dimension:<name>"`) and a refined description. Use the refined description instead of the original text in the routing-context summary when compiling Categories and Decision Logic. Ignore directives referencing unrecognized route or dimension names.
    - Filter to `block_type == 'contrast_pair'`: extract `contrast_pair_content` for boundary case examples.
 
    **Compile the prompt following this section convention:**
 
-   - **Objective** — state the classification/routing task derived from `routing_context.domain`.
-   - **Categories** — enumerate every route from `routing_context.routes` with its description and distinguishing criteria. Apply vocabulary directive refinements where available. Use the vocabulary from `routing_context` — these may be called "routes," "categories," "tiers," or other domain-appropriate terms.
-   - **Decision logic** — encode the decision logic, edge cases, and disambiguation rules. Incorporate rule directives from this variant. If `routing_context.route_ordering` is present, reflect the ordering relationship. If `routing_context.routing_dimensions` specify directional preferences (e.g., `lower_is_better`), encode those as prioritization rules.
+   - **Objective** — state the classification/routing task derived from the dataset domain shown in the routing-context summary.
+   - **Categories** — enumerate every route from the **Routes** table in the routing-context summary with its description and distinguishing criteria. Apply vocabulary directive refinements where available. Use the vocabulary shown in that summary — these may be called "routes," "categories," "tiers," or other domain-appropriate terms.
+   - **Decision logic** — encode the decision logic, edge cases, and disambiguation rules. Incorporate rule directives from this variant. If the routing-context summary includes an ordering bullet, reflect that ordering relationship. If it includes a **Routing dimensions** table with directional preferences (e.g., `lower_is_better`), encode those as prioritization rules.
    - **Examples** — render few-shot examples and boundary cases in this section.
      - **Few-shot examples** (`block_type == 'example'`): each `example_content` contains `input`, `route`, `reasoning`, and `exclusions`. Render only `input` and `route` — the target model's output is a route only, so example outputs must model that format. `reasoning` and `exclusions` are internal metadata for evaluation and review; `example_id` is for backend tracking. None of these three fields appear in prompt text.
      - **Boundary cases** (`block_type == 'contrast_pair'`): render as a "Boundary Cases" subsection after the few-shot examples following the provider-specific convention template. Include both examples, `distinguishing_signal`, and `contrast_reasoning` as the template specifies — this is pedagogical system-message content that teaches boundary discrimination, not output-format demonstration.
    - **Output format** — specify the exact response schema the model must produce.
 
-   This section order is mandatory; Output Format must be last. Use section header names that match `routing_context.domain` vocabulary — do not assume any specific domain.
+   This section order is mandatory; Output Format must be last. Use section header names that match the dataset domain vocabulary shown in the routing-context summary — do not assume any specific domain.
 
 6. **Apply model-specific formatting.** Apply provider-specific conventions from step 2; the model-specific addendum (if read) overrides on any conflicting points.
 7. **Write all prompts.** Call `save_prompt` for each variant using `<variant_id>` as the version handle.

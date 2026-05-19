@@ -26,7 +26,8 @@ from odysseus.agents.final_report.models import (
     PerClassPerformance,
     PromptSummary,
 )
-from odysseus.eval.models import ConfidenceInterval
+from odysseus.eval.models import ConfidenceInterval, RunReport
+from odysseus.mcp._render import render_baselines_md, render_score_report_md
 
 logger = logging.getLogger(__name__)
 
@@ -66,10 +67,13 @@ def build_final_report_briefing(
     error_analysis = _build_error_analysis(run_dir, prompt_version)
     per_class = _extract_per_class_performance(holdout_report, error_analysis)
     baseline_comparison = _build_baseline_comparison(run_dir, prompt_version)
+    dev_score_report_md = _render_score_report_from_raw(dev_report)
+    holdout_score_report_md = _render_score_report_from_raw(holdout_report)
+    baseline_comparison_md = render_baselines_md(baseline_comparison)
     confidence_intervals = _extract_confidence_intervals(holdout_report)
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
-    backend_name = search_state.get("backend", "unknown") if search_state else "unknown"
+    backend_name = search_state.get("backend", "unknown") if isinstance(search_state, dict) else "unknown"
 
     return FinalReportBriefing(
         run_id=run_id,
@@ -84,6 +88,9 @@ def build_final_report_briefing(
         per_class_performance=per_class,
         error_analysis=error_analysis,
         baseline_comparison=baseline_comparison,
+        dev_score_report_md=dev_score_report_md,
+        holdout_score_report_md=holdout_score_report_md,
+        baseline_comparison_md=baseline_comparison_md,
         confidence_intervals=confidence_intervals,
         charts=charts,
     )
@@ -108,6 +115,17 @@ def _load_json(path: Path, default: dict | list | None = None) -> dict | list | 
     except Exception:
         logger.debug("Could not load %s", path)
         return default
+
+
+def _render_score_report_from_raw(report: dict | list | None) -> str:
+    """Render a raw report dict as markdown, returning empty string on any parse error."""
+    if not isinstance(report, dict):
+        return ""
+    try:
+        return render_score_report_md(RunReport.model_validate(report))
+    except Exception:
+        logger.debug("Could not render score report markdown", exc_info=True)
+        return ""
 
 
 def _load_problem_summary(run_dir: Path) -> str:

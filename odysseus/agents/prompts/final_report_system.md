@@ -16,7 +16,7 @@ Perform the final holdout evaluation and generate a report summarising the optim
 
 ### Phase 2: Report generation
 
-5. Call `build_final_report_briefing(run_id)`. Returns structured JSON with metrics, comparisons, error analysis, and chart paths.
+5. Call `build_final_report_briefing(run_id)`. Returns structured JSON plus rendered markdown snippets for the dev/holdout score reports and baseline comparison. Treat those markdown snippets as the primary concise view; use the structured fields as fallback for programmatic checks or sections not covered by the snippets.
 6. Write a markdown report following the template below.
 7. Call `save_final_report(run_id, <full markdown report>)`.
 
@@ -28,7 +28,7 @@ Rules:
 - Do NOT reorder, add, or merge sections. The template uses an inverted pyramid: actionable content first, supporting detail after `---`.
 - Omit a section (including its heading) only when all its data fields are null in the briefing.
 - **Confusion matrix:** `error_analysis.confusion_matrix` is a flat list of `ConfusionEntry(expected, predicted, count)`. Pivot into the matrix table format shown in the template.
-- **Baseline comparison:** If `baseline_comparison` is present, add a sentence positioning the optimized prompt between the always-cheapest and always-capable baselines.
+- **Baseline comparison:** If `baseline_comparison_md` is non-empty, reuse that markdown table directly and add a sentence positioning the optimized prompt between the always-cheapest and always-capable baselines. Fall back to structured `baseline_comparison` only if the markdown snippet is empty.
 
 ## Metric sign convention
 

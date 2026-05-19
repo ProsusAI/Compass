@@ -22,6 +22,7 @@ from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase as _set_loop_phase,
 )
 from odysseus.eval.models import RunReport, ScoreReport
+from odysseus.mcp._render import render_score_report_md
 from odysseus.mcp.server import mcp
 from odysseus.project_dir import resolve_project_dir as _resolve_project_dir
 
@@ -679,39 +680,10 @@ async def get_score_report(
     if not report_path.exists():
         return json.dumps({"error": f"ScoreReport for version '{version}' not found"})
 
-    metrics = data.get("metrics", {})
-    summary = data.get("summary", {})
-    errors = data.get("errors", [])[:top_k_errors]
-    diff = data.get("diff")
-
-    lines = [f"## Score report — `{version}`", ""]
-    if metrics:
-        lines += ["### Metrics", "", "| metric | value |", "|---|---|"]
-        for k, v in metrics.items():
-            lines.append(f"| {k} | {v:.4f}" if isinstance(v, float) else f"| {k} | {v} |")
-    if summary:
-        total = summary.get("total", "?")
-        succeeded = summary.get("succeeded", "?")
-        failed = summary.get("failed", "?")
-        cost = summary.get("total_cost", "?")
-        lines += ["", f"total={total} succeeded={succeeded} failed={failed} cost={cost}"]
-    if errors:
-        lines += ["", f"### Top {len(errors)} errors", "", "| example_id | error | retries |", "|---|---|---|"]
-        for e in errors:
-            eid = e.get("example_id", "?")
-            err = str(e.get("error", "")).replace("|", "\\|")[:120]
-            retries = e.get("retries", 0)
-            lines.append(f"| {eid} | {err} | {retries} |")
-    if diff:
-        md = diff.get("metric_diffs", [])
-        if md:
-            lines += ["", "### Diff vs previous", "", "| metric | old | new | delta |", "|---|---|---|---|"]
-            for d in md:
-                lines.append(
-                    f"| {d.get('metric_name', '?')} | {d.get('old_value', '?')} "
-                    f"| {d.get('new_value', '?')} | {d.get('delta', '?')} |"
-                )
-    return "\n".join(lines)
+    score_report = ScoreReport.model_validate(data)
+    if top_k_errors < len(score_report.errors):
+        score_report = score_report.model_copy(update={"errors": score_report.errors[:top_k_errors]})
+    return render_score_report_md(score_report)
 
 
 @mcp.tool()

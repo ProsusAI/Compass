@@ -1,9 +1,53 @@
 """Tests for the Final Report preprocessor."""
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 from odysseus.agents.final_report.preprocessor import build_final_report_briefing
+
+
+def _run_report(
+    *,
+    prompt_version: str,
+    data_source: str,
+    metrics: dict[str, float],
+    total: int,
+    succeeded: int,
+    failed: int,
+    total_cost: float,
+) -> dict:
+    now = datetime.now(tz=UTC).isoformat()
+    return {
+        "config": {
+            "backend": "anthropic",
+            "prompt_version": prompt_version,
+            "data_source": data_source,
+            "metrics": [{"name": "accuracy"}],
+        },
+        "metrics": metrics,
+        "results": [
+            {
+                "example_id": f"{prompt_version}-0",
+                "model": "claude",
+                "output": {"route": "haiku"},
+                "error": None,
+                "latency_ms": 100.0,
+                "retries": 0,
+                "token_usage": None,
+                "cost": total_cost,
+            }
+        ],
+        "summary": {
+            "total": total,
+            "succeeded": succeeded,
+            "failed": failed,
+            "total_cost": total_cost,
+            "start_time": now,
+            "end_time": now,
+            "duration_seconds": 1.0,
+        },
+    }
 
 
 def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
@@ -120,8 +164,10 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
     (run_dir / "eval").mkdir(parents=True)
     (run_dir / "eval" / "report.json").write_text(
         json.dumps(
-            {
-                "metrics": {
+            _run_report(
+                prompt_version="v3",
+                data_source="analysis/dev.jsonl",
+                metrics={
                     "accuracy": 0.90,
                     "f1/macro": 0.88,
                     "cost_change": -0.30,
@@ -135,16 +181,21 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
                     "f1/sonnet": 0.86,
                     "f1/opus": 0.81,
                 },
-                "summary": {"total": 80, "succeeded": 78, "failed": 2},
-            }
+                total=80,
+                succeeded=78,
+                failed=2,
+                total_cost=0.8,
+            )
         )
     )
 
     (run_dir / "holdout_eval").mkdir(parents=True)
     (run_dir / "holdout_eval" / "report.json").write_text(
         json.dumps(
-            {
-                "metrics": {
+            _run_report(
+                prompt_version="v3",
+                data_source="analysis/holdout.jsonl",
+                metrics={
                     "accuracy": 0.85,
                     "f1/macro": 0.83,
                     "cost_change": -0.25,
@@ -163,8 +214,11 @@ def _setup_minimal_run(tmp_path: Path, run_id: str = "test-run") -> Path:
                     "support/sonnet": 7,
                     "support/opus": 3,
                 },
-                "summary": {"total": 20, "succeeded": 18, "failed": 2},
-            }
+                total=20,
+                succeeded=18,
+                failed=2,
+                total_cost=0.25,
+            )
         )
     )
 
@@ -204,11 +258,23 @@ class TestBuildFinalReportBriefing:
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         assert briefing.run_id == "test-run"
         assert briefing.backend_name == "anthropic"
+        assert briefing.dev_score_report_md
+        assert briefing.holdout_score_report_md
 
     def test_problem_summary(self, tmp_path: Path) -> None:
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         assert "Test Problem" in briefing.problem_summary
+
+    def test_round_trip_with_rendered_snippets(self, tmp_path: Path) -> None:
+        from odysseus.agents.final_report.models import FinalReportBriefing
+
+        run_dir = _setup_minimal_run(tmp_path)
+        briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
+        reparsed = FinalReportBriefing.model_validate_json(briefing.model_dump_json())
+        assert reparsed.dev_score_report_md == briefing.dev_score_report_md
+        assert reparsed.holdout_score_report_md == briefing.holdout_score_report_md
+        assert reparsed.baseline_comparison_md == briefing.baseline_comparison_md
 
     def test_dataset_overview(self, tmp_path: Path) -> None:
         run_dir = _setup_minimal_run(tmp_path)
@@ -370,6 +436,7 @@ class TestBaselineComparison:
         run_dir = _setup_minimal_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)
         assert briefing.baseline_comparison is None
+        assert briefing.baseline_comparison_md == ""
 
     def test_missing_baseline_computes_from_raw(self, tmp_path: Path) -> None:
         """Falls back to computing baselines from raw holdout data when JSON missing."""
@@ -400,6 +467,7 @@ class TestBaselineComparison:
         assert len(briefing.baseline_comparison.baselines) == 2
         cheapest = next(b for b in briefing.baseline_comparison.baselines if b.strategy == "always_cheapest")
         assert cheapest.route == "haiku"
+        assert "## Baseline comparison" in briefing.baseline_comparison_md
         assert cheapest.cost == 0.1
 
 

@@ -14,6 +14,7 @@ from odysseus.agents.data_validation.transform import add_ids_to_dataset as _do_
 from odysseus.agents.data_validation.transform import transform_dataset as _do_transform
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.routing_context import RoutingContext
+from odysseus.mcp._render import render_routing_context_md
 from odysseus.mcp.server import _load_examples, _write_jsonl, mcp
 
 
@@ -284,7 +285,7 @@ async def get_routing_context(ctx: Context, run_id: str) -> str:
         run_id: Pipeline run identifier.
 
     Returns:
-        JSON-serialized RoutingContext.
+        Markdown summary of the RoutingContext.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     path = project_dir / "outputs" / run_id / "validation" / "routing_context.json"
@@ -296,7 +297,7 @@ async def get_routing_context(ctx: Context, run_id: str) -> str:
         routing_context = RoutingContext.model_validate_json(path.read_text(encoding="utf-8"))
     except Exception as exc:
         raise ToolError(f"Failed to parse RoutingContext at {path}: {exc}") from exc
-    return routing_context.model_dump_json(indent=2)
+    return render_routing_context_md(routing_context)
 
 
 def _collect_dataset_route_keys(transformed_path: Path) -> set[str]:

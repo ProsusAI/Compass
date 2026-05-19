@@ -180,7 +180,7 @@ class TestSaveRoutingContext:
 class TestGetRoutingContextTool:
     @pytest.mark.asyncio
     async def test_round_trip_save_then_get(self, tmp_path: Path) -> None:
-        """save_routing_context then get_routing_context returns the same object."""
+        """save_routing_context then get_routing_context returns the markdown summary."""
         _write_transformed_dataset(tmp_path, ["0_simple", "1_complex"])
         rc_json = _routing_context_json(["0_simple", "1_complex"])
 
@@ -191,9 +191,11 @@ class TestGetRoutingContextTool:
         from odysseus.agents.routing_context import RoutingContext
 
         saved = RoutingContext.model_validate_json(rc_json)
-        fetched = RoutingContext.model_validate_json(result)
-        assert fetched.domain == saved.domain
-        assert {r.name for r in fetched.routes} == {r.name for r in saved.routes}
+        assert "## Routing context" in result
+        assert "### Routes" in result
+        assert saved.domain in result
+        for route in saved.routes:
+            assert route.name in result
 
     @pytest.mark.asyncio
     async def test_missing_file_raises_tool_error(self, tmp_path: Path) -> None:

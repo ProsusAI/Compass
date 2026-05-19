@@ -9,7 +9,7 @@ MCP server package. Thin adapter layer — each tool delegates to an agent modul
 | [`server.py`](server.py) | FastMCP app instance, `STAGE_REGISTRY`, `_active_stage`, `_filtered_list_tools`, shared helpers (`_load_text`, `_load_examples`, `_write_jsonl`) |
 | [`orchestrator_tools.py`](orchestrator_tools.py) | `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage` |
 | [`input_report_tools.py`](input_report_tools.py) | `submit_input_report` |
-| [`data_validation_tools.py`](data_validation_tools.py) | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context` |
+| [`data_validation_tools.py`](data_validation_tools.py) | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_routing_context` |
 | [`backend_setup_tools.py`](backend_setup_tools.py) | `get_default_pricing` |
 | [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state` (no `algorithm`/`algorithm_state` — hardcoded per branch), `register_candidate`, `run_eval`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `get_child_variants`, `get_edit_directives` |
 | [`review_tools.py`](review_tools.py) | `build_review_briefing`, `record_directive_outcomes` |
@@ -50,6 +50,12 @@ When `trajectory_id: int` is passed (EMOSA K-way fanout), the tool writes per-tr
 ### `get_child_variants` / `get_edit_directives`
 
 Both readers prefer per-trajectory files when present: if any `child_variants_t<N>.json` exist under `outputs/<run_id>/search/`, they call `load_all_trajectory_child_variants` and return variants sorted by `trajectory_id`. Otherwise they fall back to the single-slot `child_variants.json` written during calibration and non-EMOSA strategies.
+
+### Renderer-backed markdown surfaces
+
+- `get_routing_context` now validates `routing_context.json` and returns a markdown summary (`## Routing context`, `### Routes`, optional dimensions / ordering) rather than raw JSON.
+- `get_score_report` now delegates to the shared renderer in [`_render.py`](./_render.py), so its diff section follows the canonical `MetricDiff` shape (`key`, `old`, `new`, `status`) and omits confidence intervals from the LLM view.
+- `build_final_report_briefing` still returns JSON, but `FinalReportBriefing` now carries additive markdown snippet fields (`dev_score_report_md`, `holdout_score_report_md`, `baseline_comparison_md`) that the Final Report agent should prefer over re-rendering the structured payload.
 
 ## Model routing hints
 

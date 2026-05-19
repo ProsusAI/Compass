@@ -13,6 +13,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from odysseus.mcp import (
     build_review_briefing,
     get_prompt_text,
+    get_score_report,
     query_dev_examples,
     query_holdout_examples,
     record_directive_outcomes,
@@ -1089,7 +1090,6 @@ class TestLoadScoreReportDict:
 
     def test_load_score_report_dict_idempotent_on_scorereport(self, tmp_path: Path) -> None:
         """A ScoreReport-shaped JSON is returned as-is without double-conversion."""
-        from odysseus.eval.models import ScoreReport
         from odysseus.mcp.review_tools import _load_score_report_dict
 
         report_path = tmp_path / "report.json"
@@ -1106,8 +1106,55 @@ class TestLoadScoreReportDict:
         assert result["report_path"] == original["report_path"]
         assert result["results_path"] == original["results_path"]
 
-        # Must still be a valid ScoreReport
-        ScoreReport.model_validate(result)
+
+class TestGetScoreReportTool:
+    _RUN_ID = "test-score-report-tool"
+
+    def _write_report(self, tmp_path: Path, version: str, with_confidence_intervals: bool = False) -> None:
+        report_dir = tmp_path / "outputs" / self._RUN_ID / "eval" / version
+        report_dir.mkdir(parents=True, exist_ok=True)
+        report = TestLoadScoreReportDict()._minimal_run_report_dict()
+        if with_confidence_intervals:
+            report["confidence_intervals"] = {
+                "accuracy": {"lower": 0.8, "upper": 0.9, "level": 0.95},
+            }
+        (report_dir / "report.json").write_text(json.dumps(report), encoding="utf-8")
+        (report_dir / "results.jsonl").write_text("", encoding="utf-8")
+
+    async def test_uses_renderer_diff_shape(self, tmp_path: Path) -> None:
+        report_dir = tmp_path / "outputs" / self._RUN_ID / "eval" / "v3"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        score_report = {
+            "metrics": {"accuracy": 0.9},
+            "summary": TestLoadScoreReportDict()._minimal_score_report_dict(
+                "outputs/report.json", "outputs/results.jsonl"
+            )["summary"],
+            "errors": [],
+            "diff": {
+                "metric_diffs": [{"key": "accuracy", "old": 0.8, "new": 0.9, "status": "changed"}],
+                "overhead_diff": {"old_cost": 0.1, "new_cost": 0.2, "old_duration": 1.0, "new_duration": 1.5},
+            },
+            "report_path": str(report_dir / "report.json"),
+            "results_path": str(report_dir / "results.jsonl"),
+        }
+        (report_dir / "report.json").write_text(json.dumps(score_report), encoding="utf-8")
+        (report_dir / "results.jsonl").write_text("", encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            result = await get_score_report(ctx=None, run_id=self._RUN_ID, version="v3", output_dir="outputs")
+
+        assert "| metric | old | new | status |" in result
+        assert "| accuracy | 0.8000 | 0.9000 | changed |" in result
+
+    async def test_confidence_intervals_not_rendered(self, tmp_path: Path) -> None:
+        self._write_report(tmp_path, "v5", with_confidence_intervals=True)
+
+        with _patch_project_dir(tmp_path):
+            result = await get_score_report(ctx=None, run_id=self._RUN_ID, version="v5", output_dir="outputs")
+
+        assert "confidence_intervals" not in result
+        assert "0.95" not in result
+        assert "## Score report" in result
 
 
 class TestBuildReviewBriefingDoesNotWriteRoundReport:

@@ -137,5 +137,8 @@ class FinalReportBriefing(BaseModel):
     per_class_performance: list[PerClassPerformance]
     error_analysis: ErrorAnalysis
     baseline_comparison: BaselineComparison | None = None
+    dev_score_report_md: str = ""
+    holdout_score_report_md: str = ""
+    baseline_comparison_md: str = ""
     confidence_intervals: dict[str, ConfidenceInterval] | None = None
     charts: ChartPaths
