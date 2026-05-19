@@ -221,19 +221,19 @@ class TestRenderBriefingSummary:
         result = render_briefing_summary(briefing)
         assert "## Routing context" not in result
 
-    def test_no_emosa_section_when_no_trajectory(self) -> None:
+    def test_no_beam_section_when_no_beam_width(self) -> None:
         briefing = _make_minimal_briefing()
         result = render_briefing_summary(briefing)
-        assert "## EMOSA trajectory" not in result
+        assert "## Beam state" not in result
 
-    def test_emosa_section_present_when_trajectory_set(self) -> None:
+    def test_beam_section_present_when_beam_width_set(self) -> None:
         briefing = _make_minimal_briefing()
         briefing = briefing.model_copy(
-            update={"trajectory_id": 2, "weight_vector": (0.6, 0.4), "binding_axis": "quality"}
+            update={"beam_width": 4, "hypervolume": 0.75, "reference_point": (0.0, 1.0)}
         )
         result = render_briefing_summary(briefing)
-        assert "## EMOSA trajectory" in result
-        assert "trajectory_id: 2" in result
+        assert "## Beam state" in result
+        assert "beam_width: 4" in result
 
     def test_last_round_directives_present_for_round_2(self) -> None:
         briefing = _make_minimal_briefing()

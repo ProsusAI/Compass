@@ -646,7 +646,7 @@ class TestBuildReviewBriefingToolSelector:
         # For field-level assertions, call build_review_briefing directly.
         from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
         from odysseus.agents.review.ops import load_round_reports
-        from odysseus.agents.review.preprocessor import build_review_briefing
+        from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
 
         out = tmp_path / "outputs"
         state = get_search_state(run_id=run_id, output_dir=out)
@@ -682,7 +682,7 @@ class TestBuildReviewBriefingToolSelector:
                         loaded_examples.append(Example.model_validate_json(s))
                     except Exception:
                         pass
-        briefing = build_review_briefing(
+        briefing = _build_review_briefing_impl(
             search_state=state,
             score_reports=score_reports,
             historical_reports=load_round_reports(run_id, output_dir=out),
@@ -812,7 +812,7 @@ class TestBuildReviewBriefingToolSelector:
 
         from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
         from odysseus.agents.review.ops import load_round_reports
-        from odysseus.agents.review.preprocessor import build_review_briefing
+        from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
         from odysseus.eval.models import EvalResult, Example
         from odysseus.mcp.review_tools import _load_score_report_dict
 
@@ -860,7 +860,7 @@ class TestBuildReviewBriefingToolSelector:
                             loaded_examples.append(Example.model_validate_json(s))
                         except Exception:
                             pass
-            briefing = build_review_briefing(
+            briefing = _build_review_briefing_impl(
                 search_state=state,
                 score_reports=score_reports,
                 historical_reports=load_round_reports(run_id, output_dir=out),

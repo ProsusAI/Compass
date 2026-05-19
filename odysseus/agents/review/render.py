@@ -126,7 +126,7 @@ def _render_confusion_analysis(briefing: ReviewBriefing, n: int = 5) -> str:
             f" | {c.persistence_rate:.2f} | {c.attempt_count} |"
         )
     lines.append("")
-    lines.append("Use `get_confusion_cell_tool(true_route=..., predicted_route=...)` for cell-level detail.")
+    lines.append("Use `get_confusion_cell(true_route=..., predicted_route=...)` for cell-level detail.")
     return "\n".join(lines)
 
 
@@ -148,7 +148,7 @@ def _render_candidates(briefing: ReviewBriefing) -> str:
         mut = c.mutation_description[:50] if c.mutation_description else "—"
         lines.append(f"| {ver} | {par} | {dq} | {dc} | {mut} |")
     lines.append("")
-    lines.append("Use `get_score_report_tool(version=...)` for full errors.")
+    lines.append("Use `get_score_report(version=...)` for full errors.")
     return "\n".join(lines)
 
 
@@ -190,8 +190,8 @@ def _render_last_round_directives(briefing: ReviewBriefing) -> str:
 
     lines.append("")
     lines.append(
-        "Use `get_directive_history_tool(since_round=...)` for older history; "
-        "`get_batch_outcomes_tool(round=...)` for full outcome metrics."
+        "Use `get_directive_history(since_round=...)` for older history; "
+        "`get_batch_outcomes(round=...)` for full outcome metrics."
     )
     return "\n".join(lines)
 
@@ -209,28 +209,24 @@ def _render_child_variants(briefing: ReviewBriefing) -> str:
             lines.append(f"- `{d.directive_id}` [{d.block_type}]")
     lines.append("")
     lines.append(
-        "Use `get_round_child_variants_tool(run_id, round, with_directive_bodies=True)` for full directive bodies."
+        "Use `get_round_child_variants(run_id, round, with_directive_bodies=True)` for full directive bodies."
     )
     return "\n".join(lines)
 
 
-def _render_emosa_trajectory(briefing: ReviewBriefing) -> str:
-    if briefing.trajectory_id is None:
+def _render_beam_state(briefing: ReviewBriefing) -> str:
+    if briefing.beam_width is None:
         return ""
     lines = [
-        "## EMOSA trajectory",
+        "## Beam state",
         "",
-        f"- trajectory_id: {briefing.trajectory_id}",
+        f"- beam_width: {briefing.beam_width}",
     ]
-    if briefing.weight_vector is not None:
-        lq, lc = briefing.weight_vector
-        lines.append(f"- weight_vector: λ_q={lq:.3f}, λ_c={lc:.3f}")
-    if briefing.binding_axis is not None:
-        lines.append(f"- binding_axis: {briefing.binding_axis}")
-    if briefing.acceptance_history is not None:
-        last5 = briefing.acceptance_history[-5:]
-        hist_str = " ".join("✓" if a else "✗" for a in last5)
-        lines.append(f"- acceptance_history (last 5): {hist_str}")
+    if briefing.hypervolume is not None:
+        lines.append(f"- hypervolume: {briefing.hypervolume:.4f}")
+    if briefing.reference_point is not None:
+        rq, rc = briefing.reference_point
+        lines.append(f"- reference_point: (q={rq:.3f}, c={rc:.3f})")
     return "\n".join(lines)
 
 
@@ -277,7 +273,7 @@ def render_briefing_summary(briefing: ReviewBriefing) -> str:
     if cv:
         sections.append(cv)
 
-    em = _render_emosa_trajectory(briefing)
+    em = _render_beam_state(briefing)
     if em:
         sections.append(em)
 
