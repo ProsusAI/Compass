@@ -15,6 +15,7 @@ from odysseus.mcp import (
     get_prompt_text,
     get_score_report,
     query_dev_examples,
+    query_eval_results,
     query_holdout_examples,
     record_directive_outcomes,
 )
@@ -1259,6 +1260,169 @@ class TestGetScoreReportTool:
 
         assert "first failure" in result
         assert "second failure" not in result
+
+
+class TestQueryEvalResultsTool:
+    _RUN_ID = "test-query-eval-results"
+
+    def _write_eval_results(self, tmp_path: Path, version: str, rows: list[dict]) -> None:
+        eval_dir = tmp_path / "outputs" / self._RUN_ID / "eval" / version
+        eval_dir.mkdir(parents=True, exist_ok=True)
+        (eval_dir / "results.jsonl").write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+    def _write_dev_examples(self, tmp_path: Path, rows: list[dict]) -> None:
+        analysis_dir = tmp_path / "outputs" / self._RUN_ID / "analysis"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        (analysis_dir / "dev.jsonl").write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+    async def test_true_and_predicted_route_filter_takes_precedence_over_misroutes_only(self, tmp_path: Path) -> None:
+        self._write_dev_examples(
+            tmp_path,
+            [
+                _make_example("ex-1", "simple", ["simple", "complex"]),
+                _make_example("ex-2", "simple", ["simple", "complex"]),
+                _make_example("ex-3", "complex", ["simple", "complex"]),
+            ],
+        )
+        self._write_eval_results(
+            tmp_path,
+            "v3",
+            [
+                {"__meta__": "run_fingerprint"},
+                _make_eval_result("ex-1", "complex"),
+                _make_eval_result("ex-2", "simple"),
+                _make_eval_result("ex-3", "simple"),
+            ],
+        )
+
+        with _patch_project_dir(tmp_path):
+            result = await query_eval_results(
+                ctx=None,
+                run_id=self._RUN_ID,
+                version="v3",
+                true_route="simple",
+                predicted_route="complex",
+                misroutes_only=False,
+                output_dir="outputs",
+            )
+
+        assert "## Eval results" in result
+        assert "**ex-1**" in result
+        assert "**ex-2**" not in result
+        assert "**ex-3**" not in result
+        assert "oracle_route: `simple` | predicted_route: `complex`" in result
+
+    async def test_example_ids_take_precedence_over_route_pair_and_misroutes_only(self, tmp_path: Path) -> None:
+        self._write_dev_examples(
+            tmp_path,
+            [
+                _make_example("ex-1", "simple", ["simple", "complex"]),
+                _make_example("ex-2", "complex", ["simple", "complex"]),
+            ],
+        )
+        self._write_eval_results(
+            tmp_path,
+            "v4",
+            [
+                _make_eval_result("ex-1", "complex"),
+                _make_eval_result("ex-2", "complex"),
+            ],
+        )
+
+        with _patch_project_dir(tmp_path):
+            result = await query_eval_results(
+                ctx=None,
+                run_id=self._RUN_ID,
+                version="v4",
+                true_route="simple",
+                predicted_route="complex",
+                example_ids=["ex-2"],
+                misroutes_only=True,
+                output_dir="outputs",
+            )
+
+        assert "**ex-2**" in result
+        assert "**ex-1**" not in result
+        assert "oracle_route: `complex` | predicted_route: `complex`" in result
+
+    async def test_misroutes_only_excludes_correct_predictions(self, tmp_path: Path) -> None:
+        self._write_dev_examples(
+            tmp_path,
+            [
+                _make_example("ex-1", "simple", ["simple", "complex"]),
+                _make_example("ex-2", "complex", ["simple", "complex"]),
+            ],
+        )
+        self._write_eval_results(
+            tmp_path,
+            "v5",
+            [
+                _make_eval_result("ex-1", "complex"),
+                _make_eval_result("ex-2", "complex"),
+            ],
+        )
+
+        with _patch_project_dir(tmp_path):
+            result = await query_eval_results(
+                ctx=None,
+                run_id=self._RUN_ID,
+                version="v5",
+                misroutes_only=True,
+                output_dir="outputs",
+            )
+
+        assert "**ex-1**" in result
+        assert "**ex-2**" not in result
+
+    async def test_missing_results_jsonl_returns_markdown_error(self, tmp_path: Path) -> None:
+        self._write_dev_examples(tmp_path, [_make_example("ex-1", "simple", ["simple", "complex"])])
+
+        with _patch_project_dir(tmp_path):
+            result = await query_eval_results(
+                ctx=None,
+                run_id=self._RUN_ID,
+                version="missing",
+                output_dir="outputs",
+            )
+
+        assert "## Eval results" in result
+        assert "results.jsonl" in result
+        assert "not found" in result
+
+    async def test_limit_cap_applies_to_rendered_rows(self, tmp_path: Path) -> None:
+        dev_rows = [_make_example(f"ex-{i}", "simple", ["simple", "complex"]) for i in range(55)]
+        result_rows = [_make_eval_result(f"ex-{i}", "complex") for i in range(55)]
+        dev_rows[0]["input"] = "x" * 350
+        self._write_dev_examples(tmp_path, dev_rows)
+        self._write_eval_results(tmp_path, "v6", result_rows)
+
+        with _patch_project_dir(tmp_path):
+            result = await query_eval_results(
+                ctx=None,
+                run_id=self._RUN_ID,
+                version="v6",
+                misroutes_only=True,
+                limit=50,
+                output_dir="outputs",
+            )
+
+        assert "### Rows (50 shown)" in result
+        assert "**ex-49**" in result
+        assert "**ex-50**" not in result
+        assert "- input: " + ("x" * 297) + "..." in result
+
+    async def test_limit_above_cap_raises_tool_error(self, tmp_path: Path) -> None:
+        self._write_dev_examples(tmp_path, [_make_example("ex-1", "simple", ["simple", "complex"])])
+        self._write_eval_results(tmp_path, "v7", [_make_eval_result("ex-1", "complex")])
+
+        with _patch_project_dir(tmp_path), pytest.raises(ToolError, match="limit must be <= 50"):
+            await query_eval_results(
+                ctx=None,
+                run_id=self._RUN_ID,
+                version="v7",
+                limit=51,
+                output_dir="outputs",
+            )
 
 
 class TestBuildReviewBriefingDoesNotWriteRoundReport:

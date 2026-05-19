@@ -21,7 +21,7 @@ from odysseus.agents.prompt_builder.search_ops import (
 from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase as _set_loop_phase,
 )
-from odysseus.eval.models import RunReport, ScoreReport
+from odysseus.eval.models import EvalResult, RunReport, ScoreReport
 from odysseus.mcp._render import render_review_briefing_md, render_score_report_md
 from odysseus.mcp.server import mcp
 from odysseus.project_dir import resolve_project_dir as _resolve_project_dir
@@ -130,6 +130,16 @@ def _query_jsonl_dataset(
                 break
 
     return {"examples": examples}
+
+
+def _truncate_input_excerpt(text: str, max_chars: int = 300) -> str:
+    """Render a single-line input excerpt capped at max_chars characters."""
+    single_line = " ".join(text.split())
+    if len(single_line) <= max_chars:
+        return single_line
+    if max_chars <= 3:
+        return single_line[:max_chars]
+    return single_line[: max_chars - 3] + "..."
 
 
 @mcp.tool()
@@ -637,6 +647,149 @@ async def query_dev_examples(
         return json.dumps({"examples": [], "error": "dev.jsonl not found"})
 
     return json.dumps(_query_jsonl_dataset(dev_path, route=route, example_ids=example_ids, offset=offset, limit=limit))
+
+
+@mcp.tool()
+async def query_eval_results(
+    ctx: Context,
+    run_id: str,
+    version: str,
+    true_route: str | None = None,
+    predicted_route: str | None = None,
+    example_ids: list[str] | None = None,
+    misroutes_only: bool = False,
+    limit: int = 20,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Review] Return per-example eval rows joined with dev inputs.
+
+    Args:
+        run_id: Pipeline run identifier.
+        version: Prompt version whose results.jsonl should be inspected.
+        true_route: Filter by oracle route when paired with predicted_route.
+        predicted_route: Filter by predicted route when paired with true_route.
+        example_ids: Filter to these specific example ids. Takes precedence over other filters.
+        misroutes_only: When true, include only rows where predicted_route != oracle_route.
+        limit: Maximum number of rows to render (default 20, capped server-side at 50).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        Markdown detail for matching eval rows, joined with dev-set input text.
+    """
+    if limit <= 0:
+        raise ToolError("limit must be > 0")
+    if limit > _DATASET_QUERY_MAX_LIMIT:
+        raise ToolError(f"limit must be <= {_DATASET_QUERY_MAX_LIMIT}")
+
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    results_path = out / run_id / "eval" / version / "results.jsonl"
+    if not results_path.exists():
+        return (
+            f"## Eval results — `{run_id}` / `{version}`\n\n"
+            f"`results.jsonl` not found at `{results_path}`. "
+            "Per-example eval inspection is only available after Stage 4 evaluation has completed."
+        )
+
+    dev_path = out / run_id / "analysis" / "dev.jsonl"
+    if not dev_path.exists():
+        return (
+            f"## Eval results — `{run_id}` / `{version}`\n\n"
+            f"`dev.jsonl` not found at `{dev_path}`. "
+            "Per-example eval inspection requires Stage 2 (Data Analysis) artifacts."
+        )
+
+    dev_index: dict[str, dict[str, Any]] = {}
+    for raw_line in dev_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        row_id = row.get("id")
+        expected = row.get("expected", {})
+        if not isinstance(row_id, str) or not isinstance(expected, dict):
+            continue
+        dev_index[row_id] = {
+            "input": row.get("input", ""),
+            "oracle_route": expected.get("route"),
+            "routes": expected.get("routes", {}),
+        }
+
+    example_id_set = set(example_ids) if example_ids else None
+    rows: list[dict[str, Any]] = []
+
+    with results_path.open(encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if payload.get("__meta__"):
+                continue
+            try:
+                result = EvalResult.model_validate(payload)
+            except Exception:
+                continue
+
+            dev_row = dev_index.get(result.example_id)
+            if dev_row is None or not isinstance(result.output, dict):
+                continue
+
+            oracle_route = dev_row.get("oracle_route")
+            predicted = result.output.get("route")
+            if not isinstance(oracle_route, str) or not isinstance(predicted, str):
+                continue
+
+            if example_id_set is not None:
+                if result.example_id not in example_id_set:
+                    continue
+            elif true_route is not None and predicted_route is not None:
+                if oracle_route != true_route or predicted != predicted_route:
+                    continue
+            elif misroutes_only and predicted == oracle_route:
+                continue
+
+            routes = dev_row.get("routes")
+            predicted_metrics = routes.get(predicted, {}) if isinstance(routes, dict) else {}
+            rows.append(
+                {
+                    "example_id": result.example_id,
+                    "input": dev_row.get("input", ""),
+                    "oracle_route": oracle_route,
+                    "predicted_route": predicted,
+                    "cost": result.cost,
+                    "quality_score": predicted_metrics.get("quality_score"),
+                }
+            )
+            if len(rows) >= limit:
+                break
+
+    lines = [f"## Eval results — `{run_id}` / `{version}`", "", f"### Rows ({len(rows)} shown)", ""]
+    if not rows:
+        lines.append("No matching eval results.")
+        return "\n".join(lines)
+
+    for row in rows:
+        lines.append(f"**{row['example_id']}**")
+        lines.append(f"- input: {_truncate_input_excerpt(str(row['input']))}")
+        cost = row["cost"]
+        quality = row["quality_score"]
+        cost_str = f"{cost:.4f}" if isinstance(cost, float) else "—"
+        quality_str = f"{quality:.4f}" if isinstance(quality, float) else "—"
+        lines.append(
+            f"- oracle_route: `{row['oracle_route']}` | predicted_route: `{row['predicted_route']}`"
+            f" | cost: {cost_str} | quality_score: {quality_str}"
+        )
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 @mcp.tool()

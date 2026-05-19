@@ -86,6 +86,7 @@ def test_review_cold_includes_dev_queries_but_excludes_prompt_and_holdout_tools(
     """review_cold can query dev rows, but still cannot inspect prompts or holdout rows."""
     cold_tools = set(STAGE_REGISTRY["review_cold"])
     assert "query_dev_examples" in cold_tools
+    assert "query_eval_results" in cold_tools
     assert "get_prompt_text" not in cold_tools
     assert "query_holdout_examples" not in cold_tools
     assert _DEPRECATED_REVIEW_TOOLS.isdisjoint(cold_tools)
@@ -97,6 +98,7 @@ def test_review_steady_includes_prompt_and_dataset_row_tools():
     assert "get_prompt_text" in review_tools
     assert "query_dev_examples" in review_tools
     assert "query_holdout_examples" in review_tools
+    assert "query_eval_results" in review_tools
     assert _DEPRECATED_REVIEW_TOOLS.isdisjoint(review_tools)
 
 

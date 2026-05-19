@@ -38,6 +38,7 @@ _STAGE_4_COLD_TOOLS: list[str] = [
     "build_review_briefing",
     "record_directive_outcomes",
     "query_dev_examples",
+    "query_eval_results",
 ]
 
 _STAGE_4_BUILD_BASE_TOOLS: list[str] = [
@@ -79,6 +80,7 @@ _STAGE_4_REVIEW_TOOLS: list[str] = [
     "get_prompt_text",
     "query_dev_examples",
     "query_holdout_examples",
+    "query_eval_results",
 ]
 
 _STAGE_5_TOOLS: list[str] = [
