@@ -71,6 +71,19 @@ Call these only when you need more than the summary provides.
 
 `get_prompt_text(run_id=run_id, version="<version>")` — always pass `run_id`. Omitting it is an error.
 
+## Detail tools
+
+Call these only when you need more than the summary provides.
+
+- Need full per-row errors for a candidate? → `get_score_report(version="v3.2")`.
+- Drilling into a confusion cell (aggregates)? → `get_confusion_cell(true_route="X", predicted_route="Y")`.
+- Need per-example misroutes in a cell, with input text? → `query_eval_results(version, true_route="X", predicted_route="Y")`.
+- Need to look up input text for specific dev row ids (e.g. from a confusion cell's sample_example_ids)? → `query_dev_examples(run_id, example_ids=[...])`.
+- Need to sample dev inputs by oracle route? → `query_dev_examples(run_id, route="X")`.
+- Need per-route oracle aggregates or row-level cost/quality? → `get_dataset_oracle_distribution(run_id, route="X")` (or `example_ids=[...]`).
+- Need full body of a child variant directive? → `get_round_child_variants(round=4, with_directive_bodies=True)`.
+- Need the full per-class recall table (including low-support routes)? → `get_per_class_recall(run_id)`.
+
 ## Target progress fields
 
 The section starting with `## Target progress` renders one row per declared target:
