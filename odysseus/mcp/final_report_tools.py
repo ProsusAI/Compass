@@ -348,14 +348,10 @@ async def build_final_report_briefing(ctx: Context, run_id: str) -> str:
     run_dir = project_dir / "outputs" / run_id
 
     holdout_eval_dir = run_dir / "holdout_eval"
-    holdout_report_found = any(holdout_eval_dir.glob("v*/report.json")) or (holdout_eval_dir / "report.json").is_file()
-
-    if not holdout_report_found:
-        check_artifacts(
-            run_dir / "holdout_eval" / "report.json",
-            stage=5,
-            stage_name="Final Report",
-            hint="Run holdout evaluation first (run_holdout_eval).",
+    if not any(holdout_eval_dir.glob("v*/report.json")):
+        raise ToolError(
+            f"No versioned holdout reports found under {holdout_eval_dir}/v*/report.json. "
+            "Run holdout evaluation first (run_holdout_eval)."
         )
 
     briefing = _build_final_report_briefing_impl(
@@ -368,13 +364,12 @@ async def build_final_report_briefing(ctx: Context, run_id: str) -> str:
 
 _REQUIRED_REPORT_SECTIONS = [
     "## Executive Summary",
-    "## Recommended Prompt",
-    "## Results",
-    "## Per-Class Performance",
-    "## Error Analysis",
+    "## Compared Candidates",
+    "## Candidate Details",
+    "## Problem Definition",
+    "## Dataset Overview",
     "## Optimization Process",
     "## Pareto Front",
-    "## Usage Guide",
 ]
 
 

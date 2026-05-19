@@ -130,15 +130,17 @@ class FinalReportBriefing(BaseModel):
     problem_summary: str
     dataset_overview: DatasetOverview
     optimization_journey: OptimizationJourney
-    best_prompt: PromptSummary
-    best_prompt_text: str
+    evaluated_versions: list[str]
+    evaluated_prompts: dict[str, PromptSummary]
+    prompt_texts: dict[str, str]
     pareto_front: list[PromptSummary]
-    eval_comparison: list[EvalMetricComparison]
-    per_class_performance: list[PerClassPerformance]
-    error_analysis: ErrorAnalysis
-    baseline_comparison: BaselineComparison | None = None
-    dev_score_report_md: str = ""
-    holdout_score_report_md: str = ""
-    baseline_comparison_md: str = ""
-    confidence_intervals: dict[str, ConfidenceInterval] | None = None
+    eval_comparison: dict[str, list[EvalMetricComparison]]
+    per_class_performance: dict[str, list[PerClassPerformance]]
+    error_analysis: dict[str, ErrorAnalysis]
+    baseline_comparison: dict[str, BaselineComparison | None] = Field(default_factory=dict)
+    dev_score_report_md: dict[str, str] = Field(default_factory=dict)
+    holdout_score_report_md: dict[str, str] = Field(default_factory=dict)
+    baseline_comparison_md: dict[str, str] = Field(default_factory=dict)
+    confidence_intervals: dict[str, dict[str, ConfidenceInterval]] = Field(default_factory=dict)
+    holdout_report_paths: dict[str, str] = Field(default_factory=dict)
     charts: ChartPaths

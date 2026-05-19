@@ -281,6 +281,18 @@ class TestRunHoldoutEval:
         assert "excluded_example_ids" not in evaluation
 
 
+class TestBuildFinalReportBriefingTool:
+    async def test_requires_versioned_holdout_reports(self, tmp_path: Path) -> None:
+        run_dir = tmp_path / "outputs" / "run-123"
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        with patch(FINAL_REPORT_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            from odysseus.mcp import build_final_report_briefing
+
+            with pytest.raises(ToolError, match="No versioned holdout reports found"):
+                await build_final_report_briefing(ctx=None, run_id="run-123")
+
+
 class TestStagPromptBodies:
     """Tests for _STAGE_PROMPT_BODIES pre-loaded stage prompt bodies."""
 

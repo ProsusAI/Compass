@@ -51,26 +51,59 @@ def build_final_report_briefing(
     problem_summary = _load_problem_summary(run_dir)
     dataset_overview = _load_dataset_overview(run_dir)
     search_state = _load_json(run_dir / "search" / "search_state.json")
-    prompt_version = _discover_holdout_version(run_dir)
+    prompt_versions = _discover_holdout_versions(run_dir)
+    dev_reports = {
+        version: _load_json(run_dir / "eval" / version / "report.json")
+        for version in prompt_versions
+    }
+    holdout_reports = {
+        version: _load_json(run_dir / "holdout_eval" / version / "report.json")
+        for version in prompt_versions
+    }
 
-    if prompt_version:
-        dev_report = _load_json(run_dir / "eval" / prompt_version / "report.json")
-        holdout_report = _load_json(run_dir / "holdout_eval" / prompt_version / "report.json")
-    else:
-        dev_report = _load_json(run_dir / "eval" / "report.json")
-        holdout_report = _load_json(run_dir / "holdout_eval" / "report.json")
+    primary_holdout_report = holdout_reports.get(prompt_versions[0]) if prompt_versions else None
 
-    optimization_journey = _build_optimization_journey(search_state, holdout_report)
+    optimization_journey = _build_optimization_journey(search_state, primary_holdout_report)
     pareto_front = _extract_pareto_front(search_state)
-    best_prompt, best_prompt_text = _identify_best_prompt(pareto_front, run_dir)
-    eval_comparison = _build_eval_comparison(dev_report, holdout_report)
-    error_analysis = _build_error_analysis(run_dir, prompt_version)
-    per_class = _extract_per_class_performance(holdout_report, error_analysis)
-    baseline_comparison = _build_baseline_comparison(run_dir, prompt_version)
-    dev_score_report_md = _render_score_report_from_raw(dev_report)
-    holdout_score_report_md = _render_score_report_from_raw(holdout_report)
-    baseline_comparison_md = render_baselines_md(baseline_comparison)
-    confidence_intervals = _extract_confidence_intervals(holdout_report)
+    evaluated_prompts, prompt_texts = _extract_evaluated_prompts(prompt_versions, pareto_front, run_dir)
+    eval_comparison = {
+        version: _build_eval_comparison(dev_reports.get(version), holdout_reports.get(version))
+        for version in prompt_versions
+    }
+    error_analysis = {
+        version: _build_error_analysis(run_dir, version)
+        for version in prompt_versions
+    }
+    per_class = {
+        version: _extract_per_class_performance(holdout_reports.get(version), error_analysis[version])
+        for version in prompt_versions
+    }
+    baseline_comparison = {
+        version: _build_baseline_comparison(run_dir, version)
+        for version in prompt_versions
+    }
+    dev_score_report_md = {
+        version: _render_score_report_from_raw(dev_reports.get(version))
+        for version in prompt_versions
+    }
+    holdout_score_report_md = {
+        version: _render_score_report_from_raw(holdout_reports.get(version))
+        for version in prompt_versions
+    }
+    baseline_comparison_md = {
+        version: render_baselines_md(baseline_comparison.get(version))
+        for version in prompt_versions
+    }
+    confidence_intervals = {
+        version: cis
+        for version in prompt_versions
+        if (cis := _extract_confidence_intervals(holdout_reports.get(version)))
+    }
+    holdout_report_paths = {
+        version: str(run_dir / "holdout_eval" / version / "report.json")
+        for version in prompt_versions
+        if (run_dir / "holdout_eval" / version / "report.json").is_file()
+    }
     charts = _generate_charts(run_dir, optimization_journey, pareto_front)
 
     backend_name = search_state.get("backend", "unknown") if isinstance(search_state, dict) else "unknown"
@@ -81,8 +114,9 @@ def build_final_report_briefing(
         problem_summary=problem_summary,
         dataset_overview=dataset_overview,
         optimization_journey=optimization_journey,
-        best_prompt=best_prompt,
-        best_prompt_text=best_prompt_text,
+        evaluated_versions=prompt_versions,
+        evaluated_prompts=evaluated_prompts,
+        prompt_texts=prompt_texts,
         pareto_front=pareto_front,
         eval_comparison=eval_comparison,
         per_class_performance=per_class,
@@ -92,6 +126,7 @@ def build_final_report_briefing(
         holdout_score_report_md=holdout_score_report_md,
         baseline_comparison_md=baseline_comparison_md,
         confidence_intervals=confidence_intervals,
+        holdout_report_paths=holdout_report_paths,
         charts=charts,
     )
 
@@ -101,11 +136,9 @@ def build_final_report_briefing(
 # ---------------------------------------------------------------------------
 
 
-def _discover_holdout_version(run_dir: Path) -> str | None:
-    """Discover the prompt version evaluated on holdout from artifact paths."""
-    for report in sorted(run_dir.glob("holdout_eval/v*/report.json"), reverse=True):
-        return report.parent.name
-    return None
+def _discover_holdout_versions(run_dir: Path) -> list[str]:
+    """Discover all prompt versions evaluated on holdout from artifact paths."""
+    return sorted(report.parent.name for report in run_dir.glob("holdout_eval/v*/report.json"))
 
 
 def _load_json(path: Path, default: dict | list | None = None) -> dict | list | None:
@@ -286,29 +319,38 @@ def _extract_pareto_front(search_state: dict | list | None) -> list[PromptSummar
     ]
 
 
-def _identify_best_prompt(
-    pareto_front: list[PromptSummary],
-    run_dir: Path,
-) -> tuple[PromptSummary, str]:
-    """Find the best prompt (highest quality, lowest cost tiebreak) and load its text."""
-    if not pareto_front:
-        dummy = PromptSummary(version="unknown", quality_score=0, cost=0, round_introduced=0)
-        return dummy, "(No prompt available)"
-
-    best = max(pareto_front, key=lambda p: (p.quality_score, -p.cost))
-
-    # Load prompt text
+def _load_prompt_text(run_dir: Path, version: str) -> str:
+    """Load prompt text for a version from the prompts directory."""
     prompts_dir = run_dir / "prompts"
     prompt_text = "(Prompt text not found)"
     if prompts_dir.is_dir():
         for ext in [".txt", ".md", ".yaml", ".yml"]:
-            candidate = prompts_dir / f"{best.version}{ext}"
+            candidate = prompts_dir / f"{version}{ext}"
             if candidate.is_file():
                 with contextlib.suppress(Exception):
                     prompt_text = candidate.read_text(encoding="utf-8")
                 break
+    return prompt_text
 
-    return best, prompt_text
+
+def _extract_evaluated_prompts(
+    prompt_versions: list[str],
+    pareto_front: list[PromptSummary],
+    run_dir: Path,
+) -> tuple[dict[str, PromptSummary], dict[str, str]]:
+    """Build per-version prompt summaries and prompt texts for evaluated versions."""
+    front_by_version = {prompt.version: prompt for prompt in pareto_front}
+    evaluated_prompts: dict[str, PromptSummary] = {}
+    prompt_texts: dict[str, str] = {}
+
+    for version in prompt_versions:
+        evaluated_prompts[version] = front_by_version.get(
+            version,
+            PromptSummary(version=version, quality_score=0.0, cost=0.0, round_introduced=0),
+        )
+        prompt_texts[version] = _load_prompt_text(run_dir, version)
+
+    return evaluated_prompts, prompt_texts
 
 
 # ---------------------------------------------------------------------------

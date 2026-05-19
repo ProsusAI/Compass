@@ -2,37 +2,42 @@
 
 ## Executive Summary
 
-{3-5 sentences: what problem was solved, what was achieved, and deployment guidance. Do NOT include pipeline next steps — those are presented separately by the orchestrator.}
+{3-5 sentences: what problem was solved, what was achieved across the selected prompt candidates, and deployment guidance. Do NOT pick a single winner unless the user explicitly asked for one.}
 
-## Recommended Prompt
+## Compared Candidates
 
-> See [Usage Guide](#usage-guide) for deployment instructions and limitations.
+| Prompt | Dev Accuracy | Holdout Accuracy | Dev F1 | Holdout F1 | Holdout Cost Change | Introduced |
+|--------|--------------|------------------|--------|------------|---------------------|------------|
+| {version} | {dev_accuracy} | {holdout_accuracy} | {dev_f1} | {holdout_f1} | {holdout_cost_change} | round {round} |
+
+{Call out overfitting signals, ties, and tradeoffs across the selected candidates.}
+
+## Candidate Details
+
+<!-- Repeat this block once per prompt_version in briefing.evaluated_versions -->
+### Candidate `{version}`
 
 ```
-{best_prompt_text}
+{prompt_texts[version]}
 ```
 
-## Results
+**Pareto metadata:** Quality {quality_score} | Cost {cost} | Introduced round {round}
 
-**Best prompt:** {version} | Quality: {quality_score} | Cost: {cost} | Introduced: round {round}
+#### Dev Evaluation
 
-| Metric | Dev | Holdout | Delta |
-|--------|-----|---------|-------|
-| {metric} | {dev_value} | {holdout_value} | {delta} |
+{dev_score_report_md[version]}
 
-{Flag any |delta| >5% as potential overfitting signal}
+#### Holdout Evaluation
 
-## Per-Class Performance
+{holdout_score_report_md[version]}
+
+#### Per-Class Performance
 
 | Route | Precision | Recall | F1 | Support |
 |-------|-----------|--------|----|---------|
 | {route} | {precision} | {recall} | {f1} | {support} |
 
-## Strengths & Weaknesses
-
-{Agent synthesis: high-performing routes, cost savings, low-recall routes, actionable recommendations}
-
-## Error Analysis
+#### Error Analysis
 
 **Error rate:** {error_rate}% ({total_errors}/{total_evaluated})
 
@@ -42,22 +47,22 @@
 |---------------------|-----------|-----------|-----|
 | {route_1}           | {count}   | {count}   | ... |
 
-{Brief interpretation of dominant misclassification patterns}
+{Brief interpretation of dominant misclassification patterns for this candidate.}
+
+<!-- Include only if baseline_comparison_md[version] is non-empty -->
+#### Baseline Comparison
+
+{baseline_comparison_md[version]}
+
+#### Usage Notes
+
+- **Deployment:** {how to use this prompt in production}
+- **Expected performance:** {candidate-specific expectations}
+- **Limitations:** {known weaknesses, edge cases}
 
 ---
 
-<!-- Sections below are supporting detail -->
-
-<!-- Include only if baseline_comparison is not null -->
-## Baseline Comparison
-
-| Strategy | Quality | Cost |
-|----------|---------|------|
-| Always cheapest ({route}) | {quality} | {cost} |
-| Always most capable ({route}) | {quality} | {cost} |
-| **Optimized prompt ({version})** | **{quality}** | **{cost}** |
-
-{Contextual sentence positioning the optimized prompt between the two baselines}
+<!-- Sections below are shared supporting detail -->
 
 ## Problem Definition
 
@@ -92,10 +97,3 @@
 | Version | Quality | Cost | Round |
 |---------|---------|------|-------|
 | {version} | {quality} | {cost} | {round} |
-
-## Usage Guide
-
-- **Deployment:** {how to use the prompt in production}
-- **Expected performance:** accuracy ~{X}%, cost ~${Y}/request
-- **When to re-run:** {triggers for re-optimization}
-- **Limitations:** {known weaknesses, edge cases}
