@@ -307,8 +307,8 @@ def render_briefing_summary(briefing: ReviewBriefing) -> str:
     if cv:
         sections.append(cv)
 
-    em = _render_beam_state(briefing)
-    if em:
-        sections.append(em)
+    algo_state = _render_beam_state(briefing)
+    if algo_state:
+        sections.append(algo_state)
 
     return "\n\n".join(s for s in sections if s)
