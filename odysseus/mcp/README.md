@@ -12,7 +12,7 @@ MCP server package. Thin adapter layer — each tool delegates to an agent modul
 | [`data_validation_tools.py`](data_validation_tools.py) | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_routing_context` |
 | [`backend_setup_tools.py`](backend_setup_tools.py) | `get_default_pricing` |
 | [`prompt_building_tools.py`](prompt_building_tools.py) | `init_search_state` (no `algorithm`/`algorithm_state` — hardcoded per branch), `register_candidate`, `run_eval`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `get_child_variants`, `get_edit_directives` |
-| [`review_tools.py`](review_tools.py) | `build_review_briefing`, `record_directive_outcomes` |
+| [`review_tools.py`](review_tools.py) | `build_review_briefing`, `record_directive_outcomes`, and Stage 4 review detail/query tools such as `query_dev_examples`, `query_holdout_examples`, `get_score_report`, and `get_confusion_cell` |
 | [`final_report_tools.py`](final_report_tools.py) | `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report` |
 | [`resources.py`](resources.py) | MCP resource definitions (`odysseus://agents/...`, `odysseus://backends/...`) |
 | [`prompts.py`](prompts.py) | MCP prompt definitions (`odysseus_routing_input`, `odysseus_data_validation`, etc.) |
@@ -35,10 +35,9 @@ The orchestrator controls scoping via two tools:
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_pipeline_status` | |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` | |
 | `prompt_building` | `init_search_state`, `register_candidate`, `run_eval`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `get_edit_directives`, `get_child_variants`, `save_prompt`, `get_pipeline_status` | |
-<<<<<<< HEAD
-| `review_cold` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `get_search_state`, `get_pipeline_status` | Cold sub-agents may page dev rows, but still have no `get_prompt_text` / `query_holdout_examples` |
-| `review` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `run_eval`, `get_pipeline_status` | Steady-review toolbelt; sub-agents call `record_directive_outcomes` (single-slot for hill-climb; pass `trajectory_id=<N>` for EMOSA K-way fanout). Dataset rows remain query-only and paginated. |
-| `calibration` | `build_review_briefing`, `record_directive_outcomes`, `get_search_state`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `save_prompt`, `get_child_variants`, `get_edit_directives`, `signal_eval_complete`, `get_pipeline_status` | EMOSA-only — K-seed calibration phase; no `get_prompt_text` / dataset row-query tools |
+| `review_cold` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `get_search_state`, `get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `get_dataset_oracle_distribution`, `get_per_class_recall`, `get_pipeline_status` | Cold sub-agents may page dev rows by route or `example_ids`, but still have no `get_prompt_text` / `query_holdout_examples` |
+| `review` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `run_eval`, `get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `get_dataset_oracle_distribution`, `get_per_class_recall`, `get_pipeline_status` | Steady-review toolbelt; dataset rows remain query-only, paginated, and now support targeted lookup by `example_ids` |
+| `calibration` | `build_review_briefing`, `record_directive_outcomes`, `get_search_state`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `save_prompt`, `get_child_variants`, `get_edit_directives`, `signal_eval_complete`, `get_pipeline_status` | Warm-up / seeding phase (leaf-branch algorithms that need a calibration round); no `get_prompt_text` / dataset row-query tools |
 | `final_report` | `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `get_pipeline_status` | |
 
 ### `record_directive_outcomes` — recording review result (variants, loop signal, ranking, promotions, regression guards)

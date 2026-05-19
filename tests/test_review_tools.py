@@ -538,6 +538,46 @@ class TestQueryHoldoutExamplesPagination:
         result = json.loads(result_json)
         assert [ex["id"] for ex in result["examples"]] == ["d2", "d3", "d4"]
 
+    async def test_query_dev_examples_filters_by_example_ids(self, tmp_path: Path) -> None:
+        """The dev query tool can fetch specific ids without scanning by route client-side."""
+        analysis_dir = tmp_path / "outputs" / self._RUN_ID / "analysis"
+        analysis_dir.mkdir(parents=True)
+        rows = [
+            json.dumps({"id": "d1", "input": "text 1", "expected": {"route": self._ROUTE}}),
+            json.dumps({"id": "d2", "input": "text 2", "expected": {"route": self._OTHER_ROUTE}}),
+            json.dumps({"id": "d3", "input": "text 3", "expected": {"route": self._ROUTE}}),
+        ]
+        (analysis_dir / "dev.jsonl").write_text("\n".join(rows), encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            result_json = await query_dev_examples(
+                ctx=None,
+                run_id=self._RUN_ID,
+                example_ids=["d2", "d3"],
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert [ex["id"] for ex in result["examples"]] == ["d2", "d3"]
+        assert [ex["input"] for ex in result["examples"]] == ["text 2", "text 3"]
+
+    async def test_example_ids_take_precedence_over_route_filter(self, tmp_path: Path) -> None:
+        """When ids are supplied, route filtering is ignored."""
+        self._make_holdout(tmp_path, n_matching=2, n_other=2)
+
+        with _patch_project_dir(tmp_path):
+            result_json = await query_holdout_examples(
+                ctx=None,
+                run_id=self._RUN_ID,
+                route=self._ROUTE,
+                example_ids=["o0"],
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert [ex["id"] for ex in result["examples"]] == ["o0"]
+        assert result["examples"][0]["expected"]["route"] == self._OTHER_ROUTE
+
     @pytest.mark.parametrize(
         ("offset", "limit", "message"),
         [

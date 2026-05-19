@@ -94,10 +94,11 @@ def _query_jsonl_dataset(
     dataset_path: Path,
     *,
     route: str | None,
+    example_ids: list[str] | None,
     offset: int,
     limit: int,
 ) -> dict[str, Any]:
-    """Return a page of dataset rows, optionally filtered by expected.route."""
+    """Return a page of dataset rows, filtered by ids or expected.route."""
     if offset < 0:
         raise ToolError("offset must be >= 0")
     if limit <= 0:
@@ -105,6 +106,7 @@ def _query_jsonl_dataset(
     if limit > _DATASET_QUERY_MAX_LIMIT:
         raise ToolError(f"limit must be <= {_DATASET_QUERY_MAX_LIMIT}")
 
+    example_id_set = set(example_ids) if example_ids else None
     examples: list[dict[str, Any]] = []
     skipped = 0
 
@@ -115,7 +117,10 @@ def _query_jsonl_dataset(
                 continue
             example = json.loads(line)
             expected_route = example.get("expected", {}).get("route", "")
-            if route is not None and expected_route != route:
+            if example_id_set is not None:
+                if example.get("id") not in example_id_set:
+                    continue
+            elif route is not None and expected_route != route:
                 continue
             if skipped < offset:
                 skipped += 1
@@ -563,11 +568,12 @@ async def query_holdout_examples(
     ctx: Context,
     run_id: str,
     route: str | None = None,
+    example_ids: list[str] | None = None,
     offset: int = 0,
     limit: int = 20,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Refinement Loop -- Review] Query holdout examples, optionally filtered by route.
+    """[Stage 4: Refinement Loop -- Review] Query holdout examples by route or by ids.
 
     Returns full example objects from the holdout dataset including input text
     and per-route cost/quality data. Use this to find examples for specific
@@ -575,7 +581,8 @@ async def query_holdout_examples(
 
     Args:
         run_id: Pipeline run identifier.
-        route: Filter by expected route name. Returns all routes if omitted.
+        route: Filter by expected route name. Ignored when example_ids is set.
+        example_ids: Filter to these specific example ids. Takes precedence over route.
         offset: Skip the first N matching examples (default 0). Use with limit for pagination.
         limit: Maximum number of examples to return (default 20).
         output_dir: Output directory (default "outputs").
@@ -590,7 +597,9 @@ async def query_holdout_examples(
     if not holdout_path.exists():
         return json.dumps({"examples": [], "error": "holdout.jsonl not found"})
 
-    return json.dumps(_query_jsonl_dataset(holdout_path, route=route, offset=offset, limit=limit))
+    return json.dumps(
+        _query_jsonl_dataset(holdout_path, route=route, example_ids=example_ids, offset=offset, limit=limit)
+    )
 
 
 @mcp.tool()
@@ -598,11 +607,12 @@ async def query_dev_examples(
     ctx: Context,
     run_id: str,
     route: str | None = None,
+    example_ids: list[str] | None = None,
     offset: int = 0,
     limit: int = 20,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Refinement Loop -- Review] Query dev examples, optionally filtered by route.
+    """[Stage 4: Refinement Loop -- Review] Query dev examples by route or by ids.
 
     Returns full example objects from the dev dataset including input text
     and per-route cost/quality data. Use this when you need concrete dev-set
@@ -610,7 +620,8 @@ async def query_dev_examples(
 
     Args:
         run_id: Pipeline run identifier.
-        route: Filter by expected route name. Returns all routes if omitted.
+        route: Filter by expected route name. Ignored when example_ids is set.
+        example_ids: Filter to these specific example ids. Takes precedence over route.
         offset: Skip the first N matching examples (default 0). Use with limit for pagination.
         limit: Maximum number of examples to return (default 20, capped server-side).
         output_dir: Output directory (default "outputs").
@@ -625,7 +636,7 @@ async def query_dev_examples(
     if not dev_path.exists():
         return json.dumps({"examples": [], "error": "dev.jsonl not found"})
 
-    return json.dumps(_query_jsonl_dataset(dev_path, route=route, offset=offset, limit=limit))
+    return json.dumps(_query_jsonl_dataset(dev_path, route=route, example_ids=example_ids, offset=offset, limit=limit))
 
 
 @mcp.tool()
