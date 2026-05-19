@@ -200,7 +200,7 @@ async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
 
 
 @mcp.tool()
-async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> str:
+async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]) -> str:
     """[Stage 5: Final Report] Run evaluation on the holdout split.
 
     Runs evaluation against the hardcoded holdout dataset at
@@ -208,11 +208,11 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
 
     Args:
         run_id: Pipeline run identifier.
-        prompt_version: Prompt version to evaluate. Required — must be on the
+        prompt_versions: Prompt versions to evaluate. Required — all must be on the
             Pareto front.
 
     Returns:
-        Serialized score report for the chosen prompt_version.
+        Serialized list of score reports, one per version.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     check_artifacts(
@@ -228,29 +228,16 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
         hint="Call list_pareto_candidates first to present candidates to the user.",
     )
 
-    holdout_path = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
-
-    # Auto-filter holdout dataset to exclude few-shot examples
-    example_ids = get_candidate_example_ids(run_id, prompt_version)
-    if example_ids:
-        data_source = _filter_holdout_dataset_impl(
-            holdout_jsonl_path=holdout_path,
-            exclude_ids=example_ids,
-        )
-    else:
-        data_source = holdout_path
-
     state = get_search_state(run_id=run_id)
 
     if not state.elite_set:
         raise ToolError("No candidates on the elite set — cannot determine best prompt.")
 
-    # Validate user choice is on the elite set
+    # Bulk-validate all requested versions up front
     valid_versions = {c.prompt_version for c in state.elite_set}
-    if prompt_version not in valid_versions:
-        raise ToolError(
-            f"Prompt version '{prompt_version}' is not on the elite set. Valid versions: {sorted(valid_versions)}"
-        )
+    invalid = [v for v in prompt_versions if v not in valid_versions]
+    if invalid:
+        raise ToolError(f"Versions not on the elite set: {invalid}. Valid versions: {sorted(valid_versions)}")
 
     if not state.backend:
         registry = BackendRegistry.from_directory(project_dir / "backends")
@@ -262,61 +249,85 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_version: str) -> st
             }
         )
 
-    run_config = build_pipeline_config(
-        state=state,
-        prompt_version=prompt_version,
-        data_source=data_source,
-        run_id=run_id,
-        project_dir=project_dir,
-        eval_subdir="holdout_eval",
-    )
+    holdout_path = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
 
-    eval_context = {
-        "prompt_version": prompt_version,
-        "data_source": data_source,
-        "backend": run_config.backend,
-        "run_id": run_id,
-        "run_config": run_config,
-    }
+    results: list[dict] = []
 
-    result = await run_eval(eval_context)
+    for version in prompt_versions:
+        # Auto-filter holdout dataset to exclude few-shot examples for this version
+        example_ids = get_candidate_example_ids(run_id, version)
+        if example_ids:
+            data_source = _filter_holdout_dataset_impl(
+                holdout_jsonl_path=holdout_path,
+                exclude_ids=example_ids,
+            )
+        else:
+            data_source = holdout_path
 
-    if "error" in result:
-        err = result["error"]
-        raise ToolError(f"run_holdout_eval failed: [{err['category']}] {err['detail']}")
+        run_config = build_pipeline_config(
+            state=state,
+            prompt_version=version,
+            data_source=data_source,
+            run_id=run_id,
+            project_dir=project_dir,
+            eval_subdir="holdout_eval",
+        )
 
-    score_report: ScoreReport = result[ScoreReport.CONTEXT_KEY]
-
-    # Compute and write baseline comparison
-    try:
-        holdout_jsonl_path = project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl"
-        holdout_text = holdout_jsonl_path.read_text(encoding="utf-8")
-        holdout_examples = [json.loads(line) for line in holdout_text.splitlines() if line.strip()]
-
-        results_path = Path(run_config.output.results_path)
-        results_text = results_path.read_text(encoding="utf-8")
-        eval_result_rows = [
-            json.loads(line) for line in results_text.splitlines() if line.strip() and '"__meta__"' not in line
-        ]
-
-        baseline_data = _compute_baselines(holdout_examples, eval_result_rows)
-        if baseline_data:
-            baseline_path = Path(run_config.output.results_path).parent / "baseline_comparison.json"
-            baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
-    except Exception:
-        logging.getLogger(__name__).warning("Failed to compute baselines", exc_info=True)
-
-    return json.dumps(
-        {
-            "prompt_version": prompt_version,
-            "report_path": score_report.report_path,
-            "results_path": score_report.results_path,
-            "metrics": score_report.metrics,
-            "summary": score_report.summary.model_dump(mode="json"),
-            "holdout_filtered": bool(example_ids),
-            "excluded_example_ids": example_ids,
+        eval_context = {
+            "prompt_version": version,
+            "data_source": data_source,
+            "backend": run_config.backend,
+            "run_id": run_id,
+            "run_config": run_config,
         }
-    )
+
+        result = await run_eval(eval_context)
+
+        if "error" in result:
+            err = result["error"]
+            raise ToolError(f"run_holdout_eval failed for version {version}: [{err['category']}] {err['detail']}")
+
+        score_report: ScoreReport = result[ScoreReport.CONTEXT_KEY]
+
+        # Compute and write baseline comparison
+        try:
+            holdout_jsonl_path = project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl"
+            holdout_text = holdout_jsonl_path.read_text(encoding="utf-8")
+            holdout_examples = [json.loads(line) for line in holdout_text.splitlines() if line.strip()]
+
+            results_path = Path(run_config.output.results_path)
+            results_text = results_path.read_text(encoding="utf-8")
+            eval_result_rows = [
+                json.loads(line) for line in results_text.splitlines() if line.strip() and '"__meta__"' not in line
+            ]
+
+            baseline_data = _compute_baselines(holdout_examples, eval_result_rows)
+            if baseline_data:
+                baseline_path = Path(run_config.output.results_path).parent / "baseline_comparison.json"
+                baseline_path.write_text(json.dumps(baseline_data, indent=2), encoding="utf-8")
+        except Exception:
+            logging.getLogger(__name__).warning("Failed to compute baselines", exc_info=True)
+
+        try:
+            report_data = json.loads(Path(run_config.output.report_path).read_text(encoding="utf-8"))
+            ci_data = report_data.get("confidence_intervals") or {}
+        except Exception:
+            ci_data = {}
+
+        results.append(
+            {
+                "prompt_version": version,
+                "report_path": score_report.report_path,
+                "results_path": score_report.results_path,
+                "metrics": score_report.metrics,
+                "summary": score_report.summary.model_dump(mode="json"),
+                "holdout_filtered": bool(example_ids),
+                "excluded_example_ids": example_ids,
+                "confidence_intervals": ci_data,
+            }
+        )
+
+    return json.dumps(results)
 
 
 @mcp.tool()
