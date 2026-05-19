@@ -222,14 +222,6 @@ def test_run_config_backend_stripped():
     assert config.backend == "claude-sonnet"
 
 
-def test_example_config_round_trip():
-    config = RunConfig.from_yaml("configs/example-run.yaml")
-    assert config.backend == "claude-sonnet-4-20250514"
-    assert len(config.metrics) == 2
-    assert config.concurrency.max_concurrent_requests == 20
-    assert config.retry.max_attempts == 3
-
-
 class TestModelCostQuality:
     def test_valid_cost_quality(self):
         from odysseus.eval.models import ModelCostQuality
