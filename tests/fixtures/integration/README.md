@@ -20,57 +20,68 @@ Add the MCP server to your Claude Code config:
 
 ## Test 1: Happy path — all examples correct
 
-Call `run_eval` with the integration fixtures:
+After preparing a Stage 4 integration run whose `outputs/<run_id>/analysis/dev.jsonl`
+uses `tests/fixtures/integration/dataset.jsonl`, call `run_batch_eval` with a
+single candidate:
 
 ```
-run_eval(
-  prompt_version="v1",
-  data_source="tests/fixtures/integration/dataset.jsonl",
-  backend="mock-echo",
-  config_path="tests/fixtures/integration/run_config.yaml"
+run_batch_eval(
+  run_id="integration-run",
+  candidates=[
+    {
+      "prompt_version": "v1",
+      "example_ids": []
+    }
+  ]
 )
 ```
 
 **Expected result:**
-- Returns JSON with `report_path` and `results_path`
-- `report.json` shows:
+- Returns JSON with `succeeded` containing one entry and `failed` empty
+- `outputs/integration-run/eval/v1/report.json` shows:
   - `summary.total` = 5
   - `summary.succeeded` = 5
   - `summary.failed` = 0
   - `metrics.accuracy` = 1.0 (mock echoes expected route)
 
-**Verify:** Read `tests/fixtures/integration/outputs/report.json` and `results.jsonl`.
+**Verify:** Read `outputs/integration-run/eval/v1/report.json` and `outputs/integration-run/eval/v1/results.jsonl`.
 
-## Test 2: Missing config
+## Test 2: Unknown run id
 
 ```
-run_eval(
-  prompt_version="v1",
-  data_source="tests/fixtures/integration/dataset.jsonl",
-  backend="mock-echo",
-  config_path="nonexistent.yaml"
+run_batch_eval(
+  run_id="does-not-exist",
+  candidates=[
+    {
+      "prompt_version": "v1",
+      "example_ids": []
+    }
+  ]
 )
 ```
 
-**Expected:** Returns `{"error": "not_found", "detail": "..."}`.
+**Expected:** The tool raises an error because the pipeline search state and Stage 4 artifacts do not exist for that run.
 
-## Test 3: Unknown backend
+## Test 3: Unknown backend configured on the run
 
 ```
-run_eval(
-  prompt_version="v1",
-  data_source="tests/fixtures/integration/dataset.jsonl",
-  backend="does-not-exist",
-  config_path="tests/fixtures/integration/run_config.yaml"
+run_batch_eval(
+  run_id="integration-run",
+  candidates=[
+    {
+      "prompt_version": "v1",
+      "example_ids": []
+    }
+  ]
 )
 ```
 
-**Expected:** Returns `{"error": "not_found", "detail": "..."}`.
+**Expected:** The tool raises an error if the run's initialized backend profile does not exist.
 
 ## Cleanup
 
 Delete generated output files:
 
 ```bash
-rm -rf tests/fixtures/integration/outputs/
+rm -rf outputs/integration-run/
 ```

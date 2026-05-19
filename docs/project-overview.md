@@ -124,9 +124,9 @@ Completed tasks: THP-87 through THP-93, THP-113, THP-114, THP-115, THP-116.
 | **Goal** | Execute the eval harness against the current prompt version and produce a structured score report |
 | **Input** | Current versioned prompt + dev set (holdout never accessed during the loop) |
 | **Output** | Score report: aggregate metrics, per-example breakdowns, diff vs previous version |
-| **MCP interface** | `run_eval` tool wrapping the Run Controller |
+| **MCP interface** | `run_batch_eval` as the Stage 4 eval entry point; it dispatches one or more prompt versions through the same Run Controller flow |
 
-The agent calls `run_eval` as an MCP tool and returns the score report to the Review Agent. It never has access to the holdout partition during refinement iterations.
+During Stage 4, the pipeline calls `run_batch_eval` as the MCP tool entry point. For each candidate, the underlying Eval Runner flow still builds a run config and invokes the same Run Controller / `run_eval(context)` code path, then returns score reports to the Review Agent. It never has access to the holdout partition during refinement iterations.
 
 ---
 
@@ -199,7 +199,7 @@ User
                          │
             ┌────────────▼────────────────┐
             │      REFINEMENT LOOP       │
-            │  Run Eval → Review → Refine│
+            │ run_batch_eval → Review → Refine │
             └─────────────────────────────┘
                           │
             ┌─────────────▼──────────────┐
@@ -228,7 +228,7 @@ The metric set is not hardcoded. The Review Agent produces metric specifications
 Before accepting a new prompt version, the Review Agent checks whether metrics have improved relative to the previous best checkpoint. If they have regressed, the version is discarded and the Prompt Builder is instructed to "refine from a different viewpoint" rather than continuing in the same direction.
 
 ### MCP Deployment
-The system exposes a `run_eval` MCP tool that wraps the Run Controller, enabling the Eval Runner Agent to trigger evaluation runs as tool calls. The full pipeline is also deployable as an MCP server via `python -m odysseus.mcp`.
+The system exposes `run_batch_eval` as the Stage 4 MCP tool for prompt-version evaluation. A single-element `candidates` list covers one-at-a-time algorithms, while multi-candidate rounds share the same concurrent dispatch surface. Underneath, each candidate still flows through the same Run Controller / Eval Runner implementation. The full pipeline is also deployable as an MCP server via `python -m odysseus.mcp`.
 
 ---
 
