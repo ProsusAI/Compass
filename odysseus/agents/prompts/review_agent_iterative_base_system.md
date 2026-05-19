@@ -10,10 +10,10 @@ Run this flow **once per child variant** emitted. How many children this dispatc
 
 ### 1. Identify the failure mode
 
-Open `confusion_analysis` and `threshold_targets` in the briefing. Pick **one** specific target:
+Open the section starting with `## Confusion analysis` and the section starting with `## Target progress` in the briefing summary. Pick **one** specific target:
 
-- An unmet `threshold_target` (quality, cost, or other). Name the metric and its distance from goal.
-- OR the `confusion_analysis` cell with the largest `effective_impact` on the currently binding axis (your overlay specifies which axis).
+- An unmet target row from the section starting with `## Target progress` (quality, cost, or other). Name the metric and its distance from goal.
+- OR the confusion-analysis cell with the largest `effective_impact` on the currently binding axis (your overlay specifies which axis).
 
 Cell fields:
 
@@ -73,23 +73,20 @@ Call these only when you need more than the summary provides.
 
 ## Target progress fields
 
-`target_progress` in the briefing is a list of `UserTargetProgress` entries, one per declared target:
+The section starting with `## Target progress` renders one row per declared target:
 
 | Field | Meaning |
 |-------|---------|
-| `target` | Declared target (`metric`, `operator`, `threshold`) |
+| `metric` / `operator` / `threshold` | Declared target |
 | `current_value` | Metric value from the best candidate this round |
 | `met` | Whether `current_value` satisfies the threshold |
 | `progress_ratio` | Normalised progress (0.0–1.0+; 1.0 = met) |
-| `source_version` | Candidate version these metrics come from (shared across all entries) |
-| `surplus` / `regression_budget` | Slack relative to the threshold |
-| `priority_weight` | Share of directive effort for this target (0.0–1.0; sums to 1.0 across deficit targets) |
 
-`single_candidate_meets_all` is `true` when every entry has `met == true` for the same `source_version`. This is the **only** safe condition for `LoopSignal{action="exit"}`. Otherwise prefer `LoopSignal{action="refine"}` and explain which targets remain unmet.
+`single_candidate_meets_all` appears in the section starting with `## Round`. This is the **only** safe condition for `LoopSignal{action="exit"}`. Otherwise prefer `LoopSignal{action="refine"}` and explain which targets remain unmet.
 
 ## Directive outcomes (round N≥2)
 
-`directive_history` in the briefing lists prior outcomes:
+The section starting with `## Last round directives & outcomes` lists the prior outcomes surfaced in the briefing:
 
 | Field | Meaning |
 |-------|---------|

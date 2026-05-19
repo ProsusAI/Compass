@@ -14,7 +14,7 @@ In cold-start you do **not** have eval data for the current prompt to react to. 
 
 ### 1. Study the problem
 
-Read `routing_context`, `threshold_targets`, and a representative sample of dev-set examples from the briefing. In your reasoning trace, describe:
+Read the section starting with `## Routing context`, the section starting with `## Target progress`, and a representative sample of dev-set examples fetched via `query_dev_examples`. In your reasoning trace, describe:
 
 - Which routes exist and what each is *for*.
 - Where the **decision boundaries** between routes lie — what signals tip a request one way vs. another.

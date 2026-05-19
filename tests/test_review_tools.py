@@ -1202,6 +1202,41 @@ class TestBuildReviewBriefingDoesNotWriteRoundReport:
         assert on_disk == sentinel, "build_review_briefing must not overwrite existing round_reports/round_2.json"
 
 
+class TestBuildReviewBriefingSurface:
+    """build_review_briefing returns the rendered markdown summary at the MCP boundary."""
+
+    _RUN_ID = "test-review-briefing-surface"
+
+    async def test_returns_markdown_headings_not_json(self, tmp_path: Path) -> None:
+        state_dict = _make_state_dict(
+            self._RUN_ID,
+            elite_set=[
+                {
+                    "prompt_version": "v1",
+                    "parent_version": None,
+                    "quality_score": 0.85,
+                    "cost": 0.02,
+                    "round_introduced": 1,
+                    "example_ids": [],
+                }
+            ],
+            round_=2,
+        )
+        _write_state(tmp_path, self._RUN_ID, state_dict)
+
+        with _patch_project_dir(tmp_path):
+            result = await build_review_briefing(
+                ctx=None,
+                run_id=self._RUN_ID,
+                output_dir="outputs",
+            )
+
+        assert "## Round" in result
+        assert "## Diversity & diminishing returns" in result
+        assert "## Elite set" in result
+        assert not result.lstrip().startswith("{")
+
+
 # ---------------------------------------------------------------------------
 # Tests for get_dataset_oracle_distribution
 # ---------------------------------------------------------------------------

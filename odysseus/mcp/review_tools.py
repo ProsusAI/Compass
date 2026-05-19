@@ -22,7 +22,7 @@ from odysseus.agents.prompt_builder.search_ops import (
     set_loop_phase as _set_loop_phase,
 )
 from odysseus.eval.models import RunReport, ScoreReport
-from odysseus.mcp._render import render_score_report_md
+from odysseus.mcp._render import render_review_briefing_md, render_score_report_md
 from odysseus.mcp.server import mcp
 from odysseus.project_dir import resolve_project_dir as _resolve_project_dir
 
@@ -137,7 +137,7 @@ async def build_review_briefing(
         trajectory_id: EMOSA only — selects per-trajectory fields; ignored otherwise.
 
     Returns:
-        JSON-serialized ReviewBriefing.
+        Markdown progressive-disclosure ReviewBriefing summary.
     """
     from odysseus.agents.prompt_builder.search_ops import get_search_state
     from odysseus.agents.review.ops import (
@@ -359,9 +359,7 @@ async def build_review_briefing(
     # Record that the Review Agent sub-agent is now in-flight for this round.
     record_review_dispatched(run_id, round=state.round, output_dir=out)
 
-    from odysseus.agents.review.render import render_briefing_summary
-
-    return render_briefing_summary(briefing)
+    return render_review_briefing_md(briefing)
 
 
 @mcp.tool()

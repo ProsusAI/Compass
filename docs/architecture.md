@@ -50,7 +50,7 @@ graph TD
 | `dev_jsonl_path` | `str` | Data Validation Agent | Prompt Builder Agent | Dev split examples path |
 | `holdout_jsonl_path` | `str` | Data Validation Agent | Final Reporting Agent | Holdout split examples path |
 | `split_report_path` | `str` | Data Validation Agent | Prompt Builder Agent | Split statistics and distribution report |
-| `review_briefing` | `ReviewBriefing` | Review Agent (pre-processor) | Review Agent (LLM) | Pre-processed round data: candidate analyses, per-class recall, diversity metrics, mutation history, oracle metrics |
+| `review_briefing` | `str` (markdown summary) | Review Agent (pre-processor) | Review Agent (LLM) | Progressive-disclosure briefing summary rendered from `ReviewBriefing`: round summary, routing context, per-class recall, target/confusion analysis, candidates, elite set, directive history |
 | `review_result` | `ReviewResult` | Review Agent (LLM) | Prompt Builder Agent | Ranked candidates, edit directives, promotion decisions, loop signal, regression guards |
 
 ## 4. Shared Models
@@ -140,7 +140,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; rejects mappings whose output violates `expected.route ∈ expected.routes.keys()` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
 | `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
 | `get_routing_context` | Implemented | Return a markdown summary of the RoutingContext for a run; reads `outputs/<run_id>/validation/routing_context.json`; also available to the Prompt Builder sub-agent | [`odysseus/mcp/data_validation_tools.py`](../odysseus/mcp/data_validation_tools.py) |
-| `build_review_briefing` | Implemented | Pre-process a round's candidates into a ReviewBriefing for the Review Agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
+| `build_review_briefing` | Implemented | Pre-process a round's candidates into a ReviewBriefing and return its markdown progressive-disclosure summary for the Review Agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `record_directive_outcomes` | Implemented | Persist child variants + directive outcomes; apply the Review Agent's `loop_signal` | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `query_dev_examples` | Implemented | Query dev examples, optionally filtered by route, with `offset`/`limit` pagination for stage-4 review work | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
 | `query_holdout_examples` | Implemented | Query holdout examples, optionally filtered by route, with `offset`/`limit` pagination for directive crafting | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
