@@ -65,8 +65,11 @@ _CHILD_VARIANTS = [
 class TestRecordDirectiveOutcomesDecomposed:
     """Tests for the decomposed-params path of record_directive_outcomes."""
 
-    async def test_decomposed_params_persists_review_result(self, tmp_path: Path) -> None:
-        """Passing decomposed params writes a review_result.json to disk."""
+    async def test_decomposed_params_do_not_write_review_result_by_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Passing decomposed params skips review_result.json unless debug is enabled."""
+        monkeypatch.delenv("ODYSSEUS_DEBUG", raising=False)
         with _patch_project_dir(tmp_path):
             result_json = await record_directive_outcomes(
                 ctx=None,
@@ -84,6 +87,29 @@ class TestRecordDirectiveOutcomesDecomposed:
         assert "recorded" not in result
 
         review_result_path = tmp_path / "outputs" / _RUN_ID / "search" / "review_result.json"
+        assert not review_result_path.exists()
+
+    async def test_decomposed_params_write_review_result_when_debug_enabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Passing decomposed params writes review_result.json when debug is enabled."""
+        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
+        with _patch_project_dir(tmp_path):
+            result_json = await record_directive_outcomes(
+                ctx=None,
+                run_id=_RUN_ID,
+                loop_signal=_LOOP_SIGNAL,
+                child_variants=_CHILD_VARIANTS,
+                candidate_ranking=_CANDIDATE_RANKING,
+                promotion_decisions=_PROMOTION_DECISIONS,
+                regression_guards=_REGRESSION_GUARDS,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert "recorded" not in result
+
+        review_result_path = tmp_path / "outputs" / _RUN_ID / "search" / "review_result.json"
         assert review_result_path.exists(), "review_result.json should be written for decomposed params"
         saved = json.loads(review_result_path.read_text())
         assert saved["candidate_ranking"] == _CANDIDATE_RANKING
@@ -91,11 +117,13 @@ class TestRecordDirectiveOutcomesDecomposed:
         assert saved["regression_guards"] == _REGRESSION_GUARDS
         assert saved["loop_signal"] == _LOOP_SIGNAL
         assert saved["child_variants"] == _CHILD_VARIANTS
-        # directive_history_update is no longer written to the audit record
         assert "directive_history_update" not in saved
 
-    async def test_legacy_review_result_path_persists(self, tmp_path: Path) -> None:
-        """Passing review_result blob (legacy) also writes review_result.json."""
+    async def test_legacy_review_result_path_persists_when_debug_enabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Passing review_result blob (legacy) writes review_result.json when debug is enabled."""
+        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
         legacy_blob = {
             "candidate_ranking": _CANDIDATE_RANKING,
             "promotion_decisions": _PROMOTION_DECISIONS,
@@ -121,8 +149,11 @@ class TestRecordDirectiveOutcomesDecomposed:
         saved = json.loads(review_result_path.read_text())
         assert saved["candidate_ranking"] == _CANDIDATE_RANKING
 
-    async def test_decomposed_and_legacy_produce_same_candidate_ranking(self, tmp_path: Path) -> None:
+    async def test_decomposed_and_legacy_produce_same_candidate_ranking(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Decomposed params and legacy review_result produce the same persisted candidate_ranking."""
+        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
         run_decomposed = "run-decomposed"
         run_legacy = "run-legacy"
 

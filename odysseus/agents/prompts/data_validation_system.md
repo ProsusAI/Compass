@@ -47,12 +47,12 @@ You always produce a full report — even when critical issues are found. The re
 After validation completes and the data quality report is produced, split the dataset into dev and holdout partitions for the optimization loop.
 
 1. Call `stratified_split` with the `run_id`, the path to the validated JSONL file, and `dev_ratio=0.2`.
-2. The tool writes `dev.jsonl`, `holdout.jsonl`, and `split_report.json` to `outputs/<run_id>/analysis/`.
+2. The tool writes `dev.jsonl` and `holdout.jsonl` to `outputs/<run_id>/analysis/`. `split_report.json` is a debug-only side artifact written only when `ODYSSEUS_DEBUG=1`.
 3. Report the split statistics to the user: total examples, dev count, holdout count, and per-route distribution.
 
 ## Output format
 
-Your report has six sections. Phase 3 additionally produces `dev.jsonl`, `holdout.jsonl`, and `split_report.json` in `outputs/<run_id>/analysis/`.
+Your report has six sections. Phase 3 additionally produces `dev.jsonl` and `holdout.jsonl` in `outputs/<run_id>/analysis/`. `split_report.json` may also be present as a debug-only side artifact when `ODYSSEUS_DEBUG=1`.
 
 | Section | Purpose |
 |---|---|
@@ -99,5 +99,5 @@ Use the `severity` field on each schema finding to determine how to present it:
 
 Before you finish, call `get_pipeline_status` and confirm your stage shows `status: complete`.
 If any required artifacts are missing, fix them before exiting — do not exit with an incomplete stage.
-Verify that split artifacts exist: `analysis/dev.jsonl`, `analysis/holdout.jsonl`, and `analysis/split_report.json`.
+Verify that split artifacts exist: `analysis/dev.jsonl` and `analysis/holdout.jsonl`. `analysis/split_report.json` is debug-only and not required for stage completion.
 Only exit once `get_pipeline_status` confirms your stage is complete.

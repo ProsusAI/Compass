@@ -16,6 +16,7 @@ import pytest
 
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.prompt_builder.search_ops import (
+    _append_archive,
     _load_pending,
     _load_state,
     _save_state,
@@ -136,6 +137,28 @@ def test_init_with_pending_only_raises(tmp_path: Path) -> None:
 
     with pytest.raises(FileExistsError, match="already has progress"):
         _init(tmp_path)
+
+
+def test_append_archive_writes_candidate_archive_on_normal_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """candidate_archive.json remains unconditional because search-tree viz reads it."""
+    from odysseus.agents.prompt_builder.search import Candidate
+
+    monkeypatch.delenv("ODYSSEUS_DEBUG", raising=False)
+    candidate = Candidate(
+        prompt_version="v1",
+        parent_version="base",
+        quality_score=0.8,
+        cost=0.02,
+        round_introduced=1,
+    )
+
+    _append_archive(_RUN_ID, [candidate], tmp_path)
+
+    archive_path = tmp_path / _RUN_ID / "search" / "candidate_archive.json"
+    assert archive_path.exists()
+    assert archive_path.read_text(encoding="utf-8")
 
 
 def test_init_with_history_only_raises(tmp_path: Path) -> None:

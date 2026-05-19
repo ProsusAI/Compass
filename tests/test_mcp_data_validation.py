@@ -251,3 +251,40 @@ class TestStratifiedSplitToolRouteInRoutes:
         analysis_dir = tmp_path / "outputs" / RUN_ID / "analysis"
         assert not (analysis_dir / "dev.jsonl").exists()
         assert not (analysis_dir / "holdout.jsonl").exists()
+
+
+class TestStratifiedSplitDebugArtifacts:
+    @pytest.mark.asyncio
+    async def test_split_report_not_written_by_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ODYSSEUS_DEBUG", raising=False)
+        _make_quality_report(tmp_path)
+        dataset = tmp_path / "data.jsonl"
+        _write_jsonl([_valid_row(f"ex-{i}") for i in range(10)], dataset)
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = json.loads(await stratified_split(ctx=None, run_id=RUN_ID, dataset_path=str(dataset)))
+
+        analysis_dir = tmp_path / "outputs" / RUN_ID / "analysis"
+        assert (analysis_dir / "dev.jsonl").exists()
+        assert (analysis_dir / "holdout.jsonl").exists()
+        assert not (analysis_dir / "split_report.json").exists()
+        assert result["split_report_path"] is None
+
+    @pytest.mark.asyncio
+    async def test_split_report_written_when_debug_enabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
+        _make_quality_report(tmp_path)
+        dataset = tmp_path / "data.jsonl"
+        _write_jsonl([_valid_row(f"ex-{i}") for i in range(10)], dataset)
+
+        with patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
+            result = json.loads(await stratified_split(ctx=None, run_id=RUN_ID, dataset_path=str(dataset)))
+
+        analysis_dir = tmp_path / "outputs" / RUN_ID / "analysis"
+        split_report_path = analysis_dir / "split_report.json"
+        assert (analysis_dir / "dev.jsonl").exists()
+        assert (analysis_dir / "holdout.jsonl").exists()
+        assert split_report_path.exists()
+        assert result["split_report_path"] == str(split_report_path)

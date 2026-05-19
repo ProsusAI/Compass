@@ -23,12 +23,12 @@ graph TD
 | Agent | Type | Module / Prompt | Status | Reads from Context | Writes to Context |
 |---|---|---|---|---|---|
 | User Input | LLM-driven | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md), [`odysseus/agents/user_input/report.py`](../odysseus/agents/user_input/report.py) | Done | (user conversation) | `validated_input_report_path` |
-| Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py), [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path`, `dev_jsonl_path`, `holdout_jsonl_path`, `split_report_path` |
+| Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py), [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path`, `dev_jsonl_path`, `holdout_jsonl_path`, `split_report_path` (debug-only) |
 | Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `run_config` or `config_path` | `eval_score_report` |
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
 | Prompt Builder Rerun | LLM-driven | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) | Done | `run_id`, `source_prompt_version`, `new_backend` (from subagent instruction) | `prompt_version` (restructured) |
-| Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), three-tier prompt: `review_agent_base_system.md` + phase base + strategy overlay (see Prompts table) | Done | `eval_score_report`, `review_briefing` | `review_result` |
+| Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), three-tier prompt: `review_agent_base_system.md` + phase base + strategy overlay (see Prompts table) | Done | `eval_score_report`, `review_briefing` | `review_result` (debug-only) |
 | Final Report | Hybrid (code + LLM) | [`odysseus/agents/final_report/models.py`](../odysseus/agents/final_report/models.py), [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py), [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md), [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, `baseline_comparison.json`, optimization charts |
 
 ## 3. Context Dict Reference
@@ -49,9 +49,9 @@ graph TD
 | `original_dataset_path` | `str` | Data Validation Agent | (provenance tracking) | Path to the user's original dataset file before transformation |
 | `dev_jsonl_path` | `str` | Data Validation Agent | Prompt Builder Agent | Dev split examples path |
 | `holdout_jsonl_path` | `str` | Data Validation Agent | Final Reporting Agent | Holdout split examples path |
-| `split_report_path` | `str` | Data Validation Agent | Prompt Builder Agent | Split statistics and distribution report |
+| `split_report_path` | `str \| null` (debug-only) | Data Validation Agent | Prompt Builder Agent | Split statistics and distribution report when debug artifact writing is enabled |
 | `review_briefing` | `str` (markdown summary) | Review Agent (pre-processor) | Review Agent (LLM) | Progressive-disclosure briefing summary rendered from `ReviewBriefing`: round summary, routing context, per-class recall, target/confusion analysis, candidates, elite set, directive history |
-| `review_result` | `ReviewResult` | Review Agent (LLM) | Prompt Builder Agent | Ranked candidates, edit directives, promotion decisions, loop signal, regression guards |
+| `review_result` | `ReviewResult` (debug-only) | Review Agent (LLM) | Prompt Builder Agent | Ranked candidates, edit directives, promotion decisions, loop signal, regression guards |
 
 ## 4. Shared Models
 

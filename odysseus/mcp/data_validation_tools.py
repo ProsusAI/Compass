@@ -12,6 +12,7 @@ from odysseus.agents.data_validation.detect import detect_and_parse
 from odysseus.agents.data_validation.split import stratified_split as _stratified_split_impl
 from odysseus.agents.data_validation.transform import add_ids_to_dataset as _do_add_ids
 from odysseus.agents.data_validation.transform import transform_dataset as _do_transform
+from odysseus.agents.pipeline.debug import is_debug_enabled
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.routing_context import RoutingContext
 from odysseus.mcp._render import render_routing_context_md
@@ -388,13 +389,15 @@ async def stratified_split(
 
     _write_jsonl(dev_path, dev_examples)
     _write_jsonl(holdout_path, holdout_examples)
-    split_report_path.write_text(split_report.model_dump_json(indent=2), encoding="utf-8")
+    debug_enabled = is_debug_enabled()
+    if debug_enabled:
+        split_report_path.write_text(split_report.model_dump_json(indent=2), encoding="utf-8")
 
     return json.dumps(
         {
             "dev_path": str(dev_path),
             "holdout_path": str(holdout_path),
-            "split_report_path": str(split_report_path),
+            "split_report_path": str(split_report_path) if debug_enabled else None,
         },
         indent=2,
     )

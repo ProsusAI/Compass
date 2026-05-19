@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from odysseus.agents.pipeline import paths
+from odysseus.agents.pipeline.debug import is_debug_enabled
 from odysseus.agents.prompt_builder.search import SearchState
 from odysseus.agents.review.models import (
     ChildVariant,
@@ -41,6 +42,8 @@ def save_review_result(
     output_dir: Path | None = None,
 ) -> None:
     """Persist the full ReviewResult for debugging/auditing."""
+    if not is_debug_enabled():
+        return
     if output_dir is None:
         output_dir = _default_output_dir()
     path = _review_result_path(run_id, output_dir)
