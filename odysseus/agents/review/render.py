@@ -5,6 +5,8 @@ from __future__ import annotations
 import statistics
 from typing import TYPE_CHECKING
 
+from odysseus.mcp._render import render_routing_context_md
+
 if TYPE_CHECKING:
     from odysseus.agents.review.models import ReviewBriefing
 
@@ -28,42 +30,7 @@ def _render_routing_context(briefing: ReviewBriefing) -> str:
     rc = briefing.routing_context
     if rc is None:
         return ""
-    pm = getattr(rc, "primary_metric_name", None) or "(not set)"
-    lines = [
-        "## Routing context",
-        "",
-        f"- dataset: {getattr(rc, 'domain', '(unknown)')}",
-        f"- primary metric: {pm}",
-        "",
-    ]
-    # Routes table
-    lines.append(f"### Routes ({len(rc.routes)})")
-    lines.append("")
-    lines.append("| name | description |")
-    lines.append("|---|---|")
-    for r in rc.routes:
-        desc = r.description.replace("|", "\\|")
-        lines.append(f"| {r.name} | {desc} |")
-
-    # Routing dimensions table
-    if rc.routing_dimensions:
-        lines.append("")
-        lines.append("### Routing dimensions")
-        lines.append("")
-        lines.append("| name | direction | description |")
-        lines.append("|---|---|---|")
-        for d in rc.routing_dimensions:
-            desc = d.description.replace("|", "\\|")
-            lines.append(f"| {d.name} | {d.direction} | {desc} |")
-
-    # Route ordering
-    if rc.route_ordering is not None:
-        ro = rc.route_ordering
-        order_str = ", ".join(ro.order)
-        lines.append("")
-        lines.append(f"- ordering: dimension={ro.dimension}, order=[{order_str}]")
-
-    return "\n".join(lines)
+    return render_routing_context_md(rc)
 
 
 def _render_per_class_recall(briefing: ReviewBriefing) -> str:
@@ -242,9 +209,7 @@ def _render_child_variants(briefing: ReviewBriefing) -> str:
         for d in cv.directives:
             lines.append(f"- `{d.directive_id}` [{d.block_type}]")
     lines.append("")
-    lines.append(
-        "Use `get_round_child_variants(run_id, round, with_directive_bodies=True)` for full directive bodies."
-    )
+    lines.append("Use `get_round_child_variants(run_id, round, with_directive_bodies=True)` for full directive bodies.")
     return "\n".join(lines)
 
 
