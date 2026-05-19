@@ -3,16 +3,24 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
+from odysseus.agents.prompt_builder.search import Candidate, SearchState
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp, model_specific_conventions
 
 AGENT_RUN = "odysseus.mcp.prompt_building_tools._run_eval"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
+FINAL_REPORT_RESOLVE_PROJECT_DIR = "odysseus.mcp.final_report_tools._project_dir_mod.resolve_project_dir"
+FINAL_REPORT_GET_SEARCH_STATE = "odysseus.mcp.final_report_tools.get_search_state"
+FINAL_REPORT_GET_CANDIDATE_EXAMPLE_IDS = "odysseus.mcp.final_report_tools.get_candidate_example_ids"
+FINAL_REPORT_BUILD_PIPELINE_CONFIG = "odysseus.mcp.final_report_tools.build_pipeline_config"
+FINAL_REPORT_RUN_EVAL = "odysseus.mcp.final_report_tools.run_eval"
+FINAL_REPORT_BACKEND_REGISTRY = "odysseus.mcp.final_report_tools.BackendRegistry"
 
 
 async def test_server_has_tools():
@@ -50,7 +58,11 @@ async def test_optimize_routing_prompt_has_no_user_params():
     assert schema_properties == {}, f"optimize_routing_prompt must have no parameters, got: {list(schema_properties)}"
 
 
-def _make_stub_score_report() -> ScoreReport:
+def _make_stub_score_report(
+    *,
+    report_path: str = "outputs/report.json",
+    results_path: str = "outputs/results.jsonl",
+) -> ScoreReport:
     """Create a minimal ScoreReport for testing."""
     return ScoreReport(
         metrics={"accuracy": 0.95},
@@ -65,8 +77,52 @@ def _make_stub_score_report() -> ScoreReport:
         ),
         errors=[],
         diff=None,
-        report_path="outputs/report.json",
-        results_path="outputs/results.jsonl",
+        report_path=report_path,
+        results_path=results_path,
+    )
+
+
+def _setup_run_holdout_eval_guard(tmp_path: Path, run_id: str = "run-123") -> None:
+    analysis = tmp_path / "outputs" / run_id / "analysis"
+    analysis.mkdir(parents=True, exist_ok=True)
+    (analysis / "holdout.jsonl").write_text(
+        json.dumps(
+            {
+                "id": "hold-1",
+                "expected": {
+                    "route": "haiku",
+                    "routes": {
+                        "haiku": {"cost": 0.1, "quality_score": 0.9},
+                        "sonnet": {"cost": 0.4, "quality_score": 0.95},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    search_dir = tmp_path / "outputs" / run_id / "search"
+    search_dir.mkdir(parents=True, exist_ok=True)
+    (search_dir / "search_state.json").write_text("{}", encoding="utf-8")
+    listed_path = tmp_path / "outputs" / run_id / "pareto_candidates_listed.json"
+    listed_path.parent.mkdir(parents=True, exist_ok=True)
+    listed_path.write_text(json.dumps({"candidates": ["v1"]}), encoding="utf-8")
+
+
+def _search_state_for_holdout_eval(*, backend: str) -> SearchState:
+    return SearchState(
+        search_state_id="run-123",
+        backend=backend,
+        round=1,
+        elite_set=[
+            Candidate(
+                prompt_version="v1",
+                parent_version=None,
+                quality_score=0.95,
+                cost=0.1,
+                round_introduced=1,
+            )
+        ],
+        round_history=[],
     )
 
 
@@ -143,6 +199,86 @@ class TestRunEval:
                     prompt_version="v1",
                     backend="test-backend",
                 )
+
+
+class TestRunHoldoutEval:
+    async def test_backend_setup_preflight_is_unchanged(self, tmp_path: Path) -> None:
+        _setup_run_holdout_eval_guard(tmp_path)
+        mock_registry = SimpleNamespace(list_profiles=lambda: ["anthropic", "openai"])
+
+        with (
+            patch(FINAL_REPORT_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch(FINAL_REPORT_GET_SEARCH_STATE, return_value=_search_state_for_holdout_eval(backend="")),
+            patch(FINAL_REPORT_BACKEND_REGISTRY) as mock_backend_registry,
+        ):
+            mock_backend_registry.from_directory.return_value = mock_registry
+
+            from odysseus.mcp import run_holdout_eval
+
+            result = await run_holdout_eval(ctx=None, run_id="run-123", prompt_versions=["v1"])
+
+        parsed = json.loads(result)
+        assert parsed == {
+            "action_required": "backend_setup",
+            "run_id": "run-123",
+            "available_backends": ["anthropic", "openai"],
+        }
+
+    async def test_success_returns_artifact_manifest(self, tmp_path: Path) -> None:
+        _setup_run_holdout_eval_guard(tmp_path)
+        holdout_eval_dir = tmp_path / "outputs" / "run-123" / "holdout_eval" / "v1"
+        holdout_eval_dir.mkdir(parents=True, exist_ok=True)
+        report_path = holdout_eval_dir / "report.json"
+        report_path.write_text(json.dumps({"metrics": {"accuracy": 0.95}}), encoding="utf-8")
+        results_path = holdout_eval_dir / "results.jsonl"
+        results_path.write_text(
+            "\n".join(
+                [
+                    json.dumps({"__meta__": "run_fingerprint", "prompt_version": "v1"}),
+                    json.dumps({"example_id": "hold-1", "output": {"route": "haiku"}, "error": None}),
+                ]
+            ),
+            encoding="utf-8",
+        )
+        run_config = SimpleNamespace(
+            backend="anthropic",
+            output=SimpleNamespace(
+                report_path=str(report_path),
+                results_path=str(results_path),
+            ),
+        )
+        score_report = _make_stub_score_report(
+            report_path=str(report_path),
+            results_path=str(results_path),
+        )
+
+        with (
+            patch(FINAL_REPORT_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path),
+            patch(FINAL_REPORT_GET_SEARCH_STATE, return_value=_search_state_for_holdout_eval(backend="anthropic")),
+            patch(FINAL_REPORT_GET_CANDIDATE_EXAMPLE_IDS, return_value=[]),
+            patch(FINAL_REPORT_BUILD_PIPELINE_CONFIG, return_value=run_config),
+            patch(FINAL_REPORT_RUN_EVAL, new_callable=AsyncMock, return_value={ScoreReport.CONTEXT_KEY: score_report}),
+        ):
+            from odysseus.mcp import run_holdout_eval
+
+            result = await run_holdout_eval(ctx=None, run_id="run-123", prompt_versions=["v1"])
+
+        parsed = json.loads(result)
+        assert parsed["next_step"] == "build_final_report_briefing"
+        assert len(parsed["evaluations"]) == 1
+
+        evaluation = parsed["evaluations"][0]
+        assert evaluation["prompt_version"] == "v1"
+        assert evaluation["report_path"] == str(report_path)
+        assert evaluation["results_path"] == str(results_path)
+        assert evaluation["baseline_comparison_path"] == str(holdout_eval_dir / "baseline_comparison.json")
+        assert Path(evaluation["baseline_comparison_path"]).is_file()
+
+        assert "metrics" not in evaluation
+        assert "summary" not in evaluation
+        assert "confidence_intervals" not in evaluation
+        assert "holdout_filtered" not in evaluation
+        assert "excluded_example_ids" not in evaluation
 
 
 class TestStagPromptBodies:

@@ -58,6 +58,7 @@ Both readers prefer per-trajectory files when present: if any `child_variants_t<
 - `get_score_report` now delegates to the shared renderer in [`_render.py`](./_render.py), so its diff section follows the canonical `MetricDiff` shape (`key`, `old`, `new`, `status`) and omits confidence intervals from the LLM view.
 - `build_review_briefing` now routes through [`_render.py`](./_render.py) and returns the markdown progressive-disclosure briefing summary used by the Review Agent, rather than exposing the raw `ReviewBriefing` model at the MCP boundary.
 - `build_final_report_briefing` still returns JSON, but `FinalReportBriefing` now carries additive markdown snippet fields (`dev_score_report_md`, `holdout_score_report_md`, `baseline_comparison_md`) that the Final Report agent should prefer over re-rendering the structured payload.
+- `run_holdout_eval` now returns a minimal artifact manifest (`evaluations` with `report_path` / `results_path` and `baseline_comparison_path` when written) rather than duplicating metrics, summaries, or confidence intervals that the Final Report agent already consumes via `build_final_report_briefing`.
 
 ### Deprecated review detail tools
 

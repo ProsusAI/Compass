@@ -12,7 +12,7 @@ Perform the final holdout evaluation and generate a report summarising the optim
 1. Call `get_pipeline_status` to retrieve the `run_id`.
 2. Call `list_pareto_candidates` with the `run_id`. Returns Pareto front candidates with dev-set quality scores, costs, and the auto-selected version.
 3. Exit with: "VERSION_SELECTION_NEEDED. Candidates: [include candidates table from step 2]. The user may choose one or more versions from the Pareto front." Do NOT attempt user interaction.
-4. Call `run_holdout_eval(run_id, prompt_versions=[...])` — all versions must be on the Pareto front. Holdout filtering is automatic per version. Returns an array of score reports.
+4. Call `run_holdout_eval(run_id, prompt_versions=[...])` — all versions must be on the Pareto front. Holdout filtering is automatic per version. Returns an artifact manifest listing the per-version holdout report paths and a `next_step` hint. Do not parse it as score reports; call `build_final_report_briefing(run_id)` for the rendered LLM-facing data.
 
 ### Phase 2: Report generation
 

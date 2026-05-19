@@ -201,7 +201,7 @@ async def list_pareto_candidates(ctx: Context, run_id: str) -> str:
 
 @mcp.tool()
 async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]) -> str:
-    """[Stage 5: Final Report] Run evaluation on the holdout split.
+    """[Stage 5: Final Report] Run holdout evaluation for one or more prompt versions.
 
     Runs evaluation against the hardcoded holdout dataset at
     ``outputs/<run_id>/analysis/holdout.jsonl``.
@@ -212,7 +212,10 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
             Pareto front.
 
     Returns:
-        Serialized list of score reports, one per version.
+        JSON artifact manifest. On success, returns per-version artifact paths;
+        call ``build_final_report_briefing(run_id)`` next for rendered
+        LLM-facing report inputs. If backend setup is still required, returns
+        the existing ``action_required`` payload unchanged.
     """
     project_dir = await _project_dir_mod.resolve_project_dir(ctx)
     check_artifacts(
@@ -251,7 +254,7 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
 
     holdout_path = str(project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl")
 
-    results: list[dict] = []
+    evaluations: list[dict[str, str]] = []
 
     for version in prompt_versions:
         # Auto-filter holdout dataset to exclude few-shot examples for this version
@@ -289,6 +292,8 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
 
         score_report: ScoreReport = result[ScoreReport.CONTEXT_KEY]
 
+        baseline_path: Path | None = None
+
         # Compute and write baseline comparison
         try:
             holdout_jsonl_path = project_dir / "outputs" / run_id / "analysis" / "holdout.jsonl"
@@ -308,26 +313,21 @@ async def run_holdout_eval(ctx: Context, run_id: str, prompt_versions: list[str]
         except Exception:
             logging.getLogger(__name__).warning("Failed to compute baselines", exc_info=True)
 
-        try:
-            report_data = json.loads(Path(run_config.output.report_path).read_text(encoding="utf-8"))
-            ci_data = report_data.get("confidence_intervals") or {}
-        except Exception:
-            ci_data = {}
+        evaluation = {
+            "prompt_version": version,
+            "report_path": score_report.report_path,
+            "results_path": score_report.results_path,
+        }
+        if baseline_path is not None and baseline_path.is_file():
+            evaluation["baseline_comparison_path"] = str(baseline_path)
+        evaluations.append(evaluation)
 
-        results.append(
-            {
-                "prompt_version": version,
-                "report_path": score_report.report_path,
-                "results_path": score_report.results_path,
-                "metrics": score_report.metrics,
-                "summary": score_report.summary.model_dump(mode="json"),
-                "holdout_filtered": bool(example_ids),
-                "excluded_example_ids": example_ids,
-                "confidence_intervals": ci_data,
-            }
-        )
-
-    return json.dumps(results)
+    return json.dumps(
+        {
+            "evaluations": evaluations,
+            "next_step": "build_final_report_briefing",
+        }
+    )
 
 
 @mcp.tool()
