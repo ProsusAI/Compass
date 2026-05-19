@@ -30,6 +30,7 @@ from odysseus.agents.prompt_builder.search_ops import (
 from odysseus.agents.review.models import INITIAL_PARENT_VERSION
 from odysseus.eval.backends.registry import BackendRegistry
 from odysseus.eval.models import MetricConfig, OutputConfig, RunConfig, ScoreReport
+from odysseus.mcp._render import render_search_state_md
 from odysseus.mcp.server import mcp
 
 
@@ -370,13 +371,13 @@ async def get_search_state(run_id: str) -> str:
         run_id: Pipeline run identifier.
 
     Returns:
-        JSON-serialized SearchState.
+        Markdown summary of the SearchState with round history capped to the last 3 rounds.
     """
     try:
         state = _get_search_state_impl(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
-    return state.model_dump_json(indent=2)
+    return render_search_state_md(state, round_history_limit=3)
 
 
 @mcp.tool()

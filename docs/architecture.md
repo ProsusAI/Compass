@@ -160,7 +160,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `register_candidate` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `record_eval_result` | Implemented | Record evaluation results for Pareto tracking | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
 | `advance_step` | Implemented | Strategy-dispatched step advance; implementation provided by the leaf branch's `advance_round` in `search_ops.py` | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
-| `get_search_state` | Implemented | Load current search state | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
+| `get_search_state` | Implemented | Return a markdown summary of the current search state via the shared renderer, with round history capped to the last 3 rounds | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `filter_holdout_dataset` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder/holdout_filter.py`](../odysseus/agents/prompt_builder/holdout_filter.py) |
 | `get_child_variants` | Implemented | Retrieve the current round's child variants (grouped directives per child prompt) for the Prompt Builder | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
 | `get_edit_directives` | Implemented | Back-compat helper: flattens all directives across child variants into a single list | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |

@@ -22,7 +22,7 @@ Read all inputs from the subagent instruction context.
 | `register_candidate` | Register the restructured prompt as a candidate |
 | `record_eval_result` | Record the eval result for Pareto tracking |
 | `advance_step` | Close the round and force convergence |
-| `get_search_state` | Read current search state |
+| `get_search_state` | Read the current search-state summary |
 | `save_prompt` | Save the restructured prompt to disk |
 | `run_eval` | Evaluate the restructured prompt against the dev set |
 

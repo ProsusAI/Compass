@@ -54,6 +54,7 @@ Both readers prefer per-trajectory files when present: if any `child_variants_t<
 ### Renderer-backed markdown surfaces
 
 - `get_routing_context` now validates `routing_context.json` and returns a markdown summary (`## Routing context`, `### Routes`, optional dimensions / ordering) rather than raw JSON.
+- `get_search_state` now delegates to [`_render.py`](./_render.py) and returns a markdown summary (`## Search state`, `### Elite set`, optional `### Recent rounds`) with round history capped to the last 3 rounds by default; on-disk `search_state.json` stays unchanged.
 - `get_score_report` now delegates to the shared renderer in [`_render.py`](./_render.py), so its diff section follows the canonical `MetricDiff` shape (`key`, `old`, `new`, `status`) and omits confidence intervals from the LLM view.
 - `build_final_report_briefing` still returns JSON, but `FinalReportBriefing` now carries additive markdown snippet fields (`dev_score_report_md`, `holdout_score_report_md`, `baseline_comparison_md`) that the Final Report agent should prefer over re-rendering the structured payload.
 

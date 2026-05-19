@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from odysseus.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
 from odysseus.mcp import (
     filter_holdout_dataset,
     get_child_variants,
@@ -20,6 +21,7 @@ _RUN_ID = "test_run"
 
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
+GET_SEARCH_STATE_IMPL = "odysseus.mcp.prompt_building_tools._get_search_state_impl"
 
 
 @contextmanager
@@ -309,3 +311,72 @@ class TestTrajectoryChildVariantsFallback:
             assert len(data) == 1
             assert data[0]["hypothesis"] == "Single-slot variant"
             assert data[0]["directives"][0]["directive_id"] == "single_d1"
+
+
+class TestGetSearchStateTool:
+    @staticmethod
+    def _search_state() -> SearchState:
+        return SearchState(
+            search_state_id="run-1",
+            backend="mock-echo",
+            round=4,
+            elite_set=[
+                Candidate(
+                    prompt_version="v5",
+                    parent_version="v3",
+                    quality_score=0.84,
+                    cost=0.42,
+                    round_introduced=4,
+                )
+            ],
+            round_history=[
+                RoundSummary(
+                    round=1,
+                    candidates_evaluated=["v1"],
+                    new_elite_entries=1,
+                    elite_size=1,
+                    target_improvement=0.10,
+                ),
+                RoundSummary(
+                    round=2,
+                    candidates_evaluated=["v2"],
+                    new_elite_entries=1,
+                    elite_size=2,
+                    target_improvement=0.08,
+                ),
+                RoundSummary(
+                    round=3,
+                    candidates_evaluated=["v3"],
+                    new_elite_entries=2,
+                    elite_size=3,
+                    target_improvement=0.04,
+                ),
+                RoundSummary(
+                    round=4,
+                    candidates_evaluated=["v4"],
+                    new_elite_entries=1,
+                    elite_size=3,
+                    target_improvement=0.02,
+                ),
+            ],
+            loop_phase="review",
+            mutation_mode="targeted",
+            algorithm="__unset__",
+            algorithm_state={},
+        )
+
+    @pytest.mark.asyncio
+    async def test_returns_markdown_summary_with_last_three_rounds_only(self) -> None:
+        state = self._search_state()
+
+        with patch(GET_SEARCH_STATE_IMPL, return_value=state):
+            result = await get_search_state(run_id=_RUN_ID)
+
+        assert "## Search state" in result
+        assert "### Elite set" in result
+        assert "### Recent rounds (last 3 of 4)" in result
+        assert "| 1 | 1 | 1 | 1 | 0.100 | False |" not in result
+        assert "| 2 | 1 | 1 | 2 | 0.080 | False |" in result
+        assert "| 3 | 1 | 2 | 3 | 0.040 | False |" in result
+        assert "| 4 | 1 | 1 | 3 | 0.020 | False |" in result
+        assert "## Algorithm state" not in result
