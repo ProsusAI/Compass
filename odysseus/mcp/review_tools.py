@@ -78,6 +78,17 @@ def _select_confusion_candidates(state: SearchState) -> list[str]:
 
 _DATASET_QUERY_MAX_LIMIT = 50
 
+_DEPRECATED_REVIEW_HISTORY_MESSAGE = (
+    "Deprecated: {tool_name} no longer returns historical data.\n\n"
+    "The source it depended on (`outputs/<run_id>/search/round_reports/`) is no longer written by any "
+    "production code path.\n\n"
+    "Current context:\n"
+    "- directive outcomes appear in `build_review_briefing` under the section starting with "
+    "`## Last round directives & outcomes`\n"
+    "- per-version score detail is available via `get_score_report`\n\n"
+    "This tool is retained as a surface placeholder and may be removed in a future release."
+)
+
 
 def _query_jsonl_dataset(
     dataset_path: Path,
@@ -900,55 +911,14 @@ async def get_directive_history(
     limit: int = 20,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Review] Return markdown table of DirectiveOutcomes from prior rounds.
+    """Deprecated. This tool no longer returns historical directive outcomes.
 
-    Args:
-        run_id: Pipeline run identifier.
-        since_round: Only include rounds >= this value (default: all rounds).
-        limit: Max rows (default 20).
-        output_dir: Output directory (default "outputs").
-
-    Returns:
-        Markdown table of directive outcomes loaded from round reports.
-
-    Note: relies on legacy ``outputs/<run_id>/search/round_reports/``; on fresh
-    runs without a writer this returns empty. See follow-up task to either
-    synthesize from eval reports or deprecate.
+    Replacement paths:
+    - recent directive outcomes appear in `build_review_briefing` under the
+      section starting with `## Last round directives & outcomes`
+    - per-version score detail remains available via `get_score_report`
     """
-    from odysseus.agents.review.ops import load_round_reports
-
-    project_dir = await _resolve_project_dir(ctx)
-    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-
-    historical = load_round_reports(run_id, output_dir=out)
-    if not historical:
-        return "No round reports found."
-
-    rows: list[tuple[int, str, str, str, str]] = []
-    for rnd, versions in sorted(historical.items()):
-        if since_round is not None and rnd < since_round:
-            continue
-        for version, report_data in versions.items():
-            if not isinstance(report_data, dict):
-                continue
-            metrics = report_data.get("metrics", {})
-            quality = metrics.get("quality_change", metrics.get("accuracy", "?"))
-            cost = metrics.get("cost_change_with_overhead", metrics.get("cost_change", "?"))
-            rows.append((rnd, version, str(quality), str(cost), "—"))
-
-    rows = rows[:limit]
-    if not rows:
-        return "No directive history found matching criteria."
-
-    lines = [
-        "## Directive history",
-        "",
-        "| round | version | quality | cost | outcome |",
-        "|---|---|---|---|---|",
-    ]
-    for rnd, ver, q, c, outcome in rows:
-        lines.append(f"| {rnd} | `{ver}` | {q} | {c} | {outcome} |")
-    return "\n".join(lines)
+    return _DEPRECATED_REVIEW_HISTORY_MESSAGE.format(tool_name="get_directive_history")
 
 
 @mcp.tool()
@@ -958,51 +928,14 @@ async def get_batch_outcomes(
     round: int | None = None,
     output_dir: str = "outputs",
 ) -> str:
-    """[Stage 4: Review] Return markdown of BatchOutcomes for one round or all rounds.
+    """Deprecated. This tool no longer returns historical batch outcomes.
 
-    Args:
-        run_id: Pipeline run identifier.
-        round: Specific round to load (default: all rounds).
-        output_dir: Output directory (default "outputs").
-
-    Returns:
-        Markdown table of batch outcomes loaded from round reports.
-
-    Note: relies on legacy ``outputs/<run_id>/search/round_reports/``; on fresh
-    runs without a writer this returns empty. See follow-up task to either
-    synthesize from eval reports or deprecate.
+    Replacement paths:
+    - recent directive outcomes appear in `build_review_briefing` under the
+      section starting with `## Last round directives & outcomes`
+    - per-version score detail remains available via `get_score_report`
     """
-    from odysseus.agents.review.ops import load_round_reports
-
-    project_dir = await _resolve_project_dir(ctx)
-    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
-
-    historical = load_round_reports(run_id, output_dir=out)
-    if not historical:
-        return "No round reports found."
-
-    lines = ["## Batch outcomes", ""]
-    found_any = False
-    for rnd, versions in sorted(historical.items()):
-        if round is not None and rnd != round:
-            continue
-        lines.append(f"### Round {rnd}")
-        lines += ["", "| version | quality | cost | errors |", "|---|---|---|---|"]
-        for version, report_data in versions.items():
-            if not isinstance(report_data, dict):
-                continue
-            metrics = report_data.get("metrics", {})
-            quality = metrics.get("quality_change", metrics.get("accuracy", "?"))
-            cost = metrics.get("cost_change_with_overhead", metrics.get("cost_change", "?"))
-            summary = report_data.get("summary", {})
-            nerrors = summary.get("failed", "?")
-            lines.append(f"| `{version}` | {quality} | {cost} | {nerrors} |")
-        lines.append("")
-        found_any = True
-
-    if not found_any:
-        return f"No batch outcomes found for round {round}."
-    return "\n".join(lines)
+    return _DEPRECATED_REVIEW_HISTORY_MESSAGE.format(tool_name="get_batch_outcomes")
 
 
 @mcp.tool()

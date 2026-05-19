@@ -10,6 +10,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from odysseus.mcp.server import STAGE_REGISTRY, mcp, set_active_stage
 
 _RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
+_DEPRECATED_REVIEW_TOOLS = {"get_directive_history", "get_batch_outcomes"}
 
 
 @pytest.fixture()
@@ -87,6 +88,7 @@ def test_review_cold_includes_dev_queries_but_excludes_prompt_and_holdout_tools(
     assert "query_dev_examples" in cold_tools
     assert "get_prompt_text" not in cold_tools
     assert "query_holdout_examples" not in cold_tools
+    assert _DEPRECATED_REVIEW_TOOLS.isdisjoint(cold_tools)
 
 
 def test_review_steady_includes_prompt_and_dataset_row_tools():
@@ -95,6 +97,7 @@ def test_review_steady_includes_prompt_and_dataset_row_tools():
     assert "get_prompt_text" in review_tools
     assert "query_dev_examples" in review_tools
     assert "query_holdout_examples" in review_tools
+    assert _DEPRECATED_REVIEW_TOOLS.isdisjoint(review_tools)
 
 
 def test_every_stage_includes_get_pipeline_status():
@@ -142,7 +145,7 @@ async def test_all_registered_tools_appear_in_at_least_one_stage():
         all_stage_tools.update(tools)
 
     missing = all_tool_names - all_stage_tools
-    assert not missing, f"Tools not in any stage: {missing}"
+    assert missing == _DEPRECATED_REVIEW_TOOLS, f"Unexpected tools not in any stage: {missing}"
 
 
 # ---------------------------------------------------------------------------

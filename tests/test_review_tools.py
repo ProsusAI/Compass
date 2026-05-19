@@ -18,6 +18,7 @@ from odysseus.mcp import (
     query_holdout_examples,
     record_directive_outcomes,
 )
+from odysseus.mcp.review_tools import get_batch_outcomes, get_directive_history
 
 _RESOLVE_PROJECT_DIR = "odysseus.mcp.review_tools._resolve_project_dir"
 _SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
@@ -60,6 +61,20 @@ _CHILD_VARIANTS = [
         ],
     }
 ]
+
+
+class TestDeprecatedReviewHistoryTools:
+    async def test_get_directive_history_returns_deprecation_message(self) -> None:
+        result = await get_directive_history(ctx=None, run_id="r1")
+        assert result.startswith("Deprecated: get_directive_history")
+        assert "build_review_briefing" in result
+        assert "get_score_report" in result
+
+    async def test_get_batch_outcomes_returns_deprecation_message(self) -> None:
+        result = await get_batch_outcomes(ctx=None, run_id="r1")
+        assert result.startswith("Deprecated: get_batch_outcomes")
+        assert "round_reports" in result
+        assert "future release" in result
 
 
 class TestRecordDirectiveOutcomesDecomposed:

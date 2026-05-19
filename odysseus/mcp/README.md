@@ -59,6 +59,11 @@ Both readers prefer per-trajectory files when present: if any `child_variants_t<
 - `build_review_briefing` now routes through [`_render.py`](./_render.py) and returns the markdown progressive-disclosure briefing summary used by the Review Agent, rather than exposing the raw `ReviewBriefing` model at the MCP boundary.
 - `build_final_report_briefing` still returns JSON, but `FinalReportBriefing` now carries additive markdown snippet fields (`dev_score_report_md`, `holdout_score_report_md`, `baseline_comparison_md`) that the Final Report agent should prefer over re-rendering the structured payload.
 
+### Deprecated review detail tools
+
+- `get_directive_history` and `get_batch_outcomes` are deprecated surface placeholders. They now return a deprecation message because the legacy `outputs/<run_id>/search/round_reports/` artifact they depended on is no longer written by production code.
+- Both tools are intentionally removed from the `review_cold` / `review` stage allowlists, so agents should use `build_review_briefing` for recent directive outcomes and `get_score_report` for per-version detail instead.
+
 ## Model routing hints
 
 `optimize_routing_prompt` and `get_pipeline_status` embed two-layer routing hints. Source of truth: `_REVIEW_AGENT_PROMPT_NAMES` in `server.py`. Resolver: `recommended_model_for(activate_prompt)` in `orchestrator_tools.py`.

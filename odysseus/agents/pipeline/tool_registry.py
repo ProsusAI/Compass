@@ -7,8 +7,6 @@ COLD_REVIEW_TOOLS: list[str] = [
     "query_dev_examples",
     "get_score_report",
     "get_confusion_cell",
-    "get_directive_history",
-    "get_batch_outcomes",
     "get_round_child_variants",
 ]
 
@@ -21,8 +19,6 @@ REVIEW_TOOLS: list[str] = [
     "query_holdout_examples",
     "get_score_report",
     "get_confusion_cell",
-    "get_directive_history",
-    "get_batch_outcomes",
     "get_round_child_variants",
 ]
 

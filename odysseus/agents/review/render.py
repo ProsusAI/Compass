@@ -188,12 +188,6 @@ def _render_last_round_directives(briefing: ReviewBriefing) -> str:
     ]
     for d in dh:
         lines.append(f"- `{d.prior_directive_id}` → {d.outcome}")
-
-    lines.append("")
-    lines.append(
-        "Use `get_directive_history(since_round=...)` for older history; "
-        "`get_batch_outcomes(round=...)` for full outcome metrics."
-    )
     return "\n".join(lines)
 
 

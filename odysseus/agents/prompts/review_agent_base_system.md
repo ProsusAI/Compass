@@ -111,9 +111,7 @@ Call these only when you need more than the briefing summary provides.
 
 - Need full per-row errors for a candidate? → `get_score_report(version="v3.2")`.
 - Drilling into a confusion cell? → `get_confusion_cell(true_route="X", predicted_route="Y")`.
-- Looking at older directive outcomes? → `get_directive_history(since_round=3)`.
 - Need full body of a child variant directive? → `get_round_child_variants(round=4, with_directive_bodies=True)`.
-- Round-level batch outcomes? → `get_batch_outcomes(round=4)`.
 - Need concrete dev-set examples? → `query_dev_examples(run_id, route="X")`.
 - Need per-route oracle aggregates or row-level cost/quality? → `get_dataset_oracle_distribution(run_id, route="X")` (or `example_ids=[...]`).
 - Need the full per-class recall table (including low-support routes)? → `get_per_class_recall(run_id)`.
