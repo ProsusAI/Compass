@@ -97,7 +97,7 @@ _S4_BUILD_BODY = (
     "Sub-agent tools: get_pipeline_status, get_search_state, get_routing_context, "
     "get_child_variants, get_edit_directives, get_prompt_text, get_score_report, "
     "init_search_state, register_candidate, record_eval_result, "
-    "advance_step, save_prompt, run_eval"
+    "advance_step, save_prompt, run_batch_eval"
 )
 _S4_BUILD_TAIL = (
     "\n"
@@ -128,14 +128,14 @@ _S4_RECOVERY_PARA = (
 
 _SNAP_BUILD_V1 = _S4_BUILD_BODY + _S4_BUILD_TAIL
 _SNAP_BUILD_OPTIMIZE = _S4_DISPATCH_CTX + _S4_BUILD_BODY + _S4_BUILD_TAIL
-_SNAP_BUILD_RECOVER = _S4_BUILD_BODY + ", run_batch_eval" + _S4_RECOVERY_PARA + _S4_BUILD_TAIL
+_SNAP_BUILD_RECOVER = _S4_BUILD_BODY + _S4_RECOVERY_PARA + _S4_BUILD_TAIL
 
 _SNAP_STAGE_4_RERUN = (
     "<HARD_STOP>\n" + _NO + "You MUST NOT call any Stage 4 build-phase tools from the current context.\n\n"
     "REQUIRED: Spawn a sub-agent with the `sub_agent_prompt` field returned by `start_stage` as its prompt.\n\n"
     "Sub-agent tools: get_pipeline_status, get_search_state, get_routing_context, "
     "get_prompt_text, init_search_state, register_candidate, record_eval_result, "
-    "advance_step, save_prompt, run_eval\n"
+    "advance_step, save_prompt, run_batch_eval\n"
     "Your tools: get_pipeline_status only\n\n"
     "NOTE: This is a rerun — the Prompt Builder Rerun agent will restructure the existing prompt "
     "for the new backend. Source prompt version: '{source_prompt_version}'. "

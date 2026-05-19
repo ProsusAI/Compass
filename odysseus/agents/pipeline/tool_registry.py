@@ -36,7 +36,6 @@ BUILD_TOOLS: list[str] = [
     "record_eval_result",
     "advance_step",
     "save_prompt",
-    "run_eval",
     "run_batch_eval",
 ]
 
@@ -49,5 +48,5 @@ RERUN_TOOLS: list[str] = [
     "record_eval_result",
     "advance_step",
     "save_prompt",
-    "run_eval",
+    "run_batch_eval",
 ]

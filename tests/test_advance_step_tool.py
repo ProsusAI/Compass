@@ -9,12 +9,17 @@ import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
 from odysseus.agents.prompt_builder.search_ops import (
+    _BRANCH_ALGORITHM,
     init_search_state,
     record_eval_result,
     register_candidate,
 )
 
 
+@pytest.mark.skipif(
+    _BRANCH_ALGORITHM == "__unset__",
+    reason="leaf-branch advance_step behavior is not available on pipeline",
+)
 async def test_advance_step_returns_round_summary_for_beam(tmp_path) -> None:
     """advance_step returns a JSON RoundSummary dict after processing beam candidates."""
     from odysseus.mcp.prompt_building_tools import advance_step

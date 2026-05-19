@@ -121,11 +121,11 @@ def test_orchestrator_stage_has_only_expected_tools():
 
 
 def test_no_stage_specific_tools_in_orchestrator():
-    """Stage-specific tools like submit_input_report, run_eval etc. are NOT in orchestrator."""
+    """Stage-specific tools like submit_input_report and run_batch_eval are NOT in orchestrator."""
     orchestrator_tools = set(STAGE_REGISTRY["orchestrator"])
     stage_only_tools = {
         "submit_input_report",
-        "run_eval",
+        "run_batch_eval",
         "detect_and_parse_dataset",
         "get_default_pricing",
         "init_search_state",

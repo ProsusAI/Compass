@@ -36,7 +36,6 @@ from odysseus.mcp.prompt_building_tools import (
     record_eval_result,
     register_candidate,
     run_batch_eval,
-    run_eval,
 )
 from odysseus.mcp.prompts import (
     odysseus_review_agent_cold_start,
@@ -114,7 +113,6 @@ __all__ = [
     "record_eval_result",
     "register_candidate",
     "run_batch_eval",
-    "run_eval",
     "run_holdout_eval",
     "save_final_report",
     "save_routing_context",

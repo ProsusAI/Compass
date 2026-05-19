@@ -54,10 +54,10 @@ _STAGE_4_BUILD_BASE_TOOLS: list[str] = [
     "record_eval_result",
     "advance_step",
     "save_prompt",
-    "run_eval",
+    "run_batch_eval",
 ]
 
-_STAGE_4_BUILD_RECOVERY_TOOLS: list[str] = _STAGE_4_BUILD_BASE_TOOLS + ["run_batch_eval"]
+_STAGE_4_BUILD_RECOVERY_TOOLS: list[str] = list(_STAGE_4_BUILD_BASE_TOOLS)
 
 _STAGE_4_RERUN_TOOLS: list[str] = [
     "get_pipeline_status",
@@ -69,7 +69,7 @@ _STAGE_4_RERUN_TOOLS: list[str] = [
     "record_eval_result",
     "advance_step",
     "save_prompt",
-    "run_eval",
+    "run_batch_eval",
 ]
 
 _STAGE_4_REVIEW_TOOLS: list[str] = [

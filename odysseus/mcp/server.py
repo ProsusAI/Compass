@@ -76,7 +76,6 @@ STAGE_REGISTRY: dict[str, list[str]] = {
     "prompt_building": [
         "init_search_state",
         "register_candidate",
-        "run_eval",
         "run_batch_eval",
         "record_eval_result",
         "advance_step",
@@ -111,7 +110,6 @@ STAGE_REGISTRY: dict[str, list[str]] = {
         "query_eval_results",
         "get_prompt_text",
         "get_search_state",
-        "run_eval",
         "get_score_report",
         "get_confusion_cell",
         "get_round_child_variants",

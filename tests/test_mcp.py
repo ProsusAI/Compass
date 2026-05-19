@@ -13,7 +13,6 @@ from odysseus.agents.prompt_builder.search import Candidate, SearchState
 from odysseus.eval.models import RunSummary, ScoreReport
 from odysseus.mcp import _PROJECT_ROOT, _load_text, mcp, model_specific_conventions
 
-AGENT_RUN = "odysseus.mcp.prompt_building_tools._run_eval"
 RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
 FINAL_REPORT_RESOLVE_PROJECT_DIR = "odysseus.mcp.final_report_tools._project_dir_mod.resolve_project_dir"
 FINAL_REPORT_GET_SEARCH_STATE = "odysseus.mcp.final_report_tools.get_search_state"
@@ -36,11 +35,11 @@ async def test_run_holdout_eval_registered():
     assert "run_holdout_eval" in tool_names
 
 
-async def test_run_eval_tool_registered():
-    """run_eval must be registered as an MCP tool."""
+async def test_run_batch_eval_tool_registered():
+    """run_batch_eval must be registered as an MCP tool."""
     tools = await mcp.list_tools()
     tool_names = [t.name for t in tools]
-    assert "run_eval" in tool_names
+    assert "run_batch_eval" in tool_names
 
 
 async def test_run_holdout_eval_tool_registered():
@@ -124,81 +123,6 @@ def _search_state_for_holdout_eval(*, backend: str) -> SearchState:
         ],
         round_history=[],
     )
-
-
-class TestRunEval:
-    """Integration tests for the run_eval MCP tool."""
-
-    async def test_success_returns_paths(self):
-        """Successful run returns JSON with report_path, results_path, metrics, and summary."""
-        score_report = _make_stub_score_report()
-
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
-            mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
-
-            from odysseus.mcp import run_eval
-
-            result = await run_eval(
-                ctx=None,
-                prompt_version="v1",
-                backend="test-backend",
-            )
-
-        parsed = json.loads(result)
-        assert parsed["report_path"] == "outputs/report.json"
-        assert parsed["results_path"] == "outputs/results.jsonl"
-        assert parsed["metrics"] == {"accuracy": 0.95}
-        assert parsed["summary"]["total_cost"] == 0.01
-
-    async def test_agent_receives_correct_context(self):
-        """MCP tool passes all parameters to agent context."""
-        score_report = _make_stub_score_report()
-
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
-            mock_run.return_value = {ScoreReport.CONTEXT_KEY: score_report}
-
-            from odysseus.mcp import run_eval
-
-            await run_eval(
-                ctx=None,
-                prompt_version="v3",
-                backend="openai",
-                config_path="custom/config.yaml",
-            )
-
-        context = mock_run.call_args.args[0]
-        assert context["prompt_version"] == "v3"
-        assert context["backend"] == "openai"
-        assert context["config_path"] == "custom/config.yaml"
-        assert "data_source" not in context
-
-    async def test_agent_error_raises_tool_error(self):
-        """Agent error dict is translated to ToolError."""
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
-            mock_run.return_value = {"error": {"category": "not_found", "detail": "config missing"}}
-
-            from odysseus.mcp import run_eval
-
-            with pytest.raises(ToolError, match="not_found"):
-                await run_eval(
-                    ctx=None,
-                    prompt_version="v1",
-                    backend="test-backend",
-                )
-
-    async def test_validation_error_raises_tool_error(self):
-        """Agent validation error is translated to ToolError."""
-        with patch(AGENT_RUN, new_callable=AsyncMock) as mock_run, patch(RESOLVE_PROJECT_DIR, new_callable=AsyncMock):
-            mock_run.return_value = {"error": {"category": "validation_error", "detail": "bad config"}}
-
-            from odysseus.mcp import run_eval
-
-            with pytest.raises(ToolError, match="validation_error"):
-                await run_eval(
-                    ctx=None,
-                    prompt_version="v1",
-                    backend="test-backend",
-                )
 
 
 class TestRunHoldoutEval:

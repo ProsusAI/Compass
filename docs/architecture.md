@@ -24,7 +24,7 @@ graph TD
 |---|---|---|---|---|---|
 | User Input | LLM-driven | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md), [`odysseus/agents/user_input/report.py`](../odysseus/agents/user_input/report.py) | Done | (user conversation) | `validated_input_report_path` |
 | Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py), [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path`, `dev_jsonl_path`, `holdout_jsonl_path`, `split_report_path` (debug-only) |
-| Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py), [`odysseus/agents/prompts/eval_runner_system.md`](../odysseus/agents/prompts/eval_runner_system.md) | Done | `prompt_version`, `data_source`, `backend`, `run_config` or `config_path` | `eval_score_report` |
+| Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py) | Done | `prompt_version`, `data_source`, `backend`, `run_config` or `config_path` | `eval_score_report` |
 | Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
 | Prompt Builder Rerun | LLM-driven | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) | Done | `run_id`, `source_prompt_version`, `new_backend` (from subagent instruction) | `prompt_version` (restructured) |
@@ -131,8 +131,7 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | Name | Status | Purpose | Backing Module |
 |---|---|---|---|
 | `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
-| `run_eval` | Implemented | Run an evaluation of a prompt version against a dataset (dev split) | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py) |
-| `run_batch_eval` | Implemented | Evaluate multiple prompt candidates concurrently; `candidates=[]` triggers recovery mode (commit 4) | [`odysseus/eval/batch_eval.py`](../odysseus/eval/batch_eval.py) |
+| `run_batch_eval` | Implemented | Evaluate one or more prompt candidates concurrently; `candidates=[]` triggers recovery mode. | [`odysseus/eval/batch_eval.py`](../odysseus/eval/batch_eval.py) |
 | `run_holdout_eval` | Implemented | Run evaluation on the holdout split with one or more Pareto-front prompt versions (Final Report agent only). Also computes baseline comparisons and returns an artifact manifest (`report_path`, `results_path`, optional `baseline_comparison_path`) for the next `build_final_report_briefing` step. | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
 | `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
 | `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) |
@@ -179,9 +178,9 @@ The orchestrator calls `start_stage(run_id)` before spawning a sub-agent (no `st
 | `input_report` | `submit_input_report`, `get_pipeline_status` |
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_routing_context`, `stratified_split`, `get_pipeline_status` |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` |
-| `prompt_building` | `init_search_state`, `register_candidate`, `run_eval`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `get_routing_context`, `get_edit_directives`, `get_child_variants`, `get_prompt_text`, `get_score_report`, `save_prompt`, `signal_eval_complete`, `get_pipeline_status` |
+| `prompt_building` | `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `get_routing_context`, `get_edit_directives`, `get_child_variants`, `get_prompt_text`, `get_score_report`, `save_prompt`, `signal_eval_complete`, `get_pipeline_status` |
 | `review_cold` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `get_search_state`, `get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `get_dataset_oracle_distribution`, `get_per_class_recall`, `get_pipeline_status` |
-| `review` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `run_eval`, `get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `get_dataset_oracle_distribution`, `get_per_class_recall`, `get_pipeline_status` |
+| `review` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `get_dataset_oracle_distribution`, `get_per_class_recall`, `get_pipeline_status` |
 | `calibration` | Algorithm-specific phase — tool set defined by the leaf branch |
 | `final_report` | `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `get_pipeline_status` |
 

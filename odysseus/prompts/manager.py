@@ -67,4 +67,3 @@ class FilePromptManager:
         content = self._cache[version]
         logger.info("Loaded prompt version '%s' (resolved from 'latest')", version)
         return content
-

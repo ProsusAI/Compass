@@ -393,7 +393,7 @@ class TestStage4ThreePhaseDetection:
         tools = result["available_tools"]
         assert "init_search_state" in tools
         assert "register_candidate" in tools
-        assert "run_eval" in tools
+        assert "run_batch_eval" in tools
         assert "build_review_briefing" not in tools
 
     def test_review_phase_available_tools(self, tmp_path: Path) -> None:
@@ -566,7 +566,7 @@ class TestStage4RerunMode:
         tools = result["available_tools"]
         assert "init_search_state" in tools
         assert "register_candidate" in tools
-        assert "run_eval" in tools
+        assert "run_batch_eval" in tools
         assert "advance_step" in tools
         assert "build_review_briefing" not in tools
 
@@ -878,9 +878,9 @@ class TestStage4BuildInstructionByteIdentical:
         result = STAGE_4_BUILD_INSTRUCTION(recover_active_evals=True)
         assert "run_batch_eval" in result
 
-    def test_non_recovery_has_no_run_batch_eval(self) -> None:
+    def test_non_recovery_has_run_batch_eval_in_tools(self) -> None:
         for variant in [STAGE_4_BUILD_INSTRUCTION(), STAGE_4_BUILD_INSTRUCTION(is_first_round=True)]:
-            assert "run_batch_eval" not in variant
+            assert "run_batch_eval" in variant
 
     def test_recovery_has_recovery_mode_paragraph(self) -> None:
         result = STAGE_4_BUILD_INSTRUCTION(recover_active_evals=True)

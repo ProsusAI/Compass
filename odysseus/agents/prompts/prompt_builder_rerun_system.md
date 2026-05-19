@@ -24,7 +24,7 @@ Read all inputs from the subagent instruction context.
 | `advance_step` | Close the round and force convergence |
 | `get_search_state` | Read the current search-state summary |
 | `save_prompt` | Save the restructured prompt to disk |
-| `run_eval` | Evaluate the restructured prompt against the dev set |
+| `run_batch_eval` | Evaluate the restructured prompt against the dev set |
 
 > `optimize_routing_prompt` is the pipeline entry-point for orchestrators — do not call it.
 
@@ -67,13 +67,13 @@ Read all inputs from the subagent instruction context.
 
 8. **Register candidate.** `register_candidate(run_id=run_id, prompt_version="v<N>", example_ids=[])`.
 
-9. **Evaluate.** `run_eval(prompt_version="v<N>", data_source=outputs/<run_id>/analysis/dev.jsonl, backend=new_backend)`.
+9. **Evaluate.** `run_batch_eval(run_id=run_id, candidates=[{"prompt_version": "v<N>", "example_ids": []}])`.
 
-10. **Extract scores.** From ScoreReport: `quality_score` from `metrics.quality_change`; `cost` from `metrics.cost_change_with_overhead`. Both are signed fractions — pass through unchanged. Do NOT use `metrics.accuracy`.
+10. **Extract scores.** From the single succeeded entry in `BatchEvalResult.succeeded`, read `quality_score` from `metrics.quality_change` and `cost` from `metrics.cost_change_with_overhead`. Both are signed fractions — pass through unchanged. Do NOT use `metrics.accuracy`.
 
-11. **Record result.** `record_eval_result(search_state_id, "v<N>", quality_score, cost)`.
+11. **Record result.** `record_eval_result(run_id, "v<N>", quality_score, cost)`.
 
-12. **Advance round.** `advance_step(search_state_id)`. The returned `RoundSummary` must have `converged: true`.
+12. **Advance round.** `advance_step(run_id)`. The returned `RoundSummary` must have `converged: true`.
 
 ## Constraints
 

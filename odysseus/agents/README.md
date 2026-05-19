@@ -55,7 +55,6 @@ One system prompt per LLM-driven agent:
 | [`prompts/review_agent_cold_start_base_system.md`](prompts/review_agent_cold_start_base_system.md) | Review Agent — cold-start phase base ("formulate diverse strategies" flow) |
 | [`prompts/review_agent_iterative_overlay_hillclimb.md`](prompts/review_agent_iterative_overlay_hillclimb.md) | Review Agent — iterative overlay for hill_climb |
 | [`prompts/review_agent_cold_start_overlay_hillclimb.md`](prompts/review_agent_cold_start_overlay_hillclimb.md) | Review Agent — cold-start overlay for hill_climb |
-| [`prompts/eval_runner_system.md`](prompts/eval_runner_system.md) | Eval Runner Agent context |
 | [`prompts/final_report_system.md`](prompts/final_report_system.md) | Final Report Agent (Stage 6) |
 
 ---

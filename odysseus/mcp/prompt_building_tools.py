@@ -1,14 +1,12 @@
-"""Prompt building tools — search state, candidates, eval, holdout filter."""
+"""Prompt building tools — search state, candidates, batch eval, holdout filter."""
 
 import json
 from pathlib import Path
-from typing import Any
 
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
 
 import odysseus.project_dir as _project_dir_mod
-from odysseus.agents.eval_runner import run_eval as _run_eval
 from odysseus.agents.pipeline.dispatch import clear_build_dispatched, record_build_dispatched
 from odysseus.agents.pipeline.guards import check_artifacts
 from odysseus.agents.prompt_builder.search import SearchState
@@ -28,8 +26,7 @@ from odysseus.agents.prompt_builder.search_ops import (
     register_candidate as _register_candidate_impl,
 )
 from odysseus.agents.review.models import INITIAL_PARENT_VERSION
-from odysseus.eval.backends.registry import BackendRegistry
-from odysseus.eval.models import MetricConfig, OutputConfig, RunConfig, ScoreReport
+from odysseus.eval.models import MetricConfig, OutputConfig, RunConfig
 from odysseus.mcp._render import render_search_state_md
 from odysseus.mcp.server import mcp
 
@@ -158,97 +155,6 @@ async def register_candidate(
 
 
 @mcp.tool()
-async def run_eval(
-    ctx: Context,
-    prompt_version: str,
-    backend: str = "",
-    config_path: str = "outputs/run_config.yaml",
-    run_id: str | None = None,
-) -> str:
-    """[Stage 4: Refinement Loop] Run an evaluation of a prompt version against the dev dataset.
-
-    The dev dataset path is hardcoded to ``outputs/<run_id>/analysis/dev.jsonl``
-    for pipeline runs.  Standalone runs read ``data_source`` from the YAML config.
-
-    Args:
-        prompt_version: Prompt version identifier (e.g. "v3", "latest").
-        backend: Backend label. Optional for pipeline runs (resolved from search state).
-        config_path: Path to YAML config. Ignored for pipeline runs.
-        run_id: Pipeline run identifier. When provided, config is built
-                from pipeline state instead of reading a YAML file.
-
-    Returns:
-        JSON object with report_path and results_path pointing to
-        the full evaluation output on disk, OR an action_required
-        object on first run.
-    """
-    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
-
-    run_config: RunConfig | None = None
-    data_source: str | None = None
-    if run_id is not None:
-        check_artifacts(
-            project_dir / "outputs" / run_id / "analysis" / "dev.jsonl",
-            stage=4,
-            stage_name="Refinement Loop",
-            hint="Complete data validation and dataset split first.",
-        )
-
-        # Hardcode dev split — agents cannot choose the dataset
-        data_source = str(project_dir / "outputs" / run_id / "analysis" / "dev.jsonl")
-
-        state = _get_search_state_impl(run_id=run_id)
-
-        # Pre-flight: signal backend setup needed when backend is missing
-        if not state.backend:
-            registry = BackendRegistry.from_directory(project_dir / "backends")
-            return json.dumps(
-                {
-                    "action_required": "backend_setup",
-                    "run_id": run_id,
-                    "available_backends": registry.list_profiles(),
-                }
-            )
-
-        # Build config from pipeline state
-        run_config = build_pipeline_config(
-            state=state,
-            prompt_version=prompt_version,
-            data_source=data_source,
-            run_id=run_id,
-            project_dir=project_dir,
-        )
-
-    context: dict[str, Any] = {
-        "prompt_version": prompt_version,
-        "backend": run_config.backend if run_config else backend,
-        "run_id": run_id,
-    }
-    if data_source is not None:
-        context["data_source"] = data_source
-    if run_config is not None:
-        context["run_config"] = run_config
-    else:
-        context["config_path"] = config_path
-
-    result = await _run_eval(context)
-
-    if "error" in result:
-        err = result["error"]
-        raise ToolError(f"run_eval failed: [{err['category']}] {err['detail']}")
-
-    score_report: ScoreReport = result[ScoreReport.CONTEXT_KEY]
-    return json.dumps(
-        {
-            "report_path": score_report.report_path,
-            "results_path": score_report.results_path,
-            "metrics": score_report.metrics,
-            "summary": score_report.summary.model_dump(mode="json"),
-        }
-    )
-
-
-@mcp.tool()
 async def run_batch_eval(
     ctx: Context,
     run_id: str,
@@ -264,6 +170,9 @@ async def run_batch_eval(
     Returns a JSON-serialised BatchEvalResult with `succeeded` and
     `failed` lists. Per-candidate failures land in `failed`; only
     programming errors raise.
+
+    Pass a single-element `candidates` list for algorithms that evaluate one
+    version per cycle (e.g. hill-climb, SMS-EMOA post-seeding).
 
     Recovery mode (calling with `candidates=[]`) is wired in commit 4.
     """
