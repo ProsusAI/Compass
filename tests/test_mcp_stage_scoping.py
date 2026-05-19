@@ -42,10 +42,11 @@ def test_stage_registry_has_all_stages():
     assert set(STAGE_REGISTRY) == expected
 
 
-def test_calibration_excludes_prompt_and_holdout_tools():
-    """calibration toolbelt must not include get_prompt_text or query_holdout_examples."""
+def test_calibration_excludes_prompt_and_dataset_row_tools():
+    """calibration toolbelt must not include prompt text or dataset row query tools."""
     calibration_tools = set(STAGE_REGISTRY["calibration"])
     assert "get_prompt_text" not in calibration_tools
+    assert "query_dev_examples" not in calibration_tools
     assert "query_holdout_examples" not in calibration_tools
 
 
@@ -68,28 +69,31 @@ def test_calibration_includes_builder_tools():
 
 
 async def test_calibration_stage_filtering():
-    """set_active_stage('calibration') excludes get_prompt_text and query_holdout_examples."""
+    """set_active_stage('calibration') excludes prompt text and dataset row query tools."""
     set_active_stage("calibration")
     tools = await mcp.list_tools()
     tool_names = {t.name for t in tools}
     assert "get_prompt_text" not in tool_names
+    assert "query_dev_examples" not in tool_names
     assert "query_holdout_examples" not in tool_names
     # Builder tools must be included
     assert "run_batch_eval" in tool_names
     assert "advance_step" in tool_names
 
 
-def test_review_cold_excludes_prompt_and_holdout_tools():
-    """review_cold toolbelt must not include get_prompt_text or query_holdout_examples."""
+def test_review_cold_includes_dev_queries_but_excludes_prompt_and_holdout_tools():
+    """review_cold can query dev rows, but still cannot inspect prompts or holdout rows."""
     cold_tools = set(STAGE_REGISTRY["review_cold"])
+    assert "query_dev_examples" in cold_tools
     assert "get_prompt_text" not in cold_tools
     assert "query_holdout_examples" not in cold_tools
 
 
-def test_review_steady_includes_prompt_and_holdout_tools():
-    """Steady review toolbelt must include get_prompt_text and query_holdout_examples."""
+def test_review_steady_includes_prompt_and_dataset_row_tools():
+    """Steady review toolbelt must include prompt text plus both dataset row query tools."""
     review_tools = set(STAGE_REGISTRY["review"])
     assert "get_prompt_text" in review_tools
+    assert "query_dev_examples" in review_tools
     assert "query_holdout_examples" in review_tools
 
 

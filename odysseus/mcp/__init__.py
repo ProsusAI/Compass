@@ -64,6 +64,7 @@ from odysseus.mcp.review_tools import (
     get_per_class_recall,
     get_prompt_text,
     get_score_report,
+    query_dev_examples,
     query_holdout_examples,
     record_directive_outcomes,
 )
@@ -105,6 +106,7 @@ __all__ = [
     "get_search_state",
     "init_search_state",
     "optimize_routing_prompt",
+    "query_dev_examples",
     "query_holdout_examples",
     "record_directive_outcomes",
     "record_eval_result",

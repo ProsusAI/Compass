@@ -93,6 +93,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
     "review_cold": [
         "build_review_briefing",
         "record_directive_outcomes",
+        "query_dev_examples",
         "get_search_state",
         "get_score_report",
         "get_confusion_cell",
@@ -106,6 +107,7 @@ STAGE_REGISTRY: dict[str, list[str]] = {
     "review": [
         "build_review_briefing",
         "record_directive_outcomes",
+        "query_dev_examples",
         "query_holdout_examples",
         "get_prompt_text",
         "get_search_state",
@@ -237,13 +239,14 @@ _original_list_tools = mcp.list_tools
 async def _filtered_list_tools() -> list[MCPTool]:
     """Return only the tools allowed in the current active stage."""
     all_tools = await _original_list_tools()
+    if _active_stage is None:
+        return all_tools
     allowed = STAGE_REGISTRY.get(_active_stage)
     if allowed is None:
-        if _active_stage is not None:
-            logger.warning(
-                "Active stage '%s' not found in STAGE_REGISTRY, returning all tools",
-                _active_stage,
-            )
+        logger.warning(
+            "Active stage '%s' not found in STAGE_REGISTRY, returning all tools",
+            _active_stage,
+        )
         return all_tools
     allowed_set = set(allowed) | _LIFECYCLE_TOOLS
     return [t for t in all_tools if t.name in allowed_set]

@@ -131,6 +131,7 @@ Set these context keys when the optimization loop completes (or after round 1 fo
 
 ## Constraints
 
+- **Dataset access.** Datasets are query-only. Do not assume any dataset content is already in your context; if you need examples, call `query_dev_examples` / `query_holdout_examples`.
 - **Holdout isolation.** Never pass `holdout_jsonl_path` to `run_eval` — always use `dev_jsonl_path`. Holdout is reserved for final validation only.
 - **Section ordering.** Section order (Objective → Categories → Decision Logic → Examples → Output Format) is the Prompt Builder's sole structural decision — no directive may override it. Output format must be last.
 - **Deterministic tool calls.** `register_candidate` → `run_eval` → `record_eval_result` → `advance_step`. Never reorder. Never reuse a version number.

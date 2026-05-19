@@ -7,9 +7,13 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
+from mcp.server.fastmcp.exceptions import ToolError
+
 from odysseus.mcp import (
     build_review_briefing,
     get_prompt_text,
+    query_dev_examples,
     query_holdout_examples,
     record_directive_outcomes,
 )
@@ -413,7 +417,7 @@ class TestVariantIdSequentialCounter:
 
 
 class TestQueryHoldoutExamplesPagination:
-    """Smoke tests for offset pagination in query_holdout_examples."""
+    """Smoke tests for paginated dataset row queries."""
 
     _RUN_ID = "test-run-pagination"
     _ROUTE = "route_x"
@@ -445,7 +449,6 @@ class TestQueryHoldoutExamplesPagination:
             )
 
         result = json.loads(result_json)
-        assert result["total_matching"] == 35
         assert len(result["examples"]) == 10
         # The 21st–30th matching rows have ids m20 through m29
         returned_ids = [ex["id"] for ex in result["examples"]]
@@ -466,8 +469,100 @@ class TestQueryHoldoutExamplesPagination:
             )
 
         result = json.loads(result_json)
-        assert result["total_matching"] == 10
         assert result["examples"] == []
+
+    async def test_query_dev_examples_uses_same_pagination_shape(self, tmp_path: Path) -> None:
+        """The dev query tool returns the same paginated examples shape."""
+        analysis_dir = tmp_path / "outputs" / self._RUN_ID / "analysis"
+        analysis_dir.mkdir(parents=True)
+        rows = [json.dumps({"id": f"d{i}", "input": f"text {i}", "expected": {"route": self._ROUTE}}) for i in range(6)]
+        (analysis_dir / "dev.jsonl").write_text("\n".join(rows), encoding="utf-8")
+
+        with _patch_project_dir(tmp_path):
+            result_json = await query_dev_examples(
+                ctx=None,
+                run_id=self._RUN_ID,
+                route=self._ROUTE,
+                offset=2,
+                limit=3,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert [ex["id"] for ex in result["examples"]] == ["d2", "d3", "d4"]
+
+    @pytest.mark.parametrize(
+        ("offset", "limit", "message"),
+        [
+            (-1, 10, "offset must be >= 0"),
+            (0, 0, "limit must be > 0"),
+            (0, 51, "limit must be <= 50"),
+        ],
+    )
+    async def test_invalid_pagination_raises_tool_error(
+        self,
+        tmp_path: Path,
+        offset: int,
+        limit: int,
+        message: str,
+    ) -> None:
+        """Invalid pagination args raise ToolError consistently."""
+        self._make_holdout(tmp_path, n_matching=5)
+
+        with _patch_project_dir(tmp_path), pytest.raises(ToolError, match=message):
+            await query_holdout_examples(
+                ctx=None,
+                run_id=self._RUN_ID,
+                route=self._ROUTE,
+                offset=offset,
+                limit=limit,
+                output_dir="outputs",
+            )
+
+    async def test_unfiltered_query_is_capped_by_limit(self, tmp_path: Path) -> None:
+        """Route-less queries return only the requested page size."""
+        self._make_holdout(tmp_path, n_matching=35, n_other=10)
+
+        with _patch_project_dir(tmp_path):
+            result_json = await query_holdout_examples(
+                ctx=None,
+                run_id=self._RUN_ID,
+                offset=0,
+                limit=20,
+                output_dir="outputs",
+            )
+
+        result = json.loads(result_json)
+        assert len(result["examples"]) == 20
+
+    async def test_pagination_terminates_when_page_is_short(self, tmp_path: Path) -> None:
+        """Callers can detect the end of pagination from a short page."""
+        self._make_holdout(tmp_path, n_matching=7, n_other=0)
+
+        with _patch_project_dir(tmp_path):
+            first_page = json.loads(
+                await query_holdout_examples(
+                    ctx=None,
+                    run_id=self._RUN_ID,
+                    route=self._ROUTE,
+                    offset=0,
+                    limit=5,
+                    output_dir="outputs",
+                )
+            )
+            second_page = json.loads(
+                await query_holdout_examples(
+                    ctx=None,
+                    run_id=self._RUN_ID,
+                    route=self._ROUTE,
+                    offset=5,
+                    limit=5,
+                    output_dir="outputs",
+                )
+            )
+
+        assert len(first_page["examples"]) == 5
+        assert len(second_page["examples"]) == 2
 
 
 # ---------------------------------------------------------------------------

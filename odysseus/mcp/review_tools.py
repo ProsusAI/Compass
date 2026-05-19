@@ -75,6 +75,46 @@ def _select_confusion_candidates(state: SearchState) -> list[str]:
     return [c.prompt_version for c in (state.elite_set or [])]
 
 
+_DATASET_QUERY_MAX_LIMIT = 50
+
+
+def _query_jsonl_dataset(
+    dataset_path: Path,
+    *,
+    route: str | None,
+    offset: int,
+    limit: int,
+) -> dict[str, Any]:
+    """Return a page of dataset rows, optionally filtered by expected.route."""
+    if offset < 0:
+        raise ToolError("offset must be >= 0")
+    if limit <= 0:
+        raise ToolError("limit must be > 0")
+    if limit > _DATASET_QUERY_MAX_LIMIT:
+        raise ToolError(f"limit must be <= {_DATASET_QUERY_MAX_LIMIT}")
+
+    examples: list[dict[str, Any]] = []
+    skipped = 0
+
+    with dataset_path.open(encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line:
+                continue
+            example = json.loads(line)
+            expected_route = example.get("expected", {}).get("route", "")
+            if route is not None and expected_route != route:
+                continue
+            if skipped < offset:
+                skipped += 1
+                continue
+            examples.append(example)
+            if len(examples) >= limit:
+                break
+
+    return {"examples": examples}
+
+
 @mcp.tool()
 async def build_review_briefing(
     ctx: Context,
@@ -529,31 +569,51 @@ async def query_holdout_examples(
         output_dir: Output directory (default "outputs").
 
     Returns:
-        JSON object with examples list and total_matching count.
+        JSON object with an examples list.
     """
     project_dir = await _resolve_project_dir(ctx)
     out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
 
     holdout_path = out / run_id / "analysis" / "holdout.jsonl"
     if not holdout_path.exists():
-        return json.dumps({"examples": [], "total_matching": 0, "error": "holdout.jsonl not found"})
+        return json.dumps({"examples": [], "error": "holdout.jsonl not found"})
 
-    examples: list[dict[str, Any]] = []
-    total_matching = 0
-    for line in holdout_path.read_text(encoding="utf-8").strip().splitlines():
-        if not line.strip():
-            continue
-        example = json.loads(line)
-        expected_route = example.get("expected", {}).get("route", "")
-        if route is not None and expected_route != route:
-            continue
-        total_matching += 1
-        if total_matching <= offset:
-            continue
-        if len(examples) < limit:
-            examples.append(example)
+    return json.dumps(_query_jsonl_dataset(holdout_path, route=route, offset=offset, limit=limit))
 
-    return json.dumps({"examples": examples, "total_matching": total_matching})
+
+@mcp.tool()
+async def query_dev_examples(
+    ctx: Context,
+    run_id: str,
+    route: str | None = None,
+    offset: int = 0,
+    limit: int = 20,
+    output_dir: str = "outputs",
+) -> str:
+    """[Stage 4: Refinement Loop -- Review] Query dev examples, optionally filtered by route.
+
+    Returns full example objects from the dev dataset including input text
+    and per-route cost/quality data. Use this when you need concrete dev-set
+    rows without assuming dataset content is already in context.
+
+    Args:
+        run_id: Pipeline run identifier.
+        route: Filter by expected route name. Returns all routes if omitted.
+        offset: Skip the first N matching examples (default 0). Use with limit for pagination.
+        limit: Maximum number of examples to return (default 20, capped server-side).
+        output_dir: Output directory (default "outputs").
+
+    Returns:
+        JSON object with an examples list.
+    """
+    project_dir = await _resolve_project_dir(ctx)
+    out = Path(output_dir) if Path(output_dir).is_absolute() else project_dir / output_dir
+
+    dev_path = out / run_id / "analysis" / "dev.jsonl"
+    if not dev_path.exists():
+        return json.dumps({"examples": [], "error": "dev.jsonl not found"})
+
+    return json.dumps(_query_jsonl_dataset(dev_path, route=route, offset=offset, limit=limit))
 
 
 @mcp.tool()

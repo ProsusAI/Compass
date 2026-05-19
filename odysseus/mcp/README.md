@@ -35,9 +35,10 @@ The orchestrator controls scoping via two tools:
 | `data_validation` | `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `get_pipeline_status` | |
 | `backend_setup` | `get_default_pricing`, `get_pipeline_status` | |
 | `prompt_building` | `init_search_state`, `register_candidate`, `run_eval`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `get_edit_directives`, `get_child_variants`, `save_prompt`, `get_pipeline_status` | |
-| `review_cold` | `build_review_briefing`, `record_directive_outcomes`, `get_search_state`, `get_pipeline_status` | No `get_prompt_text` / `query_holdout_examples` — cold sub-agents have no candidate to inspect |
-| `review` | `build_review_briefing`, `record_directive_outcomes`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `run_eval`, `get_pipeline_status` | Steady-review toolbelt; sub-agents call `record_directive_outcomes` (single-slot for hill-climb; pass `trajectory_id=<N>` for EMOSA K-way fanout) |
-| `calibration` | `build_review_briefing`, `record_directive_outcomes`, `get_search_state`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `save_prompt`, `get_child_variants`, `get_edit_directives`, `signal_eval_complete`, `get_pipeline_status` | EMOSA-only — K-seed calibration phase; no `get_prompt_text` / `query_holdout_examples` |
+<<<<<<< HEAD
+| `review_cold` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `get_search_state`, `get_pipeline_status` | Cold sub-agents may page dev rows, but still have no `get_prompt_text` / `query_holdout_examples` |
+| `review` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `run_eval`, `get_pipeline_status` | Steady-review toolbelt; sub-agents call `record_directive_outcomes` (single-slot for hill-climb; pass `trajectory_id=<N>` for EMOSA K-way fanout). Dataset rows remain query-only and paginated. |
+| `calibration` | `build_review_briefing`, `record_directive_outcomes`, `get_search_state`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `save_prompt`, `get_child_variants`, `get_edit_directives`, `signal_eval_complete`, `get_pipeline_status` | EMOSA-only — K-seed calibration phase; no `get_prompt_text` / dataset row-query tools |
 | `final_report` | `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `get_pipeline_status` | |
 
 ### `record_directive_outcomes` — recording review result (variants, loop signal, ranking, promotions, regression guards)
