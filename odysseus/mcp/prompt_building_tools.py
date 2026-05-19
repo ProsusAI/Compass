@@ -315,15 +315,13 @@ async def record_eval_result(
     return json.dumps(result)
 
 
-def _advance_hill_climb(run_id: str) -> str:
-    """Hill-climb arm of advance_step.
+def _advance_round(run_id: str) -> str:
+    """Algorithm-agnostic execution wrapper for advance_step.
 
-    Processes all pending candidates, updates the Pareto front, adjusts
-    stagnation tracking, and checks for convergence.  Returns a
-    JSON-serialized RoundSummary.
-
-    Also clears the build-dispatch marker so the orchestrator knows the
-    Prompt Builder sub-agent has finished.
+    Calls advance_round(), which dispatches to the leaf algorithm via
+    _BRANCH_ALGORITHM, then clears the build-dispatched marker so the
+    orchestrator knows the Prompt Builder sub-agent has finished.
+    Returns a JSON-serialized RoundSummary.
     """
     try:
         summary = advance_round(run_id=run_id)
@@ -331,7 +329,6 @@ def _advance_hill_climb(run_id: str) -> str:
         raise ToolError(str(exc)) from exc
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
-    # Round is complete — clear the in-flight marker so complete_stage can proceed.
     clear_build_dispatched(run_id)
     return summary.model_dump_json(indent=2)
 
@@ -340,27 +337,19 @@ def _advance_hill_climb(run_id: str) -> str:
 async def advance_step(run_id: str) -> str:
     """[Stage 4: Refinement Loop] Advance the search loop by one step.
 
-    Dispatches to the strategy-specific advance logic determined by the
-    ``algorithm`` field of the current SearchState.  On this branch (trunk),
-    the concrete algorithm is set by a leaf branch; callers should not rely
-    on a specific algorithm being present.
+    Dispatches to the leaf-configured algorithm via advance_round() (keyed on
+    _BRANCH_ALGORITHM). Returns a JSON-serialized RoundSummary for the
+    completed round.
 
     Args:
         run_id: Pipeline run identifier.
-
-    Returns:
-        JSON-serialized RoundSummary for the completed round.
     """
     try:
-        state = _get_search_state_impl(run_id=run_id)
+        _get_search_state_impl(run_id=run_id)
     except FileNotFoundError as exc:
         raise ToolError(str(exc)) from exc
 
-    algorithm = state.algorithm
-    if algorithm == "hill_climb":
-        return _advance_hill_climb(run_id)
-
-    raise NotImplementedError(f"advance_step: algorithm '{algorithm}' not implemented on this branch")
+    return _advance_round(run_id)
 
 
 @mcp.tool()
