@@ -59,8 +59,8 @@ class BedrockBackend:
         content = response.content[0].text
         try:
             output: dict[str, Any] = json.loads(content)
-        except (json.JSONDecodeError, ValueError):
-            raise ValueError(f"Model returned non-JSON output: {content[:200]}")
+        except (json.JSONDecodeError, ValueError) as err:
+            raise ValueError(f"Model returned non-JSON output: {content[:200]}") from err
         if "route" not in output:
             raise ValueError(f"Model output missing 'route' key: {json.dumps(output)[:200]}")
         return output, token_usage

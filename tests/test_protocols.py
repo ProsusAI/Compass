@@ -80,9 +80,6 @@ class StubResultsCollector:
     def read_fingerprint(self, path: str) -> Any:
         return None
 
-    def read_completed_ids(self, path: str) -> set[str]:
-        return set()
-
 
 def _check_protocol(obj: object, protocol: type) -> bool:
     """Verify an object structurally conforms to a protocol via isinstance."""

@@ -278,10 +278,13 @@ def test_read_completed_ids_skips_errored_results(tmp_path):
 
 def test_run_fingerprint_round_trip():
     """RunFingerprint serializes with __meta__ key and deserializes back."""
-    fp = RunFingerprint(
-        prompt_version="v3",
-        backend="anthropic",
-        data_source="data/routing.jsonl",
+    fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "v3",
+            "backend": "anthropic",
+            "data_source": "data/routing.jsonl",
+        }
     )
     dumped = fp.model_dump(by_alias=True)
     assert dumped["__meta__"] == "run_fingerprint"
@@ -295,10 +298,13 @@ def test_write_and_read_fingerprint(tmp_path):
     """write_fingerprint writes a __meta__ line; read_fingerprint reads it back."""
     collector = JsonResultsCollector()
     path = str(tmp_path / "results.jsonl")
-    fp = RunFingerprint(
-        prompt_version="v3",
-        backend="anthropic",
-        data_source="data/routing.jsonl",
+    fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "v3",
+            "backend": "anthropic",
+            "data_source": "data/routing.jsonl",
+        }
     )
     collector.write_fingerprint(fp, path)
 
@@ -327,10 +333,13 @@ def test_read_completed_ids_skips_meta_line(tmp_path):
     """read_completed_ids ignores the __meta__ fingerprint line."""
     collector = JsonResultsCollector()
     path = tmp_path / "results.jsonl"
-    fp = RunFingerprint(
-        prompt_version="v1",
-        backend="test",
-        data_source="data.jsonl",
+    fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "v1",
+            "backend": "test",
+            "data_source": "data.jsonl",
+        }
     )
     lines = [
         fp.model_dump_json(by_alias=True),
@@ -346,10 +355,13 @@ def test_write_results_with_fingerprint(tmp_path):
     """write_results with fingerprint writes header line followed by result lines."""
     collector = JsonResultsCollector()
     path = str(tmp_path / "results.jsonl")
-    fp = RunFingerprint(
-        prompt_version="v1",
-        backend="test",
-        data_source="data.jsonl",
+    fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "v1",
+            "backend": "test",
+            "data_source": "data.jsonl",
+        }
     )
     results = [_make_result("ex-1"), _make_result("ex-2")]
     collector.write_results(results, path, fingerprint=fp)

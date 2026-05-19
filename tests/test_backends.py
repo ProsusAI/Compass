@@ -15,7 +15,7 @@ from odysseus.eval.backends.bedrock_backend import BedrockBackend
 from odysseus.eval.backends.openai_backend import OpenAIBackend
 from odysseus.eval.backends.profile import BackendProfile
 from odysseus.eval.backends.registry import BackendRegistry
-from odysseus.eval.models import EvalResult, Example, MetricConfig, RunReport, TokenUsage
+from odysseus.eval.models import EvalResult, Example, Expected, MetricConfig, RunReport, TokenUsage
 from odysseus.eval.pricing import ModelPricing
 from odysseus.eval.protocols import RunDependencies
 
@@ -39,10 +39,12 @@ def _write_profile(tmp_path: Path, name: str, data: dict) -> Path:
 EXAMPLE = Example(
     id="ex1",
     input="hello",
-    expected={
-        "route": "greeting",
-        "routes": {"greeting": {"cost": 0.01, "quality_score": 0.9}},
-    },
+    expected=Expected.model_validate(
+        {
+            "route": "greeting",
+            "routes": {"greeting": {"cost": 0.01, "quality_score": 0.9}},
+        }
+    ),
 )
 
 
@@ -1084,5 +1086,3 @@ def test_run_dependencies_valid():
     deps = _make_run_deps()
     assert deps.requests_per_minute == 100
     assert deps.tokens_per_minute == 50000
-
-

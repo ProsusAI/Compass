@@ -222,10 +222,13 @@ class RunFingerprint(BaseModel):
 
     @classmethod
     def from_config(cls, config: RunConfig) -> RunFingerprint:
-        return cls(
-            prompt_version=config.prompt_version,
-            backend=config.backend,
-            data_source=config.data_source,
+        return cls.model_validate(
+            {
+                "__meta__": "run_fingerprint",
+                "prompt_version": config.prompt_version,
+                "backend": config.backend,
+                "data_source": config.data_source,
+            }
         )
 
 

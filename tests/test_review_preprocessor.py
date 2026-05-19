@@ -58,7 +58,7 @@ class TestBuildCandidateComparisons:
             "v1": _make_report_dict(accuracy=0.80, cost=1.50),
         }
         mutation_descriptions = {"v1": "Initial compilation"}
-        parent_versions = {"v1": None}
+        parent_versions: dict[str, str | None] = {"v1": None}
 
         result = build_candidate_comparisons(
             score_reports=score_reports,
@@ -79,7 +79,7 @@ class TestBuildCandidateComparisons:
             "v2": _make_report_dict(accuracy=0.82, cost=1.30),  # parent
         }
         mutation_descriptions = {"v3": "Swapped Example 3"}
-        parent_versions = {"v3": "v2"}
+        parent_versions: dict[str, str | None] = {"v3": "v2"}
 
         result = build_candidate_comparisons(
             score_reports=score_reports,
@@ -105,7 +105,7 @@ class TestBuildCandidateComparisons:
             "v3": "Swapped Example 3",
             "v4": "Pruned Rule 2",
         }
-        parent_versions = {"v3": "v2", "v4": "v2"}
+        parent_versions: dict[str, str | None] = {"v3": "v2", "v4": "v2"}
 
         result = build_candidate_comparisons(
             score_reports=score_reports,
@@ -491,6 +491,7 @@ class TestBuildReviewBriefing:
         assert briefing.round == 2
         assert len(briefing.candidates) == 1
         assert briefing.candidates[0].candidate_version == "v2"
+        assert briefing.oracle_metrics is not None
         assert briefing.oracle_metrics.oracle_cost_change == 0.50
         assert briefing.oracle_metrics.candidate_cost_captured is not None
         assert len(briefing.per_class_recall) > 0

@@ -18,10 +18,12 @@ from odysseus.eval.models import (
     ConcurrencyConfig,
     EvalResult,
     Example,
+    Expected,
     MetricConfig,
     OutputConfig,
     RetryConfig,
     RunConfig,
+    RunFingerprint,
     TokenUsage,
 )
 from odysseus.eval.pricing import ModelPricing
@@ -128,10 +130,12 @@ def _make_examples(n: int) -> list[Example]:
         Example(
             id=f"ex-{i}",
             input=f"q{i}",
-            expected={
-                "route": f"class-{i % 3}",
-                "routes": {f"class-{j}": {"cost": 0.01, "quality_score": 0.8} for j in range(3)},
-            },
+            expected=Expected.model_validate(
+                {
+                    "route": f"class-{i % 3}",
+                    "routes": {f"class-{j}": {"cost": 0.01, "quality_score": 0.8} for j in range(3)},
+                }
+            ),
         )
         for i in range(n)
     ]
@@ -361,7 +365,9 @@ async def test_backoff_sleeps_outside_semaphore():
             Example(
                 id="ex-0",
                 input="q1",
-                expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
+                expected=Expected.model_validate(
+                    {"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}
+                ),
             ),
             RetryConfig(max_attempts=2, backoff_factor=1.0),
             rate_limiter,
@@ -392,7 +398,9 @@ async def test_timeout_wraps_only_backend_call():
         Example(
             id="ex-0",
             input="q1",
-            expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
+            expected=Expected.model_validate(
+                {"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}
+            ),
         ),
         RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1),
         rate_limiter,
@@ -421,7 +429,9 @@ async def test_token_accounting_post_call():
         Example(
             id="ex-0",
             input="q1",
-            expected={"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}},
+            expected=Expected.model_validate(
+                {"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}
+            ),
         ),
         RetryConfig(max_attempts=1, backoff_factor=1.0),
         rate_limiter,
@@ -470,8 +480,6 @@ async def test_streaming_writes_incrementally(tmp_path: Path):
 
 async def test_resume_from_partial_results(tmp_path: Path):
     """Run resumes from a partial results file, skipping completed examples."""
-    from odysseus.eval.models import RunFingerprint
-
     examples = _make_examples(5)
     _write_jsonl(tmp_path / "data.jsonl", examples)
 
@@ -479,10 +487,13 @@ async def test_resume_from_partial_results(tmp_path: Path):
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
     partial_path = outputs_dir / "results.jsonl"
-    fp = RunFingerprint(
-        prompt_version="latest",
-        backend="test-model",
-        data_source=str(tmp_path / "data.jsonl"),
+    fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "latest",
+            "backend": "test-model",
+            "data_source": str(tmp_path / "data.jsonl"),
+        }
     )
     with open(partial_path, "w") as f:
         f.write(fp.model_dump_json(by_alias=True) + "\n")
@@ -538,18 +549,19 @@ async def test_resume_with_no_partial_results(tmp_path: Path):
 
 async def test_resume_all_completed(tmp_path: Path):
     """When all examples are already in the partial file, no backend calls are made."""
-    from odysseus.eval.models import RunFingerprint
-
     examples = _make_examples(3)
     _write_jsonl(tmp_path / "data.jsonl", examples)
 
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
     partial_path = outputs_dir / "results.jsonl"
-    fp = RunFingerprint(
-        prompt_version="latest",
-        backend="test-model",
-        data_source=str(tmp_path / "data.jsonl"),
+    fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "latest",
+            "backend": "test-model",
+            "data_source": str(tmp_path / "data.jsonl"),
+        }
     )
     with open(partial_path, "w") as f:
         f.write(fp.model_dump_json(by_alias=True) + "\n")
@@ -596,8 +608,6 @@ async def test_resume_all_completed(tmp_path: Path):
 
 async def test_resume_discards_stale_results_on_fingerprint_mismatch(tmp_path: Path):
     """When the results file has a different prompt_version, discard and re-evaluate all."""
-    from odysseus.eval.models import RunFingerprint
-
     examples = _make_examples(3)
     _write_jsonl(tmp_path / "data.jsonl", examples)
 
@@ -606,10 +616,13 @@ async def test_resume_discards_stale_results_on_fingerprint_mismatch(tmp_path: P
     partial_path = outputs_dir / "results.jsonl"
 
     # Write a fingerprint for prompt v_old + results for all 3 examples
-    old_fp = RunFingerprint(
-        prompt_version="v_old",
-        backend="test-model",
-        data_source=str(tmp_path / "data.jsonl"),
+    old_fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "v_old",
+            "backend": "test-model",
+            "data_source": str(tmp_path / "data.jsonl"),
+        }
     )
     with open(partial_path, "w") as f:
         f.write(old_fp.model_dump_json(by_alias=True) + "\n")
@@ -654,8 +667,6 @@ async def test_resume_discards_stale_results_on_fingerprint_mismatch(tmp_path: P
 
 async def test_resume_continues_with_matching_fingerprint(tmp_path: Path):
     """When the results file has a matching fingerprint, resume as before."""
-    from odysseus.eval.models import RunFingerprint
-
     examples = _make_examples(5)
     _write_jsonl(tmp_path / "data.jsonl", examples)
 
@@ -664,10 +675,13 @@ async def test_resume_continues_with_matching_fingerprint(tmp_path: Path):
     partial_path = outputs_dir / "results.jsonl"
 
     # Write a fingerprint matching the config we'll use + results for first 3
-    fp = RunFingerprint(
-        prompt_version="v1",
-        backend="test-model",
-        data_source=str(tmp_path / "data.jsonl"),
+    fp = RunFingerprint.model_validate(
+        {
+            "__meta__": "run_fingerprint",
+            "prompt_version": "v1",
+            "backend": "test-model",
+            "data_source": str(tmp_path / "data.jsonl"),
+        }
     )
     with open(partial_path, "w") as f:
         f.write(fp.model_dump_json(by_alias=True) + "\n")

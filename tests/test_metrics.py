@@ -12,7 +12,7 @@ from odysseus.eval.metrics import (
     compute_f1,
     create_default_engine,
 )
-from odysseus.eval.models import EvalResult, Example, MetricConfig
+from odysseus.eval.models import EvalResult, Example, Expected, MetricConfig
 
 # --- Helpers ---
 
@@ -22,14 +22,16 @@ def _example(id: str, route: str = "gpt-4o") -> Example:
     return Example(
         id=id,
         input=f"q-{id}",
-        expected={
-            "route": route,
-            "routes": {
-                "gpt-4o": {"cost": 0.03, "quality_score": 0.95},
-                "claude-sonnet": {"cost": 0.01, "quality_score": 0.88},
-                "haiku": {"cost": 0.002, "quality_score": 0.72},
-            },
-        },
+        expected=Expected.model_validate(
+            {
+                "route": route,
+                "routes": {
+                    "gpt-4o": {"cost": 0.03, "quality_score": 0.95},
+                    "claude-sonnet": {"cost": 0.01, "quality_score": 0.88},
+                    "haiku": {"cost": 0.002, "quality_score": 0.72},
+                },
+            }
+        ),
     )
 
 
@@ -260,7 +262,7 @@ def _cost_quality_example(id: str, route: str, routes: dict[str, dict[str, float
     return Example(
         id=id,
         input=f"q-{id}",
-        expected={"route": route, "routes": routes},
+        expected=Expected.model_validate({"route": route, "routes": routes}),
     )
 
 

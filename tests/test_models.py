@@ -10,7 +10,10 @@ from pydantic import ValidationError
 
 from odysseus.eval.models import (
     ConcurrencyConfig,
+    Example,
+    Expected,
     MetricConfig,
+    ModelCostQuality,
     OutputConfig,
     RetryConfig,
     RunConfig,
@@ -116,9 +119,9 @@ def test_concurrency_max_concurrent_zero_rejected():
 def test_concurrency_old_rate_limit_fields_rejected():
     """requests_per_minute and tokens_per_minute are no longer accepted."""
     with pytest.raises(ValidationError):
-        ConcurrencyConfig(requests_per_minute=500)
+        ConcurrencyConfig.model_validate({"requests_per_minute": 500})
     with pytest.raises(ValidationError):
-        ConcurrencyConfig(tokens_per_minute=100000)
+        ConcurrencyConfig.model_validate({"tokens_per_minute": 100000})
 
 
 def test_retry_max_attempts_zero_rejected():
@@ -224,16 +227,12 @@ def test_run_config_backend_stripped():
 
 class TestModelCostQuality:
     def test_valid_cost_quality(self):
-        from odysseus.eval.models import ModelCostQuality
-
         m = ModelCostQuality(cost=0.05, quality_score=0.98)
         assert m.cost == 0.05
         assert m.quality_score == 0.98
 
     def test_negative_cost_allowed(self):
         """No range constraints per spec — normalization is conversational."""
-        from odysseus.eval.models import ModelCostQuality
-
         m = ModelCostQuality(cost=-1.0, quality_score=2.0)
         assert m.cost == -1.0
         assert m.quality_score == 2.0
@@ -241,13 +240,11 @@ class TestModelCostQuality:
 
 class TestExpected:
     def test_valid_expected(self):
-        from odysseus.eval.models import Expected
-
         e = Expected(
             route="opus",
             routes={
-                "opus": {"cost": 0.05, "quality_score": 0.98},
-                "sonnet": {"cost": 0.01, "quality_score": 0.88},
+                "opus": ModelCostQuality(cost=0.05, quality_score=0.98),
+                "sonnet": ModelCostQuality(cost=0.01, quality_score=0.88),
             },
         )
         assert e.route == "opus"
@@ -255,36 +252,32 @@ class TestExpected:
 
     def test_route_not_in_routes_is_accepted(self):
         """route_in_routes mismatch is caught by data-validation checks, not the Pydantic model."""
-        from odysseus.eval.models import Expected
-
         e = Expected(
             route="gpt-4o",
-            routes={"opus": {"cost": 0.05, "quality_score": 0.98}},
+            routes={"opus": ModelCostQuality(cost=0.05, quality_score=0.98)},
         )
         assert e.route == "gpt-4o"
         assert "opus" in e.routes
 
     def test_routes_must_be_non_empty(self):
-        from odysseus.eval.models import Expected
-
         with pytest.raises(ValueError, match="routes must contain at least one entry"):
             Expected(route="opus", routes={})
 
 
 class TestExampleNewSchema:
     def test_valid_example_string_input(self):
-        from odysseus.eval.models import Example
-
         ex = Example(
             id="ex-1",
             input="Explain quantum entanglement",
-            expected={
-                "route": "opus",
-                "routes": {
-                    "opus": {"cost": 0.05, "quality_score": 0.98},
-                    "sonnet": {"cost": 0.01, "quality_score": 0.88},
-                },
-            },
+            expected=Expected.model_validate(
+                {
+                    "route": "opus",
+                    "routes": {
+                        "opus": {"cost": 0.05, "quality_score": 0.98},
+                        "sonnet": {"cost": 0.01, "quality_score": 0.88},
+                    },
+                }
+            ),
         )
         assert ex.input == "Explain quantum entanglement"
         assert ex.expected.route == "opus"

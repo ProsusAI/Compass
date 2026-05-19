@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from odysseus.eval.backends.mock_echo import MockEchoBackend
 from odysseus.eval.backends.profile import BackendProfile
-from odysseus.eval.models import Example
+from odysseus.eval.models import Example, Expected
 
 
 def _make_profile() -> BackendProfile:
     return BackendProfile(
         model="mock-echo",
-        type="mock_echo",
+        provider="mock_echo",
         requests_per_minute=10000,
         tokens_per_minute=1000000,
     )
@@ -22,10 +22,12 @@ async def test_echoes_expected_route():
     example = Example(
         id="ex-1",
         input="route me",
-        expected={
-            "route": "billing",
-            "routes": {"billing": {"cost": 0.01, "quality_score": 0.9}},
-        },
+        expected=Expected.model_validate(
+            {
+                "route": "billing",
+                "routes": {"billing": {"cost": 0.01, "quality_score": 0.9}},
+            }
+        ),
     )
     output, usage = await backend.call("prompt", example)
     assert output == {"route": "billing"}
