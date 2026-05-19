@@ -3,7 +3,7 @@
 ## Setup
 - Dataset: `tests/scenarios/data/full_pipeline_dataset.jsonl`
 - System prompts: `odysseus_routing_input`, `odysseus_data_validation`, `odysseus_backend_setup`, `odysseus_prompt_builder`, `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start`, `odysseus_final_report`
-- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
+- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 - Backend profile: `tests/scenarios/data/backends/mock-echo.yaml`
 
 ## Scenario Description
@@ -49,7 +49,7 @@ You are an ML engineer who has already assembled all required information for a 
 ### Stage 4 — Prompt Builder + Eval Runner
 - [ ] `init_search_state` was called with `backend="mock-echo"`
 - [ ] At least one candidate compiled with route definitions for haiku, sonnet, and opus
-- [ ] `run_eval` was called with the dev dataset and mock-echo backend
+- [ ] `run_batch_eval` was called with the dev dataset and mock-echo backend
 - [ ] `record_eval_result` was called with scores from the ScoreReport
 - [ ] `advance_step` was called at least once
 - [ ] Review Agent (`build_review_briefing`) was called between rounds

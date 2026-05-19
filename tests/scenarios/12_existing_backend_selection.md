@@ -3,7 +3,7 @@
 ## Setup
 - Dataset: `tests/scenarios/data/full_pipeline_dataset.jsonl`
 - System prompts: `odysseus_routing_input`, `odysseus_data_validation`, `odysseus_backend_setup`, `odysseus_prompt_builder`, `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start`, `odysseus_final_report`
-- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
+- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 - Backend profile: `tests/scenarios/data/backends/anthropic.yaml`
 
 ## Scenario Description
@@ -47,7 +47,7 @@ You are a data scientist who already has a registered Anthropic backend and want
 
 ### Stage 4 — Prompt Builder + Eval Runner
 - [ ] `init_search_state` called with backend referencing `anthropic` or the mock-echo backend for eval
-- [ ] `run_eval`, `record_eval_result`, `advance_step`, `save_prompt` called
+- [ ] `run_batch_eval`, `record_eval_result`, `advance_step`, `save_prompt` called
 
 ### Stage 5 — Holdout Validation
 - [ ] `filter_holdout_dataset` and `run_holdout_eval` called

@@ -3,7 +3,7 @@
 ## Setup
 - Dataset: `tests/scenarios/data/full_pipeline_dataset.jsonl`
 - System prompts: `odysseus_routing_input`, `odysseus_data_validation`, `odysseus_backend_setup`, `odysseus_prompt_builder`, `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start`, `odysseus_final_report`
-- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
+- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 - Backend profile: `tests/scenarios/data/backends/openai.yaml`
 - **Prerequisite:** `OPENAI_API_KEY` must be set in the environment
 
@@ -47,7 +47,7 @@ You are an ML engineer running a live API smoke test of the full routing optimiz
 
 ### Stage 4 — Prompt Builder + Eval Runner
 - [ ] `init_search_state` called with `backend="openai"`
-- [ ] `run_eval` called against the live OpenAI API
+- [ ] `run_batch_eval` called against the live OpenAI API
 - [ ] ScoreReport received and `record_eval_result` called with valid scores
 - [ ] `advance_step` called; search state updated
 - [ ] `save_prompt` called

@@ -3,7 +3,7 @@
 ## Setup
 - Dataset: `tests/scenarios/data/two_route_dataset.jsonl`
 - System prompts: `odysseus_routing_input`, `odysseus_data_validation`, `odysseus_backend_setup`, `odysseus_prompt_builder`, `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start`, `odysseus_final_report`
-- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
+- MCP tools: `submit_input_report`, `detect_and_parse_dataset`, `transform_dataset`, `validate_dataset`, `save_routing_context`, `stratified_split`, `get_default_pricing`, `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `save_prompt`, `build_review_briefing`, `record_directive_outcomes`, `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 - Backend profile: `tests/scenarios/data/backends/mock-echo.yaml`
 
 ## Scenario Description
@@ -47,7 +47,7 @@ You are a data engineer running a binary routing optimization: simple queries go
 ### Stage 4 — Prompt Builder + Eval Runner
 - [ ] `init_search_state` called with `backend="mock-echo"`
 - [ ] Compiled prompt contains route definitions for exactly 2 tiers (haiku, opus) — no sonnet route generated
-- [ ] `run_eval` called with dev dataset
+- [ ] `run_batch_eval` called with dev dataset
 - [ ] ScoreReport received with per-class scores for haiku and opus (no sonnet class)
 - [ ] `record_eval_result`, `advance_step` called
 - [ ] `save_prompt` called

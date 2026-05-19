@@ -37,7 +37,7 @@ You are a product analyst who has misunderstood what this tool does — you thin
 - [ ] `validate_dataset` was NOT called
 - [ ] `stratified_split` was NOT called
 - [ ] `init_search_state` was NOT called
-- [ ] `run_eval` was NOT called
+- [ ] `run_batch_eval` was NOT called
 - [ ] `save_final_report` was NOT called
 - [ ] No pipeline stages beyond Stage 1 were entered
 
