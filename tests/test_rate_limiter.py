@@ -4,7 +4,7 @@ import asyncio
 import time
 import unittest.mock
 
-from odysseus.eval.rate_limiter import TokenBucketRateLimiter
+from compass.eval.rate_limiter import TokenBucketRateLimiter
 
 
 async def test_acquire_basic():

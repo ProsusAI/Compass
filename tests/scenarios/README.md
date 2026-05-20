@@ -1,6 +1,6 @@
 # Integration Test Scenarios
 
-Full-pipeline integration test scenarios for Project Odysseus. Each `.md` file in this directory is a self-contained test scenario executed by Claude Code. All scenarios test the complete optimization pipeline (or as much of it as the flow allows — early-exit scenarios stop intentionally at the relevant stage).
+Full-pipeline integration test scenarios for Project Compass. Each `.md` file in this directory is a self-contained test scenario executed by Claude Code. All scenarios test the complete optimization pipeline (or as much of it as the flow allows — early-exit scenarios stop intentionally at the relevant stage).
 
 ## Scenario index
 
@@ -58,7 +58,7 @@ Full-pipeline integration test scenarios for Project Odysseus. Each `.md` file i
 
 ## Prerequisites
 
-- The Odysseus MCP server must be pre-configured and connected to Claude Code before running tests.
+- The Compass MCP server must be pre-configured and connected to Claude Code before running tests.
 - Real LLM API calls are made — ensure `ANTHROPIC_API_KEY` is set.
 - For scenario 02 only: `OPENAI_API_KEY` must be set (live OpenAI API smoke test).
 
@@ -72,7 +72,7 @@ Claude Code will:
 
 1. Read the scenario file and parse its sections.
 2. Spin up a **User Simulator** sub-agent with the `## User Simulator` section as its instructions.
-3. Spin up the pipeline orchestrator sub-agents in sequence, beginning with the `odysseus_routing_input` MCP prompt and advancing through each stage. Early-exit scenarios (e.g., 07) stop at the stage where the rejection occurs.
+3. Spin up the pipeline orchestrator sub-agents in sequence, beginning with the `compass_routing_input` MCP prompt and advancing through each stage. Early-exit scenarios (e.g., 07) stop at the stage where the rejection occurs.
 4. Get the opening message from the User Simulator.
 5. Broker the conversation turn-by-turn:
    - Pass user message → active agent

@@ -1,11 +1,11 @@
-"""Tests for odysseus.agents.data_validation_checks."""
+"""Tests for compass.agents.data_validation_checks."""
 
 from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
 
-from odysseus.agents.data_validation.checks import (
+from compass.agents.data_validation.checks import (
     DataQualityReport,
     LabelDistribution,
     QueryLengthDistribution,

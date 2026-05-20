@@ -1,6 +1,6 @@
 # EMOSA: Decomposition-Based Multi-Objective Simulated Annealing
 
-This file is the source of truth for anyone touching the search engine. The algorithm is a clean adaptation of **EMOSA** (Li & Landa-Silva 2011) for LLM-driven prompt search: decomposition-based multi-objective SA with Tchebycheff scalarization, K parallel trajectories, per-trajectory Metropolis acceptance, EMOSA's neighborhood replacement, and a plain non-dominated archive. When reading or modifying `odysseus/agents/prompt_builder/annealing.py`, `search_ops.py`, `odysseus/agents/review/preprocessor.py`, or the Review Agent prompts, consult this document first.
+This file is the source of truth for anyone touching the search engine. The algorithm is a clean adaptation of **EMOSA** (Li & Landa-Silva 2011) for LLM-driven prompt search: decomposition-based multi-objective SA with Tchebycheff scalarization, K parallel trajectories, per-trajectory Metropolis acceptance, EMOSA's neighborhood replacement, and a plain non-dominated archive. When reading or modifying `compass/agents/prompt_builder/annealing.py`, `search_ops.py`, `compass/agents/review/preprocessor.py`, or the Review Agent prompts, consult this document first.
 
 ---
 
@@ -47,7 +47,7 @@ binding_axis = argmax_i ( λ_i · (f_i − ideal_i) / (nadir_i − ideal_i) )
 
 **Concrete example:** Suppose `ideal = (0.90 quality, 0.02 cost)`, `nadir = (0.70, 0.10)`. A candidate with quality 0.80 and cost 0.06 gives `norm_q = (0.90 − 0.80)/(0.90 − 0.70) = 0.50`, `norm_c = (0.06 − 0.02)/(0.10 − 0.02) = 0.50`. For trajectory 0 (`λ = (0.9, 0.1)`): `E = max(0.9 × 0.50, 0.1 × 0.50) = max(0.45, 0.05) = 0.45`; binding axis = quality. For trajectory 4 (`λ = (0.1, 0.9)`): `E = max(0.1 × 0.50, 0.9 × 0.50) = max(0.05, 0.45) = 0.45`; binding axis = cost. For a cost-efficient candidate (quality 0.72, cost 0.03): `norm_q = 0.90`, `norm_c = 0.125`; trajectory 0 energy = `max(0.81, 0.013) = 0.81`; trajectory 4 energy = `max(0.09, 0.113) = 0.113`. Trajectory 4 sees it as much better.
 
-**Implementation:** `compute_tchebycheff_energy` in `odysseus/agents/prompt_builder/annealing.py`. The function normalizes objectives via `normalize_objectives`, then applies the max aggregation using `ideal_point` and `nadir_point` from `AnnealingState`.
+**Implementation:** `compute_tchebycheff_energy` in `compass/agents/prompt_builder/annealing.py`. The function normalizes objectives via `normalize_objectives`, then applies the max aggregation using `ideal_point` and `nadir_point` from `AnnealingState`.
 
 **Citations:** Zhang, Q. & Li, H. (2007). *MOEA/D*. IEEE TEC 11(6):712–731. Li, H. & Landa-Silva, D. (2011). *EMOSA*. Evolutionary Computation 19(4):561–595.
 
@@ -187,7 +187,7 @@ All convergence checks happen inside `advance_round`. The round summary's `conve
 
 ## Pointers for future changes
 
-- **Changing the scalarization** (e.g., to PBI — Penalty-Boundary Intersection, per Zhang & Li 2007): edit `compute_tchebycheff_energy` in `odysseus/agents/prompt_builder/annealing.py` and update the "Tchebycheff decomposition" section above. PBI is a natural next extension; EMOSA's original paper discusses it as an alternative.
+- **Changing the scalarization** (e.g., to PBI — Penalty-Boundary Intersection, per Zhang & Li 2007): edit `compute_tchebycheff_energy` in `compass/agents/prompt_builder/annealing.py` and update the "Tchebycheff decomposition" section above. PBI is a natural next extension; EMOSA's original paper discusses it as an alternative.
 - **Adding an axis** (e.g., latency): update `classify_user_target` in `preprocessor.py`, add weight-vector logic in `compute_weight_vectors`, extend `compute_tchebycheff_energy` to K-objective form, and extend this document's "Tchebycheff decomposition" and "Weight vectors and trajectories" sections.
 - **Changing neighborhood size B**: edit the `neighborhood_size` field in `AnnealingState` (default 4, set when constructing the `algorithm_state` pocket on `init_search_state`) and update the "Neighborhood replacement" section above.
 - **Changing archive behavior** (e.g., adding crowding-distance-based pruning if archive grows too large): edit `update_archive` in `annealing.py` and update the "External archive" section above.

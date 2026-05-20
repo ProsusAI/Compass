@@ -3,7 +3,7 @@
 ## Setup
 - Fixture directory: `tests/scenarios/data/review/def456/`
 - Search state ID: `def456`
-- System prompts: `odysseus_review_agent_iterative`
+- System prompts: `compass_review_agent_iterative`
 - MCP tools: `build_review_briefing`, `record_directive_outcomes`
 
 ## Scenario Description

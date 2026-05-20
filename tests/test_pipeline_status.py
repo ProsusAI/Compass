@@ -2,13 +2,13 @@ import json
 import time
 from pathlib import Path
 
-from odysseus.agents.pipeline.instructions import (
+from compass.agents.pipeline.instructions import (
     _STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
     _STAGE_4_BUILD_RECOVERING_INSTRUCTION,
     _STAGE_4_BUILD_V1_INSTRUCTION,
     STAGE_4_BUILD_INSTRUCTION,
 )
-from odysseus.agents.pipeline.status import (
+from compass.agents.pipeline.status import (
     _detect_stage_4_phase,
     _detect_stage_4_phase_beam,
     _read_rerun_config,
@@ -263,7 +263,7 @@ class TestSubagentInstruction:
         assert instr is not None
         assert "<HARD_STOP>" in instr
         assert "<stage_system_prompt></stage_system_prompt>" not in instr
-        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
+        assert result["activate_prompt"] == "compass_review_agent_cold_start"
 
     def test_stage4_available_tools_correct(self, tmp_path: Path) -> None:
         """Stage 4 cold-start available_tools should include review tools."""
@@ -312,7 +312,7 @@ class TestStage4ThreePhaseDetection:
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
+        assert result["activate_prompt"] == "compass_review_agent_cold_start"
 
     def test_build_v1_after_cold_start(self, tmp_path: Path) -> None:
         # After cold-start: child_variants.json exists but no v1 prompt.
@@ -320,7 +320,7 @@ class TestStage4ThreePhaseDetection:
         _setup_stage4_cold_start_done(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
         assert result["current_stage"] == 4
-        assert result["activate_prompt"] == "odysseus_prompt_builder"
+        assert result["activate_prompt"] == "compass_prompt_builder"
 
     def test_normal_loop_review_phase(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")
@@ -572,7 +572,7 @@ class TestStage4RerunMode:
         """Without rerun_config.json, Stage 4 uses normal cold-start detection on trunk."""
         _setup_through_stage3(tmp_path, "r1")
         result = get_pipeline_status(tmp_path, "r1", project_dir=tmp_path)
-        assert result["activate_prompt"] == "odysseus_review_agent_cold_start"
+        assert result["activate_prompt"] == "compass_review_agent_cold_start"
 
 
 class TestStage5FinalReport:

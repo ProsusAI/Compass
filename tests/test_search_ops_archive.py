@@ -8,8 +8,8 @@ from typing import Literal
 
 import pytest
 
-from odysseus.agents.prompt_builder.search import Candidate
-from odysseus.agents.prompt_builder.search_ops import (
+from compass.agents.prompt_builder.search import Candidate
+from compass.agents.prompt_builder.search_ops import (
     _append_archive,
     _archive_path,
     _load_archive,

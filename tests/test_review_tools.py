@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.mcp import (
+from compass.mcp import (
     build_review_briefing,
     get_prompt_text,
     get_score_report,
@@ -19,10 +19,10 @@ from odysseus.mcp import (
     query_holdout_examples,
     record_directive_outcomes,
 )
-from odysseus.mcp.review_tools import get_batch_outcomes, get_directive_history
+from compass.mcp.review_tools import get_batch_outcomes, get_directive_history
 
-_RESOLVE_PROJECT_DIR = "odysseus.mcp.review_tools._resolve_project_dir"
-_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
+_RESOLVE_PROJECT_DIR = "compass.mcp.review_tools._resolve_project_dir"
+_SEARCH_OPS_PATCH = "compass.agents.prompt_builder.search_ops.get_project_dir"
 
 
 @contextmanager
@@ -85,7 +85,7 @@ class TestRecordDirectiveOutcomesDecomposed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Passing decomposed params skips review_result.json unless debug is enabled."""
-        monkeypatch.delenv("ODYSSEUS_DEBUG", raising=False)
+        monkeypatch.delenv("COMPASS_DEBUG", raising=False)
         with _patch_project_dir(tmp_path):
             result_json = await record_directive_outcomes(
                 ctx=None,
@@ -109,7 +109,7 @@ class TestRecordDirectiveOutcomesDecomposed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Passing decomposed params writes review_result.json when debug is enabled."""
-        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
+        monkeypatch.setenv("COMPASS_DEBUG", "1")
         with _patch_project_dir(tmp_path):
             result_json = await record_directive_outcomes(
                 ctx=None,
@@ -139,7 +139,7 @@ class TestRecordDirectiveOutcomesDecomposed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Passing review_result blob (legacy) writes review_result.json when debug is enabled."""
-        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
+        monkeypatch.setenv("COMPASS_DEBUG", "1")
         legacy_blob = {
             "candidate_ranking": _CANDIDATE_RANKING,
             "promotion_decisions": _PROMOTION_DECISIONS,
@@ -169,7 +169,7 @@ class TestRecordDirectiveOutcomesDecomposed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Decomposed params and legacy review_result produce the same persisted candidate_ranking."""
-        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
+        monkeypatch.setenv("COMPASS_DEBUG", "1")
         run_decomposed = "run-decomposed"
         run_legacy = "run-legacy"
 
@@ -242,7 +242,7 @@ class TestChildVariantTrajectoryIdField:
 
     def test_child_variant_has_trajectory_id_field_defaulting_none(self) -> None:
         """ChildVariant has trajectory_id field defaulting to None."""
-        from odysseus.agents.review.models import ChildVariant
+        from compass.agents.review.models import ChildVariant
 
         cv = ChildVariant(
             hypothesis="test",
@@ -253,7 +253,7 @@ class TestChildVariantTrajectoryIdField:
 
     def test_child_variant_trajectory_id_roundtrips(self) -> None:
         """ChildVariant.model_dump includes trajectory_id and round-trips via model_validate."""
-        from odysseus.agents.review.models import ChildVariant
+        from compass.agents.review.models import ChildVariant
 
         cv = ChildVariant(
             hypothesis="test",
@@ -267,7 +267,7 @@ class TestChildVariantTrajectoryIdField:
 
     def test_child_variant_model_copy_with_trajectory_id(self) -> None:
         """model_copy(update={'trajectory_id': N}) stamps trajectory_id correctly."""
-        from odysseus.agents.review.models import ChildVariant
+        from compass.agents.review.models import ChildVariant
 
         cv = ChildVariant(hypothesis="test", directives=[])
         stamped = cv.model_copy(update={"trajectory_id": 2})
@@ -280,7 +280,7 @@ class TestChildVariantNoParentPreference:
 
     def test_child_variant_without_parent_preference(self) -> None:
         """ChildVariant constructs cleanly without parent_preference (cold-start use case)."""
-        from odysseus.agents.review.models import ChildVariant
+        from compass.agents.review.models import ChildVariant
 
         cv = ChildVariant(
             parent_version="base",
@@ -292,7 +292,7 @@ class TestChildVariantNoParentPreference:
 
     def test_child_variant_with_parent_preference(self) -> None:
         """ChildVariant still works when parent_preference is provided."""
-        from odysseus.agents.review.models import ChildVariant
+        from compass.agents.review.models import ChildVariant
 
         cv = ChildVariant(
             hypothesis="Target weakest class",
@@ -384,8 +384,8 @@ class TestVariantIdSequentialCounter:
 
     def _make_search_state(self, tmp_path: Path, run_id: str, next_seq: int = 1) -> None:
         """Write a minimal search_state.json with the given next_variant_seq."""
-        from odysseus.agents.prompt_builder.search import SearchState
-        from odysseus.agents.prompt_builder.search_ops import _save_state
+        from compass.agents.prompt_builder.search import SearchState
+        from compass.agents.prompt_builder.search_ops import _save_state
 
         state = SearchState(
             search_state_id=run_id,
@@ -440,7 +440,7 @@ class TestVariantIdSequentialCounter:
 
     async def test_state_next_variant_seq_updated(self, tmp_path: Path) -> None:
         """After assigning 3 ids across two calls, next_variant_seq == 4."""
-        from odysseus.agents.prompt_builder.search_ops import _load_state
+        from compass.agents.prompt_builder.search_ops import _load_state
 
         self._make_search_state(tmp_path, self._RUN_ID, next_seq=1)
 
@@ -825,9 +825,9 @@ class TestBuildReviewBriefingToolSelector:
         assert "## Confusion analysis" in result
 
         # For field-level assertions, call build_review_briefing directly.
-        from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
-        from odysseus.agents.review.ops import load_round_reports
-        from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
+        from compass.agents.prompt_builder.search_ops import _load_pending, get_search_state
+        from compass.agents.review.ops import load_round_reports
+        from compass.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
 
         out = tmp_path / "outputs"
         state = get_search_state(run_id=run_id, output_dir=out)
@@ -839,10 +839,10 @@ class TestBuildReviewBriefingToolSelector:
         for v in list(all_versions) + candidate_versions:
             rp = out / run_id / "eval" / v / "report.json"
             if rp.exists():
-                from odysseus.mcp.review_tools import _load_score_report_dict
+                from compass.mcp.review_tools import _load_score_report_dict
 
                 score_reports[v] = _load_score_report_dict(rp, rp.parent / "results.jsonl")
-        from odysseus.eval.models import EvalResult, Example
+        from compass.eval.models import EvalResult, Example
 
         all_er: list[EvalResult] = []
         for v in [c.prompt_version for c in state.elite_set]:
@@ -913,7 +913,7 @@ class TestBuildReviewBriefingToolSelector:
 
     async def test_monkey_patch_selector_limits_to_single_version(self, tmp_path: Path) -> None:
         """Monkey-patching _select_confusion_candidates limits analysis to one version."""
-        import odysseus.mcp.review_tools as _rt
+        import compass.mcp.review_tools as _rt
 
         run_id = self._RUN_ID + "-patch"
         state_dict = _make_state_dict(
@@ -989,11 +989,11 @@ class TestBuildReviewBriefingToolSelector:
             rp.parent.mkdir(parents=True, exist_ok=True)
             rp.write_text(json.dumps(report), encoding="utf-8")
 
-        from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
-        from odysseus.agents.review.ops import load_round_reports
-        from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
-        from odysseus.eval.models import EvalResult, Example
-        from odysseus.mcp.review_tools import _load_score_report_dict
+        from compass.agents.prompt_builder.search_ops import _load_pending, get_search_state
+        from compass.agents.review.ops import load_round_reports
+        from compass.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
+        from compass.eval.models import EvalResult, Example
+        from compass.mcp.review_tools import _load_score_report_dict
 
         original_selector = _rt._select_confusion_candidates
         try:
@@ -1137,8 +1137,8 @@ class TestLoadScoreReportDict:
 
     def test_load_score_report_dict_converts_runreport(self, tmp_path: Path) -> None:
         """A RunReport-shaped JSON is converted to a ScoreReport-shaped dict without error."""
-        from odysseus.eval.models import ScoreReport
-        from odysseus.mcp.review_tools import _load_score_report_dict
+        from compass.eval.models import ScoreReport
+        from compass.mcp.review_tools import _load_score_report_dict
 
         report_path = tmp_path / "report.json"
         results_path = tmp_path / "results.jsonl"
@@ -1156,8 +1156,8 @@ class TestLoadScoreReportDict:
 
     def test_load_score_report_dict_converts_runreport_derives_results_path(self, tmp_path: Path) -> None:
         """When results_path is None, it is derived from report_path's parent dir."""
-        from odysseus.eval.models import ScoreReport
-        from odysseus.mcp.review_tools import _load_score_report_dict
+        from compass.eval.models import ScoreReport
+        from compass.mcp.review_tools import _load_score_report_dict
 
         report_path = tmp_path / "report.json"
         report_path.write_text(json.dumps(self._minimal_run_report_dict()), encoding="utf-8")
@@ -1169,7 +1169,7 @@ class TestLoadScoreReportDict:
 
     def test_load_score_report_dict_idempotent_on_scorereport(self, tmp_path: Path) -> None:
         """A ScoreReport-shaped JSON is returned as-is without double-conversion."""
-        from odysseus.mcp.review_tools import _load_score_report_dict
+        from compass.mcp.review_tools import _load_score_report_dict
 
         report_path = tmp_path / "report.json"
         results_path = tmp_path / "results.jsonl"
@@ -1625,7 +1625,7 @@ class TestGetDatasetOracleDistributionTool:
     async def test_aggregates_section_always_present(self, tmp_path: Path) -> None:
         self._write_dev(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1639,7 +1639,7 @@ class TestGetDatasetOracleDistributionTool:
     async def test_route_filter_shows_rows_section(self, tmp_path: Path) -> None:
         self._write_dev(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1656,7 +1656,7 @@ class TestGetDatasetOracleDistributionTool:
     async def test_example_ids_filter(self, tmp_path: Path) -> None:
         self._write_dev(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1673,7 +1673,7 @@ class TestGetDatasetOracleDistributionTool:
         """limit=1 returns at most 1 row in the rows section."""
         self._write_dev(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1689,7 +1689,7 @@ class TestGetDatasetOracleDistributionTool:
         """When dev.jsonl doesn't exist, returns an explanatory message (no exception)."""
         # Don't write any dev.jsonl
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1702,7 +1702,7 @@ class TestGetDatasetOracleDistributionTool:
         """Without route or example_ids filter, rows section is omitted."""
         self._write_dev(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1715,7 +1715,7 @@ class TestGetDatasetOracleDistributionTool:
         """row-2 has simple labeled but moderate/complex have same quality at higher cost — simple IS pareto."""
         self._write_dev(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1731,7 +1731,7 @@ class TestGetDatasetOracleDistributionTool:
         complex row-1: simple/moderate have same or lower quality and lower cost → ties_with_cheaper=1."""
         self._write_dev(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_dataset_oracle_distribution
+            from compass.mcp.review_tools import get_dataset_oracle_distribution
 
             result = await get_dataset_oracle_distribution(
                 ctx=None,
@@ -1751,8 +1751,8 @@ class TestGetPerClassRecallTool:
 
     def _make_state_with_reports(self, tmp_path: Path, *, write_legacy_round_reports: bool = True) -> None:
         """Write search state + eval reports with recall metrics."""
-        from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
-        from odysseus.agents.prompt_builder.search_ops import _save_state
+        from compass.agents.prompt_builder.search import RoundSummary, SearchState
+        from compass.agents.prompt_builder.search_ops import _save_state
 
         state = SearchState(
             search_state_id=self._RUN_ID,
@@ -1811,7 +1811,7 @@ class TestGetPerClassRecallTool:
         """get_per_class_recall returns all routes including low-support ones."""
         self._make_state_with_reports(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_per_class_recall
+            from compass.mcp.review_tools import get_per_class_recall
 
             result = await get_per_class_recall(
                 ctx=None,
@@ -1826,7 +1826,7 @@ class TestGetPerClassRecallTool:
         """Result markdown contains all expected column headers."""
         self._make_state_with_reports(tmp_path)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_per_class_recall
+            from compass.mcp.review_tools import get_per_class_recall
 
             result = await get_per_class_recall(
                 ctx=None,
@@ -1841,7 +1841,7 @@ class TestGetPerClassRecallTool:
     async def test_missing_search_state_returns_message(self, tmp_path: Path) -> None:
         """When search state doesn't exist, returns an explanatory string (no exception)."""
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_per_class_recall
+            from compass.mcp.review_tools import get_per_class_recall
 
             result = await get_per_class_recall(
                 ctx=None,
@@ -1853,7 +1853,7 @@ class TestGetPerClassRecallTool:
     async def test_uses_eval_history_without_round_reports_on_disk(self, tmp_path: Path) -> None:
         self._make_state_with_reports(tmp_path, write_legacy_round_reports=False)
         with _patch_project_dir(tmp_path):
-            from odysseus.mcp.review_tools import get_per_class_recall
+            from compass.mcp.review_tools import get_per_class_recall
 
             result = await get_per_class_recall(
                 ctx=None,

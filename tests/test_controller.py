@@ -10,11 +10,11 @@ import unittest.mock
 from pathlib import Path
 from typing import Any
 
-from odysseus.eval.collector import JsonResultsCollector
-from odysseus.eval.controller import _eval_with_retry, run
-from odysseus.eval.dataset import JsonlDatasetManager
-from odysseus.eval.metrics import create_default_engine
-from odysseus.eval.models import (
+from compass.eval.collector import JsonResultsCollector
+from compass.eval.controller import _eval_with_retry, run
+from compass.eval.dataset import JsonlDatasetManager
+from compass.eval.metrics import create_default_engine
+from compass.eval.models import (
     ConcurrencyConfig,
     EvalResult,
     Example,
@@ -26,10 +26,10 @@ from odysseus.eval.models import (
     RunFingerprint,
     TokenUsage,
 )
-from odysseus.eval.pricing import ModelPricing
-from odysseus.eval.protocols import RunDependencies
-from odysseus.eval.rate_limiter import TokenBucketRateLimiter
-from odysseus.prompts.manager import FilePromptManager
+from compass.eval.pricing import ModelPricing
+from compass.eval.protocols import RunDependencies
+from compass.eval.rate_limiter import TokenBucketRateLimiter
+from compass.prompts.manager import FilePromptManager
 
 # --- Mock backends (API call boundary) ---
 
@@ -442,7 +442,7 @@ async def test_streaming_writes_incrementally(tmp_path: Path):
     """Each result is appended to the JSONL file as it completes."""
     appended: list[str] = []
 
-    from odysseus.eval.collector import JsonResultsCollector
+    from compass.eval.collector import JsonResultsCollector
 
     class TrackingCollector(JsonResultsCollector):
         def append_result(self, result: EvalResult, path: str) -> None:

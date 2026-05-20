@@ -9,7 +9,7 @@ Verifies that:
 
 from __future__ import annotations
 
-from odysseus.agents.prompt_builder.search_ops import (
+from compass.agents.prompt_builder.search_ops import (
     advance_round_beam,
     get_search_state,
     init_search_state,

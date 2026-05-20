@@ -1,6 +1,6 @@
-"""Tests for odysseus.eval.diff — shared diff computation."""
+"""Tests for compass.eval.diff — shared diff computation."""
 
-from odysseus.eval.diff import MetricDiff, OverheadDiff, compute_metric_diffs, compute_overhead_diff
+from compass.eval.diff import MetricDiff, OverheadDiff, compute_metric_diffs, compute_overhead_diff
 
 
 class TestComputeMetricDiffs:

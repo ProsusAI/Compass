@@ -1,4 +1,4 @@
-"""Tests for odysseus.agents.prompt_builder_holdout_filter."""
+"""Tests for compass.agents.prompt_builder_holdout_filter."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.prompt_builder.holdout_filter import filter_holdout_dataset
+from compass.agents.prompt_builder.holdout_filter import filter_holdout_dataset
 
 
 def _make_example(id_: str) -> dict:
-    """Return a valid Odysseus Example dict for *id_*."""
+    """Return a valid Compass Example dict for *id_*."""
     return {
         "id": id_,
         "input": f"query {id_}",

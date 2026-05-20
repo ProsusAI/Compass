@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.eval.models import Example
+from compass.eval.models import Example
 
 
 def _write_jsonl(path: Path, records: list[dict]) -> None:
@@ -49,7 +49,7 @@ SAMPLE_RECORDS = [
 
 class TestJsonlDatasetManagerLoad:
     def test_load_returns_all_examples(self, tmp_path: Path):
-        from odysseus.eval.dataset import JsonlDatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "data.jsonl"
         _write_jsonl(path, SAMPLE_RECORDS)
@@ -62,7 +62,7 @@ class TestJsonlDatasetManagerLoad:
         assert [e.id for e in examples] == ["1", "2", "3"]
 
     def test_load_parses_fields_correctly(self, tmp_path: Path):
-        from odysseus.eval.dataset import JsonlDatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "data.jsonl"
         _write_jsonl(path, SAMPLE_RECORDS)
@@ -76,14 +76,14 @@ class TestJsonlDatasetManagerLoad:
 
 class TestJsonlDatasetManagerErrors:
     def test_file_not_found(self):
-        from odysseus.eval.dataset import JsonlDatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
 
         manager = JsonlDatasetManager()
         with pytest.raises(FileNotFoundError):
             manager.load("/nonexistent/path.jsonl")
 
     def test_malformed_json_line(self, tmp_path: Path):
-        from odysseus.eval.dataset import JsonlDatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "bad.jsonl"
         valid = '{"id":"1","input":"hi","expected":{"route":"a","routes":{"a":{"cost":0.01,"quality_score":0.9}}}}'
@@ -94,7 +94,7 @@ class TestJsonlDatasetManagerErrors:
             manager.load(str(path))
 
     def test_missing_required_field(self, tmp_path: Path):
-        from odysseus.eval.dataset import JsonlDatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "incomplete.jsonl"
         # Missing "expected" field
@@ -105,7 +105,7 @@ class TestJsonlDatasetManagerErrors:
             manager.load(str(path))
 
     def test_blank_lines_are_skipped(self, tmp_path: Path):
-        from odysseus.eval.dataset import JsonlDatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "blanks.jsonl"
         path.write_text(
@@ -121,13 +121,13 @@ class TestJsonlDatasetManagerErrors:
 
 class TestJsonlDatasetManagerLogging:
     def test_logs_example_count_at_info(self, tmp_path: Path, caplog: pytest.LogCaptureFixture):
-        from odysseus.eval.dataset import JsonlDatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
 
         path = tmp_path / "data.jsonl"
         _write_jsonl(path, SAMPLE_RECORDS)
 
         manager = JsonlDatasetManager()
-        with caplog.at_level(logging.INFO, logger="odysseus.eval.dataset"):
+        with caplog.at_level(logging.INFO, logger="compass.eval.dataset"):
             manager.load(str(path))
 
         assert any("Loaded 3" in msg for msg in caplog.messages)
@@ -135,8 +135,8 @@ class TestJsonlDatasetManagerLogging:
 
 class TestJsonlDatasetManagerProtocol:
     def test_conforms_to_dataset_manager_protocol(self):
-        from odysseus.eval.dataset import JsonlDatasetManager
-        from odysseus.eval.protocols import DatasetManager
+        from compass.eval.dataset import JsonlDatasetManager
+        from compass.eval.protocols import DatasetManager
 
         manager = JsonlDatasetManager()
         assert isinstance(manager, DatasetManager)

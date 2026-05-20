@@ -7,14 +7,14 @@ Review LLM does not always comply, so ``register_candidate`` enforces it.
 
 from __future__ import annotations
 
-from odysseus.agents.prompt_builder.search_ops import (
+from compass.agents.prompt_builder.search_ops import (
     _load_pending,
     advance_round_beam,
     init_search_state,
     record_eval_result,
     register_candidate,
 )
-from odysseus.agents.review.models import INITIAL_PARENT_VERSION
+from compass.agents.review.models import INITIAL_PARENT_VERSION
 
 
 def _pending_by_version(run_id: str, tmp_path) -> dict[str, str | None]:

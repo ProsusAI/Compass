@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import yaml
 
-from odysseus.agents.eval_runner import run_eval
-from odysseus.eval.models import (
+from compass.agents.eval_runner import run_eval
+from compass.eval.models import (
     EvalResult,
     MetricConfig,
     OutputConfig,
@@ -137,9 +137,9 @@ class TestEvalRunnerAgentSuccess:
             "config_path": str(config_path),
         }
 
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+        with patch("compass.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+            with patch("compass.agents.eval_runner._wire_dependencies"):
                 result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
@@ -169,9 +169,9 @@ class TestEvalRunnerAgentAllErrors:
             "config_path": str(config_path),
         }
 
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+        with patch("compass.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+            with patch("compass.agents.eval_runner._wire_dependencies"):
                 result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
@@ -209,9 +209,9 @@ class TestEvalRunnerAgentDiff:
             "config_path": str(config_path),
         }
 
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+        with patch("compass.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=current_report)
-            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+            with patch("compass.agents.eval_runner._wire_dependencies"):
                 result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
@@ -240,9 +240,9 @@ class TestEvalRunnerAgentErrors:
             "config_path": str(config_path),
         }
 
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+        with patch("compass.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(side_effect=RuntimeError("connection reset"))
-            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+            with patch("compass.agents.eval_runner._wire_dependencies"):
                 result = await run_eval(context)
 
         assert "error" in result
@@ -285,9 +285,9 @@ class TestEvalRunnerAgentErrors:
             "config_path": str(config_path),
         }
 
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+        with patch("compass.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(side_effect=FileNotFoundError("prompt v99 not found"))
-            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+            with patch("compass.agents.eval_runner._wire_dependencies"):
                 result = await run_eval(context)
 
         assert "error" in result
@@ -304,7 +304,7 @@ class TestEvalRunnerAgentErrors:
             "backend": "unknown-backend",
         }
 
-        with patch("odysseus.agents.eval_runner._wire_dependencies") as mock_wire:
+        with patch("compass.agents.eval_runner._wire_dependencies") as mock_wire:
             mock_wire.side_effect = KeyError("unknown-backend")
             result = await run_eval(context)
 
@@ -343,9 +343,9 @@ class TestEvalRunnerAgentPipelineConfig:
             "run_config": run_config,
         }
 
-        with patch("odysseus.agents.eval_runner.controller") as mock_ctrl:
+        with patch("compass.agents.eval_runner.controller") as mock_ctrl:
             mock_ctrl.run = AsyncMock(return_value=report)
-            with patch("odysseus.agents.eval_runner._wire_dependencies"):
+            with patch("compass.agents.eval_runner._wire_dependencies"):
                 result = await run_eval(context)
 
         assert ScoreReport.CONTEXT_KEY in result
@@ -371,9 +371,9 @@ class TestEvalRunnerAgentPipelineConfig:
         }
 
         with (
-            patch("odysseus.agents.eval_runner.controller") as mock_ctrl,
-            patch("odysseus.agents.eval_runner._wire_dependencies"),
-            patch("odysseus.agents.eval_runner._load_config") as mock_load,
+            patch("compass.agents.eval_runner.controller") as mock_ctrl,
+            patch("compass.agents.eval_runner._wire_dependencies"),
+            patch("compass.agents.eval_runner._load_config") as mock_load,
         ):
             mock_ctrl.run = AsyncMock(return_value=report)
             result = await run_eval(context)

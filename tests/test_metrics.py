@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.eval.metrics import (
+from compass.eval.metrics import (
     DefaultMetricsEngine,
     compute_accuracy,
     compute_confusion,
@@ -12,7 +12,7 @@ from odysseus.eval.metrics import (
     compute_f1,
     create_default_engine,
 )
-from odysseus.eval.models import EvalResult, Example, Expected, MetricConfig
+from compass.eval.models import EvalResult, Example, Expected, MetricConfig
 
 # --- Helpers ---
 
@@ -396,7 +396,7 @@ def test_cost_quality_all_predictions_hallucinated_logs_error(caplog: pytest.Log
     # Predictions use a different label namespace — none match _ROUTES keys.
     results = [_result("ex-0", route="0_simple"), _result("ex-1", route="1_complex")]
 
-    with caplog.at_level("ERROR", logger="odysseus.eval.metrics"):
+    with caplog.at_level("ERROR", logger="compass.eval.metrics"):
         out = compute_cost_quality_change(results, examples)
 
     assert out["cost_change"] == 0.0
@@ -511,7 +511,7 @@ def test_create_default_engine_has_all_builtins():
 
 
 def test_create_default_engine_satisfies_protocol():
-    from odysseus.eval.protocols import MetricsEngine
+    from compass.eval.protocols import MetricsEngine
 
     engine = create_default_engine()
     assert isinstance(engine, MetricsEngine)

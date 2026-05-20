@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.mcp import get_routing_context, save_routing_context, stratified_split, validate_dataset
+from compass.mcp import get_routing_context, save_routing_context, stratified_split, validate_dataset
 
 RUN_ID = "test_run"
-RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
+RESOLVE_PROJECT_DIR = "compass.project_dir.resolve_project_dir"
 
 
 def _setup_guard(tmp_path: Path) -> None:
@@ -188,7 +188,7 @@ class TestGetRoutingContextTool:
             await save_routing_context(ctx=None, run_id=RUN_ID, routing_context_json=rc_json)
             result = await get_routing_context(ctx=None, run_id=RUN_ID)
 
-        from odysseus.agents.routing_context import RoutingContext
+        from compass.agents.routing_context import RoutingContext
 
         saved = RoutingContext.model_validate_json(rc_json)
         assert "## Routing context" in result
@@ -256,7 +256,7 @@ class TestStratifiedSplitToolRouteInRoutes:
 class TestStratifiedSplitDebugArtifacts:
     @pytest.mark.asyncio
     async def test_split_report_not_written_by_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("ODYSSEUS_DEBUG", raising=False)
+        monkeypatch.delenv("COMPASS_DEBUG", raising=False)
         _make_quality_report(tmp_path)
         dataset = tmp_path / "data.jsonl"
         _write_jsonl([_valid_row(f"ex-{i}") for i in range(10)], dataset)
@@ -274,7 +274,7 @@ class TestStratifiedSplitDebugArtifacts:
     async def test_split_report_written_when_debug_enabled(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("ODYSSEUS_DEBUG", "1")
+        monkeypatch.setenv("COMPASS_DEBUG", "1")
         _make_quality_report(tmp_path)
         dataset = tmp_path / "data.jsonl"
         _write_jsonl([_valid_row(f"ex-{i}") for i in range(10)], dataset)

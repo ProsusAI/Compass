@@ -6,7 +6,7 @@ Any mismatch here is a builder regression.
 
 from __future__ import annotations
 
-from odysseus.agents.pipeline.instructions import (
+from compass.agents.pipeline.instructions import (
     _STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
     _STAGE_4_BUILD_RECOVERING_INSTRUCTION,
     _STAGE_4_BUILD_V1_INSTRUCTION,

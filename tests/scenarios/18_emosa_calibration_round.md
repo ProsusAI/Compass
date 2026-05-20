@@ -9,7 +9,7 @@
 - Weight vectors: `[(0.9, 0.1), (0.7, 0.3), (0.5, 0.5), (0.3, 0.7), (0.1, 0.9)]`
 - Initial `ideal_point`: `(1.0, 0.0)` (placeholder — refreshed after calibration_complete)
 - Initial `nadir_point`: `(0.0, 1.0)` (placeholder — refreshed after calibration_complete)
-- System prompts: `odysseus_review_agent_cold_start`, `odysseus_prompt_builder`
+- System prompts: `compass_review_agent_cold_start`, `compass_prompt_builder`
 - MCP tools: `get_pipeline_status`, `get_search_state`, `init_search_state`,
   `register_candidate`, `run_batch_eval`, `advance_step`,
   `build_review_briefing`, `record_directive_outcomes`
@@ -19,7 +19,7 @@
 This scenario exercises the EMOSA cold-start calibration round from an empty state through to
 trajectory seeding, covering:
 
-1. **Calibration phase**: The cold-start Review Agent (`odysseus_review_agent_cold_start` with
+1. **Calibration phase**: The cold-start Review Agent (`compass_review_agent_cold_start` with
    the `emosa` overlay) receives an empty briefing and emits exactly K=5 diverse child
    directives — one per trajectory. The Prompt Builder realises all five seeds via
    `register_candidate` (round=0, no parents). Batch evaluation scores all five
@@ -57,7 +57,7 @@ You have full knowledge of the expected flow and will verify state after each to
 
 **Behaviour:**
 1. Start by calling `get_pipeline_status` to confirm Stage 4 calibration phase is active and
-   `activate_prompt == "odysseus_review_agent_cold_start"` (with `algorithm="emosa"`).
+   `activate_prompt == "compass_review_agent_cold_start"` (with `algorithm="emosa"`).
 2. Invoke the cold-start Review Agent. Confirm it emits ≥ 5 child directives.
 3. Call `get_pipeline_status` again and confirm phase transitions to `warmup_build` or
    `calibration` build dispatch.
@@ -79,11 +79,11 @@ completes, verify all 5 trajectories are seeded and `loop_phase` has flipped to 
 ## Verification Criteria
 
 ### Calibration Phase — Review Agent
-- [ ] `get_pipeline_status` returns an instruction activating `odysseus_review_agent_cold_start`
+- [ ] `get_pipeline_status` returns an instruction activating `compass_review_agent_cold_start`
       (with `algorithm="emosa"`) before any seeds are registered
 - [ ] The cold-start Review Agent emits ≥ 5 child variant directives (one per trajectory) in a
       single response
-- [ ] No steady-state Review Agent overlay (`odysseus_review_agent_iterative`) is invoked during
+- [ ] No steady-state Review Agent overlay (`compass_review_agent_iterative`) is invoked during
       the calibration round
 
 ### Calibration Phase — Build and Eval

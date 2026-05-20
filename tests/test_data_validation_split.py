@@ -3,12 +3,12 @@
 
 import inspect
 
-from odysseus.agents.data_validation.split import (
+from compass.agents.data_validation.split import (
     SplitReport,
     compute_dataset_hash,
     stratified_split,
 )
-from odysseus.eval.models import Example, Expected, ModelCostQuality
+from compass.eval.models import Example, Expected, ModelCostQuality
 
 
 def _make_example(eid: str, route: str) -> Example:

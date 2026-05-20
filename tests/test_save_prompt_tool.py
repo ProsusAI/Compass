@@ -25,12 +25,12 @@ def project_dir(tmp_path):
 
 async def test_save_prompt_writes_file(mock_ctx, project_dir):
     """save_prompt writes prompt content to the correct path."""
-    from odysseus.mcp.prompt_building_tools import save_prompt
+    from compass.mcp.prompt_building_tools import save_prompt
 
     run_id = "test-run"
     content = "# Routing Objective\nRoute customer queries.\n\n<example>\nInput: hello\nRoute: greeting\n</example>"
 
-    with patch("odysseus.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir):
+    with patch("compass.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir):
         result = await save_prompt(ctx=mock_ctx, run_id=run_id, prompt_version="v1", content=content)
 
     result_data = json.loads(result)
@@ -42,14 +42,14 @@ async def test_save_prompt_writes_file(mock_ctx, project_dir):
 
 async def test_save_prompt_preserves_xml_tags(mock_ctx, project_dir):
     """XML-like tags in prompt content are preserved exactly."""
-    from odysseus.mcp.prompt_building_tools import save_prompt
+    from compass.mcp.prompt_building_tools import save_prompt
 
     content = (
         "<important>\nNever route ambiguous queries to billing.\n</important>\n"
         "<example>\n<input>refund</input>\n<route>billing</route>\n</example>"
     )
 
-    with patch("odysseus.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir):
+    with patch("compass.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir):
         await save_prompt(ctx=mock_ctx, run_id="test-run", prompt_version="v2", content=content)
 
     written = (project_dir / "outputs" / "test-run" / "prompts" / "v2.txt").read_text(encoding="utf-8")
@@ -58,10 +58,10 @@ async def test_save_prompt_preserves_xml_tags(mock_ctx, project_dir):
 
 async def test_save_prompt_rejects_empty_content(mock_ctx, project_dir):
     """save_prompt raises ToolError for empty content."""
-    from odysseus.mcp.prompt_building_tools import save_prompt
+    from compass.mcp.prompt_building_tools import save_prompt
 
     with (
-        patch("odysseus.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir),
+        patch("compass.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir),
         pytest.raises(ToolError, match="content must not be empty"),
     ):
         await save_prompt(ctx=mock_ctx, run_id="test-run", prompt_version="v1", content="")
@@ -69,9 +69,9 @@ async def test_save_prompt_rejects_empty_content(mock_ctx, project_dir):
 
 async def test_save_prompt_creates_directories(mock_ctx, project_dir):
     """save_prompt creates the prompts directory if it doesn't exist."""
-    from odysseus.mcp.prompt_building_tools import save_prompt
+    from compass.mcp.prompt_building_tools import save_prompt
 
-    with patch("odysseus.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir):
+    with patch("compass.mcp.prompt_building_tools._project_dir_mod.resolve_project_dir", return_value=project_dir):
         await save_prompt(ctx=mock_ctx, run_id="new-run", prompt_version="v1", content="test prompt")
 
     assert (project_dir / "outputs" / "new-run" / "prompts" / "v1.txt").exists()

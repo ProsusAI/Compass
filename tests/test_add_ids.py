@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.data_validation.transform import AddIdsResult, add_ids_to_dataset
+from compass.agents.data_validation.transform import AddIdsResult, add_ids_to_dataset
 
 
 def _write_jsonl(path: Path, rows: list[dict]) -> None:

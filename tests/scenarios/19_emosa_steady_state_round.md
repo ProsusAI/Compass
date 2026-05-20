@@ -8,7 +8,7 @@
 - Pre-seeded `search_state.json`: `phase="search"`, `step_count=1`, K=5 trajectories with
   `current_solution` populated (`v_seed_0` through `v_seed_4`), `loop_phase="review"`,
   `temperature=0.95` (cooled once: `T_initial=1.0 * alpha^1`).
-- System prompts: `odysseus_review_agent`, `odysseus_prompt_builder`
+- System prompts: `compass_review_agent`, `compass_prompt_builder`
 - MCP tools: `get_pipeline_status`, `get_search_state`, `build_review_briefing`,
   `register_candidate`, `run_batch_eval`, `advance_step`,
   `save_trajectory_child_variants_tool`, `record_directive_outcomes`

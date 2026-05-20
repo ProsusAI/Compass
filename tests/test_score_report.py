@@ -2,8 +2,8 @@
 
 from datetime import UTC, datetime
 
-from odysseus.eval.diff import MetricDiff, OverheadDiff
-from odysseus.eval.models import (
+from compass.eval.diff import MetricDiff, OverheadDiff
+from compass.eval.models import (
     ErrorBreakdown,
     EvalResult,
     MetricConfig,
@@ -177,16 +177,16 @@ class TestScoreReport:
 
 class TestExports:
     def test_score_report_importable_from_eval(self) -> None:
-        from odysseus.eval import ScoreReport as Exported
+        from compass.eval import ScoreReport as Exported
 
         assert Exported is ScoreReport
 
     def test_error_breakdown_importable_from_eval(self) -> None:
-        from odysseus.eval import ErrorBreakdown as Exported
+        from compass.eval import ErrorBreakdown as Exported
 
         assert Exported is ErrorBreakdown
 
     def test_run_diff_importable_from_eval(self) -> None:
-        from odysseus.eval import RunDiff as Exported
+        from compass.eval import RunDiff as Exported
 
         assert Exported is RunDiff

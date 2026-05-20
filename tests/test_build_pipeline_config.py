@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from odysseus.agents.prompt_builder.search import SearchState
-from odysseus.mcp.prompt_building_tools import build_pipeline_config
+from compass.agents.prompt_builder.search import SearchState
+from compass.mcp.prompt_building_tools import build_pipeline_config
 
 
 class TestBuildPipelineConfig:

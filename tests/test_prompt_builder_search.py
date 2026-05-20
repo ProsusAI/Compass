@@ -1,11 +1,11 @@
-"""Tests for odysseus.agents.prompt_builder_search."""
+"""Tests for compass.agents.prompt_builder_search."""
 
 from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
 
-from odysseus.agents.prompt_builder.search import (
+from compass.agents.prompt_builder.search import (
     Candidate,
     RoundSummary,
     SearchState,

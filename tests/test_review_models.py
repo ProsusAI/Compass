@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from odysseus.eval.models import RunSummary, ScoreReport
+from compass.eval.models import RunSummary, ScoreReport
 
 
 def _make_score_report(**metric_overrides: float) -> ScoreReport:
@@ -36,7 +36,7 @@ def _make_score_report(**metric_overrides: float) -> ScoreReport:
 
 class TestMetricDeltas:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import MetricDeltas
+        from compass.agents.review.models import MetricDeltas
 
         delta = MetricDeltas(
             quality_delta=0.05,
@@ -48,7 +48,7 @@ class TestMetricDeltas:
         assert delta.per_class_recall_deltas["route_a"] == 0.03
 
     def test_empty_per_class_recalls(self) -> None:
-        from odysseus.agents.review.models import MetricDeltas
+        from compass.agents.review.models import MetricDeltas
 
         delta = MetricDeltas(quality_delta=0.0, cost_delta=0.0, per_class_recall_deltas={})
         assert delta.per_class_recall_deltas == {}
@@ -61,7 +61,7 @@ class TestMetricDeltas:
 
 class TestCandidateAnalysis:
     def test_with_parent(self) -> None:
-        from odysseus.agents.review.models import CandidateAnalysis, MetricDeltas
+        from compass.agents.review.models import CandidateAnalysis, MetricDeltas
 
         ca = CandidateAnalysis(
             candidate_version="v2",
@@ -74,7 +74,7 @@ class TestCandidateAnalysis:
         assert ca.parent_version == "v1"
 
     def test_no_parent(self) -> None:
-        from odysseus.agents.review.models import CandidateAnalysis, MetricDeltas
+        from compass.agents.review.models import CandidateAnalysis, MetricDeltas
 
         ca = CandidateAnalysis(
             candidate_version="v1",
@@ -93,7 +93,7 @@ class TestCandidateAnalysis:
 
 class TestClassRecallEntry:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import ClassRecallEntry
+        from compass.agents.review.models import ClassRecallEntry
 
         entry = ClassRecallEntry(
             recall=0.85,
@@ -106,7 +106,7 @@ class TestClassRecallEntry:
         assert entry.regression_flag is False
 
     def test_regression_flag_set(self) -> None:
-        from odysseus.agents.review.models import ClassRecallEntry
+        from compass.agents.review.models import ClassRecallEntry
 
         entry = ClassRecallEntry(recall=0.60, support=50, trend=[0.80, 0.70, 0.60], regression_flag=True)
         assert entry.regression_flag is True
@@ -119,7 +119,7 @@ class TestClassRecallEntry:
 
 class TestDiversityMetrics:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import DiversityMetrics
+        from compass.agents.review.models import DiversityMetrics
 
         dm = DiversityMetrics(
             example_overlap_ratio=0.3,
@@ -127,13 +127,13 @@ class TestDiversityMetrics:
         assert dm.example_overlap_ratio == 0.3
 
     def test_full_overlap(self) -> None:
-        from odysseus.agents.review.models import DiversityMetrics
+        from compass.agents.review.models import DiversityMetrics
 
         dm = DiversityMetrics(example_overlap_ratio=1.0)
         assert dm.example_overlap_ratio == 1.0
 
     def test_zero_overlap(self) -> None:
-        from odysseus.agents.review.models import DiversityMetrics
+        from compass.agents.review.models import DiversityMetrics
 
         dm = DiversityMetrics(example_overlap_ratio=0.0)
         assert dm.example_overlap_ratio == 0.0
@@ -146,7 +146,7 @@ class TestDiversityMetrics:
 
 class TestDiminishingReturns:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import DiminishingReturns
+        from compass.agents.review.models import DiminishingReturns
 
         dr = DiminishingReturns(
             score_trajectory=[0.70, 0.72, 0.73, 0.73],
@@ -164,7 +164,7 @@ class TestDiminishingReturns:
 
 class TestUserTarget:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import UserTarget
+        from compass.agents.review.models import UserTarget
 
         t = UserTarget(metric="accuracy", operator=">=", threshold=0.90)
         assert t.metric == "accuracy"
@@ -172,14 +172,14 @@ class TestUserTarget:
         assert t.threshold == 0.90
 
     def test_all_operators_valid(self) -> None:
-        from odysseus.agents.review.models import UserTarget
+        from compass.agents.review.models import UserTarget
 
         for op in ("<=", ">=", "<", ">", "=="):
             t = UserTarget(metric="cost", operator=op, threshold=1.0)  # type: ignore[arg-type]
             assert t.operator == op
 
     def test_invalid_operator_raises(self) -> None:
-        from odysseus.agents.review.models import UserTarget
+        from compass.agents.review.models import UserTarget
 
         with pytest.raises(ValidationError):
             UserTarget(metric="accuracy", operator="!=", threshold=0.5)  # type: ignore[arg-type]
@@ -192,7 +192,7 @@ class TestUserTarget:
 
 class TestUserTargetProgress:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import UserTarget, UserTargetProgress
+        from compass.agents.review.models import UserTarget, UserTargetProgress
 
         target = UserTarget(metric="accuracy", operator=">=", threshold=0.90)
         utp = UserTargetProgress(
@@ -208,7 +208,7 @@ class TestUserTargetProgress:
         assert utp.progress_ratio == pytest.approx(0.94)
 
     def test_met_target(self) -> None:
-        from odysseus.agents.review.models import UserTarget, UserTargetProgress
+        from compass.agents.review.models import UserTarget, UserTargetProgress
 
         target = UserTarget(metric="accuracy", operator=">=", threshold=0.80)
         utp = UserTargetProgress(
@@ -222,7 +222,7 @@ class TestUserTargetProgress:
         assert utp.met is True
 
     def test_surplus_fields_optional(self) -> None:
-        from odysseus.agents.review.models import UserTarget, UserTargetProgress
+        from compass.agents.review.models import UserTarget, UserTargetProgress
 
         target = UserTarget(metric="cost", operator="<=", threshold=1.0)
         utp = UserTargetProgress(
@@ -241,7 +241,7 @@ class TestUserTargetProgress:
         assert utp.priority_weight == 0.0
 
     def test_source_version_round_trip(self) -> None:
-        from odysseus.agents.review.models import UserTarget, UserTargetProgress
+        from compass.agents.review.models import UserTarget, UserTargetProgress
 
         target = UserTarget(metric="quality_change", operator=">=", threshold=0.03)
         utp = UserTargetProgress(
@@ -273,7 +273,7 @@ class TestUserTargetProgress:
 
 class TestChildVariant:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import ChildVariant, EditDirective
+        from compass.agents.review.models import ChildVariant, EditDirective
 
         ed = EditDirective(
             directive_id="d1",
@@ -293,13 +293,13 @@ class TestChildVariant:
         assert len(cv.directives) == 1
 
     def test_variant_id_defaults_to_none(self) -> None:
-        from odysseus.agents.review.models import ChildVariant
+        from compass.agents.review.models import ChildVariant
 
         cv = ChildVariant(hypothesis="hypothesis", directives=[])
         assert cv.variant_id is None
 
     def test_parent_preference_fields(self) -> None:
-        from odysseus.agents.review.models import ChildVariant
+        from compass.agents.review.models import ChildVariant
 
         cv = ChildVariant(
             variant_id="cv-1-0",
@@ -319,7 +319,7 @@ class TestChildVariant:
 
 class TestBatchOutcome:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import BatchOutcome
+        from compass.agents.review.models import BatchOutcome
 
         bo = BatchOutcome(
             variant_id="cv-0-0",
@@ -337,7 +337,7 @@ class TestBatchOutcome:
         assert bo.is_new_best is True
 
     def test_failed_eval(self) -> None:
-        from odysseus.agents.review.models import BatchOutcome
+        from compass.agents.review.models import BatchOutcome
 
         bo = BatchOutcome(
             variant_id="cv-0-1",
@@ -353,7 +353,7 @@ class TestBatchOutcome:
         assert bo.quality_delta_vs_parent is None
 
     def test_invalid_mutation_strategy_raises(self) -> None:
-        from odysseus.agents.review.models import BatchOutcome
+        from compass.agents.review.models import BatchOutcome
 
         with pytest.raises(ValidationError):
             BatchOutcome(
@@ -374,7 +374,7 @@ class TestBatchOutcome:
 
 class TestExampleSummary:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import ExampleSummary
+        from compass.agents.review.models import ExampleSummary
 
         es = ExampleSummary(
             example_id="ex-001",
@@ -385,7 +385,7 @@ class TestExampleSummary:
         assert "low_confidence" in es.ambiguity_tags
 
     def test_empty_ambiguity_tags(self) -> None:
-        from odysseus.agents.review.models import ExampleSummary
+        from compass.agents.review.models import ExampleSummary
 
         es = ExampleSummary(example_id="ex-002", route="route_b", ambiguity_tags=[])
         assert es.ambiguity_tags == []
@@ -398,7 +398,7 @@ class TestExampleSummary:
 
 class TestOracleMetrics:
     def test_required_fields_only(self) -> None:
-        from odysseus.agents.review.models import OracleMetrics
+        from compass.agents.review.models import OracleMetrics
 
         om = OracleMetrics(
             oracle_cost_change=0.15,
@@ -409,7 +409,7 @@ class TestOracleMetrics:
         assert om.candidate_quality_captured is None
 
     def test_all_fields(self) -> None:
-        from odysseus.agents.review.models import OracleMetrics
+        from compass.agents.review.models import OracleMetrics
 
         om = OracleMetrics(
             oracle_cost_change=0.15,
@@ -427,8 +427,8 @@ class TestOracleMetrics:
 
 
 def _make_minimal_briefing_kwargs() -> dict:
-    from odysseus.agents.prompt_builder.search import Candidate
-    from odysseus.agents.review.models import (
+    from compass.agents.prompt_builder.search import Candidate
+    from compass.agents.review.models import (
         CandidateAnalysis,
         ClassRecallEntry,
         DiminishingReturns,
@@ -470,7 +470,7 @@ def _make_minimal_briefing_kwargs() -> dict:
 
 class TestReviewBriefing:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
         assert briefing.round == 2
@@ -479,13 +479,13 @@ class TestReviewBriefing:
         assert "route_a" in briefing.per_class_recall
 
     def test_single_candidate_meets_all_default(self) -> None:
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
         assert briefing.single_candidate_meets_all is False
 
     def test_empty_collections(self) -> None:
-        from odysseus.agents.review.models import (
+        from compass.agents.review.models import (
             DiminishingReturns,
             DiversityMetrics,
             OracleMetrics,
@@ -512,7 +512,7 @@ class TestReviewBriefing:
 
     def test_new_fields_default(self) -> None:
         """New fields default to empty/False."""
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
         assert briefing.batch_outcomes == []
@@ -522,7 +522,7 @@ class TestReviewBriefing:
 
     def test_old_json_without_new_fields_still_loads(self) -> None:
         """A ReviewBriefing serialised before new fields loads without error (extra=ignore)."""
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
         data = briefing.model_dump()
@@ -534,7 +534,7 @@ class TestReviewBriefing:
 
     def test_unknown_future_field_is_ignored(self) -> None:
         """extra='ignore' ensures unknown fields do not raise."""
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
         data = briefing.model_dump()
@@ -550,7 +550,7 @@ class TestReviewBriefing:
 
 class TestRankedCandidate:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import RankedCandidate
+        from compass.agents.review.models import RankedCandidate
 
         rc = RankedCandidate(version="v2", rank=1, rationale="best accuracy")
         assert rc.version == "v2"
@@ -564,7 +564,7 @@ class TestRankedCandidate:
 
 class TestEditDirective:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import EditDirective
+        from compass.agents.review.models import EditDirective
 
         ed = EditDirective(
             directive_id="d1",
@@ -581,7 +581,7 @@ class TestEditDirective:
         assert ed.priority == "high"
 
     def test_invalid_block_type(self) -> None:
-        from odysseus.agents.review.models import EditDirective
+        from compass.agents.review.models import EditDirective
 
         with pytest.raises(ValidationError):
             EditDirective(
@@ -595,7 +595,7 @@ class TestEditDirective:
             )
 
     def test_all_block_types_valid(self) -> None:
-        from odysseus.agents.review.models import EditDirective
+        from compass.agents.review.models import EditDirective
 
         for bt in ("rule", "example", "output_schema", "vocabulary"):
             ed = EditDirective(
@@ -617,25 +617,25 @@ class TestEditDirective:
 
 class TestPromotionDecision:
     def test_promote(self) -> None:
-        from odysseus.agents.review.models import PromotionDecision
+        from compass.agents.review.models import PromotionDecision
 
         pd = PromotionDecision(version="v2", decision="promote", reason="best candidate")
         assert pd.decision == "promote"
 
     def test_prune(self) -> None:
-        from odysseus.agents.review.models import PromotionDecision
+        from compass.agents.review.models import PromotionDecision
 
         pd = PromotionDecision(version="v3", decision="prune", reason="dominated")
         assert pd.decision == "prune"
 
     def test_refine(self) -> None:
-        from odysseus.agents.review.models import PromotionDecision
+        from compass.agents.review.models import PromotionDecision
 
         pd = PromotionDecision(version="v4", decision="refine", reason="promising but needs work")
         assert pd.decision == "refine"
 
     def test_invalid_decision(self) -> None:
-        from odysseus.agents.review.models import PromotionDecision
+        from compass.agents.review.models import PromotionDecision
 
         with pytest.raises(ValidationError):
             PromotionDecision(version="v5", decision="reject", reason="bad")  # type: ignore[arg-type]
@@ -648,7 +648,7 @@ class TestPromotionDecision:
 
 class TestLoopSignal:
     def test_refine_with_budget(self) -> None:
-        from odysseus.agents.review.models import LoopSignal
+        from compass.agents.review.models import LoopSignal
 
         ls = LoopSignal(
             action="refine",
@@ -661,7 +661,7 @@ class TestLoopSignal:
         assert ls.suggested_mutation_mode == "targeted"
 
     def test_exit_no_optional_fields(self) -> None:
-        from odysseus.agents.review.models import LoopSignal
+        from compass.agents.review.models import LoopSignal
 
         ls = LoopSignal(action="exit", reason="converged")
         assert ls.action == "exit"
@@ -669,13 +669,13 @@ class TestLoopSignal:
         assert ls.suggested_mutation_mode is None
 
     def test_invalid_action(self) -> None:
-        from odysseus.agents.review.models import LoopSignal
+        from compass.agents.review.models import LoopSignal
 
         with pytest.raises(ValidationError):
             LoopSignal(action="continue", reason="test")  # type: ignore[arg-type]
 
     def test_invalid_mutation_mode(self) -> None:
-        from odysseus.agents.review.models import LoopSignal
+        from compass.agents.review.models import LoopSignal
 
         with pytest.raises(ValidationError):
             LoopSignal(
@@ -692,7 +692,7 @@ class TestLoopSignal:
 
 class TestRegressionFlag:
     def test_warning(self) -> None:
-        from odysseus.agents.review.models import RegressionFlag
+        from compass.agents.review.models import RegressionFlag
 
         rf = RegressionFlag(
             version="v2",
@@ -705,7 +705,7 @@ class TestRegressionFlag:
         assert rf.previous_value == 0.85
 
     def test_block(self) -> None:
-        from odysseus.agents.review.models import RegressionFlag
+        from compass.agents.review.models import RegressionFlag
 
         rf = RegressionFlag(
             version="v2",
@@ -717,7 +717,7 @@ class TestRegressionFlag:
         assert rf.severity == "block"
 
     def test_invalid_severity(self) -> None:
-        from odysseus.agents.review.models import RegressionFlag
+        from compass.agents.review.models import RegressionFlag
 
         with pytest.raises(ValidationError):
             RegressionFlag(
@@ -736,7 +736,7 @@ class TestRegressionFlag:
 
 class TestDirectiveOutcome:
     def test_improved(self) -> None:
-        from odysseus.agents.review.models import DirectiveOutcome
+        from compass.agents.review.models import DirectiveOutcome
 
         do = DirectiveOutcome(
             prior_directive_id="d1",
@@ -747,7 +747,7 @@ class TestDirectiveOutcome:
         assert do.was_attempted is True
 
     def test_not_attempted(self) -> None:
-        from odysseus.agents.review.models import DirectiveOutcome
+        from compass.agents.review.models import DirectiveOutcome
 
         do = DirectiveOutcome(
             prior_directive_id="d2",
@@ -757,7 +757,7 @@ class TestDirectiveOutcome:
         assert do.was_attempted is False
 
     def test_invalid_outcome(self) -> None:
-        from odysseus.agents.review.models import DirectiveOutcome
+        from compass.agents.review.models import DirectiveOutcome
 
         with pytest.raises(ValidationError):
             DirectiveOutcome(
@@ -767,7 +767,7 @@ class TestDirectiveOutcome:
             )
 
     def test_all_outcomes_valid(self) -> None:
-        from odysseus.agents.review.models import DirectiveOutcome
+        from compass.agents.review.models import DirectiveOutcome
 
         for outcome in ("improved", "no_effect", "regressed"):
             do = DirectiveOutcome(prior_directive_id="d", was_attempted=True, outcome=outcome)  # type: ignore[arg-type]
@@ -781,7 +781,7 @@ class TestDirectiveOutcome:
 
 class TestReviewResult:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import (
+        from compass.agents.review.models import (
             ChildVariant,
             EditDirective,
             LoopSignal,
@@ -831,7 +831,7 @@ class TestReviewResult:
         assert len(result.regression_guards) == 1
 
     def test_empty_lists(self) -> None:
-        from odysseus.agents.review.models import LoopSignal, ReviewResult
+        from compass.agents.review.models import LoopSignal, ReviewResult
 
         result = ReviewResult(
             candidate_ranking=[],
@@ -851,7 +851,7 @@ class TestReviewResult:
 
 
 def test_example_content_model():
-    from odysseus.agents.review.models import ExampleContent
+    from compass.agents.review.models import ExampleContent
 
     content = ExampleContent(
         input="Build a multi-step data pipeline",
@@ -867,7 +867,7 @@ def test_example_content_model():
 
 
 def test_edit_directive_with_example_content():
-    from odysseus.agents.review.models import EditDirective, ExampleContent
+    from compass.agents.review.models import EditDirective, ExampleContent
 
     directive = EditDirective(
         directive_id="d1",
@@ -889,7 +889,7 @@ def test_edit_directive_with_example_content():
 
 
 def test_edit_directive_without_example_content():
-    from odysseus.agents.review.models import EditDirective
+    from compass.agents.review.models import EditDirective
 
     directive = EditDirective(
         directive_id="d2",
@@ -910,7 +910,7 @@ def test_edit_directive_without_example_content():
 
 class TestExampleContent:
     def test_with_example_id(self) -> None:
-        from odysseus.agents.review.models import ExampleContent
+        from compass.agents.review.models import ExampleContent
 
         content = ExampleContent(
             example_id="ex-042",
@@ -922,7 +922,7 @@ class TestExampleContent:
         assert content.example_id == "ex-042"
 
     def test_example_id_defaults_to_none(self) -> None:
-        from odysseus.agents.review.models import ExampleContent
+        from compass.agents.review.models import ExampleContent
 
         content = ExampleContent(
             input="Hello",
@@ -943,7 +943,7 @@ class TestReviewBriefingStrategyFields:
 
     def test_strategy_fields_round_trip(self) -> None:
         """Strategy-specific optional fields survive a model_dump / model_validate round-trip."""
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(
             **_make_minimal_briefing_kwargs(),
@@ -959,7 +959,7 @@ class TestReviewBriefingStrategyFields:
 
     def test_new_fields_default_to_none(self) -> None:
         """When none of the optional fields are set, they all default to None."""
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
 
@@ -974,7 +974,7 @@ class TestReviewBriefingStrategyFields:
 
 class TestConfusionImpact:
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import ConfusionImpact
+        from compass.agents.review.models import ConfusionImpact
 
         ci = ConfusionImpact(
             true_route="billing",
@@ -996,7 +996,7 @@ class TestConfusionImpact:
         assert ci.persistence_rate == 0.75
 
     def test_forbids_extra_fields(self) -> None:
-        from odysseus.agents.review.models import ConfusionImpact
+        from compass.agents.review.models import ConfusionImpact
 
         with pytest.raises(ValidationError):
             ConfusionImpact(  # type: ignore[call-arg]
@@ -1023,7 +1023,7 @@ class TestConfusionImpact:
 
 class TestContrastPairContent:
     def _make_example(self, route: str):  # type: ignore[return]  # noqa: ANN201
-        from odysseus.agents.review.models import ExampleContent
+        from compass.agents.review.models import ExampleContent
 
         return ExampleContent(
             input="Some input text",
@@ -1033,7 +1033,7 @@ class TestContrastPairContent:
         )
 
     def test_basic_construction(self) -> None:
-        from odysseus.agents.review.models import ContrastPairContent
+        from compass.agents.review.models import ContrastPairContent
 
         cp = ContrastPairContent(
             example_a=self._make_example("billing"),
@@ -1048,7 +1048,7 @@ class TestContrastPairContent:
         assert cp.distinguishing_signal == "mentions invoice"
 
     def test_routes_must_differ(self) -> None:
-        from odysseus.agents.review.models import ContrastPairContent
+        from compass.agents.review.models import ContrastPairContent
 
         with pytest.raises(ValueError, match="different routes"):
             ContrastPairContent(
@@ -1061,7 +1061,7 @@ class TestContrastPairContent:
             )
 
     def test_routes_must_match_target(self) -> None:
-        from odysseus.agents.review.models import ContrastPairContent
+        from compass.agents.review.models import ContrastPairContent
 
         with pytest.raises(ValueError, match="must match"):
             ContrastPairContent(
@@ -1081,7 +1081,7 @@ class TestContrastPairContent:
 
 class TestEditDirectiveContrastPair:
     def test_contrast_pair_block_type(self) -> None:
-        from odysseus.agents.review.models import ContrastPairContent, EditDirective, ExampleContent
+        from compass.agents.review.models import ContrastPairContent, EditDirective, ExampleContent
 
         example_a = ExampleContent(
             input="My invoice is wrong",
@@ -1125,13 +1125,13 @@ class TestEditDirectiveContrastPair:
 
 class TestReviewBriefingConfusionAnalysis:
     def test_confusion_analysis_default_empty(self) -> None:
-        from odysseus.agents.review.models import ReviewBriefing
+        from compass.agents.review.models import ReviewBriefing
 
         briefing = ReviewBriefing(**_make_minimal_briefing_kwargs())
         assert briefing.confusion_analysis == []
 
     def test_confusion_analysis_populated(self) -> None:
-        from odysseus.agents.review.models import ConfusionImpact, ReviewBriefing
+        from compass.agents.review.models import ConfusionImpact, ReviewBriefing
 
         ci = ConfusionImpact(
             true_route="billing",

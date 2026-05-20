@@ -1,4 +1,4 @@
-"""Tests for odysseus.eval.backends package."""
+"""Tests for compass.eval.backends package."""
 
 from __future__ import annotations
 
@@ -10,14 +10,14 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from odysseus.eval.backends.anthropic_backend import AnthropicBackend
-from odysseus.eval.backends.bedrock_backend import BedrockBackend
-from odysseus.eval.backends.openai_backend import OpenAIBackend
-from odysseus.eval.backends.profile import BackendProfile
-from odysseus.eval.backends.registry import BackendRegistry
-from odysseus.eval.models import EvalResult, Example, Expected, MetricConfig, RunReport, TokenUsage
-from odysseus.eval.pricing import ModelPricing
-from odysseus.eval.protocols import RunDependencies
+from compass.eval.backends.anthropic_backend import AnthropicBackend
+from compass.eval.backends.bedrock_backend import BedrockBackend
+from compass.eval.backends.openai_backend import OpenAIBackend
+from compass.eval.backends.profile import BackendProfile
+from compass.eval.backends.registry import BackendRegistry
+from compass.eval.models import EvalResult, Example, Expected, MetricConfig, RunReport, TokenUsage
+from compass.eval.pricing import ModelPricing
+from compass.eval.protocols import RunDependencies
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -424,7 +424,7 @@ def test_registry_create_backend_anthropic() -> None:
     assert backend.model_name == "claude-sonnet-4-20250514"
 
 
-@patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+@patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
 def test_registry_create_backend_openai(mock_client_cls: MagicMock) -> None:
     profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
     reg = BackendRegistry(profiles={"gpt": profile})
@@ -435,8 +435,8 @@ def test_registry_create_backend_openai(mock_client_cls: MagicMock) -> None:
 
 def test_registry_create_backend_bedrock() -> None:
     with (
-        patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
-        patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
+        patch("compass.eval.backends.bedrock_backend.boto3.Session"),
+        patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
     ):
         profile = BackendProfile(
             model="anthropic.claude-3-sonnet",
@@ -467,7 +467,7 @@ def test_registry_create_backend_mock_echo(tmp_path: Path) -> None:
     registry = BackendRegistry.from_directory(backends_dir)
     backend = registry.create_backend("mock")
 
-    from odysseus.eval.backends.mock_echo import MockEchoBackend
+    from compass.eval.backends.mock_echo import MockEchoBackend
 
     assert isinstance(backend, MockEchoBackend)
 
@@ -519,7 +519,7 @@ class TestAnthropicBackend:
         with pytest.raises(ValueError, match="NONEXISTENT_KEY_12345"):
             AnthropicBackend(profile)
 
-    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    @patch("compass.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_call_token_normalisation(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -547,7 +547,7 @@ class TestAnthropicBackend:
         assert usage.cache_write_5m_tokens == 0
         assert usage.cache_write_1h_tokens == 0
 
-    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    @patch("compass.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_call_cache_write_tokens_from_usage(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -573,7 +573,7 @@ class TestAnthropicBackend:
         assert usage.cache_write_5m_tokens == 200
         assert usage.cache_write_1h_tokens == 50
 
-    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    @patch("compass.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_call_no_cache_tokens(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -596,7 +596,7 @@ class TestAnthropicBackend:
 
         assert usage.cached_tokens == 0
 
-    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    @patch("compass.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_call_passes_extra_params(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -619,7 +619,7 @@ class TestAnthropicBackend:
         assert call_kwargs.kwargs["temperature"] == 0.5
         assert call_kwargs.kwargs["top_p"] == 0.9
 
-    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    @patch("compass.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_provider_params_passed_to_client(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -638,7 +638,7 @@ class TestAnthropicBackend:
         call_kwargs = mock_client_cls.call_args.kwargs
         assert call_kwargs["default_headers"] == {"X-Custom": "value"}
 
-    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    @patch("compass.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_call_non_json_raises(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -656,7 +656,7 @@ class TestAnthropicBackend:
         with pytest.raises(ValueError, match="non-JSON"):
             await backend.call("prompt", EXAMPLE)
 
-    @patch("odysseus.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
+    @patch("compass.eval.backends.anthropic_backend.anthropic.AsyncAnthropic")
     async def test_backend_call_missing_route_raises(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -681,13 +681,13 @@ class TestAnthropicBackend:
 
 
 class TestOpenAIBackend:
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     def test_backend_model_name(self, mock_client_cls: MagicMock) -> None:
         profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
         backend = OpenAIBackend(profile)
         assert backend.model_name == "gpt-4o"
 
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     def test_backend_pricing_none_by_default(self, mock_client_cls: MagicMock) -> None:
         profile = BackendProfile(model="gpt-4o", provider="openai", requests_per_minute=100, tokens_per_minute=50000)
         backend = OpenAIBackend(profile)
@@ -704,7 +704,7 @@ class TestOpenAIBackend:
         with pytest.raises(ValueError, match="NONEXISTENT_KEY_12345"):
             OpenAIBackend(profile)
 
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_backend_call_token_normalisation(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -724,7 +724,7 @@ class TestOpenAIBackend:
         assert usage.cached_tokens == 30
         assert usage.output_tokens == 50
 
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_backend_call_no_cached_tokens(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -741,7 +741,7 @@ class TestOpenAIBackend:
 
         assert usage.cached_tokens == 0
 
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_backend_call_passes_extra_params(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -764,7 +764,7 @@ class TestOpenAIBackend:
         assert call_kwargs.kwargs["temperature"] == 0.5
         assert call_kwargs.kwargs["top_p"] == 0.9
 
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_backend_provider_params_passed_to_client(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -782,7 +782,7 @@ class TestOpenAIBackend:
         call_kwargs = mock_client_cls.call_args.kwargs
         assert call_kwargs["organization"] == "org-123"
 
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_backend_call_non_json_raises(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -794,7 +794,7 @@ class TestOpenAIBackend:
         with pytest.raises(ValueError, match="non-JSON"):
             await backend.call("prompt", EXAMPLE)
 
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_backend_call_missing_route_raises(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -815,7 +815,7 @@ class TestOpenAIBackend:
 class TestOpenAIBackendReasoningLevel:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("level", ["low", "medium", "high"])
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_reasoning_level_sets_reasoning_effort(self, mock_client_cls: MagicMock, level: str) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -830,7 +830,7 @@ class TestOpenAIBackendReasoningLevel:
         assert call_kwargs["reasoning_effort"] == level
 
     @pytest.mark.asyncio
-    @patch("odysseus.eval.backends.openai_backend.openai.AsyncOpenAI")
+    @patch("compass.eval.backends.openai_backend.openai.AsyncOpenAI")
     async def test_no_reasoning_level_omits_reasoning_effort(self, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -851,8 +851,8 @@ class TestOpenAIBackendReasoningLevel:
 class TestBedrockBackend:
     def test_backend_model_name(self) -> None:
         with (
-            patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
-            patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
+            patch("compass.eval.backends.bedrock_backend.boto3.Session"),
+            patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
         ):
             profile = BackendProfile(
                 model="anthropic.claude-3-sonnet",
@@ -865,8 +865,8 @@ class TestBedrockBackend:
 
     def test_backend_pricing_none_by_default(self) -> None:
         with (
-            patch("odysseus.eval.backends.bedrock_backend.boto3.Session"),
-            patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
+            patch("compass.eval.backends.bedrock_backend.boto3.Session"),
+            patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock"),
         ):
             profile = BackendProfile(
                 model="anthropic.claude-3-sonnet",
@@ -877,8 +877,8 @@ class TestBedrockBackend:
             backend = BedrockBackend(profile)
             assert backend.pricing is None
 
-    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
-    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    @patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("compass.eval.backends.bedrock_backend.boto3.Session")
     async def test_backend_call_token_normalisation(
         self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
     ) -> None:
@@ -906,8 +906,8 @@ class TestBedrockBackend:
         assert usage.cached_tokens == 30
         assert usage.output_tokens == 50
 
-    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
-    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    @patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("compass.eval.backends.bedrock_backend.boto3.Session")
     async def test_backend_region_from_provider_params(
         self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
     ) -> None:
@@ -928,8 +928,8 @@ class TestBedrockBackend:
         call_kwargs = mock_client_cls.call_args.kwargs
         assert call_kwargs["aws_region"] == "eu-west-1"
 
-    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
-    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    @patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("compass.eval.backends.bedrock_backend.boto3.Session")
     async def test_backend_provider_params_forwarded_to_session(
         self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
     ) -> None:
@@ -948,8 +948,8 @@ class TestBedrockBackend:
 
         mock_session_cls.assert_called_once_with(profile_name="my-sso-profile")
 
-    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
-    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    @patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("compass.eval.backends.bedrock_backend.boto3.Session")
     async def test_backend_call_non_json_raises(self, mock_session_cls: MagicMock, mock_client_cls: MagicMock) -> None:
         mock_client = AsyncMock()
         mock_client_cls.return_value = mock_client
@@ -967,8 +967,8 @@ class TestBedrockBackend:
         with pytest.raises(ValueError, match="non-JSON"):
             await backend.call("prompt", EXAMPLE)
 
-    @patch("odysseus.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
-    @patch("odysseus.eval.backends.bedrock_backend.boto3.Session")
+    @patch("compass.eval.backends.bedrock_backend.anthropic.AsyncAnthropicBedrock")
+    @patch("compass.eval.backends.bedrock_backend.boto3.Session")
     async def test_backend_call_missing_route_raises(
         self, mock_session_cls: MagicMock, mock_client_cls: MagicMock
     ) -> None:
