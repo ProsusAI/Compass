@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.resources as resources
 from pathlib import Path
 
 _MOCK_BACKEND = """\
@@ -30,7 +29,7 @@ retry:
 
 def run_init(target: Path) -> None:
     """Scaffold the required project directories and starter files."""
-    dirs = ["outputs", "prompts", "backends", ".claude/agents"]
+    dirs = ["outputs", "prompts", "backends"]
     for d in dirs:
         (target / d).mkdir(parents=True, exist_ok=True)
 
@@ -43,25 +42,12 @@ def run_init(target: Path) -> None:
         if not path.exists():
             path.write_text(content)
 
-    # Materialize the bundled odysseus-review-agent.md into .claude/agents/.
-    agent_dest = target / ".claude" / "agents" / "odysseus-review-agent.md"
-    agent_template = (
-        resources.files("odysseus").joinpath("templates/claude/agents/odysseus-review-agent.md").read_text()
-    )
-    if not agent_dest.exists():
-        agent_dest.write_text(agent_template)
-    elif agent_dest.read_text() != agent_template:
-        print(f"WARN: {agent_dest} exists with different content — not overwriting.")
-    # If content is identical, it's already up to date — do nothing.
-
     print(f"Initialized Odysseus project in {target}")
-    print("Created directories: outputs/, prompts/, backends/, .claude/agents/")
-    print("Created: .claude/agents/odysseus-review-agent.md")
+    print("Created directories: outputs/, prompts/, backends/")
     print("Next steps:")
     print("  1. Add backend configs to backends/ (e.g. anthropic.yaml)")
     print("  2. Add routing prompts to prompts/")
     print("  3. Edit outputs/run_config.yaml for your metrics")
-    print("  4. Restart Claude Code so the odysseus-review-agent type is loaded")
 
 
 def main(argv: list[str] | None = None) -> None:
