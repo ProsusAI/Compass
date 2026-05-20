@@ -105,6 +105,7 @@ This creates:
 - `backends/` — LLM backend configs (a `mock-echo.yaml` starter is included)
 - `prompts/` — versioned routing prompts
 - `outputs/` — run outputs, reports, and config (`run_config.yaml` starter included)
+- `.claude/agents/odysseus-review-agent.md` — registers the review sub-agent type; restart Claude Code after init so the agent type is loaded
 
 The command is idempotent and will not overwrite existing files.
 
