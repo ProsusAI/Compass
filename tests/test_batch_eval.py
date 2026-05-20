@@ -1,4 +1,4 @@
-"""Tests for odysseus.eval.batch_eval — models and utility functions.
+"""Tests for compass.eval.batch_eval — models and utility functions.
 
 Integration tests that require a running search state (init_search_state)
 live on the algorithm leaf branches where _BRANCH_ALGORITHM is set.
@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from odysseus.eval.batch_eval import (
+from compass.eval.batch_eval import (
     BatchEvalCandidate,
     BatchEvalResult,
     CandidateEvalOutcome,

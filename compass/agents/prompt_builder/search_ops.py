@@ -143,7 +143,7 @@ def _append_archive(run_id: str, candidates: list[Candidate], output_dir: Path) 
 
 def _load_user_targets(run_id: str, output_dir: Path) -> list[UserTarget]:
     """Load user targets from the input report."""
-    from odysseus.agents.review.preprocessor import parse_user_targets
+    from compass.agents.review.preprocessor import parse_user_targets
 
     input_report_path = output_dir / run_id / "input" / "input_report.md"
     if not input_report_path.exists():

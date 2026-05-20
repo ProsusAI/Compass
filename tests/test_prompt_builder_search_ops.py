@@ -1,4 +1,4 @@
-"""Tests for odysseus.agents.prompt_builder_search_ops.
+"""Tests for compass.agents.prompt_builder_search_ops.
 
 Most tests in this file require a concrete _BRANCH_ALGORITHM set on the
 running branch (i.e., a leaf branch like feat/generalize-hill_climb).
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.prompt_builder.search_ops import (
+from compass.agents.prompt_builder.search_ops import (
     get_search_state,
     set_loop_phase,
 )

@@ -1,7 +1,7 @@
 """Per-leaf invariant — guards against propagation merges overwriting leaf algo state."""
 
-from odysseus.agents.prompt_builder.search_ops import _BRANCH_ALGORITHM
-from odysseus.mcp.prompts import _overlay_filename
+from compass.agents.prompt_builder.search_ops import _BRANCH_ALGORITHM
+from compass.mcp.prompts import _overlay_filename
 
 
 def test_branch_algorithm_is_beam():

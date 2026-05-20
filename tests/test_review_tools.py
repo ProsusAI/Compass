@@ -825,9 +825,9 @@ class TestBuildReviewBriefingToolSelector:
         assert "## Confusion analysis" in result
 
         # For field-level assertions, call build_review_briefing directly.
-        from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
-        from odysseus.agents.review.ops import load_round_reports
-        from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
+        from compass.agents.prompt_builder.search_ops import _load_pending, get_search_state
+        from compass.agents.review.ops import load_round_reports
+        from compass.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
 
         out = tmp_path / "outputs"
         state = get_search_state(run_id=run_id, output_dir=out)
@@ -839,10 +839,10 @@ class TestBuildReviewBriefingToolSelector:
         for v in list(all_versions) + candidate_versions:
             rp = out / run_id / "eval" / v / "report.json"
             if rp.exists():
-                from odysseus.mcp.review_tools import _load_score_report_dict
+                from compass.mcp.review_tools import _load_score_report_dict
 
                 score_reports[v] = _load_score_report_dict(rp, rp.parent / "results.jsonl")
-        from odysseus.eval.models import EvalResult, Example
+        from compass.eval.models import EvalResult, Example
 
         all_er: list[EvalResult] = []
         for v in [c.prompt_version for c in state.elite_set]:
@@ -913,7 +913,7 @@ class TestBuildReviewBriefingToolSelector:
 
     async def test_monkey_patch_selector_limits_to_single_version(self, tmp_path: Path) -> None:
         """Monkey-patching _select_confusion_candidates limits analysis to one version."""
-        import odysseus.mcp.review_tools as _rt
+        import compass.mcp.review_tools as _rt
 
         run_id = self._RUN_ID + "-patch"
         state_dict = _make_state_dict(
@@ -989,11 +989,11 @@ class TestBuildReviewBriefingToolSelector:
             rp.parent.mkdir(parents=True, exist_ok=True)
             rp.write_text(json.dumps(report), encoding="utf-8")
 
-        from odysseus.agents.prompt_builder.search_ops import _load_pending, get_search_state
-        from odysseus.agents.review.ops import load_round_reports
-        from odysseus.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
-        from odysseus.eval.models import EvalResult, Example
-        from odysseus.mcp.review_tools import _load_score_report_dict
+        from compass.agents.prompt_builder.search_ops import _load_pending, get_search_state
+        from compass.agents.review.ops import load_round_reports
+        from compass.agents.review.preprocessor import build_review_briefing as _build_review_briefing_impl
+        from compass.eval.models import EvalResult, Example
+        from compass.mcp.review_tools import _load_score_report_dict
 
         original_selector = _rt._select_confusion_candidates
         try:

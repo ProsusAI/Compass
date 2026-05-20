@@ -142,8 +142,8 @@ class TestFilterHoldoutTool:
 class TestEditDirectivesPersistence:
     @pytest.mark.asyncio
     async def test_get_edit_directives(self, tmp_path: Path) -> None:
-        from odysseus.agents.review.models import ChildVariant, EditDirective
-        from odysseus.agents.review.ops import save_child_variants
+        from compass.agents.review.models import ChildVariant, EditDirective
+        from compass.agents.review.ops import save_child_variants
 
         with _patch_project_dir(tmp_path):
             _setup_guard_artifacts(tmp_path, stage="search")
@@ -187,8 +187,8 @@ class TestEditDirectivesPersistence:
     @pytest.mark.asyncio
     async def test_get_edit_directives_flattens_multiple_variants(self, tmp_path: Path) -> None:
         """get_edit_directives must flatten directives across all child variants in file order."""
-        from odysseus.agents.review.models import ChildVariant, EditDirective
-        from odysseus.agents.review.ops import save_child_variants
+        from compass.agents.review.models import ChildVariant, EditDirective
+        from compass.agents.review.ops import save_child_variants
 
         with _patch_project_dir(tmp_path):
             _setup_guard_artifacts(tmp_path, stage="search")
@@ -242,8 +242,8 @@ class TestEditDirectivesPersistence:
 
     @pytest.mark.asyncio
     async def test_get_child_variants(self, tmp_path: Path) -> None:
-        from odysseus.agents.review.models import ChildVariant, EditDirective
-        from odysseus.agents.review.ops import save_child_variants
+        from compass.agents.review.models import ChildVariant, EditDirective
+        from compass.agents.review.ops import save_child_variants
 
         with _patch_project_dir(tmp_path):
             _setup_guard_artifacts(tmp_path, stage="search")

@@ -104,7 +104,7 @@ def test_post_coldstart_unknown_algorithm_raises():
 
 @pytest.mark.parametrize("algorithm", ["beam"])
 def test_iterative_prompt_contains_base_heading(algorithm: str):
-    from odysseus.mcp.prompts import _load_prompt
+    from compass.mcp.prompts import _load_prompt
 
     content = assemble_review_prompt(algorithm, "iterative")
     base = _load_prompt("review_agent_base_system")

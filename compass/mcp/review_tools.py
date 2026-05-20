@@ -194,7 +194,7 @@ async def build_review_briefing(
         scored_for_calib = [c for c in pending_for_calib if c.eval_status in ("complete", None)]
         num_traj = state.algorithm_state.get("num_trajectories", 0)
         if num_traj and len(scored_for_calib) >= num_traj:
-            from odysseus.agents.prompt_builder import search_ops as _search_ops
+            from compass.agents.prompt_builder import search_ops as _search_ops
 
             calibration_complete = getattr(_search_ops, "_calibration_complete", None)
             if calibration_complete is not None:
@@ -271,7 +271,7 @@ async def build_review_briefing(
     # Load child variants for batch outcome tracking.
     search_dir_for_load = out / run_id / "search"
     if search_dir_for_load.exists() and any(search_dir_for_load.glob("child_variants_t*.json")):
-        from odysseus.agents.review.ops import (
+        from compass.agents.review.ops import (
             load_all_trajectory_child_variants,  # pyright: ignore[reportAttributeAccessIssue]
         )
 

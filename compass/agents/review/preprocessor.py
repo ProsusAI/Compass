@@ -1187,7 +1187,7 @@ def _populate_beam_review_fields(
     Returns a dict with keys ``beam_width``, ``beam_rank``, ``crowding_distance``,
     ``hypervolume``, ``reference_point``, ``stagnation_signal``.
     """
-    from odysseus.agents.prompt_builder.search import (
+    from compass.agents.prompt_builder.search import (
         crowding_distance as _crowding_distance,
     )
 

@@ -131,7 +131,7 @@ def review_fanout_status(
     """
     # EMOSA: K-way per-trajectory fanout
     if algorithm == "emosa":
-        from odysseus.agents.review import ops as _review_ops
+        from compass.agents.review import ops as _review_ops
 
         trajectory_fanout_missing = _review_ops.trajectory_fanout_missing  # pyright: ignore[reportAttributeAccessIssue]  # TODO: drop after project-wide dispatch fanout cleanup splits EMOSA-only path from non-EMOSA leaves
 

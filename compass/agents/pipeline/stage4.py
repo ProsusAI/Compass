@@ -312,9 +312,9 @@ def _next_action_for_stage_4(
         return (
             "Stage 4 — post-cold-start review (round 2): spawn the Review Agent to emit "
             "exactly one protected child per scored cold-start parent. "
-            "REQUIRED: activate prompt 'odysseus_review_agent_post_coldstart' before calling any review tools.",
+            "REQUIRED: activate prompt 'compass_review_agent_post_coldstart' before calling any review tools.",
             tool_registry.REVIEW_TOOLS,
-            ["odysseus_review_agent_post_coldstart"],
+            ["compass_review_agent_post_coldstart"],
             STAGE_4_REVIEW_INSTRUCTION,
             algorithm,
         )
