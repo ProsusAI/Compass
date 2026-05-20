@@ -74,7 +74,7 @@ Execute these steps exactly in order on round 1.
 
 1. **Read inputs.** Run the discovery sequence. Fail if any required value is missing. Every variant must have at least one directive with `block_type == 'example'`.
 2. **Detect provider and read resources.** Follow the Provider detection section. Read best-practices and provider-specific conventions resources; attempt the model-specific addendum (skip if empty).
-3. **Initialize search state.** Call `init_search_state(run_id, backend)` only on a cold-start (no existing state). Pass custom budget parameters if specified in the routing context. Store the returned `search_state_id`.
+3. **Initialize search state.** Call `init_search_state(run_id, backend)` only on a cold-start (no existing state). If the InputReport contains an `### Evaluation Budget` value, pass it as `evaluation_budget=<N>` to `init_search_state`. (The tool also falls back to reading the InputReport directly, but pass it explicitly so the value is visible in the call.) Store the returned `search_state_id`.
 4. **Retrieve child variants.** Use `child_variants` from the discovery sequence. On round 1 all variants have `parent_version: "base"`. Validate at least one `block_type == 'example'` directive per variant.
 5. **Compile one prompt per variant.** For each ChildVariant, compile a separate prompt using `<variant_id>` as the prompt version handle (variant ids are sequential `v1`, `v2`, …):
 

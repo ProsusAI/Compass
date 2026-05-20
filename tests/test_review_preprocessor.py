@@ -22,6 +22,7 @@ from odysseus.agents.review.preprocessor import (
     compute_oracle_metrics_from_report,
     extract_per_class_recall,
     generate_executive_summary,
+    parse_evaluation_budget,
     parse_user_targets,
 )
 
@@ -1627,3 +1628,30 @@ class TestParseUserTargets:
         report = "**Target Metrics:**\n1. **Unknown Metric:** <= 0.5\n"
         # No canonical mapping and no fallback hit → empty.
         assert parse_user_targets(report) == []
+
+
+# ---------------------------------------------------------------------------
+# parse_evaluation_budget
+# ---------------------------------------------------------------------------
+
+
+class TestParseEvaluationBudget:
+    def test_h3_plain_integer(self) -> None:
+        report = "### Evaluation Budget\n9\n"
+        assert parse_evaluation_budget(report) == 9
+
+    def test_h3_integer_with_description(self) -> None:
+        report = "### Evaluation Budget\n9 (cap on optimization evaluations / generations)\n"
+        assert parse_evaluation_budget(report) == 9
+
+    def test_bold_paragraph_form(self) -> None:
+        report = "**Evaluation Budget:** 12\n"
+        assert parse_evaluation_budget(report) == 12
+
+    def test_no_section_returns_none(self) -> None:
+        report = "## Problem Statement\n\nNo budget here.\n"
+        assert parse_evaluation_budget(report) is None
+
+    def test_empty_section_returns_none(self) -> None:
+        report = "### Evaluation Budget\n\n### Next Section\n"
+        assert parse_evaluation_budget(report) is None

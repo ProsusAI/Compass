@@ -247,3 +247,47 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
             await init_search_state(ctx=None, run_id=_RUN_ID, backend=_BACKEND)
 
     assert "already has progress" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# InputReport evaluation_budget auto-read
+# ---------------------------------------------------------------------------
+
+_BEAM_ALGO_PATCH = "odysseus.agents.prompt_builder.search_ops._BRANCH_ALGORITHM"
+_BEAM_ALGO_STATE_PATCH = "odysseus.agents.prompt_builder.search_ops._BRANCH_ALGORITHM_STATE"
+_BEAM_ALGO_STATE = {"beam_width": 3}
+
+
+def _init_beam(tmp_path: Path, run_id: str = _RUN_ID, **kwargs) -> SearchState:
+    with patch(_BEAM_ALGO_PATCH, "beam"), patch(_BEAM_ALGO_STATE_PATCH, _BEAM_ALGO_STATE):
+        return init_search_state(backend=_BACKEND, run_id=run_id, output_dir=tmp_path, **kwargs)
+
+
+def test_budget_read_from_input_report(tmp_path: Path) -> None:
+    """When input_report.md contains ### Evaluation Budget, that value overrides the default."""
+    report_dir = tmp_path / _RUN_ID / "input"
+    report_dir.mkdir(parents=True)
+    (report_dir / "input_report.md").write_text("### Evaluation Budget\n9\n", encoding="utf-8")
+
+    state = _init_beam(tmp_path)
+
+    assert state.evaluation_budget == 9
+    assert state.max_rounds == 3  # ceil(9/3) == 3
+
+
+def test_budget_defaults_when_no_report(tmp_path: Path) -> None:
+    """Without an input_report.md the parameter default of 60 is used."""
+    state = _init_beam(tmp_path)
+
+    assert state.evaluation_budget == 60
+
+
+def test_report_budget_wins_over_explicit_parameter(tmp_path: Path) -> None:
+    """The InputReport value takes precedence over an explicit evaluation_budget argument."""
+    report_dir = tmp_path / _RUN_ID / "input"
+    report_dir.mkdir(parents=True)
+    (report_dir / "input_report.md").write_text("### Evaluation Budget\n9\n", encoding="utf-8")
+
+    state = _init_beam(tmp_path, evaluation_budget=30)
+
+    assert state.evaluation_budget == 9

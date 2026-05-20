@@ -86,7 +86,11 @@ async def init_search_state(
     Args:
         run_id: Pipeline run identifier.
         backend: Backend identifier (e.g. "anthropic", "openai").
-        evaluation_budget: Total prompt versions to evaluate. Read this from the InputReport `evaluation_budget` field.
+        evaluation_budget: Total prompt versions to evaluate. The InputReport's
+            `### Evaluation Budget` section is the source of truth: `init_search_state`
+            reads it automatically and overrides this parameter when a value is present.
+            This parameter (default 60) is only used as a fallback when the InputReport
+            is missing or has no parseable budget.
         primary_metric_name: Optional name of the primary quality metric.
 
     Returns:

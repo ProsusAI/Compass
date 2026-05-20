@@ -489,6 +489,30 @@ def parse_user_targets(report_text: str) -> list[UserTarget]:
     return targets
 
 
+def parse_evaluation_budget(report_text: str) -> int | None:
+    """Parse the evaluation budget from a validated input report.
+
+    Accepts two heading styles for the budget section:
+
+    * ``### Evaluation Budget`` (h3 heading)
+    * ``**Evaluation Budget:**`` (bold-paragraph heading)
+
+    Returns the first integer found in the section content, or ``None`` if the
+    section is absent, empty, or contains no parseable integer.
+    """
+    section_match = re.search(
+        r"(?:###\s*Evaluation\s+Budget|\*\*Evaluation\s+Budget:?\*\*)\s*\n?(.*?)(?=\n##\s|\n###\s|\Z)",
+        report_text,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not section_match:
+        return None
+    int_match = re.search(r"\d+", section_match.group(1))
+    if not int_match:
+        return None
+    return int(int_match.group())
+
+
 _OPERATOR_MAP: dict[str, Any] = {
     "<=": _operator_mod.le,
     ">=": _operator_mod.ge,

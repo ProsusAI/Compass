@@ -140,6 +140,7 @@ def _append_archive(run_id: str, candidates: list[Candidate], output_dir: Path) 
 # Beam strategy helpers
 # ---------------------------------------------------------------------------
 
+
 def _load_user_targets(run_id: str, output_dir: Path) -> list[UserTarget]:
     """Load user targets from the input report."""
     from odysseus.agents.review.preprocessor import parse_user_targets
@@ -240,6 +241,22 @@ def init_search_state(
             "_BRANCH_ALGORITHM to a concrete algorithm."
         )
 
+    if output_dir is None:
+        output_dir = _default_output_dir()
+
+    # Auto-read evaluation_budget from the InputReport when present; the
+    # parameter default of 60 is a fallback for missing/unparseable reports.
+    from odysseus.agents.review.preprocessor import parse_evaluation_budget
+
+    report_path = output_dir / run_id / "input" / "input_report.md"
+    from_report = False
+    if report_path.exists():
+        report_budget = parse_evaluation_budget(report_path.read_text(encoding="utf-8"))
+        if report_budget is not None:
+            evaluation_budget = report_budget
+            from_report = True
+    logger.info("evaluation_budget=%d (source=%s)", evaluation_budget, "input_report" if from_report else "parameter")
+
     # Derive max_rounds from evaluation_budget based on algorithm's K
     if _BRANCH_ALGORITHM == "hill_climb":
         max_rounds = evaluation_budget
@@ -250,9 +267,6 @@ def init_search_state(
         max_rounds = 500  # SMS-EMOA uses algorithm_state["evaluation_budget"] as its budget
     else:
         max_rounds = evaluation_budget
-
-    if output_dir is None:
-        output_dir = _default_output_dir()
 
     # Guard: refuse to overwrite a state that already has progress.
     # This prevents a re-dispatched round-2+ prompt-builder sub-agent from
