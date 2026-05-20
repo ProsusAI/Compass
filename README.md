@@ -26,7 +26,7 @@ export OPENAI_API_KEY="sk-..."          # For OpenAI backends
 One command:
 
 ```bash
-claude mcp add compass -- uvx --from git+https://github.com/thymofieten-prosus/project-compass compass
+claude mcp add compass -- uvx --from git+https://github.com/thymofieten-prosus/Compass compass
 ```
 
 The server inherits your shell environment, so exported API keys work automatically.
@@ -37,7 +37,7 @@ To pass keys explicitly instead:
 claude mcp add compass \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e OPENAI_API_KEY=sk-... \
-  -- uvx --from git+https://github.com/thymofieten-prosus/project-compass compass
+  -- uvx --from git+https://github.com/thymofieten-prosus/Compass compass
 ```
 
 Verify with `claude mcp list`.
@@ -51,7 +51,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-compass", "compass"]
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/Compass", "compass"]
     }
   }
 }
@@ -66,7 +66,7 @@ Add to `.cursor/mcp.json` (or equivalent):
   "mcpServers": {
     "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-compass", "compass"],
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/Compass", "compass"],
       "env": {
         "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}"
@@ -87,7 +87,7 @@ Add to your client's MCP config (usually `.mcp.json`):
   "mcpServers": {
     "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-compass", "compass"]
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/Compass", "compass"]
     }
   }
 }
@@ -111,7 +111,7 @@ The command is idempotent and will not overwrite existing files.
 ### Development setup
 
 ```bash
-git clone https://github.com/thymofieten-prosus/project-compass.git
+git clone https://github.com/thymofieten-prosus/Compass.git
 cd project-compass
 uv sync
 ```
