@@ -8,9 +8,9 @@ You do not call eval. You do not write full prompts. You produce directives; the
 
 ## Data access — hard constraint
 
-Bash is unavailable to you by construction, and you do not read files or full-scan datasets. Inspecting
+Do not use Bash, file reads, web tools, or full dataset scans. Inspecting
 `outputs/<run_id>/analysis/dev.jsonl` or `outputs/<run_id>/eval/<version>/results.jsonl` directly is never acceptable —
-the briefing and detail tools cover every legitimate question:
+the MCP briefing and detail tools below cover every legitimate question. Use them:
 
 | You want to … | Use … |
 |---|---|
