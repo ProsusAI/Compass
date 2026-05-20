@@ -365,9 +365,7 @@ async def test_backoff_sleeps_outside_semaphore():
             Example(
                 id="ex-0",
                 input="q1",
-                expected=Expected.model_validate(
-                    {"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}
-                ),
+                expected=Expected.model_validate({"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}),
             ),
             RetryConfig(max_attempts=2, backoff_factor=1.0),
             rate_limiter,
@@ -398,9 +396,7 @@ async def test_timeout_wraps_only_backend_call():
         Example(
             id="ex-0",
             input="q1",
-            expected=Expected.model_validate(
-                {"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}
-            ),
+            expected=Expected.model_validate({"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}),
         ),
         RetryConfig(max_attempts=1, backoff_factor=1.0, per_call_timeout_seconds=0.1),
         rate_limiter,
@@ -429,9 +425,7 @@ async def test_token_accounting_post_call():
         Example(
             id="ex-0",
             input="q1",
-            expected=Expected.model_validate(
-                {"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}
-            ),
+            expected=Expected.model_validate({"route": "a", "routes": {"a": {"cost": 0.01, "quality_score": 0.8}}}),
         ),
         RetryConfig(max_attempts=1, backoff_factor=1.0),
         rate_limiter,

@@ -52,13 +52,9 @@ def build_final_report_briefing(
     dataset_overview = _load_dataset_overview(run_dir)
     search_state = _load_json(run_dir / "search" / "search_state.json")
     prompt_versions = _discover_holdout_versions(run_dir)
-    dev_reports = {
-        version: _load_json(run_dir / "eval" / version / "report.json")
-        for version in prompt_versions
-    }
+    dev_reports = {version: _load_json(run_dir / "eval" / version / "report.json") for version in prompt_versions}
     holdout_reports = {
-        version: _load_json(run_dir / "holdout_eval" / version / "report.json")
-        for version in prompt_versions
+        version: _load_json(run_dir / "holdout_eval" / version / "report.json") for version in prompt_versions
     }
 
     primary_holdout_report = holdout_reports.get(prompt_versions[0]) if prompt_versions else None
@@ -70,29 +66,20 @@ def build_final_report_briefing(
         version: _build_eval_comparison(dev_reports.get(version), holdout_reports.get(version))
         for version in prompt_versions
     }
-    error_analysis = {
-        version: _build_error_analysis(run_dir, version)
-        for version in prompt_versions
-    }
+    error_analysis = {version: _build_error_analysis(run_dir, version) for version in prompt_versions}
     per_class = {
         version: _extract_per_class_performance(holdout_reports.get(version), error_analysis[version])
         for version in prompt_versions
     }
-    baseline_comparison = {
-        version: _build_baseline_comparison(run_dir, version)
-        for version in prompt_versions
-    }
+    baseline_comparison = {version: _build_baseline_comparison(run_dir, version) for version in prompt_versions}
     dev_score_report_md = {
-        version: _render_score_report_from_raw(dev_reports.get(version))
-        for version in prompt_versions
+        version: _render_score_report_from_raw(dev_reports.get(version)) for version in prompt_versions
     }
     holdout_score_report_md = {
-        version: _render_score_report_from_raw(holdout_reports.get(version))
-        for version in prompt_versions
+        version: _render_score_report_from_raw(holdout_reports.get(version)) for version in prompt_versions
     }
     baseline_comparison_md = {
-        version: render_baselines_md(baseline_comparison.get(version))
-        for version in prompt_versions
+        version: render_baselines_md(baseline_comparison.get(version)) for version in prompt_versions
     }
     confidence_intervals = {
         version: cis

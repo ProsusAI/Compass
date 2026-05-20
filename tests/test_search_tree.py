@@ -362,16 +362,25 @@ class TestCollectDataFromArchive:
         # vC: poor on both delta and absolute axes.
         eval_reports = {
             "vA": _make_eval_report(
-                quality_change=0.30, cost_change=-0.10,
-                predicted_quality=0.75, predicted_cost=0.30, routing_overhead=0.0,
+                quality_change=0.30,
+                cost_change=-0.10,
+                predicted_quality=0.75,
+                predicted_cost=0.30,
+                routing_overhead=0.0,
             ),
             "vB": _make_eval_report(
-                quality_change=0.00, cost_change=0.00,
-                predicted_quality=0.95, predicted_cost=0.20, routing_overhead=0.0,
+                quality_change=0.00,
+                cost_change=0.00,
+                predicted_quality=0.95,
+                predicted_cost=0.20,
+                routing_overhead=0.0,
             ),
             "vC": _make_eval_report(
-                quality_change=-0.05, cost_change=0.05,
-                predicted_quality=0.60, predicted_cost=0.50, routing_overhead=0.0,
+                quality_change=-0.05,
+                cost_change=0.05,
+                predicted_quality=0.60,
+                predicted_cost=0.50,
+                routing_overhead=0.0,
             ),
         }
         for v, report in eval_reports.items():
@@ -786,5 +795,3 @@ class TestEmosaAlgorithmChips:
         assert "T" not in chip_labels
         assert "step" not in chip_labels
         assert "evals" not in chip_labels
-
-

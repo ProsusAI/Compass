@@ -189,10 +189,7 @@ def _detect_stage_4_phase_beam(
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("Failed to read round from %s: %s", search_state_path, exc)
             state_data = {}
-        if (
-            state_data.get("algorithm") == "beam"
-            and int(state_data.get("round", 0)) == 1
-        ):
+        if state_data.get("algorithm") == "beam" and int(state_data.get("round", 0)) == 1:
             return ("review", {"protected_parent_round": True})
     return (phase, flags)
 

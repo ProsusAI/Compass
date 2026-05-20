@@ -148,4 +148,3 @@ class TestReviewFanoutStatus:
         status = review_fanout_status(_RUN_ID, algorithm="hill_climb", expected=1, output_dir=tmp_path)
         assert status.not_dispatched == [0]
         assert not status.is_complete
-

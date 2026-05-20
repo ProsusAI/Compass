@@ -107,9 +107,7 @@ def _make_minimal_briefing() -> ReviewBriefing:
                 effective_impact=0.08,
             )
         ],
-        directive_history=[
-            DirectiveOutcome(prior_directive_id="d-1-1", was_attempted=True, outcome="improved")
-        ],
+        directive_history=[DirectiveOutcome(prior_directive_id="d-1-1", was_attempted=True, outcome="improved")],
         batch_outcomes=[
             BatchOutcome(
                 variant_id="cv1",
@@ -227,9 +225,7 @@ class TestRenderBriefingSummary:
 
     def test_beam_section_present_when_beam_width_set(self) -> None:
         briefing = _make_minimal_briefing()
-        briefing = briefing.model_copy(
-            update={"beam_width": 4, "hypervolume": 0.75, "reference_point": (0.0, 1.0)}
-        )
+        briefing = briefing.model_copy(update={"beam_width": 4, "hypervolume": 0.75, "reference_point": (0.0, 1.0)})
         result = render_briefing_summary(briefing)
         assert "## Beam state" in result
         assert "beam_width: 4" in result

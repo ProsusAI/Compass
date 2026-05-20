@@ -52,9 +52,7 @@ class TestColdStartParentCoercion:
         # Complete cold-start round so state.round advances to 1.
         for v, q, c in [("v1", 0.9, 0.1), ("v2", 0.7, 0.2), ("v3", 0.6, 0.3)]:
             register_candidate(run_id, v, parent_version=None, output_dir=tmp_path)
-            record_eval_result(
-                run_id, v, quality_score=q, cost=c, output_dir=tmp_path
-            )
+            record_eval_result(run_id, v, quality_score=q, cost=c, output_dir=tmp_path)
         advance_round_beam(run_id, output_dir=tmp_path)
 
         # Iterative-phase registration: parent_version must be preserved as-is.

@@ -67,8 +67,7 @@ def assemble_review_prompt(
     if phase == "post_coldstart":
         if algorithm != "beam":
             raise ValueError(
-                f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
-                f"Valid algorithms: beam."
+                f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). Valid algorithms: beam."
             )
         base = _load_prompt("review_agent_base_system")
         post_override = _load_prompt("review_agent_post_coldstart_overlay_beam")
@@ -123,7 +122,6 @@ async def odysseus_review_agent_cold_start(algorithm: str = "beam") -> list[Mess
     """
     content = assemble_review_prompt(algorithm, "cold_start")
     return [UserMessage(content=content)]
-
 
 
 @mcp.prompt()

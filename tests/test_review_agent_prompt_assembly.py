@@ -128,9 +128,7 @@ class TestPostColdstartAssembly:
 
     def test_three_layers_two_separators(self):
         content = assemble_review_prompt("beam", "post_coldstart")
-        assert content.count("\n\n---\n\n") == 2, (
-            "post-coldstart assembly must produce exactly 3 layers (2 separators)"
-        )
+        assert content.count("\n\n---\n\n") == 2, "post-coldstart assembly must produce exactly 3 layers (2 separators)"
 
     def test_contains_round_2_mandate(self):
         content = assemble_review_prompt("beam", "post_coldstart")
@@ -152,6 +150,5 @@ class TestPostColdstartAssembly:
         idx_override = content.index("Round-2 Protected Parents Mandate")
         idx_iterative = content.index("## Flow: identify failure mode")
         assert idx_override < idx_iterative, (
-            "post-coldstart override must precede the iterative base so the "
-            "agent reads the round-2 framing first"
+            "post-coldstart override must precede the iterative base so the agent reads the round-2 framing first"
         )

@@ -331,7 +331,6 @@ class TestStage4ThreePhaseDetection:
         # Review phase instruction contains review tools
         assert "build_review_briefing" in instr
 
-
     def test_normal_loop_review_when_v1_filename_absent(self, tmp_path: Path) -> None:
         """Regression: cold-start can emit variant_id='v2' (not 'v1'), so prompts/v1.txt
         never exists. After advance_step runs, loop_phase='review' must route to
@@ -346,7 +345,6 @@ class TestStage4ThreePhaseDetection:
         assert instr is not None
         # Review phase instruction routes to review stage, not build
         assert "build_review_briefing" in instr
-
 
     def test_normal_loop_build_phase(self, tmp_path: Path) -> None:
         _setup_stage4_v1_done(tmp_path, "r1")

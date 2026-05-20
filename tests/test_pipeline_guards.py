@@ -241,9 +241,7 @@ class TestDefenseInDepthPhaseFlip:
         """If loop_phase='build' and build_dispatched.json exists → ("build", {})."""
         run_dir = _make_run_dir(tmp_path)
         # round>=1 so the build_v1 gate is cleared; loop_phase drives the result.
-        (run_dir / "search" / "search_state.json").write_text(
-            _make_post_build_state(loop_phase="build")
-        )
+        (run_dir / "search" / "search_state.json").write_text(_make_post_build_state(loop_phase="build"))
         record_build_dispatched("run1", round=2, output_dir=tmp_path)
 
         phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
@@ -253,9 +251,7 @@ class TestDefenseInDepthPhaseFlip:
         """If loop_phase='build' and child_variants.json exists → ("build", {})."""
         run_dir = _make_run_dir(tmp_path)
         # round>=1 so the build_v1 gate is cleared; loop_phase drives the result.
-        (run_dir / "search" / "search_state.json").write_text(
-            _make_post_build_state(loop_phase="build")
-        )
+        (run_dir / "search" / "search_state.json").write_text(_make_post_build_state(loop_phase="build"))
         (run_dir / "search" / "child_variants.json").write_text("[]")
 
         phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
@@ -265,9 +261,7 @@ class TestDefenseInDepthPhaseFlip:
         """If loop_phase='review', no re-flip should occur."""
         run_dir = _make_run_dir(tmp_path)
         # round>=1 so the build_v1 gate is cleared; loop_phase drives the result.
-        (run_dir / "search" / "search_state.json").write_text(
-            _make_post_build_state(loop_phase="review")
-        )
+        (run_dir / "search" / "search_state.json").write_text(_make_post_build_state(loop_phase="review"))
 
         phase, flags = _detect_stage_4_phase(run_dir, rerun_config=None)
         assert (phase, flags) == ("review", {})
