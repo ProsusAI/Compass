@@ -269,7 +269,10 @@ async def start_stage(ctx: Context, run_id: str | None = None) -> str:
     elif current_stage_num == 4:
         if activate_prompt == "odysseus_review_agent_cold_start":
             stage = "review_cold"
-        elif activate_prompt == "odysseus_review_agent_iterative":
+        elif activate_prompt in (
+            "odysseus_review_agent_iterative",
+            "odysseus_review_agent_post_coldstart",
+        ):
             stage = "review"
         else:
             # prompt_builder / prompt_builder_rerun / any other build phase
