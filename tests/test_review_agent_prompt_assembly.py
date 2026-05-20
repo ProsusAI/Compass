@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from odysseus.mcp.prompts import _overlay_filename, assemble_review_prompt
+from compass.mcp.prompts import _overlay_filename, assemble_review_prompt
 
 # ---------------------------------------------------------------------------
 # _overlay_filename — beam leaf behaviour
@@ -87,7 +87,7 @@ _BASE_FILES = [
 @pytest.mark.parametrize("term", _STRATEGY_NAMES)
 def test_shared_base_does_not_contain_strategy_term(base_file: str, term: str):
     """Shared base prompt files must not contain strategy-specific terms."""
-    from odysseus.mcp.prompts import _load_prompt
+    from compass.mcp.prompts import _load_prompt
 
     content = _load_prompt(base_file)
     assert term not in content, (

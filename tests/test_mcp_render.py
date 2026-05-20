@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from odysseus.agents.final_report.models import BaselineComparison, BaselineResult
-from odysseus.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
-from odysseus.agents.review.models import (
+from compass.agents.final_report.models import BaselineComparison, BaselineResult
+from compass.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
+from compass.agents.review.models import (
     CandidateAnalysis,
     ClassRecallEntry,
     DiminishingReturns,
@@ -14,9 +14,9 @@ from odysseus.agents.review.models import (
     MetricDeltas,
     ReviewBriefing,
 )
-from odysseus.agents.review.render import render_briefing_summary
-from odysseus.agents.routing_context import RouteDefinition, RouteOrdering, RoutingContext, RoutingDimension
-from odysseus.eval.models import (
+from compass.agents.review.render import render_briefing_summary
+from compass.agents.routing_context import RouteDefinition, RouteOrdering, RoutingContext, RoutingDimension
+from compass.eval.models import (
     ConfidenceInterval,
     ErrorBreakdown,
     EvalResult,
@@ -27,7 +27,7 @@ from odysseus.eval.models import (
     RunSummary,
     ScoreReport,
 )
-from odysseus.mcp._render import (
+from compass.mcp._render import (
     render_algorithm_state_md,
     render_baselines_md,
     render_review_briefing_md,

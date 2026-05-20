@@ -219,9 +219,9 @@ mcp.json
 .mcp.json
 .claude/settings.*
 
-# Pipeline runtime artifacts (created by `odysseus init` / MCP runs)
+# Pipeline runtime artifacts (created by `compass init` / MCP runs)
 # Anchored to repo root so they don't shadow nested source dirs
-# (e.g. odysseus/agents/prompts/, odysseus/eval/backends/).
+# (e.g. compass/agents/prompts/, compass/eval/backends/).
 /backends/
 /configs/
 /data/

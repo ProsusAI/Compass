@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from odysseus.eval.models import (
+from compass.eval.models import (
     ConfidenceInterval,
     EvalResult,
     Example,
@@ -10,8 +10,8 @@ from odysseus.eval.models import (
     RunReport,
     TokenUsage,
 )
-from odysseus.eval.pricing import ModelPricing
-from odysseus.eval.protocols import (
+from compass.eval.pricing import ModelPricing
+from compass.eval.protocols import (
     Backend,
     DatasetManager,
     MetricsEngine,

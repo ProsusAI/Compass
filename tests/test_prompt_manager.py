@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.prompts.manager import FilePromptManager
+from compass.prompts.manager import FilePromptManager
 
 
 @pytest.fixture()
@@ -75,7 +75,7 @@ class TestLogging:
         _write_prompt(prompts_dir, "v3.yaml", "some prompt")
         mgr = FilePromptManager(prompts_dir)
 
-        with caplog.at_level(logging.INFO, logger="odysseus.prompts.manager"):
+        with caplog.at_level(logging.INFO, logger="compass.prompts.manager"):
             mgr.load("v3")
 
         assert any("v3" in record.message for record in caplog.records)
@@ -84,7 +84,7 @@ class TestLogging:
         _write_prompt(prompts_dir, "v1.yaml", "prompt")
         mgr = FilePromptManager(prompts_dir)
 
-        with caplog.at_level(logging.INFO, logger="odysseus.prompts.manager"):
+        with caplog.at_level(logging.INFO, logger="compass.prompts.manager"):
             mgr.load("latest")
 
         assert any("latest" in record.message or "v1" in record.message for record in caplog.records)

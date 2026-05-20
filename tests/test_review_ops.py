@@ -1,4 +1,4 @@
-"""Tests for odysseus.agents.review_ops — file-backed persistence operations."""
+"""Tests for compass.agents.review_ops — file-backed persistence operations."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ import json
 from pathlib import Path
 from typing import Any
 
-from odysseus.agents.prompt_builder.search import RoundSummary, SearchState
-from odysseus.agents.review.models import (
+from compass.agents.prompt_builder.search import RoundSummary, SearchState
+from compass.agents.review.models import (
     ChildVariant,
     EditDirective,
     ExampleContent,
 )
-from odysseus.agents.review.ops import (
+from compass.agents.review.ops import (
     load_child_variants,
     load_historical_eval_reports,
     load_round_reports,

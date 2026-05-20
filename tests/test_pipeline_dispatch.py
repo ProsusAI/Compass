@@ -1,11 +1,11 @@
-"""Tests for odysseus.agents.pipeline.dispatch — marker and fanout primitives."""
+"""Tests for compass.agents.pipeline.dispatch — marker and fanout primitives."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from odysseus.agents.pipeline.dispatch import (
+from compass.agents.pipeline.dispatch import (
     DispatchFanout,
     clear_build_dispatched,
     clear_review_dispatched,

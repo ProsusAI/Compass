@@ -7,9 +7,9 @@ import pytest
 from mcp.server.fastmcp import Context
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.mcp.server import STAGE_REGISTRY, mcp, set_active_stage
+from compass.mcp.server import STAGE_REGISTRY, mcp, set_active_stage
 
-_RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
+_RESOLVE_PROJECT_DIR = "compass.project_dir.resolve_project_dir"
 _DEPRECATED_REVIEW_TOOLS = {"get_directive_history", "get_batch_outcomes"}
 
 
@@ -206,7 +206,7 @@ async def test_start_stage_sets_active_stage(mock_ctx, tmp_path: Path):
     """start_stage infers the next stage from artifacts and returns JSON with scope and tools."""
     import json
 
-    from odysseus.mcp.server import get_active_stage
+    from compass.mcp.server import get_active_stage
 
     # Set up stage 1 complete so the server infers stage 2 (data_validation).
     input_dir = tmp_path / "outputs" / "test-run" / "input"
@@ -214,7 +214,7 @@ async def test_start_stage_sets_active_stage(mock_ctx, tmp_path: Path):
     (input_dir / "input_report.md").write_text("# Report")
 
     set_active_stage("orchestrator")
-    from odysseus.mcp.orchestrator_tools import start_stage
+    from compass.mcp.orchestrator_tools import start_stage
 
     with patch(_RESOLVE_PROJECT_DIR, new_callable=AsyncMock, return_value=tmp_path):
         result = await start_stage(ctx=mock_ctx, run_id="test-run")
@@ -228,7 +228,7 @@ async def test_start_stage_sets_active_stage(mock_ctx, tmp_path: Path):
 
 async def test_start_stage_sends_tool_list_changed(mock_ctx, tmp_path: Path):
     """start_stage sends a tool list changed notification."""
-    from odysseus.mcp.orchestrator_tools import start_stage
+    from compass.mcp.orchestrator_tools import start_stage
 
     # Set up stage 1 complete so the server infers stage 2 (data_validation).
     input_dir = tmp_path / "outputs" / "test-run" / "input"
@@ -243,7 +243,7 @@ async def test_start_stage_sends_tool_list_changed(mock_ctx, tmp_path: Path):
 
 async def test_start_stage_rejects_from_non_orchestrator_scope(mock_ctx, tmp_path: Path):
     """start_stage raises ToolError when called from a stage scope."""
-    from odysseus.mcp.orchestrator_tools import start_stage
+    from compass.mcp.orchestrator_tools import start_stage
 
     set_active_stage("input_report")
     with (
@@ -257,8 +257,8 @@ async def test_start_stage_allows_entry_without_run_id(mock_ctx, tmp_path: Path)
     """start_stage dispatches to input_report when called without a run_id (no existing runs)."""
     import json
 
-    from odysseus.mcp.orchestrator_tools import start_stage
-    from odysseus.mcp.server import get_active_stage
+    from compass.mcp.orchestrator_tools import start_stage
+    from compass.mcp.server import get_active_stage
 
     # Empty outputs dir — no runs yet, should land on stage 1.
     (tmp_path / "outputs").mkdir(parents=True)
@@ -275,7 +275,7 @@ async def test_start_stage_allows_entry_without_run_id(mock_ctx, tmp_path: Path)
 
 async def test_start_stage_requires_run_id_when_pipeline_past_stage1(mock_ctx, tmp_path: Path):
     """start_stage raises ToolError when run_id is missing but pipeline is past stage 1."""
-    from odysseus.mcp.orchestrator_tools import start_stage
+    from compass.mcp.orchestrator_tools import start_stage
 
     # Set up a run at stage 2 (stage 1 complete).
     input_dir = tmp_path / "outputs" / "some-run" / "input"
@@ -294,7 +294,7 @@ async def test_start_stage_requires_run_id_when_pipeline_past_stage1(mock_ctx, t
 
 async def test_complete_stage_rejects_from_orchestrator_scope(mock_ctx):
     """complete_stage raises ToolError when already in orchestrator scope."""
-    from odysseus.mcp.orchestrator_tools import complete_stage
+    from compass.mcp.orchestrator_tools import complete_stage
 
     set_active_stage("orchestrator")
     with pytest.raises(ToolError, match="only be called from within a stage scope"):
@@ -307,8 +307,8 @@ async def test_complete_stage_resets_to_orchestrator(mock_ctx, tmp_path):
     The review fanout guard requires child_variants.json to exist.  We create
     it in a temp dir and patch the dispatch module so the guard passes.
     """
-    from odysseus.mcp.orchestrator_tools import complete_stage
-    from odysseus.mcp.server import get_active_stage
+    from compass.mcp.orchestrator_tools import complete_stage
+    from compass.mcp.server import get_active_stage
 
     search_dir = tmp_path / "outputs" / "test-run" / "search"
     search_dir.mkdir(parents=True)
@@ -318,7 +318,7 @@ async def test_complete_stage_resets_to_orchestrator(mock_ctx, tmp_path):
     set_active_stage("review")
     assert get_active_stage() == "review"
 
-    with patch("odysseus.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
+    with patch("compass.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
         result = await complete_stage(ctx=mock_ctx, run_id="test-run")
     assert get_active_stage() == "orchestrator"
     assert "review" in result
@@ -331,7 +331,7 @@ async def test_complete_stage_sends_tool_list_changed(mock_ctx, tmp_path):
     The review fanout guard requires child_variants.json.  We satisfy it via
     a temp dir and a patch on the dispatch module.
     """
-    from odysseus.mcp.orchestrator_tools import complete_stage
+    from compass.mcp.orchestrator_tools import complete_stage
 
     search_dir = tmp_path / "outputs" / "test-run" / "search"
     search_dir.mkdir(parents=True)
@@ -339,7 +339,7 @@ async def test_complete_stage_sends_tool_list_changed(mock_ctx, tmp_path):
 
     # Directly activate review scope — we're testing complete_stage, not start_stage.
     set_active_stage("review")
-    with patch("odysseus.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
+    with patch("compass.agents.pipeline.paths.get_project_dir", return_value=tmp_path):
         await complete_stage(ctx=mock_ctx, run_id="test-run")
     mock_ctx.session.send_tool_list_changed.assert_awaited_once()
 
@@ -358,7 +358,7 @@ async def test_get_pipeline_status_subagent_instruction_has_no_stage_prompt_body
     """
     import json
 
-    from odysseus.mcp import get_pipeline_status
+    from compass.mcp import get_pipeline_status
 
     # Stage 2: has input_report.md so current_stage == 2
     input_dir = tmp_path / "outputs" / "r1" / "input"
@@ -387,7 +387,7 @@ async def test_start_stage_sub_agent_prompt_contains_data_validation_prompt(mock
     """
     import json
 
-    from odysseus.mcp.orchestrator_tools import start_stage
+    from compass.mcp.orchestrator_tools import start_stage
 
     # Set up a run at stage 2 (stage 1 complete)
     input_dir = tmp_path / "outputs" / "r1" / "input"

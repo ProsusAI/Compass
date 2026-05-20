@@ -74,7 +74,7 @@ def _run_initiate_rerun(
     source_prompt_version: str | None = None,
 ) -> dict:
     """Call the initiate_rerun business logic directly (no MCP layer)."""
-    from odysseus.mcp._initiate_rerun import initiate_rerun_logic
+    from compass.mcp._initiate_rerun import initiate_rerun_logic
 
     return initiate_rerun_logic(
         outputs_dir=outputs_dir,

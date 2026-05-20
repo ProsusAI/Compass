@@ -2,13 +2,13 @@ import json
 import time
 from pathlib import Path
 
-from odysseus.agents.pipeline.instructions import (
+from compass.agents.pipeline.instructions import (
     _STAGE_4_BUILD_OPTIMIZE_INSTRUCTION,
     _STAGE_4_BUILD_RECOVERING_INSTRUCTION,
     _STAGE_4_BUILD_V1_INSTRUCTION,
     STAGE_4_BUILD_INSTRUCTION,
 )
-from odysseus.agents.pipeline.status import (
+from compass.agents.pipeline.status import (
     _detect_stage_4_phase,
     _detect_stage_4_phase_beam,
     _read_rerun_config,

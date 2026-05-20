@@ -8,7 +8,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from odysseus.eval.models import (
+from compass.eval.models import (
     ConcurrencyConfig,
     Example,
     Expected,

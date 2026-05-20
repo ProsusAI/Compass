@@ -2,7 +2,7 @@
 
 ## Setup
 - Dataset: `tests/scenarios/data/valid_dataset.jsonl`
-- System prompts: `odysseus_routing_input`
+- System prompts: `compass_routing_input`
 - MCP tools: `submit_input_report`, `optimize_routing_prompt`, `get_pipeline_status`, `start_stage`, `complete_stage`
 
 ## Scenario Description

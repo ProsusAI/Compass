@@ -1,6 +1,6 @@
 # Architecture Map
 
-Quick re-orientation guide for the Odysseus multi-agent routing optimizer.
+Quick re-orientation guide for the Compass multi-agent routing optimizer.
 
 ## 1. Pipeline Overview
 
@@ -22,14 +22,14 @@ graph TD
 
 | Agent | Type | Module / Prompt | Status | Reads from Context | Writes to Context |
 |---|---|---|---|---|---|
-| User Input | LLM-driven | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md), [`odysseus/agents/user_input/report.py`](../odysseus/agents/user_input/report.py) | Done | (user conversation) | `validated_input_report_path` |
-| Data Validation | LLM-driven | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md), [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py), [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path`, `dev_jsonl_path`, `holdout_jsonl_path`, `split_report_path` (debug-only) |
-| Eval Runner | Code-driven | [`odysseus/agents/eval_runner.py`](../odysseus/agents/eval_runner.py) | Done | `prompt_version`, `data_source`, `backend`, `run_config` or `config_path` | `eval_score_report` |
-| Backend Setup | LLM-driven | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
+| User Input | LLM-driven | [`compass/agents/prompts/user_input_system.md`](../compass/agents/prompts/user_input_system.md), [`compass/agents/user_input/report.py`](../compass/agents/user_input/report.py) | Done | (user conversation) | `validated_input_report_path` |
+| Data Validation | LLM-driven | [`compass/agents/prompts/data_validation_system.md`](../compass/agents/prompts/data_validation_system.md), [`compass/agents/data_validation/checks.py`](../compass/agents/data_validation/checks.py), [`compass/agents/data_validation/split.py`](../compass/agents/data_validation/split.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path`, `dev_jsonl_path`, `holdout_jsonl_path`, `split_report_path` (debug-only) |
+| Eval Runner | Code-driven | [`compass/agents/eval_runner.py`](../compass/agents/eval_runner.py) | Done | `prompt_version`, `data_source`, `backend`, `run_config` or `config_path` | `eval_score_report` |
+| Backend Setup | LLM-driven | [`compass/agents/prompts/backend_setup_system.md`](../compass/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
 | Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
-| Prompt Builder Rerun | LLM-driven | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) | Done | `run_id`, `source_prompt_version`, `new_backend` (from subagent instruction) | `prompt_version` (restructured) |
-| Review | Hybrid (code + LLM) | [`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py), [`odysseus/agents/review/preprocessor.py`](../odysseus/agents/review/preprocessor.py), [`odysseus/agents/review/ops.py`](../odysseus/agents/review/ops.py), three-tier prompt: `review_agent_base_system.md` + phase base + strategy overlay (see Prompts table) | Done | `eval_score_report`, `review_briefing` | `review_result` (debug-only) |
-| Final Report | Hybrid (code + LLM) | [`odysseus/agents/final_report/models.py`](../odysseus/agents/final_report/models.py), [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py), [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md), [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, per-version `baseline_comparison.json`, optimization charts |
+| Prompt Builder Rerun | LLM-driven | [`compass/agents/prompts/prompt_builder_rerun_system.md`](../compass/agents/prompts/prompt_builder_rerun_system.md) | Done | `run_id`, `source_prompt_version`, `new_backend` (from subagent instruction) | `prompt_version` (restructured) |
+| Review | Hybrid (code + LLM) | [`compass/agents/review/models.py`](../compass/agents/review/models.py), [`compass/agents/review/preprocessor.py`](../compass/agents/review/preprocessor.py), [`compass/agents/review/ops.py`](../compass/agents/review/ops.py), three-tier prompt: `review_agent_base_system.md` + phase base + strategy overlay (see Prompts table) | Done | `eval_score_report`, `review_briefing` | `review_result` (debug-only) |
+| Final Report | Hybrid (code + LLM) | [`compass/agents/final_report/models.py`](../compass/agents/final_report/models.py), [`compass/agents/final_report/preprocessor.py`](../compass/agents/final_report/preprocessor.py), [`compass/agents/prompts/final_report_system.md`](../compass/agents/prompts/final_report_system.md), [`compass/agents/prompts/final_report_template.md`](../compass/agents/prompts/final_report_template.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, per-version `baseline_comparison.json`, optimization charts |
 
 ## 3. Context Dict Reference
 
@@ -55,7 +55,7 @@ graph TD
 
 ## 4. Shared Models
 
-**`Candidate` / `SearchState` / `RoundSummary`** ([`odysseus/agents/prompt_builder/search.py`](../odysseus/agents/prompt_builder/search.py))
+**`Candidate` / `SearchState` / `RoundSummary`** ([`compass/agents/prompt_builder/search.py`](../compass/agents/prompt_builder/search.py))
 `Candidate` is the canonical prompt-candidate record. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Optional fields (all default `None`): `secondary_parent_version`, `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`, `trajectory_id`. Accepts `iteration_introduced` as an alias for `round_introduced` (back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`).
 
 `SearchState` holds the mutable search loop state. Key fields:
@@ -80,16 +80,16 @@ graph TD
 
 Old state files with `new_pareto_points` / `front_size` / `front_improvement` are migrated on load via a `model_validator(mode="before")`.
 
-**`DataQualityReport`** ([`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py))
+**`DataQualityReport`** ([`compass/agents/data_validation/checks.py`](../compass/agents/data_validation/checks.py))
 Top-level report from the Data Validation agent containing `SchemaFinding` list, `LabelDistribution`, `VolumeAssessment`, and optional `QueryLengthDistribution`. The LLM agent writes the narrative `summary`; the Python checks populate the structured sections.
 
-**`RoutingContext`** ([`odysseus/agents/routing_context.py`](../odysseus/agents/routing_context.py))
+**`RoutingContext`** ([`compass/agents/routing_context.py`](../compass/agents/routing_context.py))
 Domain-agnostic routing configuration holding a `domain` description, `RouteDefinition` list, `RoutingDimension` list, optional `RouteOrdering`, and optional `SeedVocabulary`. Produced by the Data Validation Agent and consumed by the Prompt Builder Agent.
 
-**`ReviewBriefing` / `ReviewResult`** ([`odysseus/agents/review/models.py`](../odysseus/agents/review/models.py))
-`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `directive_history` list (`DirectiveOutcome` entries for prior-round directives — synthesized wholly in code by `_synthesize_directive_outcomes` inside `build_review_briefing` from `batch_outcomes`; no `directive_history.json` file is persisted and the agent no longer writes outcomes), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). Fields are ordered stable-first, varying-last for prompt-cache prefix stability (see [`render.py`](../odysseus/agents/review/render.py)).
+**`ReviewBriefing` / `ReviewResult`** ([`compass/agents/review/models.py`](../compass/agents/review/models.py))
+`ReviewBriefing` is the complete pre-processed input for the Review Agent LLM, containing `CandidateAnalysis` list, `DiversityMetrics`, `DiminishingReturns`, `OracleMetrics`, per-class recall, `UserTargetProgress` list (progress toward user-specified metric targets; each entry carries `source_version` — the single candidate version evaluated, all entries sharing the same value), `single_candidate_meets_all` flag (`true` when every target is met by the same candidate — the only safe condition for `LoopSignal{action="exit"}`), `BatchOutcome` list (linking child variants to their eval results), `directive_history` list (`DirectiveOutcome` entries for prior-round directives — synthesized wholly in code by `_synthesize_directive_outcomes` inside `build_review_briefing` from `batch_outcomes`; no `directive_history.json` file is persisted and the agent no longer writes outcomes), `ChildVariant` list, and `initial_parent_version` (canonical `parent_version` for cold-start / warm-up seeds; default `"base"`). Fields are ordered stable-first, varying-last for prompt-cache prefix stability (see [`render.py`](../compass/agents/review/render.py)).
 
-`build_review_briefing` now returns a **markdown progressive-disclosure summary** (rendered by [`odysseus/agents/review/render.py`](../odysseus/agents/review/render.py)) rather than raw JSON. Companion detail-fetch tools (`get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `query_dev_examples`, `query_holdout_examples`, `get_dataset_oracle_distribution`, `get_per_class_recall`) provide on-demand drill-down without reloading the full briefing on every call. Dataset rows remain query-only: row tools page results with `offset`/`limit` and never inline an entire dataset. `get_directive_history` and `get_batch_outcomes` are retained only as deprecated MCP placeholders because the legacy `round_reports` persistence they depended on is no longer written by production code. `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, and `regression_guards`. Review-side persistence and legacy artifact loading live in [`review/ops.py`](../odysseus/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes` and retrieved by the Prompt Builder via `get_child_variants`. `get_edit_directives` is a back-compat helper that flattens all directives across variants into a single list.
+`build_review_briefing` now returns a **markdown progressive-disclosure summary** (rendered by [`compass/agents/review/render.py`](../compass/agents/review/render.py)) rather than raw JSON. Companion detail-fetch tools (`get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `query_dev_examples`, `query_holdout_examples`, `get_dataset_oracle_distribution`, `get_per_class_recall`) provide on-demand drill-down without reloading the full briefing on every call. Dataset rows remain query-only: row tools page results with `offset`/`limit` and never inline an entire dataset. `get_directive_history` and `get_batch_outcomes` are retained only as deprecated MCP placeholders because the legacy `round_reports` persistence they depended on is no longer written by production code. `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, and `regression_guards`. Review-side persistence and legacy artifact loading live in [`review/ops.py`](../compass/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes` and retrieved by the Prompt Builder via `get_child_variants`. `get_edit_directives` is a back-compat helper that flattens all directives across variants into a single list.
 
 Strategy-specific optional fields pre-provisioned as `None`-default slots in the model; each leaf branch's preprocessor function populates the slots relevant to its algorithm:
 
@@ -104,10 +104,10 @@ Strategy-specific optional fields pre-provisioned as `None`-default slots in the
 
 Algorithm-specific advance logic (e.g. hill-climb step, beam step) lives entirely on the leaf branches' `search_ops.py`.
 
-**`ScoreReport` / `RunReport`** ([`odysseus/eval/models.py`](../odysseus/eval/models.py))
+**`ScoreReport` / `RunReport`** ([`compass/eval/models.py`](../compass/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
 
-**`BackendProfile`** ([`odysseus/eval/backends/profile.py`](../odysseus/eval/backends/profile.py))
+**`BackendProfile`** ([`compass/eval/backends/profile.py`](../compass/eval/backends/profile.py))
 Pydantic model representing a validated backend configuration loaded from a YAML file in `backends/`. Key fields:
 
 | Field | Type | Description |
@@ -130,47 +130,47 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 
 | Name | Status | Purpose | Backing Module |
 |---|---|---|---|
-| `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
-| `run_batch_eval` | Implemented | Evaluate one or more prompt candidates concurrently; `candidates=[]` triggers recovery mode. | [`odysseus/eval/batch_eval.py`](../odysseus/eval/batch_eval.py) |
-| `run_holdout_eval` | Implemented | Run evaluation on the holdout split with one or more Pareto-front prompt versions (Final Report agent only). Also computes baseline comparisons and returns an artifact manifest (`report_path`, `results_path`, optional `baseline_comparison_path`) for the next `build_final_report_briefing` step. | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
-| `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`odysseus/mcp/`](../odysseus/mcp/) |
-| `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`odysseus/agents/data_validation/checks.py`](../odysseus/agents/data_validation/checks.py) |
-| `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`odysseus/agents/data_validation/detect.py`](../odysseus/agents/data_validation/detect.py) |
-| `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; rejects mappings whose output violates `expected.route ∈ expected.routes.keys()` | [`odysseus/agents/data_validation/transform.py`](../odysseus/agents/data_validation/transform.py) |
-| `stratified_split` | Implemented | Split dataset into dev/holdout | [`odysseus/agents/data_validation/split.py`](../odysseus/agents/data_validation/split.py) |
-| `get_routing_context` | Implemented | Return a markdown summary of the RoutingContext for a run; reads `outputs/<run_id>/validation/routing_context.json`; also available to the Prompt Builder sub-agent | [`odysseus/mcp/data_validation_tools.py`](../odysseus/mcp/data_validation_tools.py) |
-| `build_review_briefing` | Implemented | Pre-process a round's candidates into a ReviewBriefing and return its markdown progressive-disclosure summary for the Review Agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `record_directive_outcomes` | Implemented | Persist child variants and the Review Agent `loop_signal`; directive outcomes are synthesized later in code during `build_review_briefing` rather than written as a standalone artifact | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `query_dev_examples` | Implemented | Query dev examples, optionally filtered by route, with `offset`/`limit` pagination for stage-4 review work | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `query_holdout_examples` | Implemented | Query holdout examples, optionally filtered by route, with `offset`/`limit` pagination for directive crafting | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_prompt_text` | Implemented | Retrieve the full text of a versioned prompt; requires `run_id`; checks `outputs/<run_id>/prompts/` first, falls back to project-level `prompts/`; also available to the Prompt Builder sub-agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_score_report` | Implemented | Return markdown ScoreReport for a candidate version via the shared renderer: metrics table, summary, top-K errors, diff status; also available to the Prompt Builder sub-agent | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_confusion_cell` | Implemented | Return markdown detail for a single confusion cell (recomputes briefing, slices matching ConfusionImpact) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_directive_history` | Implemented (deprecated) | Returns a deprecation message; the historical data source it depended on was retired with `round_reports` writer removal. Use `build_review_briefing` for recent outcomes and `get_score_report` for per-version detail. | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_batch_outcomes` | Implemented (deprecated) | Returns a deprecation message; the historical data source it depended on was retired with `round_reports` writer removal. Use `build_review_briefing` for recent outcomes and `get_score_report` for per-version detail. | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_round_child_variants` | Implemented | Return markdown of child variants grouped by variant_id; optionally includes full directive bodies | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_dataset_oracle_distribution` | Implemented | Return per-route oracle aggregates from `analysis/dev.jsonl` (n_labeled, mean cost/quality, Pareto-optimal count, ties-with-cheaper-route count); optional row-level drill-down filtered by route or example_ids | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `get_per_class_recall` | Implemented | Return the full per-class recall table for a round (all routes, no median/regression filter) | [`odysseus/mcp/review_tools.py`](../odysseus/mcp/review_tools.py) |
-| `build_final_report_briefing` | Implemented | Pre-process all pipeline artifacts into a structured briefing with charts for the Final Report Agent | [`odysseus/agents/final_report/preprocessor.py`](../odysseus/agents/final_report/preprocessor.py) |
-| `save_final_report` | Implemented | Save the final report markdown to disk | [`odysseus/mcp/final_report_tools.py`](../odysseus/mcp/final_report_tools.py) |
-| `get_pipeline_status` | Implemented | Read-only inspector for pipeline progress. Not part of the dispatch loop — orchestrators use `start_stage` directly. | [`odysseus/agents/pipeline/status.py`](../odysseus/agents/pipeline/status.py) |
-| `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`odysseus/eval/pricing.py`](../odysseus/eval/pricing.py) |
-| `init_search_state` | Implemented | Initialize prompt-builder search state for a run; algorithm is hardcoded per branch — no `algorithm`/`algorithm_state` params | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
-| `register_candidate` | Implemented | Register a new prompt candidate for evaluation | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
-| `record_eval_result` | Implemented | Record evaluation results for Pareto tracking | [`odysseus/agents/prompt_builder/search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py) |
-| `advance_step` | Implemented | Strategy-dispatched step advance; implementation provided by the leaf branch's `advance_round` in `search_ops.py` | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
-| `get_search_state` | Implemented | Return a markdown summary of the current search state via the shared renderer, with round history capped to the last 3 rounds | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
-| `filter_holdout_dataset` | Implemented | Remove few-shot examples from holdout before final eval | [`odysseus/agents/prompt_builder/holdout_filter.py`](../odysseus/agents/prompt_builder/holdout_filter.py) |
-| `get_child_variants` | Implemented | Retrieve the current round's child variants (grouped directives per child prompt) for the Prompt Builder | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
-| `get_edit_directives` | Implemented | Back-compat helper: flattens all directives across child variants into a single list | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
-| `save_prompt` | Implemented | Save compiled routing prompt to disk with correct encoding | [`odysseus/mcp/prompt_building_tools.py`](../odysseus/mcp/prompt_building_tools.py) |
-| `start_stage` | Implemented | Single dispatch verb. Inspects artifacts to choose the next stage, activates it, and returns the sub-agent prompt + dispatch checklist + recommended model in one payload. | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
-| `complete_stage` | Implemented | Reset to orchestrator scope after a sub-agent finishes | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
-| `initiate_rerun` | Implemented | Validate Stage 4 is complete, select best prompt version, rename search state, write `rerun_config.json` | [`odysseus/mcp/orchestrator_tools.py`](../odysseus/mcp/orchestrator_tools.py) |
+| `optimize_routing_prompt` | Stub | Run the full routing prompt optimization pipeline | [`compass/mcp/`](../compass/mcp/) |
+| `run_batch_eval` | Implemented | Evaluate one or more prompt candidates concurrently; `candidates=[]` triggers recovery mode. | [`compass/eval/batch_eval.py`](../compass/eval/batch_eval.py) |
+| `run_holdout_eval` | Implemented | Run evaluation on the holdout split with one or more Pareto-front prompt versions (Final Report agent only). Also computes baseline comparisons and returns an artifact manifest (`report_path`, `results_path`, optional `baseline_comparison_path`) for the next `build_final_report_briefing` step. | [`compass/mcp/final_report_tools.py`](../compass/mcp/final_report_tools.py) |
+| `submit_input_report` | Stub | Submit a validated input report to the pipeline | [`compass/mcp/`](../compass/mcp/) |
+| `validate_dataset` | Implemented | Run all validation checks against a JSONL routing dataset | [`compass/agents/data_validation/checks.py`](../compass/agents/data_validation/checks.py) |
+| `detect_and_parse_dataset` | Implemented | Detect format and parse a raw dataset file; accepts `run_id` | [`compass/agents/data_validation/detect.py`](../compass/agents/data_validation/detect.py) |
+| `transform_dataset` | Implemented | Apply column mappings to normalize a dataset to the canonical schema; rejects mappings whose output violates `expected.route ∈ expected.routes.keys()` | [`compass/agents/data_validation/transform.py`](../compass/agents/data_validation/transform.py) |
+| `stratified_split` | Implemented | Split dataset into dev/holdout | [`compass/agents/data_validation/split.py`](../compass/agents/data_validation/split.py) |
+| `get_routing_context` | Implemented | Return a markdown summary of the RoutingContext for a run; reads `outputs/<run_id>/validation/routing_context.json`; also available to the Prompt Builder sub-agent | [`compass/mcp/data_validation_tools.py`](../compass/mcp/data_validation_tools.py) |
+| `build_review_briefing` | Implemented | Pre-process a round's candidates into a ReviewBriefing and return its markdown progressive-disclosure summary for the Review Agent | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `record_directive_outcomes` | Implemented | Persist child variants and the Review Agent `loop_signal`; directive outcomes are synthesized later in code during `build_review_briefing` rather than written as a standalone artifact | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `query_dev_examples` | Implemented | Query dev examples, optionally filtered by route, with `offset`/`limit` pagination for stage-4 review work | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `query_holdout_examples` | Implemented | Query holdout examples, optionally filtered by route, with `offset`/`limit` pagination for directive crafting | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_prompt_text` | Implemented | Retrieve the full text of a versioned prompt; requires `run_id`; checks `outputs/<run_id>/prompts/` first, falls back to project-level `prompts/`; also available to the Prompt Builder sub-agent | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_score_report` | Implemented | Return markdown ScoreReport for a candidate version via the shared renderer: metrics table, summary, top-K errors, diff status; also available to the Prompt Builder sub-agent | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_confusion_cell` | Implemented | Return markdown detail for a single confusion cell (recomputes briefing, slices matching ConfusionImpact) | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_directive_history` | Implemented (deprecated) | Returns a deprecation message; the historical data source it depended on was retired with `round_reports` writer removal. Use `build_review_briefing` for recent outcomes and `get_score_report` for per-version detail. | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_batch_outcomes` | Implemented (deprecated) | Returns a deprecation message; the historical data source it depended on was retired with `round_reports` writer removal. Use `build_review_briefing` for recent outcomes and `get_score_report` for per-version detail. | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_round_child_variants` | Implemented | Return markdown of child variants grouped by variant_id; optionally includes full directive bodies | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_dataset_oracle_distribution` | Implemented | Return per-route oracle aggregates from `analysis/dev.jsonl` (n_labeled, mean cost/quality, Pareto-optimal count, ties-with-cheaper-route count); optional row-level drill-down filtered by route or example_ids | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `get_per_class_recall` | Implemented | Return the full per-class recall table for a round (all routes, no median/regression filter) | [`compass/mcp/review_tools.py`](../compass/mcp/review_tools.py) |
+| `build_final_report_briefing` | Implemented | Pre-process all pipeline artifacts into a structured briefing with charts for the Final Report Agent | [`compass/agents/final_report/preprocessor.py`](../compass/agents/final_report/preprocessor.py) |
+| `save_final_report` | Implemented | Save the final report markdown to disk | [`compass/mcp/final_report_tools.py`](../compass/mcp/final_report_tools.py) |
+| `get_pipeline_status` | Implemented | Read-only inspector for pipeline progress. Not part of the dispatch loop — orchestrators use `start_stage` directly. | [`compass/agents/pipeline/status.py`](../compass/agents/pipeline/status.py) |
+| `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`compass/eval/pricing.py`](../compass/eval/pricing.py) |
+| `init_search_state` | Implemented | Initialize prompt-builder search state for a run; algorithm is hardcoded per branch — no `algorithm`/`algorithm_state` params | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
+| `register_candidate` | Implemented | Register a new prompt candidate for evaluation | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
+| `record_eval_result` | Implemented | Record evaluation results for Pareto tracking | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
+| `advance_step` | Implemented | Strategy-dispatched step advance; implementation provided by the leaf branch's `advance_round` in `search_ops.py` | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
+| `get_search_state` | Implemented | Return a markdown summary of the current search state via the shared renderer, with round history capped to the last 3 rounds | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
+| `filter_holdout_dataset` | Implemented | Remove few-shot examples from holdout before final eval | [`compass/agents/prompt_builder/holdout_filter.py`](../compass/agents/prompt_builder/holdout_filter.py) |
+| `get_child_variants` | Implemented | Retrieve the current round's child variants (grouped directives per child prompt) for the Prompt Builder | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
+| `get_edit_directives` | Implemented | Back-compat helper: flattens all directives across child variants into a single list | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
+| `save_prompt` | Implemented | Save compiled routing prompt to disk with correct encoding | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
+| `start_stage` | Implemented | Single dispatch verb. Inspects artifacts to choose the next stage, activates it, and returns the sub-agent prompt + dispatch checklist + recommended model in one payload. | [`compass/mcp/orchestrator_tools.py`](../compass/mcp/orchestrator_tools.py) |
+| `complete_stage` | Implemented | Reset to orchestrator scope after a sub-agent finishes | [`compass/mcp/orchestrator_tools.py`](../compass/mcp/orchestrator_tools.py) |
+| `initiate_rerun` | Implemented | Validate Stage 4 is complete, select best prompt version, rename search state, write `rerun_config.json` | [`compass/mcp/orchestrator_tools.py`](../compass/mcp/orchestrator_tools.py) |
 
 #### Stage-Scoped Tool Filtering
 
-The orchestrator calls `start_stage(run_id)` before spawning a sub-agent (no `stage` argument — the server infers the next stage from artifacts) and `complete_stage(run_id)` when it returns. While a stage is active, `tools/list` returns only the tools in `STAGE_REGISTRY[stage]` (defined in [`odysseus/mcp/server.py`](../odysseus/mcp/server.py)). This prevents sub-agents from calling tools outside their scope.
+The orchestrator calls `start_stage(run_id)` before spawning a sub-agent (no `stage` argument — the server infers the next stage from artifacts) and `complete_stage(run_id)` when it returns. While a stage is active, `tools/list` returns only the tools in `STAGE_REGISTRY[stage]` (defined in [`compass/mcp/server.py`](../compass/mcp/server.py)). This prevents sub-agents from calling tools outside their scope.
 
 | Stage | Tools |
 |---|---|
@@ -186,20 +186,20 @@ The orchestrator calls `start_stage(run_id)` before spawning a sub-agent (no `st
 
 #### Model Routing
 
-`optimize_routing_prompt` and `get_pipeline_status` embed two-layer model-routing hints. The source of truth is [`_REVIEW_AGENT_PROMPT_NAMES`](../odysseus/mcp/server.py); the resolver is [`recommended_model_for`](../odysseus/mcp/orchestrator_tools.py).
+`optimize_routing_prompt` and `get_pipeline_status` embed two-layer model-routing hints. The source of truth is [`_REVIEW_AGENT_PROMPT_NAMES`](../compass/mcp/server.py); the resolver is [`recommended_model_for`](../compass/mcp/orchestrator_tools.py).
 
 **Layer 1 — Universal capability claim (all consumers):**
 
 | Stage / dispatch prompt | Tier | Rationale |
 |---|---|---|
-| `odysseus_review_agent_iterative`, `odysseus_review_agent_cold_start` | strong | High-stakes synthesis: confusion deltas, hypothesis generation |
+| `compass_review_agent_iterative`, `compass_review_agent_cold_start` | strong | High-stakes synthesis: confusion deltas, hypothesis generation |
 | All other stages (`input_report`, `data_validation`, `prompt_building`, `final_report`) | fast | Tool-driven / rote tasks; 3× cheaper with no observed quality regression |
 
 **Layer 2 — Claude Code binding (Claude Code consumers only — ignore otherwise):**
 
 Every `Agent({...})` call MUST include a literal `model` parameter. Omitting it inherits the orchestrator's model (Sonnet under auto mode), silently violating the routing rule. Required aliases: `model: "sonnet"` for review/review_cold, `model: "haiku"` for all other stages. Each `start_stage` response carries a `recommended_model` field with the correct value for the current dispatch. If a Claude Code installation lacks one of these aliases, fall back to the closest available tier and report it in the run summary.
 
-Non-Claude-Code MCP consumers see both layers as plain text and should map the tier to whatever their backend offers. No model defaults inside `odysseus/*` are changed.
+Non-Claude-Code MCP consumers see both layers as plain text and should map the tier to whatever their backend offers. No model defaults inside `compass/*` are changed.
 
 #### Sub-Agent Guard Pattern
 
@@ -216,7 +216,7 @@ Each stage system prompt (stages 1–5) includes mandatory `## Entry verificatio
 
 #### Pipeline guards (dispatch markers and fanout tracking)
 
-The shared guard layer lives in [`odysseus/agents/pipeline/dispatch.py`](../odysseus/agents/pipeline/dispatch.py) and is wired into `orchestrator_tools.py` and the Stage-4 tool bodies.
+The shared guard layer lives in [`compass/agents/pipeline/dispatch.py`](../compass/agents/pipeline/dispatch.py) and is wired into `orchestrator_tools.py` and the Stage-4 tool bodies.
 
 **`loop_phase` enum — widened superset**
 
@@ -279,14 +279,14 @@ Retained as a back-compat shim for runs paused before automated marker clearing 
 
 | Name | Purpose | Backing File |
 |---|---|---|
-| `odysseus_routing_input` | Activate the User Input agent conversation | [`odysseus/agents/prompts/user_input_system.md`](../odysseus/agents/prompts/user_input_system.md) |
-| `odysseus_data_validation` | Activate the Data Validation agent conversation | [`odysseus/agents/prompts/data_validation_system.md`](../odysseus/agents/prompts/data_validation_system.md) |
-| `odysseus_review_agent_iterative(algorithm)` | Review Agent — iterative phase (round ≥ 2); assembled from three-tier prompt: base + iterative phase base + strategy overlay | see Review Agent prompt files below |
-| `odysseus_review_agent_cold_start(algorithm)` | Review Agent — cold-start / seeding phase; assembled from three-tier prompt: base + cold-start phase base + strategy overlay | see Review Agent prompt files below |
-| `odysseus_review_agent_post_coldstart(algorithm)` | Review Agent — round-2 post-cold-start phase (leaf-branch-specific); assembled from four-tier prompt: base + iterative phase base + post-coldstart override + strategy overlay | see Review Agent prompt files below |
-| `odysseus_backend_setup` | Backend setup agent — select or create backend | [`odysseus/agents/prompts/backend_setup_system.md`](../odysseus/agents/prompts/backend_setup_system.md) |
-| `odysseus_final_report` | Final Report agent — holdout eval + report generation | [`odysseus/agents/prompts/final_report_system.md`](../odysseus/agents/prompts/final_report_system.md) |
-| `odysseus_prompt_builder_rerun` | Prompt Builder Rerun agent — format-only restructure for a different backend (single eval round) | [`odysseus/agents/prompts/prompt_builder_rerun_system.md`](../odysseus/agents/prompts/prompt_builder_rerun_system.md) |
+| `compass_routing_input` | Activate the User Input agent conversation | [`compass/agents/prompts/user_input_system.md`](../compass/agents/prompts/user_input_system.md) |
+| `compass_data_validation` | Activate the Data Validation agent conversation | [`compass/agents/prompts/data_validation_system.md`](../compass/agents/prompts/data_validation_system.md) |
+| `compass_review_agent_iterative(algorithm)` | Review Agent — iterative phase (round ≥ 2); assembled from three-tier prompt: base + iterative phase base + strategy overlay | see Review Agent prompt files below |
+| `compass_review_agent_cold_start(algorithm)` | Review Agent — cold-start / seeding phase; assembled from three-tier prompt: base + cold-start phase base + strategy overlay | see Review Agent prompt files below |
+| `compass_review_agent_post_coldstart(algorithm)` | Review Agent — round-2 post-cold-start phase (leaf-branch-specific); assembled from four-tier prompt: base + iterative phase base + post-coldstart override + strategy overlay | see Review Agent prompt files below |
+| `compass_backend_setup` | Backend setup agent — select or create backend | [`compass/agents/prompts/backend_setup_system.md`](../compass/agents/prompts/backend_setup_system.md) |
+| `compass_final_report` | Final Report agent — holdout eval + report generation | [`compass/agents/prompts/final_report_system.md`](../compass/agents/prompts/final_report_system.md) |
+| `compass_prompt_builder_rerun` | Prompt Builder Rerun agent — format-only restructure for a different backend (single eval round) | [`compass/agents/prompts/prompt_builder_rerun_system.md`](../compass/agents/prompts/prompt_builder_rerun_system.md) |
 
 **Review Agent prompt files — three-tier structure (trunk)**
 
@@ -294,10 +294,10 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 
 | File | Role |
 |---|---|
-| [`odysseus/agents/prompts/review_agent_base_system.md`](../odysseus/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
-| [`odysseus/agents/prompts/review_agent_iterative_base_system.md`](../odysseus/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
-| [`odysseus/agents/prompts/review_agent_cold_start_base_system.md`](../odysseus/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
-| [`odysseus/agents/prompts/review_agent_post_coldstart_base_system.md`](../odysseus/agents/prompts/review_agent_post_coldstart_base_system.md) | Post-cold-start override (leaf-branch-specific) — present on trunk for leaf branches to compose against |
+| [`compass/agents/prompts/review_agent_base_system.md`](../compass/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
+| [`compass/agents/prompts/review_agent_iterative_base_system.md`](../compass/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
+| [`compass/agents/prompts/review_agent_cold_start_base_system.md`](../compass/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
+| [`compass/agents/prompts/review_agent_post_coldstart_base_system.md`](../compass/agents/prompts/review_agent_post_coldstart_base_system.md) | Post-cold-start override (leaf-branch-specific) — present on trunk for leaf branches to compose against |
 | `review_agent_iterative_overlay_<algorithm>.md` | Algorithm-specific iterative overlay — lives on the leaf branch, not the trunk |
 | `review_agent_cold_start_overlay_<algorithm>.md` | Algorithm-specific cold-start overlay — lives on the leaf branch, not the trunk |
 
@@ -305,20 +305,20 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 
 | URI | Purpose | Backing File |
 |---|---|---|
-| `odysseus://backends/{backend_label}` | Backend profile YAML (resource template) — provider detection for prompt builder | `backends/{backend_label}.yaml` (user project dir) |
-| `odysseus://agents/prompt-builder/best-practices` | General prompt engineering principles for routing prompts | [`odysseus/agents/prompt_builder_best_practices.md`](../odysseus/agents/prompt_builder_best_practices.md) |
-| `odysseus://agents/prompt-builder/conventions-claude` | Claude conventions and Anthropic cookbook patterns for routing prompts | [`odysseus/agents/prompt_builder_conventions_claude.md`](../odysseus/agents/prompt_builder_conventions_claude.md) |
-| `odysseus://agents/prompt-builder/conventions-openai` | OpenAI GPT-5 conventions and cookbook patterns for routing prompts | [`odysseus/agents/prompt_builder_conventions_openai.md`](../odysseus/agents/prompt_builder_conventions_openai.md) |
-| `odysseus://agents/prompt-builder/conventions-{provider}/{model_family}` | Model-specific conventions addendum (resource template) — returns empty if no addendum exists | `odysseus/agents/prompt_builder_conventions_{provider}_{model_family}.md` |
-| `odysseus://agents/input/clarification-skill` | Structured clarification skill — conversational strategy for the input agent | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
-| `odysseus://agents/input/defaults` | Default values and override mechanism for optional fields | [`odysseus/agents/user_input/defaults.md`](../odysseus/agents/user_input/defaults.md) |
-| `odysseus://agents/data-validation/format-spec` | Data format specification (THP-80) | [`odysseus/agents/data_validation_format.md`](../odysseus/agents/data_validation_format.md) |
-| `odysseus://agents/data-validation/output-spec` | Output format specification (THP-81) | [`odysseus/agents/data_validation_output.md`](../odysseus/agents/data_validation_output.md) |
-| `odysseus://agents/review-agent/guidelines` | Review Agent base system prompt + iterative-phase shared guidelines (concatenated) | [`odysseus/agents/prompts/review_agent_base_system.md`](../odysseus/agents/prompts/review_agent_base_system.md) + [`review_agent_iterative_base_system.md`](../odysseus/agents/prompts/review_agent_iterative_base_system.md) |
-| `odysseus://agents/backend-setup/clarification-skill` | Structured clarification skill for backend setup | [`odysseus/agents/skills/structured-clarification.md`](../odysseus/agents/skills/structured-clarification.md) |
-| `odysseus://agents/backend-setup/taxonomy` | Backend field taxonomy (blocking/non-blocking) | [`odysseus/agents/backend_setup_taxonomy.md`](../odysseus/agents/backend_setup_taxonomy.md) |
-| `odysseus://agents/backend-setup/defaults` | Backend defaults and pricing resolution | [`odysseus/agents/backend_setup_defaults.md`](../odysseus/agents/backend_setup_defaults.md) |
-| `odysseus://agents/final-report/template` | Markdown skeleton for the final report — section order and placeholders | [`odysseus/agents/prompts/final_report_template.md`](../odysseus/agents/prompts/final_report_template.md) |
+| `compass://backends/{backend_label}` | Backend profile YAML (resource template) — provider detection for prompt builder | `backends/{backend_label}.yaml` (user project dir) |
+| `compass://agents/prompt-builder/best-practices` | General prompt engineering principles for routing prompts | [`compass/agents/prompt_builder_best_practices.md`](../compass/agents/prompt_builder_best_practices.md) |
+| `compass://agents/prompt-builder/conventions-claude` | Claude conventions and Anthropic cookbook patterns for routing prompts | [`compass/agents/prompt_builder_conventions_claude.md`](../compass/agents/prompt_builder_conventions_claude.md) |
+| `compass://agents/prompt-builder/conventions-openai` | OpenAI GPT-5 conventions and cookbook patterns for routing prompts | [`compass/agents/prompt_builder_conventions_openai.md`](../compass/agents/prompt_builder_conventions_openai.md) |
+| `compass://agents/prompt-builder/conventions-{provider}/{model_family}` | Model-specific conventions addendum (resource template) — returns empty if no addendum exists | `compass/agents/prompt_builder_conventions_{provider}_{model_family}.md` |
+| `compass://agents/input/clarification-skill` | Structured clarification skill — conversational strategy for the input agent | [`compass/agents/skills/structured-clarification.md`](../compass/agents/skills/structured-clarification.md) |
+| `compass://agents/input/defaults` | Default values and override mechanism for optional fields | [`compass/agents/user_input/defaults.md`](../compass/agents/user_input/defaults.md) |
+| `compass://agents/data-validation/format-spec` | Data format specification (THP-80) | [`compass/agents/data_validation_format.md`](../compass/agents/data_validation_format.md) |
+| `compass://agents/data-validation/output-spec` | Output format specification (THP-81) | [`compass/agents/data_validation_output.md`](../compass/agents/data_validation_output.md) |
+| `compass://agents/review-agent/guidelines` | Review Agent base system prompt + iterative-phase shared guidelines (concatenated) | [`compass/agents/prompts/review_agent_base_system.md`](../compass/agents/prompts/review_agent_base_system.md) + [`review_agent_iterative_base_system.md`](../compass/agents/prompts/review_agent_iterative_base_system.md) |
+| `compass://agents/backend-setup/clarification-skill` | Structured clarification skill for backend setup | [`compass/agents/skills/structured-clarification.md`](../compass/agents/skills/structured-clarification.md) |
+| `compass://agents/backend-setup/taxonomy` | Backend field taxonomy (blocking/non-blocking) | [`compass/agents/backend_setup_taxonomy.md`](../compass/agents/backend_setup_taxonomy.md) |
+| `compass://agents/backend-setup/defaults` | Backend defaults and pricing resolution | [`compass/agents/backend_setup_defaults.md`](../compass/agents/backend_setup_defaults.md) |
+| `compass://agents/final-report/template` | Markdown skeleton for the final report — section order and placeholders | [`compass/agents/prompts/final_report_template.md`](../compass/agents/prompts/final_report_template.md) |
 
 ## 6. Strategy Extension Points
 
@@ -334,23 +334,23 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 
 | Directory | Description |
 |---|---|
-| `odysseus/` | Main Python package: MCP server, agents, eval engine, prompt manager |
-| `odysseus/mcp/` | MCP server package: `server.py` (app + stage registry), `*_tools.py` (per-stage tools), `resources.py`, `prompts.py` |
-| `odysseus/agents/` | Root-level modules: `eval_runner.py` (`run_eval`), `routing_context.py`; stage subdirectories below |
-| `odysseus/agents/user_input/` | User input: input report contract (`report.py`), context/defaults/taxonomy/template resources |
-| `odysseus/agents/pipeline/` | Pipeline guards (`guards.py`), status detection (`status.py`), dispatch markers and fanout primitives (`dispatch.py`) |
-| `odysseus/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform, stratified split |
-| `odysseus/agents/prompt_builder/` | Prompt builder: search state, Pareto ops, holdout filter, best-practices docs |
-| `odysseus/agents/review/` | Review agent: models, preprocessor, ops |
-| `odysseus/agents/final_report/` | Final report: models, preprocessor (briefing builder + chart generation) |
-| `odysseus/agents/prompts/` | Agent system prompts (Markdown) surfaced via MCP |
-| `odysseus/eval/` | Evaluation engine: controller, backends, metrics, dataset loading, result collection |
+| `compass/` | Main Python package: MCP server, agents, eval engine, prompt manager |
+| `compass/mcp/` | MCP server package: `server.py` (app + stage registry), `*_tools.py` (per-stage tools), `resources.py`, `prompts.py` |
+| `compass/agents/` | Root-level modules: `eval_runner.py` (`run_eval`), `routing_context.py`; stage subdirectories below |
+| `compass/agents/user_input/` | User input: input report contract (`report.py`), context/defaults/taxonomy/template resources |
+| `compass/agents/pipeline/` | Pipeline guards (`guards.py`), status detection (`status.py`), dispatch markers and fanout primitives (`dispatch.py`) |
+| `compass/agents/data_validation/` | Data validation: schema checks, format detection, dataset transform, stratified split |
+| `compass/agents/prompt_builder/` | Prompt builder: search state, Pareto ops, holdout filter, best-practices docs |
+| `compass/agents/review/` | Review agent: models, preprocessor, ops |
+| `compass/agents/final_report/` | Final report: models, preprocessor (briefing builder + chart generation) |
+| `compass/agents/prompts/` | Agent system prompts (Markdown) surfaced via MCP |
+| `compass/eval/` | Evaluation engine: controller, backends, metrics, dataset loading, result collection |
 | `outputs/<run_id>/input/` | Pipeline run: validated input report |
 | `outputs/<run_id>/validation/` | Pipeline run: transformed dataset, quality report, routing context |
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
 | `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
-| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../odysseus/agents/prompt_builder/search_ops.py). Node coloring reflects `on_front` (Pareto elite-set) membership; algorithm-specific overlays can be added on leaf branches. |
+| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../compass/agents/prompt_builder/search_ops.py). Node coloring reflects `on_front` (Pareto elite-set) membership; algorithm-specific overlays can be added on leaf branches. |
 | `outputs/<run_id>/search/child_variants.json` | `ChildVariant[]` — Review Agent output: grouped directives with parent preferences and hypotheses (canonical directive storage; retrieved via `get_child_variants`) |
 | `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |
 | `outputs/<run_id>/search/search_state_original.json` | Preserved original search state from before rerun initiation |
@@ -368,9 +368,9 @@ Add to your project's `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "odysseus": {
+    "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/<owner>/project-odysseus", "odysseus"]
+      "args": ["--from", "git+https://github.com/<owner>/project-compass", "compass"]
     }
   }
 }
@@ -378,7 +378,7 @@ Add to your project's `.mcp.json`:
 
 Then initialize your project:
 ```bash
-odysseus init
+compass init
 ```
 
 This creates `outputs/`, `prompts/`, and `backends/` with starter files.
@@ -387,9 +387,9 @@ All file I/O (`outputs/`, `prompts/`, `backends/`) resolves against the current 
 ```json
 {
   "mcpServers": {
-    "odysseus": {
+    "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/<owner>/project-odysseus", "odysseus"],
+      "args": ["--from", "git+https://github.com/<owner>/project-compass", "compass"],
       "cwd": "/path/to/your/project"
     }
   }

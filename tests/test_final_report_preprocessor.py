@@ -4,7 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from odysseus.agents.final_report.preprocessor import build_final_report_briefing
+from compass.agents.final_report.preprocessor import build_final_report_briefing
 
 
 def _run_report(
@@ -380,7 +380,7 @@ class TestBuildFinalReportBriefing:
         assert list(briefing.baseline_comparison_md) == ["v3"]
 
     def test_round_trip_with_rendered_snippets(self, tmp_path: Path) -> None:
-        from odysseus.agents.final_report.models import FinalReportBriefing
+        from compass.agents.final_report.models import FinalReportBriefing
 
         run_dir = _setup_final_report_run(tmp_path)
         briefing = build_final_report_briefing(run_id="test-run", run_dir=run_dir, project_dir=tmp_path)

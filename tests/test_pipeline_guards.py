@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.agents.pipeline.dispatch import record_build_dispatched
-from odysseus.agents.pipeline.guards import check_artifacts
-from odysseus.agents.pipeline.status import _detect_stage_4_phase
+from compass.agents.pipeline.dispatch import record_build_dispatched
+from compass.agents.pipeline.guards import check_artifacts
+from compass.agents.pipeline.status import _detect_stage_4_phase
 
 
 class TestCheckArtifacts:
@@ -44,20 +44,20 @@ class TestCheckArtifacts:
 # Stage-4 dispatch-marker guards via complete_stage
 # ---------------------------------------------------------------------------
 
-_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
-_DISPATCH_PATCH = "odysseus.agents.pipeline.paths.get_project_dir"
+_SEARCH_OPS_PATCH = "compass.agents.prompt_builder.search_ops.get_project_dir"
+_DISPATCH_PATCH = "compass.agents.pipeline.paths.get_project_dir"
 
 
 def _setup_stage_scope(stage_name: str) -> None:
     """Set the active MCP stage so complete_stage is callable."""
-    from odysseus.mcp.server import set_active_stage
+    from compass.mcp.server import set_active_stage
 
     set_active_stage(stage_name)
 
 
 def _teardown_stage_scope() -> None:
     """Reset MCP stage to orchestrator after a test."""
-    from odysseus.mcp.server import set_active_stage
+    from compass.mcp.server import set_active_stage
 
     set_active_stage("orchestrator")
 
@@ -72,7 +72,7 @@ class TestCompleteStageBuildGuard:
     """
 
     async def test_raises_when_build_dispatched(self, tmp_path: Path) -> None:
-        from odysseus.mcp.orchestrator_tools import complete_stage
+        from compass.mcp.orchestrator_tools import complete_stage
 
         # The dispatch module resolves: base = get_project_dir() / "outputs"
         # So the marker lives at tmp_path/outputs/run1/search/build_dispatched.json
@@ -91,7 +91,7 @@ class TestCompleteStageBuildGuard:
             _teardown_stage_scope()
 
     async def test_passes_when_marker_absent(self, tmp_path: Path) -> None:
-        from odysseus.mcp.orchestrator_tools import complete_stage
+        from compass.mcp.orchestrator_tools import complete_stage
 
         _setup_stage_scope("prompt_building")
         try:
@@ -111,7 +111,7 @@ class TestCompleteStageReviewGuard:
     """
 
     async def test_raises_when_fanout_incomplete(self, tmp_path: Path) -> None:
-        from odysseus.mcp.orchestrator_tools import complete_stage
+        from compass.mcp.orchestrator_tools import complete_stage
 
         # No child_variants.json and no review marker — fanout not_dispatched
         _setup_stage_scope("review")
@@ -127,7 +127,7 @@ class TestCompleteStageReviewGuard:
             _teardown_stage_scope()
 
     async def test_passes_when_child_variants_exist(self, tmp_path: Path) -> None:
-        from odysseus.mcp.orchestrator_tools import complete_stage
+        from compass.mcp.orchestrator_tools import complete_stage
 
         # child_variants.json at the dispatch-module path
         search_dir = tmp_path / "outputs" / "run1" / "search"
@@ -150,7 +150,7 @@ class TestCompleteStageReviewGuard:
         Verifies that _BRANCH_ALGORITHM='hill_climb' is passed to review_fanout_status
         so it looks for the single-slot child_variants.json (not per-trajectory files).
         """
-        from odysseus.mcp.orchestrator_tools import complete_stage
+        from compass.mcp.orchestrator_tools import complete_stage
 
         search_dir = tmp_path / "outputs" / "run1" / "search"
         search_dir.mkdir(parents=True)
@@ -172,7 +172,7 @@ class TestCompleteStageReviewGuard:
         Without child_variants.json the hill_climb fanout is incomplete (missing=[0])
         and complete_stage must raise ToolError.
         """
-        from odysseus.mcp.orchestrator_tools import complete_stage
+        from compass.mcp.orchestrator_tools import complete_stage
 
         # No child_variants.json — fanout slot 0 is missing
         _setup_stage_scope("review")

@@ -4,8 +4,8 @@ import json
 import logging  # noqa: F401
 from datetime import UTC, datetime  # noqa: F401
 
-from odysseus.eval.collector import JsonResultsCollector
-from odysseus.eval.models import (
+from compass.eval.collector import JsonResultsCollector
+from compass.eval.models import (
     EvalResult,
     MetricConfig,  # noqa: F401
     OutputConfig,  # noqa: F401
@@ -15,7 +15,7 @@ from odysseus.eval.models import (
     RunSummary,  # noqa: F401
     TokenUsage,
 )
-from odysseus.eval.protocols import ResultsCollector  # noqa: F401
+from compass.eval.protocols import ResultsCollector  # noqa: F401
 
 
 def _make_result(example_id: str = "ex-1", error: str | None = None) -> EvalResult:
@@ -107,7 +107,7 @@ def test_write_report_logs_diff_when_previous_exists(tmp_path, caplog):
 
     # Write second report to same path
     new_report = _make_report(metrics={"accuracy": 0.85, "f1": 0.75})
-    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+    with caplog.at_level(logging.INFO, logger="compass.eval.collector"):
         collector.write_report(new_report, path)
 
     assert "accuracy: 0.82 → 0.85" in caplog.text
@@ -121,7 +121,7 @@ def test_write_report_no_diff_on_first_run(tmp_path, caplog):
     path = str(tmp_path / "report.json")
 
     report = _make_report(metrics={"accuracy": 0.85})
-    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+    with caplog.at_level(logging.INFO, logger="compass.eval.collector"):
         collector.write_report(report, path)
 
     assert "→" not in caplog.text
@@ -136,7 +136,7 @@ def test_write_report_diff_handles_new_and_removed_metrics(tmp_path, caplog):
     collector.write_report(old_report, path)
 
     new_report = _make_report(metrics={"accuracy": 0.85, "new_metric": 0.90})
-    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+    with caplog.at_level(logging.INFO, logger="compass.eval.collector"):
         collector.write_report(new_report, path)
 
     assert "accuracy: 0.8 → 0.85" in caplog.text
@@ -181,7 +181,7 @@ def test_write_report_logs_router_overhead_diff(tmp_path, caplog):
     collector.write_report(old_report, path)
 
     new_report = _make_report_with_overhead(total_cost=0.0350, duration_seconds=9.8)
-    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+    with caplog.at_level(logging.INFO, logger="compass.eval.collector"):
         collector.write_report(new_report, path)
 
     assert "Router overhead" in caplog.text
@@ -198,7 +198,7 @@ def test_write_report_no_overhead_diff_when_unchanged(tmp_path, caplog):
     collector.write_report(old_report, path)
 
     new_report = _make_report_with_overhead(total_cost=0.05, duration_seconds=10.0)
-    with caplog.at_level(logging.INFO, logger="odysseus.eval.collector"):
+    with caplog.at_level(logging.INFO, logger="compass.eval.collector"):
         collector.write_report(new_report, path)
 
     assert "Router overhead" not in caplog.text

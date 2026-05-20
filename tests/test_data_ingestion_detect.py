@@ -1,4 +1,4 @@
-"""Tests for odysseus.agents.data_ingestion_detect."""
+"""Tests for compass.agents.data_ingestion_detect."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.data_validation.detect import (
+from compass.agents.data_validation.detect import (
     DetectionResult,
     detect_and_parse,
 )

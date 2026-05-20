@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.user_input.report import (
+from compass.agents.user_input.report import (
     CONTEXT_KEY,
     STATUS_PROCEED,
     STATUS_PROCEED_WITH_DEFAULTS,

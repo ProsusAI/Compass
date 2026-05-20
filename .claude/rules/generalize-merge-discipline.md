@@ -49,12 +49,12 @@ commits (or contamination merges) as destructive changes on the recipient.
 | Pattern | Why |
 |---|---|
 | `_BRANCH_ALGORITHM = "hill_climb" \| "beam" \| "emosa" \| "sms_emoa"` (any non-`"__unset__"` value) | Pipeline trunk uses the `"__unset__"` sentinel; leaf branches set the concrete value |
-| Files matching `odysseus/agents/prompts/*_overlay_{hill_climb,beam,emosa,sms_emoa,sms-emoa}.md` | Algorithm-specific overlays belong on their leaf branch |
+| Files matching `compass/agents/prompts/*_overlay_{hill_climb,beam,emosa,sms_emoa,sms-emoa}.md` | Algorithm-specific overlays belong on their leaf branch |
 | `def _populate_{hill_climb,beam,emosa,sms_emoa}_review_fields` in `preprocessor.py` | Algorithm-specific briefing population belongs on its leaf branch |
-| `("hill_climb", *), ("beam", *), ("emosa", *), ("sms_emoa", *)` keys in `_overlay_map` (`odysseus/mcp/prompts.py`) | Leaf branches add their own overlay keys; pipeline has none |
+| `("hill_climb", *), ("beam", *), ("emosa", *), ("sms_emoa", *)` keys in `_overlay_map` (`compass/mcp/prompts.py`) | Leaf branches add their own overlay keys; pipeline has none |
 
 If a commit on pipeline introduces any of the above, revert it before merging
-to any leaf. Use `git log feat/generalize-pipeline -- 'odysseus/agents/prompts/*_overlay_*.md' odysseus/agents/prompt_builder/search_ops.py` to audit.
+to any leaf. Use `git log feat/generalize-pipeline -- 'compass/agents/prompts/*_overlay_*.md' compass/agents/prompt_builder/search_ops.py` to audit.
 
 ### Conflict-resolution rule (when a cherry-pick conflicts on a leaf)
 
@@ -73,7 +73,7 @@ Heuristic for individual hunks:
 ### MCP cache after a corrective force-push
 
 After force-pushing a leaf branch to undo contamination, any consumer using
-`uvx --from git+...@<leaf>` MUST run `uv cache clean odysseus` (or restart
+`uvx --from git+...@<leaf>` MUST run `uv cache clean compass` (or restart
 their MCP client) to drop the stale build. Otherwise the previous (wrong)
 build of the branch keeps serving requests.
 

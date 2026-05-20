@@ -1,4 +1,4 @@
-"""Tests for odysseus.agents.review_preprocessor."""
+"""Tests for compass.agents.review_preprocessor."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from odysseus.agents.prompt_builder.search import Candidate, SearchState
-from odysseus.agents.review.preprocessor import (
+from compass.agents.prompt_builder.search import Candidate, SearchState
+from compass.agents.review.preprocessor import (
     _delta,
     _extract_metric,
     _synthesize_directive_outcomes,
@@ -576,7 +576,7 @@ class TestMissingMetricBehavior:
 
     def test_recall_deltas_skips_absent_reference(self) -> None:
         """Reference lacks a recall key — that class should be skipped."""
-        from odysseus.agents.review.preprocessor import _compute_recall_deltas
+        from compass.agents.review.preprocessor import _compute_recall_deltas
 
         candidate = {"metrics": {"recall/route-a": 0.9, "recall/route-b": 0.7}}
         reference = {"metrics": {"recall/route-a": 0.85}}  # no route-b
@@ -619,7 +619,7 @@ class TestMissingMetricBehavior:
         assert briefing.candidates[0].delta_vs_parent.quality_delta is None
 
     def test_confusion_analysis_populated_when_results_provided(self) -> None:
-        from odysseus.eval.models import EvalResult, Example, Expected, ModelCostQuality
+        from compass.eval.models import EvalResult, Example, Expected, ModelCostQuality
 
         search_state = _make_search_state(
             round=2,
@@ -700,14 +700,14 @@ class TestMissingMetricBehavior:
 class TestGenerateExecutiveSummary:
     def _make_briefing(self, **overrides: Any) -> Any:
         """Build a minimal ReviewBriefing for summary tests."""
-        from odysseus.agents.review.models import (
+        from compass.agents.review.models import (
             CandidateAnalysis,
             DiminishingReturns,
             DiversityMetrics,
             MetricDeltas,
             ReviewBriefing,
         )
-        from odysseus.eval.models import ScoreReport
+        from compass.eval.models import ScoreReport
 
         default_score_report = ScoreReport.model_validate(_make_report_dict(accuracy=0.85, cost=1.20))
 
@@ -753,7 +753,7 @@ class TestGenerateExecutiveSummary:
         assert "+0.030" in summary or "+0.03" in summary
 
     def test_flags_regressions(self) -> None:
-        from odysseus.agents.review.models import ClassRecallEntry
+        from compass.agents.review.models import ClassRecallEntry
 
         briefing = self._make_briefing(
             per_class_recall={
@@ -771,7 +771,7 @@ class TestGenerateExecutiveSummary:
         assert "0.42" in summary
 
     def test_reports_oracle_gap(self) -> None:
-        from odysseus.agents.review.models import OracleMetrics
+        from compass.agents.review.models import OracleMetrics
 
         briefing = self._make_briefing(
             oracle_metrics=OracleMetrics(
@@ -786,7 +786,7 @@ class TestGenerateExecutiveSummary:
         assert "70%" in summary
 
     def test_warns_stagnation(self) -> None:
-        from odysseus.agents.review.models import DiminishingReturns
+        from compass.agents.review.models import DiminishingReturns
 
         briefing = self._make_briefing(
             diminishing_returns=DiminishingReturns(
@@ -805,7 +805,7 @@ class TestGenerateExecutiveSummary:
         assert "Round 3" in summary
 
     def test_includes_confusion_analysis(self) -> None:
-        from odysseus.agents.review.models import ConfusionImpact
+        from compass.agents.review.models import ConfusionImpact
 
         briefing = self._make_briefing()
         ci = ConfusionImpact(
@@ -830,7 +830,7 @@ class TestGenerateExecutiveSummary:
 
 class TestExampleSummaryInputText:
     def test_input_text_round_trips(self) -> None:
-        from odysseus.agents.review.models import ExampleSummary
+        from compass.agents.review.models import ExampleSummary
 
         es = ExampleSummary(example_id="h1", route="model-a", input_text="Hello world")
         data = es.model_dump()
@@ -838,7 +838,7 @@ class TestExampleSummaryInputText:
         assert restored.input_text == "Hello world"
 
     def test_input_text_defaults_to_none(self) -> None:
-        from odysseus.agents.review.models import ExampleSummary
+        from compass.agents.review.models import ExampleSummary
 
         es = ExampleSummary(example_id="h1", route="model-a")
         assert es.input_text is None
@@ -928,7 +928,7 @@ class TestBuildReviewBriefingStagnationSignal:
 class TestBuildConfusionAnalysis:
     def _make_example(self, eid: str, route: str, routes: dict[str, tuple[float, float]]) -> Any:
         """Helper: routes dict is {route_name: (cost, quality_score)}."""
-        from odysseus.eval.models import Example, Expected, ModelCostQuality
+        from compass.eval.models import Example, Expected, ModelCostQuality
 
         return Example(
             id=eid,
@@ -940,7 +940,7 @@ class TestBuildConfusionAnalysis:
         )
 
     def _make_result(self, eid: str, route: str) -> Any:
-        from odysseus.eval.models import EvalResult
+        from compass.eval.models import EvalResult
 
         return EvalResult(
             example_id=eid,
@@ -1052,7 +1052,7 @@ class TestBuildConfusionAnalysis:
 
     def test_missing_cost_data(self) -> None:
         """Routes with cost=None and quality_score=None -> cost_impact=0.0, quality_impact=0.0."""
-        from odysseus.eval.models import Example, Expected, ModelCostQuality
+        from compass.eval.models import Example, Expected, ModelCostQuality
 
         examples = [
             Example(
@@ -1081,7 +1081,7 @@ class TestBuildConfusionAnalysis:
 
     def test_sorted_by_impact_and_capped(self) -> None:
         """Create 25+ distinct cells, verify len <= 20 and sorted descending by impact."""
-        from odysseus.eval.models import EvalResult, Example, Expected, ModelCostQuality
+        from compass.eval.models import EvalResult, Example, Expected, ModelCostQuality
 
         examples = []
         results = []
@@ -1235,7 +1235,7 @@ class TestBuildConfusionAnalysis:
 
 class TestSignalToNoiseFilters:
     def test_filter_metric_deltas_basic(self) -> None:
-        from odysseus.agents.review.preprocessor import _filter_metric_deltas
+        from compass.agents.review.preprocessor import _filter_metric_deltas
 
         deltas = {
             "accuracy": 0.05,
@@ -1254,14 +1254,14 @@ class TestSignalToNoiseFilters:
         assert "recall/route_b" not in filtered
 
     def test_target_metrics_always_kept(self) -> None:
-        from odysseus.agents.review.preprocessor import _filter_metric_deltas
+        from compass.agents.review.preprocessor import _filter_metric_deltas
 
         deltas = {"recall/route_a": 0.005}
         filtered = _filter_metric_deltas(deltas, target_metrics={"recall/route_a"})
         assert "recall/route_a" in filtered
 
     def test_primary_metrics_kept_even_at_zero(self) -> None:
-        from odysseus.agents.review.preprocessor import _filter_metric_deltas
+        from compass.agents.review.preprocessor import _filter_metric_deltas
 
         deltas = {"accuracy": 0.0}
         filtered = _filter_metric_deltas(deltas)
@@ -1310,7 +1310,7 @@ class TestHolisticVersionSelection:
 
     def _make_state(self, elite_versions: list[str]) -> Any:
         """Build a minimal SearchState with the given elite set."""
-        from odysseus.agents.prompt_builder.search import Candidate
+        from compass.agents.prompt_builder.search import Candidate
 
         return _make_search_state(
             round=2,
@@ -1328,8 +1328,8 @@ class TestHolisticVersionSelection:
 
     def test_holistic_tuple_beats_primary_metric_tie(self) -> None:
         """Candidate B meets more targets than A, so B wins even if A scores higher on primary."""
-        from odysseus.agents.review.models import UserTarget
-        from odysseus.agents.review.preprocessor import build_review_briefing
+        from compass.agents.review.models import UserTarget
+        from compass.agents.review.preprocessor import build_review_briefing
 
         user_targets = [
             UserTarget(metric="quality_change", operator=">=", threshold=0.03),
@@ -1374,8 +1374,8 @@ class TestHolisticVersionSelection:
 
     def test_single_candidate_meets_all_true(self) -> None:
         """Flag is True when the single candidate satisfies every target."""
-        from odysseus.agents.review.models import UserTarget
-        from odysseus.agents.review.preprocessor import build_review_briefing
+        from compass.agents.review.models import UserTarget
+        from compass.agents.review.preprocessor import build_review_briefing
 
         user_targets = [
             UserTarget(metric="quality_change", operator=">=", threshold=0.03),
@@ -1404,8 +1404,8 @@ class TestHolisticVersionSelection:
 
     def test_single_candidate_meets_all_false(self) -> None:
         """Flag is False when at least one target is not met."""
-        from odysseus.agents.review.models import UserTarget
-        from odysseus.agents.review.preprocessor import build_review_briefing
+        from compass.agents.review.models import UserTarget
+        from compass.agents.review.preprocessor import build_review_briefing
 
         user_targets = [
             UserTarget(metric="quality_change", operator=">=", threshold=0.10),  # high bar
@@ -1434,8 +1434,8 @@ class TestHolisticVersionSelection:
 
     def test_source_version_matches_best_version(self) -> None:
         """Every target_progress entry's source_version equals the chosen best version."""
-        from odysseus.agents.review.models import UserTarget
-        from odysseus.agents.review.preprocessor import build_review_briefing
+        from compass.agents.review.models import UserTarget
+        from compass.agents.review.preprocessor import build_review_briefing
 
         user_targets = [
             UserTarget(metric="quality_change", operator=">=", threshold=0.03),
@@ -1487,7 +1487,7 @@ class TestSynthesizeDirectiveOutcomes:
         quality_delta: float | None,
         eval_status: str | None = "scored",
     ):
-        from odysseus.agents.review.models import BatchOutcome
+        from compass.agents.review.models import BatchOutcome
 
         return BatchOutcome(
             variant_id="cv-1-0",
@@ -1542,7 +1542,7 @@ class TestSynthesizeDirectiveOutcomes:
 
     def test_synthesized_outcomes_appear_in_briefing_directive_history(self) -> None:
         """Round-2 build_review_briefing surfaces synthesized outcomes in directive_history."""
-        from odysseus.agents.review.models import BatchOutcome
+        from compass.agents.review.models import BatchOutcome
 
         bo = BatchOutcome(
             variant_id="cv-1-t0-0",
@@ -1573,7 +1573,7 @@ class TestSynthesizeDirectiveOutcomes:
 
 class TestParseUserTargets:
     def test_h3_heading_with_canonical_bullets(self) -> None:
-        from odysseus.agents.review.models import UserTarget
+        from compass.agents.review.models import UserTarget
 
         report = (
             "## Metrics and Baseline\n"
@@ -1590,7 +1590,7 @@ class TestParseUserTargets:
         assert len(targets) == 2
 
     def test_bold_heading_with_numbered_labeled_bullets(self) -> None:
-        from odysseus.agents.review.models import UserTarget
+        from compass.agents.review.models import UserTarget
 
         report = (
             "## Metrics and Baseline\n"
@@ -1608,7 +1608,7 @@ class TestParseUserTargets:
         assert len(targets) == 2
 
     def test_inline_success_metric_fallback(self) -> None:
-        from odysseus.agents.review.models import UserTarget
+        from compass.agents.review.models import UserTarget
 
         report = (
             "## Problem Statement\n"

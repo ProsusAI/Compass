@@ -1,14 +1,14 @@
-# Project Odysseus
+# Project Compass
 
 **Improved Agentic Routing Optimizer** — a multi-agent pipeline that iteratively refines few-shot routing prompts using an automated evaluation loop. Deployed as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server.
 
-Given a routing dataset, a problem description, and target metrics, Odysseus validates the data, sets up the evaluation backend, and iteratively builds and refines a prompt through an automated eval-review-revise loop — producing a production-ready routing prompt with full performance transparency.
+Given a routing dataset, a problem description, and target metrics, Compass validates the data, sets up the evaluation backend, and iteratively builds and refines a prompt through an automated eval-review-revise loop — producing a production-ready routing prompt with full performance transparency.
 
 ---
 
 ## Setup
 
-Odysseus runs as an MCP server. Pick the setup that matches your client.
+Compass runs as an MCP server. Pick the setup that matches your client.
 
 ### Prerequisites
 
@@ -26,7 +26,7 @@ export OPENAI_API_KEY="sk-..."          # For OpenAI backends
 One command:
 
 ```bash
-claude mcp add odysseus -- uvx --from git+https://github.com/thymofieten-prosus/project-odysseus odysseus
+claude mcp add compass -- uvx --from git+https://github.com/thymofieten-prosus/project-compass compass
 ```
 
 The server inherits your shell environment, so exported API keys work automatically.
@@ -34,10 +34,10 @@ The server inherits your shell environment, so exported API keys work automatica
 To pass keys explicitly instead:
 
 ```bash
-claude mcp add odysseus \
+claude mcp add compass \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e OPENAI_API_KEY=sk-... \
-  -- uvx --from git+https://github.com/thymofieten-prosus/project-odysseus odysseus
+  -- uvx --from git+https://github.com/thymofieten-prosus/project-compass compass
 ```
 
 Verify with `claude mcp list`.
@@ -49,9 +49,9 @@ Add to `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "odysseus": {
+    "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-odysseus", "odysseus"]
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-compass", "compass"]
     }
   }
 }
@@ -64,9 +64,9 @@ Add to `.cursor/mcp.json` (or equivalent):
 ```json
 {
   "mcpServers": {
-    "odysseus": {
+    "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-odysseus", "odysseus"],
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-compass", "compass"],
       "env": {
         "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}"
@@ -85,9 +85,9 @@ Add to your client's MCP config (usually `.mcp.json`):
 ```json
 {
   "mcpServers": {
-    "odysseus": {
+    "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-odysseus", "odysseus"]
+      "args": ["--from", "git+https://github.com/thymofieten-prosus/project-compass", "compass"]
     }
   }
 }
@@ -95,10 +95,10 @@ Add to your client's MCP config (usually `.mcp.json`):
 
 ### Project initialization
 
-After connecting the server, run `odysseus init` in your project directory:
+After connecting the server, run `compass init` in your project directory:
 
 ```bash
-odysseus init
+compass init
 ```
 
 This creates:
@@ -111,8 +111,8 @@ The command is idempotent and will not overwrite existing files.
 ### Development setup
 
 ```bash
-git clone https://github.com/thymofieten-prosus/project-odysseus.git
-cd project-odysseus
+git clone https://github.com/thymofieten-prosus/project-compass.git
+cd project-compass
 uv sync
 ```
 
@@ -121,9 +121,9 @@ For local development, the repo includes a `.mcp.json` that runs the server from
 ```json
 {
   "mcpServers": {
-    "odysseus": {
+    "compass": {
       "command": "uv",
-      "args": ["run", "python", "-m", "odysseus.mcp"]
+      "args": ["run", "python", "-m", "compass.mcp"]
     }
   }
 }
@@ -137,7 +137,7 @@ After setup, start the pipeline by asking your MCP-connected assistant:
 
 > Optimize a routing prompt
 
-Odysseus walks through six stages. Each stage runs as a sub-agent — you interact with it conversationally, and it calls the appropriate MCP tools behind the scenes. Here's what happens at each stage and what you need to provide.
+Compass walks through six stages. Each stage runs as a sub-agent — you interact with it conversationally, and it calls the appropriate MCP tools behind the scenes. Here's what happens at each stage and what you need to provide.
 
 ### Stage 1: Input Validation
 
@@ -166,7 +166,7 @@ Configures the LLM backend used for evaluation.
 **What you provide:**
 - **Backend selection** — which LLM provider and model to use for evaluation (e.g. "openai/gpt-4o-mini", "anthropic/claude-haiku")
 
-The agent looks up default pricing and writes a backend config file. A starter `mock-echo.yaml` config is included from `odysseus init` for testing.
+The agent looks up default pricing and writes a backend config file. A starter `mock-echo.yaml` config is included from `compass init` for testing.
 
 ### Stage 4: Refinement Loop
 
@@ -214,7 +214,7 @@ uv run pytest
 Integration tests are Markdown runbooks in `tests/scenarios/`. Each scenario defines a simulated user conversation that exercises one or more pipeline agents end-to-end through the MCP server.
 
 **Prerequisites:**
-- The Odysseus MCP server must be connected to your AI coding assistant (see [Setup](#setup))
+- The Compass MCP server must be connected to your AI coding assistant (see [Setup](#setup))
 - At least one LLM API key must be set (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) — scenarios make real LLM API calls
 
 **Running a scenario:**

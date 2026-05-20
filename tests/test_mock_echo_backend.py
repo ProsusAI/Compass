@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from odysseus.eval.backends.mock_echo import MockEchoBackend
-from odysseus.eval.backends.profile import BackendProfile
-from odysseus.eval.models import Example, Expected
+from compass.eval.backends.mock_echo import MockEchoBackend
+from compass.eval.backends.profile import BackendProfile
+from compass.eval.models import Example, Expected
 
 
 def _make_profile() -> BackendProfile:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from odysseus.mcp.server import set_active_stage
+from compass.mcp.server import set_active_stage
 
 
 @pytest.fixture(autouse=True)

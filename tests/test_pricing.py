@@ -1,7 +1,7 @@
 """Tests for model pricing."""
 
-from odysseus.eval.models import TokenUsage
-from odysseus.eval.pricing import ModelPricing, compute_cost, get_default_pricing
+from compass.eval.models import TokenUsage
+from compass.eval.pricing import ModelPricing, compute_cost, get_default_pricing
 
 
 def test_model_pricing_compute_cost():
@@ -79,7 +79,7 @@ class TestDefaultPricing:
         assert pricing is None
 
     def test_all_entries_are_model_pricing(self) -> None:
-        from odysseus.eval.pricing import DEFAULT_PRICING
+        from compass.eval.pricing import DEFAULT_PRICING
 
         for key, value in DEFAULT_PRICING.items():
             assert isinstance(key, tuple) and len(key) == 2, f"Key {key} should be (provider, model)"

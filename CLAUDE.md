@@ -1,4 +1,4 @@
-# Project Odysseus
+# Project Compass
 
 Improved Agentic Routing Optimizer — a multi-agent pipeline that takes a routing problem as input, iteratively refines a few-shot routing prompt using an automated evaluation loop, and produces a validated final prompt and evaluation report. Deployed as an MCP (Model Context Protocol) server.
 
@@ -6,7 +6,7 @@ Improved Agentic Routing Optimizer — a multi-agent pipeline that takes a routi
 
 - **Language**: Python 3.11+
 - **Package manager**: `uv` (use `uv` for all dependency management, virtual environments, and running scripts — never pip directly)
-- **Deployment target**: MCP server (via `python -m odysseus.mcp` or `uvx odysseus`)
+- **Deployment target**: MCP server (via `python -m compass.mcp` or `uvx compass`)
 - **Async runtime**: `asyncio` + `aiohttp`
 - **Testing**: `pytest` with `pytest-asyncio`
 - **Linting/formatting**: `ruff`
@@ -20,8 +20,8 @@ uv run pytest               # Run tests
 uv run ruff check .         # Lint
 uv run ruff format .        # Format
 uv run pyright              # Type check
-uv run python -m odysseus.mcp  # Run MCP server locally
-uv run odysseus init           # Scaffold project dirs (outputs/, prompts/, backends/)
+uv run python -m compass.mcp  # Run MCP server locally
+uv run compass init           # Scaffold project dirs (outputs/, prompts/, backends/)
 ```
 
 ## Project Structure
@@ -29,7 +29,7 @@ uv run odysseus init           # Scaffold project dirs (outputs/, prompts/, back
 For detailed architecture, see [`docs/architecture.md`](docs/architecture.md).
 
 ```
-odysseus/              # Main package
+compass/              # Main package
   mcp/                 # MCP server package (see below)
     server.py          # FastMCP app, shared helpers, main()
     *_tools.py         # Stage-specific tool modules
@@ -51,7 +51,7 @@ pyproject.toml         # Project config (uv)
 
 ## Conventions
 
-- Agents are primarily LLM-driven (system prompts in `odysseus/agents/prompts/` surfaced via MCP); `EvalRunnerAgent` is the one code-driven exception
+- Agents are primarily LLM-driven (system prompts in `compass/agents/prompts/` surfaced via MCP); `EvalRunnerAgent` is the one code-driven exception
 - Use `pyproject.toml` for project metadata and dependencies (no `requirements.txt`)
 - Keep `uv.lock` committed for reproducibility
 - Environment variables for API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) — never hardcode secrets
@@ -60,7 +60,7 @@ pyproject.toml         # Project config (uv)
 
 ## Integration Testing
 
-Agent integration tests are MCP scenario runbooks in `tests/scenarios/`. Each scenario is a Markdown file executed by a Claude Code instance with the Odysseus MCP server configured.
+Agent integration tests are MCP scenario runbooks in `tests/scenarios/`. Each scenario is a Markdown file executed by a Claude Code instance with the Compass MCP server configured.
 
 **When adding a new agent**, add integration test scenarios following this pattern:
 

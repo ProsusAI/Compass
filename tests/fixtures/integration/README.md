@@ -1,6 +1,6 @@
 # Integration Test Runbook
 
-Run these tests in a conversation with the Odysseus MCP server enabled.
+Run these tests in a conversation with the Compass MCP server enabled.
 
 ## Prerequisites
 
@@ -9,10 +9,10 @@ Add the MCP server to your Claude Code config:
 ```json
 {
   "mcpServers": {
-    "odysseus": {
+    "compass": {
       "command": "uv",
-      "args": ["run", "python", "-m", "odysseus.mcp"],
-      "cwd": "<path-to-project-odysseus>"
+      "args": ["run", "python", "-m", "compass.mcp"],
+      "cwd": "<path-to-project-compass>"
     }
   }
 }

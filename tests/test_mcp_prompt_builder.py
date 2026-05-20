@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from odysseus.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
-from odysseus.mcp import (
+from compass.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
+from compass.mcp import (
     filter_holdout_dataset,
     get_child_variants,
     get_edit_directives,
@@ -19,9 +19,9 @@ from odysseus.mcp import (
 
 _RUN_ID = "test_run"
 
-RESOLVE_PROJECT_DIR = "odysseus.project_dir.resolve_project_dir"
-_SEARCH_OPS_PATCH = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
-GET_SEARCH_STATE_IMPL = "odysseus.mcp.prompt_building_tools._get_search_state_impl"
+RESOLVE_PROJECT_DIR = "compass.project_dir.resolve_project_dir"
+_SEARCH_OPS_PATCH = "compass.agents.prompt_builder.search_ops.get_project_dir"
+GET_SEARCH_STATE_IMPL = "compass.mcp.prompt_building_tools._get_search_state_impl"
 
 
 @contextmanager
@@ -281,8 +281,8 @@ class TestTrajectoryChildVariantsFallback:
     @pytest.mark.asyncio
     async def test_get_child_variants_falls_back_to_single_slot(self, tmp_path: Path) -> None:
         """When no per-trajectory files exist, get_child_variants returns single-slot variants."""
-        from odysseus.agents.review.models import ChildVariant, EditDirective
-        from odysseus.agents.review.ops import save_child_variants
+        from compass.agents.review.models import ChildVariant, EditDirective
+        from compass.agents.review.ops import save_child_variants
 
         with _patch_project_dir(tmp_path):
             _setup_guard_artifacts(tmp_path, stage="search")

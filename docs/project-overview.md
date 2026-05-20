@@ -101,7 +101,7 @@ This agent works together with the User Input Agent during the triage phase — 
 
 ### 4.3 Eval Framework (THP-75)
 
-The evaluation engine is fully implemented in `odysseus/eval/`. It is a production-grade async Python engine:
+The evaluation engine is fully implemented in `compass/eval/`. It is a production-grade async Python engine:
 
 | Component | Description |
 |---|---|
@@ -228,7 +228,7 @@ The metric set is not hardcoded. The Review Agent produces metric specifications
 Before accepting a new prompt version, the Review Agent checks whether metrics have improved relative to the previous best checkpoint. If they have regressed, the version is discarded and the Prompt Builder is instructed to "refine from a different viewpoint" rather than continuing in the same direction.
 
 ### MCP Deployment
-The system exposes `run_batch_eval` as the Stage 4 MCP tool for prompt-version evaluation. A single-element `candidates` list covers one-at-a-time algorithms, while multi-candidate rounds share the same concurrent dispatch surface. Underneath, each candidate still flows through the same Run Controller / Eval Runner implementation. The full pipeline is also deployable as an MCP server via `python -m odysseus.mcp`.
+The system exposes `run_batch_eval` as the Stage 4 MCP tool for prompt-version evaluation. A single-element `candidates` list covers one-at-a-time algorithms, while multi-candidate rounds share the same concurrent dispatch surface. Underneath, each candidate still flows through the same Run Controller / Eval Runner implementation. The full pipeline is also deployable as an MCP server via `python -m compass.mcp`.
 
 ---
 
@@ -253,7 +253,7 @@ The system exposes `run_batch_eval` as the Stage 4 MCP tool for prompt-version e
 | Language | Python 3.11+ |
 | Package manager | `uv` |
 | Async runtime | `asyncio` + `aiohttp` |
-| Deployment | MCP server (`python -m odysseus.mcp`) |
+| Deployment | MCP server (`python -m compass.mcp`) |
 | Testing | `pytest` + `pytest-asyncio` |
 | Linting | `ruff` |
 | Type checking | `pyright` |
@@ -265,7 +265,7 @@ The system exposes `run_batch_eval` as the Stage 4 MCP tool for prompt-version e
 ## 9. Repository Structure
 
 ```
-odysseus/
+compass/
   mcp/                # MCP server package
     server.py         # FastMCP app, shared helpers, main()
     *_tools.py        # Stage-specific tool modules

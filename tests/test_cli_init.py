@@ -1,6 +1,6 @@
-"""Tests for odysseus.cli — init command."""
+"""Tests for compass.cli — init command."""
 
-from odysseus.cli import run_init
+from compass.cli import run_init
 
 
 class TestRunInit:

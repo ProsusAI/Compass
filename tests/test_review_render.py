@@ -1,9 +1,9 @@
-"""Smoke tests for odysseus.agents.review.render."""
+"""Smoke tests for compass.agents.review.render."""
 
 from __future__ import annotations
 
-from odysseus.agents.prompt_builder.search import Candidate
-from odysseus.agents.review.models import (
+from compass.agents.prompt_builder.search import Candidate
+from compass.agents.review.models import (
     BatchOutcome,
     CandidateAnalysis,
     ChildVariant,
@@ -19,9 +19,9 @@ from odysseus.agents.review.models import (
     UserTarget,
     UserTargetProgress,
 )
-from odysseus.agents.review.render import render_briefing_summary
-from odysseus.agents.routing_context import RouteDefinition, RouteOrdering, RoutingContext, RoutingDimension
-from odysseus.eval.models import ErrorBreakdown, RunSummary, ScoreReport
+from compass.agents.review.render import render_briefing_summary
+from compass.agents.routing_context import RouteDefinition, RouteOrdering, RoutingContext, RoutingDimension
+from compass.eval.models import ErrorBreakdown, RunSummary, ScoreReport
 
 
 def _make_score_report(version: str) -> ScoreReport:

@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 from mcp.server.fastmcp.exceptions import ToolError
 
-from odysseus.agents.prompt_builder.search_ops import (
+from compass.agents.prompt_builder.search_ops import (
     _BRANCH_ALGORITHM,
     init_search_state,
     record_eval_result,
@@ -22,7 +22,7 @@ from odysseus.agents.prompt_builder.search_ops import (
 )
 async def test_advance_step_returns_round_summary_for_beam(tmp_path) -> None:
     """advance_step returns a JSON RoundSummary dict after processing beam candidates."""
-    from odysseus.mcp.prompt_building_tools import advance_step
+    from compass.mcp.prompt_building_tools import advance_step
 
     run_id = "beam_advance_test"
     outputs_dir = tmp_path / "outputs"
@@ -30,9 +30,9 @@ async def test_advance_step_returns_round_summary_for_beam(tmp_path) -> None:
     # Patch get_project_dir at every import site so all default-dir calls
     # (search_ops, paths, dispatch) resolve to the same tmp tree.
     with (
-        patch("odysseus.agents.prompt_builder.search_ops.get_project_dir", return_value=tmp_path),
-        patch("odysseus.agents.pipeline.paths.get_project_dir", return_value=tmp_path),
-        patch("odysseus.agents.pipeline.dispatch.get_project_dir", return_value=tmp_path),
+        patch("compass.agents.prompt_builder.search_ops.get_project_dir", return_value=tmp_path),
+        patch("compass.agents.pipeline.paths.get_project_dir", return_value=tmp_path),
+        patch("compass.agents.pipeline.dispatch.get_project_dir", return_value=tmp_path),
     ):
         init_search_state(backend="anthropic", run_id=run_id, output_dir=outputs_dir)
 
@@ -55,10 +55,10 @@ async def test_advance_step_returns_round_summary_for_beam(tmp_path) -> None:
 
 async def test_advance_step_raises_tool_error_for_missing_run(tmp_path) -> None:
     """advance_step raises ToolError when the run_id has no initialised state."""
-    from odysseus.mcp.prompt_building_tools import advance_step
+    from compass.mcp.prompt_building_tools import advance_step
 
     with (
-        patch("odysseus.project_dir.get_project_dir", return_value=tmp_path),
+        patch("compass.project_dir.get_project_dir", return_value=tmp_path),
         pytest.raises(ToolError),
     ):
         await advance_step(run_id="nonexistent-run")

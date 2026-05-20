@@ -1,9 +1,9 @@
 """Tests for confusion cell exhaustion tracking.
 
 Covers:
-- enrich_confusion_with_history (odysseus.agents.review.preprocessor)
-- load_cell_attempt_history / save_cell_attempt_history (odysseus.agents.review.ops)
-- update_cell_attempt_history (odysseus.agents.review.ops)
+- enrich_confusion_with_history (compass.agents.review.preprocessor)
+- load_cell_attempt_history / save_cell_attempt_history (compass.agents.review.ops)
+- update_cell_attempt_history (compass.agents.review.ops)
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from pathlib import Path
 
 import pytest
 
-from odysseus.agents.review.models import BatchOutcome, ChildVariant, ConfusionImpact
-from odysseus.agents.review.ops import (
+from compass.agents.review.models import BatchOutcome, ChildVariant, ConfusionImpact
+from compass.agents.review.ops import (
     load_cell_attempt_history,
     save_cell_attempt_history,
     update_cell_attempt_history,
 )
-from odysseus.agents.review.preprocessor import (
+from compass.agents.review.preprocessor import (
     _filter_cell_attempt_history_for_impacts,
     enrich_confusion_with_history,
 )

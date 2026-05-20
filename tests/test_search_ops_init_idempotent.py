@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from odysseus.agents.prompt_builder.search import SearchState
-from odysseus.agents.prompt_builder.search_ops import (
+from compass.agents.prompt_builder.search import SearchState
+from compass.agents.prompt_builder.search_ops import (
     _append_archive,
     _load_pending,
     _load_state,
@@ -31,8 +31,8 @@ from odysseus.agents.prompt_builder.search_ops import (
 _RUN_ID = "test-run"
 _BACKEND = "anthropic"
 
-_ALGO_PATCH = "odysseus.agents.prompt_builder.search_ops._BRANCH_ALGORITHM"
-_ALGO_STATE_PATCH = "odysseus.agents.prompt_builder.search_ops._BRANCH_ALGORITHM_STATE"
+_ALGO_PATCH = "compass.agents.prompt_builder.search_ops._BRANCH_ALGORITHM"
+_ALGO_STATE_PATCH = "compass.agents.prompt_builder.search_ops._BRANCH_ALGORITHM_STATE"
 
 
 def _init(tmp_path: Path, run_id: str = _RUN_ID) -> SearchState:
@@ -78,7 +78,7 @@ def test_init_on_pristine_existing_state_is_noop(tmp_path: Path) -> None:
 
 def test_init_after_round_advance_raises(tmp_path: Path) -> None:
     """init_search_state raises FileExistsError after a round has been advanced."""
-    from odysseus.agents.prompt_builder.search import Candidate, RoundSummary
+    from compass.agents.prompt_builder.search import Candidate, RoundSummary
 
     state = _init(tmp_path)
 
@@ -143,9 +143,9 @@ def test_append_archive_writes_candidate_archive_on_normal_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """candidate_archive.json remains unconditional because search-tree viz reads it."""
-    from odysseus.agents.prompt_builder.search import Candidate
+    from compass.agents.prompt_builder.search import Candidate
 
-    monkeypatch.delenv("ODYSSEUS_DEBUG", raising=False)
+    monkeypatch.delenv("COMPASS_DEBUG", raising=False)
     candidate = Candidate(
         prompt_version="v1",
         parent_version="base",
@@ -163,7 +163,7 @@ def test_append_archive_writes_candidate_archive_on_normal_runs(
 
 def test_init_with_history_only_raises(tmp_path: Path) -> None:
     """init_search_state raises when round_history is non-empty (even if elite_set is empty)."""
-    from odysseus.agents.prompt_builder.search import RoundSummary
+    from compass.agents.prompt_builder.search import RoundSummary
 
     state = _make_search_state(tmp_path)
 
@@ -192,11 +192,11 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
     """The MCP wrapper converts FileExistsError into ToolError on the second call."""
     from mcp.server.fastmcp.exceptions import ToolError
 
-    from odysseus.mcp.prompt_building_tools import init_search_state
+    from compass.mcp.prompt_building_tools import init_search_state
 
-    resolve_project_dir_patch = "odysseus.project_dir.resolve_project_dir"
-    search_ops_project_dir_patch = "odysseus.agents.prompt_builder.search_ops.get_project_dir"
-    guards_check_patch = "odysseus.mcp.prompt_building_tools.check_artifacts"
+    resolve_project_dir_patch = "compass.project_dir.resolve_project_dir"
+    search_ops_project_dir_patch = "compass.agents.prompt_builder.search_ops.get_project_dir"
+    guards_check_patch = "compass.mcp.prompt_building_tools.check_artifacts"
 
     # get_project_dir() returns tmp_path; _default_output_dir() -> tmp_path / "outputs"
     output_dir = tmp_path / "outputs"
@@ -217,7 +217,7 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
         # Advance state so it is no longer pristine — synthesised directly to
         # avoid calling advance_round, which is algorithm-specific (stub on
         # beam/emosa/sms-emoa leaves).
-        from odysseus.agents.prompt_builder.search import Candidate, RoundSummary
+        from compass.agents.prompt_builder.search import Candidate, RoundSummary
 
         state = _load_state(_RUN_ID, output_dir)
         elite_candidate = Candidate(
@@ -253,8 +253,8 @@ async def test_mcp_init_tool_surfaces_tool_error(tmp_path: Path) -> None:
 # InputReport evaluation_budget auto-read
 # ---------------------------------------------------------------------------
 
-_BEAM_ALGO_PATCH = "odysseus.agents.prompt_builder.search_ops._BRANCH_ALGORITHM"
-_BEAM_ALGO_STATE_PATCH = "odysseus.agents.prompt_builder.search_ops._BRANCH_ALGORITHM_STATE"
+_BEAM_ALGO_PATCH = "compass.agents.prompt_builder.search_ops._BRANCH_ALGORITHM"
+_BEAM_ALGO_STATE_PATCH = "compass.agents.prompt_builder.search_ops._BRANCH_ALGORITHM_STATE"
 _BEAM_ALGO_STATE = {"beam_width": 3}
 
 

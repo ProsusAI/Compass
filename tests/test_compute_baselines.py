@@ -1,6 +1,6 @@
 """Tests for baseline computation in holdout eval."""
 
-from odysseus.mcp.final_report_tools import _compute_baselines
+from compass.mcp.final_report_tools import _compute_baselines
 
 ROUTES = {
     "haiku": {"cost": 0.1, "quality_score": 0.6},

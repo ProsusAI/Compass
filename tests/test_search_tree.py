@@ -1,11 +1,11 @@
-"""Tests for odysseus.agents.prompt_builder.search_tree (Phase 2 rewrite)."""
+"""Tests for compass.agents.prompt_builder.search_tree (Phase 2 rewrite)."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from odysseus.agents.prompt_builder.search_tree import collect_data
+from compass.agents.prompt_builder.search_tree import collect_data
 
 
 def _write_json(path: Path, data: object) -> None:

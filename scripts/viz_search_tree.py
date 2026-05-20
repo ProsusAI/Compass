@@ -12,7 +12,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from odysseus.agents.prompt_builder.search_tree import collect_data, render_html
+from compass.agents.prompt_builder.search_tree import collect_data, render_html
 
 
 def main() -> None:
