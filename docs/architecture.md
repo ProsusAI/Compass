@@ -199,6 +199,8 @@ The orchestrator calls `start_stage(run_id)` before spawning a sub-agent (no `st
 
 Every `Agent({...})` call MUST include a literal `model` parameter. Omitting it inherits the orchestrator's model (Sonnet under auto mode), silently violating the routing rule. Required aliases: `model: "sonnet"` for review/review_cold, `model: "haiku"` for all other stages. Each `start_stage` response carries a `recommended_model` field with the correct value for the current dispatch. If a Claude Code installation lacks one of these aliases, fall back to the closest available tier and report it in the run summary.
 
+Review dispatches add one more Claude Code binding: when the active stage is `review` or `review_cold`, `start_stage` also requires `subagent_type: "odysseus-review-agent"` so the dispatched sub-agent is constrained to Odysseus MCP tools only; see [`.claude/agents/odysseus-review-agent.md`](../.claude/agents/odysseus-review-agent.md).
+
 Non-Claude-Code MCP consumers see both layers as plain text and should map the tier to whatever their backend offers. No model defaults inside `odysseus/*` are changed.
 
 #### Sub-Agent Guard Pattern

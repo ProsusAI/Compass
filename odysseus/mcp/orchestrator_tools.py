@@ -323,6 +323,16 @@ async def start_stage(ctx: Context, run_id: str | None = None) -> str:
     recommended_model = recommended_model_for(activate_prompt)
     tier = "strong" if recommended_model == "sonnet" else "fast"
     model_alias = '"sonnet"' if recommended_model == "sonnet" else '"haiku"'
+    subagent_type_line = ""
+    if stage in {"review", "review_cold"}:
+        subagent_type_line = (
+            '    - subagent_type: "odysseus-review-agent"   (REQUIRED — Claude Code\n'
+            "      only; restricts the sub-agent's tool list to Odysseus MCP tools\n"
+            "      and removes Bash/Read/Write/Edit/Grep/Glob/Web*. Omission defaults\n"
+            "      to the `claude` agent type with tools `*`, which silently grants\n"
+            "      shell access and lets the sub-agent bypass MCP query tools by\n"
+            "      reading eval JSONL directly.)\n\n"
+        )
 
     wrapped_instruction: str | None = None
     if subagent_instruction_raw:
@@ -330,6 +340,7 @@ async def start_stage(ctx: Context, run_id: str | None = None) -> str:
             "⚠️ DISPATCH REQUIRED — Spawn a sub-agent. "
             "Do NOT call stage tools yourself.\n\n"
             f"  Agent() parameters you MUST set:\n"
+            f"{subagent_type_line}"
             f"    - model: {model_alias}   (REQUIRED — Claude Code only; omission inherits\n"
             f"      the orchestrator's model. Recommended tier for this dispatch: {tier}.\n"
             f"      Other runtimes: select the equivalent tier on your backend.)\n\n"

@@ -8,7 +8,7 @@ You do not call eval. You do not write full prompts. You produce directives; the
 
 ## Data access — hard constraint
 
-You **do not** run Bash, read files, or full-scan datasets. Inspecting
+Bash is unavailable to you by construction, and you do not read files or full-scan datasets. Inspecting
 `outputs/<run_id>/analysis/dev.jsonl` or `outputs/<run_id>/eval/<version>/results.jsonl` directly is never acceptable —
 the briefing and detail tools cover every legitimate question:
 
