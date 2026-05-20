@@ -96,22 +96,6 @@ def test_shared_base_does_not_contain_strategy_term(base_file: str, term: str):
     )
 
 
-# ---------------------------------------------------------------------------
-# post_coldstart phase tests (beam leaf feature)
-# ---------------------------------------------------------------------------
-
-
-class TestOverlayFilenamePostColdstart:
-    def test_beam_post_coldstart_resolves(self):
-        """Beam leaf has post_coldstart overlay (uses iterative overlay)."""
-        result = _overlay_filename("beam", "post_coldstart")
-        assert result == "review_agent_iterative_overlay_beam"
-
-    def test_unknown_algorithm_post_coldstart_raises(self):
-        with pytest.raises(ValueError):
-            _overlay_filename("unknown_algo", "post_coldstart")  # type: ignore[arg-type]
-
-
 def test_post_coldstart_unknown_algorithm_raises():
     """assemble_review_prompt raises ValueError on beam leaf for unknown post_coldstart algo."""
     with pytest.raises(ValueError):
@@ -137,3 +121,37 @@ def test_iterative_prompt_nonempty(algorithm: str):
 def test_cold_start_prompt_nonempty(algorithm: str):
     content = assemble_review_prompt(algorithm, "cold_start")
     assert len(content) > 100
+
+
+class TestPostColdstartAssembly:
+    """Verify the round-2 post-cold-start beam prompt assembly."""
+
+    def test_three_layers_two_separators(self):
+        content = assemble_review_prompt("beam", "post_coldstart")
+        assert content.count("\n\n---\n\n") == 2, (
+            "post-coldstart assembly must produce exactly 3 layers (2 separators)"
+        )
+
+    def test_contains_round_2_mandate(self):
+        content = assemble_review_prompt("beam", "post_coldstart")
+        assert "Round-2 Protected Parents Mandate" in content
+
+    def test_contains_cell_selection_section(self):
+        content = assemble_review_prompt("beam", "post_coldstart")
+        assert "Cell selection for the per-parent diagnostic" in content
+
+    def test_does_not_contain_iterative_overlay_marker(self):
+        content = assemble_review_prompt("beam", "post_coldstart")
+        # Markers that exist only in review_agent_iterative_overlay_beam.md.
+        assert "Concentrate" not in content
+        assert "Total child count per round" not in content
+        assert "Agent-chosen allocation" not in content
+
+    def test_override_appears_before_iterative_base(self):
+        content = assemble_review_prompt("beam", "post_coldstart")
+        idx_override = content.index("Round-2 Protected Parents Mandate")
+        idx_iterative = content.index("## Flow: identify failure mode")
+        assert idx_override < idx_iterative, (
+            "post-coldstart override must precede the iterative base so the "
+            "agent reads the round-2 framing first"
+        )

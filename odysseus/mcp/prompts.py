@@ -19,7 +19,6 @@ def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start", 
     |------------------|-------------------------------------------|
     | iterative        | algorithm-specific iterative overlay      |
     | cold_start       | algorithm-specific cold-start overlay     |
-    | post_coldstart   | algorithm-specific iterative overlay      |
 
     Raises:
         ValueError: When the (algorithm, phase) combination is not recognised.
@@ -27,14 +26,13 @@ def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start", 
     _overlay_map: dict[tuple[str, str], str] = {
         ("beam", "iterative"): "review_agent_iterative_overlay_beam",
         ("beam", "cold_start"): "review_agent_cold_start_overlay_beam",
-        ("beam", "post_coldstart"): "review_agent_iterative_overlay_beam",
     }
     key = (algorithm, phase)
     if key not in _overlay_map:
         raise ValueError(
             f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
             f"Valid algorithms: beam. "
-            f"Valid phases: iterative, cold_start, post_coldstart."
+            f"Valid phases: iterative, cold_start."
         )
     return _overlay_map[key]
 
@@ -48,14 +46,15 @@ def assemble_review_prompt(
     For ``"iterative"`` and ``"cold_start"``, the assembled prompt is three layers:
     base + phase-base + strategy overlay, separated by horizontal rules.
 
-    For ``"post_coldstart"``, the assembled prompt is four layers:
-    base + iterative-phase-base + post-coldstart override + strategy overlay.
-    The iterative base applies the standard diagnostic workflow; the post-coldstart
-    override mandates exactly one child per protected parent for round 2.
+    For ``"post_coldstart"`` (beam only), the assembled prompt is three layers
+    in this order: base + post-coldstart override + iterative-phase base. The
+    round-2 override is placed BEFORE the iterative base so the agent reads
+    the round-2 mandate (one child per protected parent, no merges) before
+    the generic iterative diagnostic workflow it modifies.
 
     Args:
         algorithm: Strategy discriminator — ``"beam"`` on this leaf.
-        phase: ``"iterative"`` for rounds ≥ 2; ``"cold_start"`` for the seeding
+        phase: ``"iterative"`` for rounds ≥ 3; ``"cold_start"`` for the seeding
             round; ``"post_coldstart"`` for round 2 of beam search after cold-start.
 
     Returns:
@@ -65,13 +64,20 @@ def assemble_review_prompt(
         ValueError: When ``(algorithm, phase)`` is not a recognised combination.
         FileNotFoundError: When any of the component prompt files is missing.
     """
+    if phase == "post_coldstart":
+        if algorithm != "beam":
+            raise ValueError(
+                f"Unknown (algorithm, phase) combination: ({algorithm!r}, {phase!r}). "
+                f"Valid algorithms: beam."
+            )
+        base = _load_prompt("review_agent_base_system")
+        post_override = _load_prompt("review_agent_post_coldstart_overlay_beam")
+        iterative_base = _load_prompt("review_agent_iterative_base_system")
+        return f"{base}\n\n---\n\n{post_override}\n\n---\n\n{iterative_base}"
+
     overlay_name = _overlay_filename(algorithm, phase)
     base = _load_prompt("review_agent_base_system")
     overlay = _load_prompt(overlay_name)
-    if phase == "post_coldstart":
-        iterative_base = _load_prompt("review_agent_iterative_base_system")
-        post_override = _load_prompt("review_agent_post_coldstart_overlay_beam")
-        return f"{base}\n\n---\n\n{iterative_base}\n\n---\n\n{post_override}\n\n---\n\n{overlay}"
     phase_base = _load_prompt(f"review_agent_{phase}_base_system")
     return f"{base}\n\n---\n\n{phase_base}\n\n---\n\n{overlay}"
 
@@ -124,8 +130,7 @@ async def odysseus_review_agent_cold_start(algorithm: str = "beam") -> list[Mess
 async def odysseus_review_agent_post_coldstart(algorithm: str = "beam") -> list[Message]:
     """System prompt for the Review Agent — round-2 post-cold-start phase.
 
-    Assembles a four-tier prompt: shared base + iterative phase base +
-    post-coldstart override + iterative strategy overlay for the given algorithm.
+    Assembles a three-tier prompt: shared base + post-coldstart override + iterative phase base for the given algorithm.
 
     Args:
         algorithm: Search strategy in use — ``"beam"`` on this leaf.
