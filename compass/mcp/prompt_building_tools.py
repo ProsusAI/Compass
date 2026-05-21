@@ -214,6 +214,13 @@ async def record_eval_result(
     Returns:
         JSON object with prompt_version, quality_score, and cost.
     """
+    if abs(quality_score) >= 0.5:
+        raise ToolError(
+            f"quality_score={quality_score!r} looks like an accuracy value, not "
+            "quality_change. Extract metrics.quality_change from the "
+            "BatchEvalResult — not metrics.accuracy. quality_change is a signed "
+            "fraction relative to the base prompt and is typically in [-0.5, 0.5]."
+        )
     try:
         result = _record_eval_result_impl(
             run_id=run_id,

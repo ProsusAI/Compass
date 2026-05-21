@@ -10,11 +10,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from compass.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
+from mcp.server.fastmcp.exceptions import ToolError
+
 from compass.mcp import (
     filter_holdout_dataset,
     get_child_variants,
     get_edit_directives,
     get_search_state,
+    record_eval_result,
 )
 
 _RUN_ID = "test_run"
@@ -380,3 +383,50 @@ class TestGetSearchStateTool:
         assert "| 3 | 1 | 2 | 3 | 0.040 | False |" in result
         assert "| 4 | 1 | 1 | 3 | 0.020 | False |" in result
         assert "## Algorithm state" not in result
+
+
+class TestRecordEvalResultAccuracyGuard:
+    """The MCP tool wrapper rejects accuracy-shaped quality_score values.
+
+    quality_change is a signed fraction relative to base, typically in
+    [-0.5, 0.5]. accuracy lives in [0, 1] and strong models cluster at
+    0.85-0.95. A magnitude >= 0.5 is the signature of the agent passing
+    the wrong field. Guard lives at the MCP boundary so batch_eval's
+    in-process call path (which can legitimately surface accuracy as
+    the configured primary metric) is unaffected.
+    """
+
+    @pytest.mark.parametrize("bad_score", [0.5, 0.9342510786932402, 0.95, -0.7])
+    async def test_rejects_accuracy_shaped_score(self, bad_score: float) -> None:
+        with pytest.raises(ToolError) as exc:
+            await record_eval_result(
+                run_id=_RUN_ID,
+                prompt_version="v1",
+                quality_score=bad_score,
+                cost=-0.1,
+            )
+        assert "accuracy" in str(exc.value)
+        assert "quality_change" in str(exc.value)
+
+    @pytest.mark.parametrize("good_score", [0.0, 0.02, -0.15, 0.4999, -0.4999])
+    async def test_accepts_quality_change_shaped_score(
+        self, good_score: float, tmp_path: Path
+    ) -> None:
+        with (
+            _patch_project_dir(tmp_path),
+            patch(
+                "compass.mcp.prompt_building_tools._record_eval_result_impl",
+                return_value={
+                    "prompt_version": "v1",
+                    "quality_score": good_score,
+                    "cost": -0.1,
+                },
+            ),
+        ):
+            payload = await record_eval_result(
+                run_id=_RUN_ID,
+                prompt_version="v1",
+                quality_score=good_score,
+                cost=-0.1,
+            )
+        assert json.loads(payload)["quality_score"] == good_score
