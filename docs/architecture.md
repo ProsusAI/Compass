@@ -292,6 +292,8 @@ Retained as a back-compat shim for runs paused before automated marker clearing 
 
 The Review Agent prompt is assembled at dispatch time from three layers (iterative / cold-start): a shared base, a phase-specific base, and a strategy overlay. The `algorithm` argument on the MCP prompt selects the overlay. Leaf branches may extend this to four layers by adding a post-coldstart override and their own overlay files.
 
+**Dispatch protocol.** The Stage-4 dispatcher (any session driving the MCP) MUST fetch the canonical system prompt via `compass_review_agent_cold_start(algorithm)` when `SearchState.warm_up_complete == False` and via `compass_review_agent_iterative(algorithm)` otherwise, and pass the returned text verbatim as the sub-agent system prompt. Hand-rolling the dispatch prompt is forbidden: the `ChildVariant` / `EditDirective` schema is declared with `extra="forbid"` ([`compass/agents/review/models.py:272-310`](../compass/agents/review/models.py)) and cannot be safely re-stated, and the canonical prompt owns the no-Bash invariant ([`review_agent_base_system.md:13-15`](../compass/agents/prompts/review_agent_base_system.md)) needed to keep the sub-agent on the MCP surface. See [`.claude/rules/compass-stage4-dispatch.md`](../.claude/rules/compass-stage4-dispatch.md).
+
 | File | Role |
 |---|---|
 | [`compass/agents/prompts/review_agent_base_system.md`](../compass/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
