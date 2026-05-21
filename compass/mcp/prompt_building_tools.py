@@ -1,6 +1,8 @@
 """Prompt building tools — search state, candidates, batch eval, holdout filter."""
 
 import json
+import logging
+import math
 from pathlib import Path
 
 from mcp.server.fastmcp import Context
@@ -11,6 +13,7 @@ from compass.agents.pipeline.dispatch import clear_build_dispatched, record_buil
 from compass.agents.pipeline.guards import check_artifacts
 from compass.agents.prompt_builder.search import SearchState
 from compass.agents.prompt_builder.search_ops import (
+    _load_state,
     advance_round,
 )
 from compass.agents.prompt_builder.search_ops import (
@@ -25,6 +28,40 @@ from compass.agents.prompt_builder.search_ops import (
 from compass.agents.prompt_builder.search_ops import (
     register_candidate as _register_candidate_impl,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def _check_metric_field(
+    metrics: dict,
+    canonical: str,
+    passed: float,
+    param_name: str,
+    prompt_version: str,
+) -> None:
+    """Cross-check a single agent-provided value against the on-disk metrics dict.
+
+    Accepts if the value matches `metrics[canonical]` (the expected field) or
+    matches no known metric (an external override). Rejects if it matches a
+    *different* metric — naming which wrong field the agent typed.
+    """
+    tol = {"rel_tol": 1e-9, "abs_tol": 1e-12}
+    canonical_value = metrics.get(canonical)
+    if isinstance(canonical_value, (int, float)) and math.isclose(
+        passed, canonical_value, **tol
+    ):
+        return
+    for key, value in metrics.items():
+        if key == canonical or not isinstance(value, (int, float)):
+            continue
+        if math.isclose(passed, value, **tol):
+            raise ToolError(
+                f"{param_name}={passed!r} matches metrics.{key}={value!r} "
+                f"on {prompt_version}'s eval report; expected "
+                f"metrics.{canonical}={canonical_value!r}. Extract the "
+                f"canonical field from BatchEvalResult.metrics, not a "
+                f"different one."
+            )
 from compass.agents.review.models import INITIAL_PARENT_VERSION
 from compass.eval.models import MetricConfig, OutputConfig, RunConfig
 from compass.mcp._render import render_search_state_md
@@ -198,6 +235,7 @@ async def run_batch_eval(
 
 @mcp.tool()
 async def record_eval_result(
+    ctx: Context,
     run_id: str,
     prompt_version: str,
     quality_score: float,
@@ -214,12 +252,30 @@ async def record_eval_result(
     Returns:
         JSON object with prompt_version, quality_score, and cost.
     """
-    if abs(quality_score) >= 0.5:
-        raise ToolError(
-            f"quality_score={quality_score!r} looks like an accuracy value, not "
-            "quality_change. Extract metrics.quality_change from the "
-            "BatchEvalResult — not metrics.accuracy. quality_change is a signed "
-            "fraction relative to the base prompt and is typically in [-0.5, 0.5]."
+    # Lazy import to avoid the circular dependency that
+    # compass.eval.batch_eval has on this module's build_pipeline_config.
+    from compass.eval.batch_eval import _try_load_existing_report
+
+    project_dir = await _project_dir_mod.resolve_project_dir(ctx)
+    output_dir = project_dir / "outputs"
+    report = _try_load_existing_report(run_id, prompt_version, output_dir)
+    if report is None:
+        logger.warning(
+            "record_eval_result: no eval report on disk for %s/%s; "
+            "accepting agent-provided values without cross-check",
+            run_id,
+            prompt_version,
+        )
+    else:
+        metrics = report.get("metrics") or {}
+        try:
+            state = _load_state(run_id, output_dir)
+            canonical_q = state.primary_metric_name or "quality_change"
+        except FileNotFoundError:
+            canonical_q = "quality_change"
+        _check_metric_field(metrics, canonical_q, quality_score, "quality_score", prompt_version)
+        _check_metric_field(
+            metrics, "cost_change_with_overhead", cost, "cost", prompt_version
         )
     try:
         result = _record_eval_result_impl(

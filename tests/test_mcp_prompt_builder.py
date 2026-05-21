@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -385,48 +386,162 @@ class TestGetSearchStateTool:
         assert "## Algorithm state" not in result
 
 
-class TestRecordEvalResultAccuracyGuard:
-    """The MCP tool wrapper rejects accuracy-shaped quality_score values.
-
-    quality_change is a signed fraction relative to base, typically in
-    [-0.5, 0.5]. accuracy lives in [0, 1] and strong models cluster at
-    0.85-0.95. A magnitude >= 0.5 is the signature of the agent passing
-    the wrong field. Guard lives at the MCP boundary so batch_eval's
-    in-process call path (which can legitimately surface accuracy as
-    the configured primary metric) is unaffected.
+class TestRecordEvalResultCrossCheck:
+    """The MCP tool cross-checks agent-provided values against the on-disk
+    eval report. When the passed value matches a *different* metric in the
+    report (e.g., metrics.accuracy where metrics.quality_change was meant),
+    the tool rejects with a message naming both fields. When no report is
+    on disk (test, recovery, or pre-eval flow), it fails open.
     """
 
-    @pytest.mark.parametrize("bad_score", [0.5, 0.9342510786932402, 0.95, -0.7])
-    async def test_rejects_accuracy_shaped_score(self, bad_score: float) -> None:
-        with pytest.raises(ToolError) as exc:
+    _METRICS = {
+        "quality_change": 0.019924728802302415,
+        "accuracy": 0.9342510786932402,
+        "oracle_quality_captured": 0.85,
+        "cost_change_with_overhead": -0.07546871210844257,
+        "total_cost": 52.4,
+    }
+
+    def _write_report(self, tmp_path: Path, version: str, metrics: dict | None = None) -> None:
+        report = {
+            "metrics": metrics if metrics is not None else dict(self._METRICS),
+            "summary": {"succeeded": 1},
+        }
+        report_dir = tmp_path / "outputs" / _RUN_ID / "eval" / version
+        report_dir.mkdir(parents=True, exist_ok=True)
+        (report_dir / "report.json").write_text(json.dumps(report))
+
+    def _write_state(self, tmp_path: Path, primary_metric_name: str | None = None) -> None:
+        state = SearchState(
+            search_state_id="sid",
+            backend="test",
+            algorithm="__unset__",
+            algorithm_state={},
+            primary_metric_name=primary_metric_name,
+        )
+        state_dir = tmp_path / "outputs" / _RUN_ID / "search"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "search_state.json").write_text(state.model_dump_json())
+
+    async def test_rejects_accuracy_passed_as_quality_score(self, tmp_path: Path) -> None:
+        self._write_report(tmp_path, "v1")
+        self._write_state(tmp_path)
+        with _patch_project_dir(tmp_path), pytest.raises(ToolError) as exc:
             await record_eval_result(
+                ctx=None,
                 run_id=_RUN_ID,
                 prompt_version="v1",
-                quality_score=bad_score,
-                cost=-0.1,
+                quality_score=self._METRICS["accuracy"],
+                cost=self._METRICS["cost_change_with_overhead"],
             )
-        assert "accuracy" in str(exc.value)
-        assert "quality_change" in str(exc.value)
+        message = str(exc.value)
+        assert "metrics.accuracy" in message
+        assert "metrics.quality_change" in message
 
-    @pytest.mark.parametrize("good_score", [0.0, 0.02, -0.15, 0.4999, -0.4999])
-    async def test_accepts_quality_change_shaped_score(
-        self, good_score: float, tmp_path: Path
-    ) -> None:
+    async def test_rejects_total_cost_passed_as_cost(self, tmp_path: Path) -> None:
+        self._write_report(tmp_path, "v1")
+        self._write_state(tmp_path)
+        with _patch_project_dir(tmp_path), pytest.raises(ToolError) as exc:
+            await record_eval_result(
+                ctx=None,
+                run_id=_RUN_ID,
+                prompt_version="v1",
+                quality_score=self._METRICS["quality_change"],
+                cost=self._METRICS["total_cost"],
+            )
+        message = str(exc.value)
+        assert "metrics.total_cost" in message
+        assert "metrics.cost_change_with_overhead" in message
+
+    async def test_accepts_canonical_values(self, tmp_path: Path) -> None:
+        self._write_report(tmp_path, "v1")
+        self._write_state(tmp_path)
         with (
             _patch_project_dir(tmp_path),
             patch(
                 "compass.mcp.prompt_building_tools._record_eval_result_impl",
                 return_value={
                     "prompt_version": "v1",
-                    "quality_score": good_score,
-                    "cost": -0.1,
+                    "quality_score": self._METRICS["quality_change"],
+                    "cost": self._METRICS["cost_change_with_overhead"],
                 },
             ),
         ):
             payload = await record_eval_result(
+                ctx=None,
                 run_id=_RUN_ID,
                 prompt_version="v1",
-                quality_score=good_score,
+                quality_score=self._METRICS["quality_change"],
+                cost=self._METRICS["cost_change_with_overhead"],
+            )
+        assert json.loads(payload)["quality_score"] == self._METRICS["quality_change"]
+
+    async def test_accepts_canonical_via_primary_metric_name_override(self, tmp_path: Path) -> None:
+        self._write_report(tmp_path, "v1")
+        self._write_state(tmp_path, primary_metric_name="oracle_quality_captured")
+        with (
+            _patch_project_dir(tmp_path),
+            patch(
+                "compass.mcp.prompt_building_tools._record_eval_result_impl",
+                return_value={
+                    "prompt_version": "v1",
+                    "quality_score": self._METRICS["oracle_quality_captured"],
+                    "cost": self._METRICS["cost_change_with_overhead"],
+                },
+            ),
+        ):
+            payload = await record_eval_result(
+                ctx=None,
+                run_id=_RUN_ID,
+                prompt_version="v1",
+                quality_score=self._METRICS["oracle_quality_captured"],
+                cost=self._METRICS["cost_change_with_overhead"],
+            )
+        assert json.loads(payload)["quality_score"] == self._METRICS["oracle_quality_captured"]
+
+    async def test_accepts_value_matching_no_metric(self, tmp_path: Path) -> None:
+        """External override path: agent computes a value not in the report."""
+        self._write_report(tmp_path, "v1")
+        self._write_state(tmp_path)
+        novel = 0.0123456789
+        assert all(
+            not math.isclose(novel, v, rel_tol=1e-9, abs_tol=1e-12)
+            for v in self._METRICS.values()
+        )
+        with (
+            _patch_project_dir(tmp_path),
+            patch(
+                "compass.mcp.prompt_building_tools._record_eval_result_impl",
+                return_value={"prompt_version": "v1", "quality_score": novel, "cost": -0.1},
+            ),
+        ):
+            payload = await record_eval_result(
+                ctx=None,
+                run_id=_RUN_ID,
+                prompt_version="v1",
+                quality_score=novel,
                 cost=-0.1,
             )
-        assert json.loads(payload)["quality_score"] == good_score
+        assert json.loads(payload)["quality_score"] == novel
+
+    async def test_accepts_when_report_absent(self, tmp_path: Path) -> None:
+        """Fail-open when there is no report on disk (test / recovery paths)."""
+        with (
+            _patch_project_dir(tmp_path),
+            patch(
+                "compass.mcp.prompt_building_tools._record_eval_result_impl",
+                return_value={
+                    "prompt_version": "v1",
+                    "quality_score": 0.9342510786932402,
+                    "cost": 52.4,
+                },
+            ),
+        ):
+            payload = await record_eval_result(
+                ctx=None,
+                run_id=_RUN_ID,
+                prompt_version="v1",
+                quality_score=0.9342510786932402,
+                cost=52.4,
+            )
+        assert json.loads(payload)["quality_score"] == 0.9342510786932402
