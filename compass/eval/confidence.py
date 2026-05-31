@@ -55,16 +55,22 @@ def bootstrap_cis(
             except Exception:
                 pass
 
-    # Compute percentile intervals
+    # Compute percentile intervals. Index bounds are derived per key from the
+    # number of values actually collected for that key — not from n_bootstrap —
+    # because metric keys that are only defined on some resamples (e.g. per-class
+    # confusion/precision/f1 keys when a bootstrap sample omits a class, or
+    # metrics that raise on a resample) accumulate fewer than n_bootstrap values.
+    # Using n_bootstrap-based indices would index out of range for those keys.
     alpha = (1.0 - ci_level) / 2.0
-    lo_idx = int(alpha * n_bootstrap)
-    hi_idx = min(int((1.0 - alpha) * n_bootstrap), n_bootstrap - 1)
 
     cis: dict[str, ConfidenceInterval] = {}
     for key, values in bootstrap_values.items():
-        if len(values) < 2:
+        m = len(values)
+        if m < 2:
             continue
         sorted_values = sorted(values)
+        lo_idx = int(alpha * m)
+        hi_idx = min(int((1.0 - alpha) * m), m - 1)
         cis[key] = ConfidenceInterval(
             lower=sorted_values[lo_idx],
             upper=sorted_values[hi_idx],

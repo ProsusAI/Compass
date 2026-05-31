@@ -524,3 +524,45 @@ def test_create_default_engine_computes_accuracy():
     examples = [_example("ex-0", route="gpt-4o"), _example("ex-1", route="claude-sonnet")]
     out = engine.compute(results, examples, [MetricConfig(name="accuracy")])
     assert out == {"accuracy": 0.5}
+
+
+# --- Bootstrap CI tests ---
+
+
+def test_compute_cis_does_not_index_out_of_range_for_sparse_keys():
+    """Regression: per-class metric keys (confusion/precision/f1) are only
+    defined on bootstrap resamples that contain the class, so they accumulate
+    fewer than n_bootstrap values. Percentile indices must be derived per key
+    from that count — otherwise sorted_values[hi_idx] raises IndexError. This
+    crash previously killed controller.run() before report.json was written.
+    """
+    engine = create_default_engine()
+    # A rare class ("haiku") appears in only one example, so many resamples omit
+    # it entirely — its per-class keys end up with far fewer than n_bootstrap
+    # values, which is exactly what triggered the out-of-range index.
+    examples = [
+        _example("ex-0", route="gpt-4o"),
+        _example("ex-1", route="gpt-4o"),
+        _example("ex-2", route="claude-sonnet"),
+        _example("ex-3", route="haiku"),
+    ]
+    results = [
+        _result("ex-0", route="gpt-4o"),
+        _result("ex-1", route="claude-sonnet"),
+        _result("ex-2", route="claude-sonnet"),
+        _result("ex-3", route="gpt-4o"),
+    ]
+    metric_configs = [
+        MetricConfig(name="accuracy"),
+        MetricConfig(name="confusion"),
+        MetricConfig(name="f1"),
+        MetricConfig(name="cost_quality_change"),
+    ]
+
+    cis = engine.compute_cis(results, examples, metric_configs)
+
+    # Must not raise, and every interval must be well-formed.
+    assert cis  # non-empty
+    assert "accuracy" in cis
+    for interval in cis.values():
+        assert interval.lower <= interval.upper
