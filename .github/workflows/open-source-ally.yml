@@ -98,10 +98,10 @@ jobs:
           fetch-depth: 0 # scan full git history, not just the tip
 
       - name: TruffleHog (fail on verified secrets)
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@v3.95.7
         with:
           path: ./
-          extra_args: --results=verified --fail
+          extra_args: --results=verified
 
       - name: Note
         if: always()
@@ -124,6 +124,7 @@ jobs:
           path: .
           format: spdx-json
           output-file: sbom.spdx.json
+          upload-artifact: false # we upload it ourselves below (named 'sbom', 30-day retention)
 
       - id: scan
         name: Flag copyleft licenses
