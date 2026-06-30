@@ -1,0 +1,957 @@
+{
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_user_input_context.py": {
+    "mtime": 1779306885.5631897,
+    "ast_hash": "88a5f3faf062b8906bb92ecbbc9f65c6",
+    "semantic_hash": "88a5f3faf062b8906bb92ecbbc9f65c6"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_model_routing.py": {
+    "mtime": 1779306885.5538387,
+    "ast_hash": "ba9b6d30ac9ba8903f548dbee0ca6b34",
+    "semantic_hash": "ba9b6d30ac9ba8903f548dbee0ca6b34"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_initiate_rerun.py": {
+    "mtime": 1779307154.414667,
+    "ast_hash": "ad10cf08015bb972bc68c548ec77c64b",
+    "semantic_hash": "ad10cf08015bb972bc68c548ec77c64b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_review_agent_prompt_assembly.py": {
+    "mtime": 1779307159.6794083,
+    "ast_hash": "876877e9e682504e2b826a75f31ba963",
+    "semantic_hash": "876877e9e682504e2b826a75f31ba963"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_mcp_render.py": {
+    "mtime": 1779306885.5524678,
+    "ast_hash": "ceaadc2e5c051ca81f8424aa84e47645",
+    "semantic_hash": "ceaadc2e5c051ca81f8424aa84e47645"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_prompt_builder_search_ops.py": {
+    "mtime": 1779307159.6791632,
+    "ast_hash": "e10f7de19e6ae9f7a9456f518afce0e1",
+    "semantic_hash": "e10f7de19e6ae9f7a9456f518afce0e1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/conftest.py": {
+    "mtime": 1779306885.5348003,
+    "ast_hash": "a1ad0c4b6714236f986705519869f197",
+    "semantic_hash": "a1ad0c4b6714236f986705519869f197"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_save_prompt_tool.py": {
+    "mtime": 1779306885.5614686,
+    "ast_hash": "f4bd6d1176c016cf67c2ee2189d4114a",
+    "semantic_hash": "f4bd6d1176c016cf67c2ee2189d4114a"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_pipeline_guards.py": {
+    "mtime": 1779307159.6782892,
+    "ast_hash": "d6890b962d784ddb8f25f2fd57e943fc",
+    "semantic_hash": "d6890b962d784ddb8f25f2fd57e943fc"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_score_report.py": {
+    "mtime": 1779306885.5617127,
+    "ast_hash": "5144618484a80a693f5193c35a5b77a1",
+    "semantic_hash": "5144618484a80a693f5193c35a5b77a1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_mcp_stage_scoping.py": {
+    "mtime": 1779307159.677751,
+    "ast_hash": "9ce7c3a1f37ef95de1741849b5f53742",
+    "semantic_hash": "9ce7c3a1f37ef95de1741849b5f53742"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_compute_baselines.py": {
+    "mtime": 1779306885.545605,
+    "ast_hash": "a6527d8db720392cfb5ffed478718b43",
+    "semantic_hash": "a6527d8db720392cfb5ffed478718b43"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_final_report_preprocessor.py": {
+    "mtime": 1779306885.5498645,
+    "ast_hash": "b0c0380c8d2f8de51d72a816385c72d6",
+    "semantic_hash": "b0c0380c8d2f8de51d72a816385c72d6"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_cli_init.py": {
+    "mtime": 1779306885.5449555,
+    "ast_hash": "379b4c8918f82292e2e40eb22b84dc2d",
+    "semantic_hash": "379b4c8918f82292e2e40eb22b84dc2d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_metrics.py": {
+    "mtime": 1780259154.3881993,
+    "ast_hash": "3c930b9f0d0d58ad5a748867f9a605c7",
+    "semantic_hash": "3c930b9f0d0d58ad5a748867f9a605c7"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_routing_context.py": {
+    "mtime": 1779306885.5611796,
+    "ast_hash": "0fa908cd4657860f14e75ba76318d9c0",
+    "semantic_hash": "0fa908cd4657860f14e75ba76318d9c0"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_project_dir.py": {
+    "mtime": 1779306885.5568128,
+    "ast_hash": "87594e0d5e3ec1ae1d8306a5f79b9190",
+    "semantic_hash": "87594e0d5e3ec1ae1d8306a5f79b9190"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_review_render.py": {
+    "mtime": 1779307159.6803079,
+    "ast_hash": "0abc5b4960dc617965432b8575d5e5e1",
+    "semantic_hash": "0abc5b4960dc617965432b8575d5e5e1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_user_input_report.py": {
+    "mtime": 1779306885.563613,
+    "ast_hash": "af6a45a91a22db723ab59c8f7462864f",
+    "semantic_hash": "af6a45a91a22db723ab59c8f7462864f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_review_models.py": {
+    "mtime": 1779307159.6796863,
+    "ast_hash": "7e03e03b0ef20bdfd6a4b9d375bd7a53",
+    "semantic_hash": "7e03e03b0ef20bdfd6a4b9d375bd7a53"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_stratified_split_tool_relocation.py": {
+    "mtime": 1779306885.5628717,
+    "ast_hash": "8e5ffa729580f10e780ca221c282b652",
+    "semantic_hash": "8e5ffa729580f10e780ca221c282b652"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_search_ops_archive.py": {
+    "mtime": 1779307154.4205465,
+    "ast_hash": "c962bd6966092b8cf1d0b487c3565b6b",
+    "semantic_hash": "c962bd6966092b8cf1d0b487c3565b6b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_user_input_defaults.py": {
+    "mtime": 1779306963.3514202,
+    "ast_hash": "9f81bc2d0a422a3c9a78e339e919a4d4",
+    "semantic_hash": "9f81bc2d0a422a3c9a78e339e919a4d4"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_search_ops_advance_round.py": {
+    "mtime": 1779307159.680905,
+    "ast_hash": "819e4c9589debcf0009b5189c4c8f5b8",
+    "semantic_hash": "819e4c9589debcf0009b5189c4c8f5b8"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_viz_wiring.py": {
+    "mtime": 1779307159.6815104,
+    "ast_hash": "b2d2c5f7222b6edbd8950b66cd477038",
+    "semantic_hash": "b2d2c5f7222b6edbd8950b66cd477038"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_data_ingestion_detect.py": {
+    "mtime": 1779306885.5466251,
+    "ast_hash": "d9ae3c21bef9e06e773789a1096a6aaf",
+    "semantic_hash": "d9ae3c21bef9e06e773789a1096a6aaf"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/__init__.py": {
+    "mtime": 1773933237.706445,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_hard_stop_builder.py": {
+    "mtime": 1779307159.6772304,
+    "ast_hash": "f438278571700588bdb7960f8aa16bb2",
+    "semantic_hash": "f438278571700588bdb7960f8aa16bb2"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_search_ops_init_idempotent.py": {
+    "mtime": 1779307154.4208357,
+    "ast_hash": "3fb4c83f8e2fc818c2ef24aa995f23e0",
+    "semantic_hash": "3fb4c83f8e2fc818c2ef24aa995f23e0"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_mcp_prompt_builder.py": {
+    "mtime": 1779385397.0977945,
+    "ast_hash": "55ab334dab9fed379532987963a338f5",
+    "semantic_hash": "55ab334dab9fed379532987963a338f5"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_review_ops.py": {
+    "mtime": 1779306885.5597374,
+    "ast_hash": "b6faed916dbdae6aeee0553dbea2295b",
+    "semantic_hash": "b6faed916dbdae6aeee0553dbea2295b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_pricing.py": {
+    "mtime": 1779306885.5560865,
+    "ast_hash": "4fd134db004e07367504f4d29fc00004",
+    "semantic_hash": "4fd134db004e07367504f4d29fc00004"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_review_preprocessor.py": {
+    "mtime": 1779307159.6800387,
+    "ast_hash": "718382272326bf183771b2be844faabf",
+    "semantic_hash": "718382272326bf183771b2be844faabf"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_prompt_manager.py": {
+    "mtime": 1779306885.5577857,
+    "ast_hash": "c1ab24ef3ffd905a1a5c674c5a1f485d",
+    "semantic_hash": "c1ab24ef3ffd905a1a5c674c5a1f485d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_diff.py": {
+    "mtime": 1779306885.5488532,
+    "ast_hash": "f02e4226703918197511c2a85743d2ce",
+    "semantic_hash": "f02e4226703918197511c2a85743d2ce"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_add_ids.py": {
+    "mtime": 1779306885.543579,
+    "ast_hash": "df1a1edb8eca412b7b1c2ab378b98120",
+    "semantic_hash": "df1a1edb8eca412b7b1c2ab378b98120"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_branch_constants.py": {
+    "mtime": 1779307159.6766582,
+    "ast_hash": "40524337de23061188200fe54cf46dce",
+    "semantic_hash": "40524337de23061188200fe54cf46dce"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_search_tree.py": {
+    "mtime": 1779307159.6813414,
+    "ast_hash": "a4277eaec86a41ea672fc9db35d80ec2",
+    "semantic_hash": "a4277eaec86a41ea672fc9db35d80ec2"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_build_pipeline_config.py": {
+    "mtime": 1779306885.5443265,
+    "ast_hash": "8146e583e4ef695530c323edd350f6dd",
+    "semantic_hash": "8146e583e4ef695530c323edd350f6dd"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_batch_eval.py": {
+    "mtime": 1779307159.6764345,
+    "ast_hash": "e97fc59f201b2b593c388731c61444ec",
+    "semantic_hash": "e97fc59f201b2b593c388731c61444ec"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_review_tools.py": {
+    "mtime": 1779307159.6806605,
+    "ast_hash": "8fd75b4ea2bbb561922abf11bb8a67c5",
+    "semantic_hash": "8fd75b4ea2bbb561922abf11bb8a67c5"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_advance_step_tool.py": {
+    "mtime": 1779307159.6761725,
+    "ast_hash": "87e3706883a4c1f3eee12b428a82c050",
+    "semantic_hash": "87e3706883a4c1f3eee12b428a82c050"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_dataset.py": {
+    "mtime": 1779306885.5485363,
+    "ast_hash": "c0661e89ff9cf1ae18afea06aab268b0",
+    "semantic_hash": "c0661e89ff9cf1ae18afea06aab268b0"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_mock_echo_backend.py": {
+    "mtime": 1779306885.5535533,
+    "ast_hash": "15878939e8c0051b58fcf5ebb3d3c17b",
+    "semantic_hash": "15878939e8c0051b58fcf5ebb3d3c17b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_data_ingestion_transform.py": {
+    "mtime": 1779306885.5471573,
+    "ast_hash": "519ea48db0370b4bac5b0a396c993b8c",
+    "semantic_hash": "519ea48db0370b4bac5b0a396c993b8c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_models.py": {
+    "mtime": 1779307144.9178047,
+    "ast_hash": "3d492b4e8b14c3fec60f0a42f7d77302",
+    "semantic_hash": "3d492b4e8b14c3fec60f0a42f7d77302"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_rate_limiter.py": {
+    "mtime": 1779306885.5584457,
+    "ast_hash": "66b35b372316d106e7454960ddb65674",
+    "semantic_hash": "66b35b372316d106e7454960ddb65674"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_backends.py": {
+    "mtime": 1779306885.5441594,
+    "ast_hash": "8b02753d06ea6e6fe4652d1c52384a19",
+    "semantic_hash": "8b02753d06ea6e6fe4652d1c52384a19"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_pipeline_status.py": {
+    "mtime": 1779307159.678596,
+    "ast_hash": "f883e4645220b717952ec43b96f983bd",
+    "semantic_hash": "f883e4645220b717952ec43b96f983bd"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_prompt_builder_holdout_filter.py": {
+    "mtime": 1779306885.557052,
+    "ast_hash": "eda5d00f00f75e582c435a691ecacc0c",
+    "semantic_hash": "eda5d00f00f75e582c435a691ecacc0c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_data_validation_checks.py": {
+    "mtime": 1779306885.5475123,
+    "ast_hash": "af235cabcd2e6cfc5baf4663899bdce1",
+    "semantic_hash": "af235cabcd2e6cfc5baf4663899bdce1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_collector.py": {
+    "mtime": 1779306885.5452209,
+    "ast_hash": "c63b11663494c71a2917c4e7dca97629",
+    "semantic_hash": "c63b11663494c71a2917c4e7dca97629"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_data_validation_split.py": {
+    "mtime": 1779306885.5479965,
+    "ast_hash": "747e1c988ec8471ce914ab0255699e59",
+    "semantic_hash": "747e1c988ec8471ce914ab0255699e59"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_prompt_builder_search.py": {
+    "mtime": 1779307159.6788998,
+    "ast_hash": "a2ac79ce83e82878d5481ab714e67eec",
+    "semantic_hash": "a2ac79ce83e82878d5481ab714e67eec"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_mcp.py": {
+    "mtime": 1779306885.5508585,
+    "ast_hash": "1750cec55b6117b2eb70917047dcff5f",
+    "semantic_hash": "1750cec55b6117b2eb70917047dcff5f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_cell_attempt_history.py": {
+    "mtime": 1779307154.4137049,
+    "ast_hash": "8d770ba035902309642de621e2ab768f",
+    "semantic_hash": "8d770ba035902309642de621e2ab768f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_search_ops_coldstart_parent.py": {
+    "mtime": 1779307159.6810763,
+    "ast_hash": "5df53ff8bcecedf7dddc0cdd41df6bf3",
+    "semantic_hash": "5df53ff8bcecedf7dddc0cdd41df6bf3"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_mcp_data_validation.py": {
+    "mtime": 1779306885.5514889,
+    "ast_hash": "4157692d5460d77981a780a4cb6691c3",
+    "semantic_hash": "4157692d5460d77981a780a4cb6691c3"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_protocols.py": {
+    "mtime": 1779306885.5580308,
+    "ast_hash": "49bf1479124209b36065445611c77f80",
+    "semantic_hash": "49bf1479124209b36065445611c77f80"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_eval_runner_agent.py": {
+    "mtime": 1779306885.549462,
+    "ast_hash": "b9037ff9909b91b4b3627362652c6b3f",
+    "semantic_hash": "b9037ff9909b91b4b3627362652c6b3f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_pipeline_dispatch.py": {
+    "mtime": 1779307159.677999,
+    "ast_hash": "f0e168147d3b72321e2edd2ac9f24448",
+    "semantic_hash": "f0e168147d3b72321e2edd2ac9f24448"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/test_controller.py": {
+    "mtime": 1779307159.676923,
+    "ast_hash": "af08c287aad23f7be2a7150f7f264f1b",
+    "semantic_hash": "af08c287aad23f7be2a7150f7f264f1b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/scripts/viz_search_tree.py": {
+    "mtime": 1779306885.5343049,
+    "ast_hash": "ccb57afcf1e5619fe157f48d54f6868c",
+    "semantic_hash": "ccb57afcf1e5619fe157f48d54f6868c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/project_dir.py": {
+    "mtime": 1779306885.525611,
+    "ast_hash": "92c4074c7f5045937ca3f5a18c5dc303",
+    "semantic_hash": "92c4074c7f5045937ca3f5a18c5dc303"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/__init__.py": {
+    "mtime": 1779306885.4922411,
+    "ast_hash": "b7b47790b8e3f086c646c874c3978794",
+    "semantic_hash": "b7b47790b8e3f086c646c874c3978794"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/cli.py": {
+    "mtime": 1779306885.5131373,
+    "ast_hash": "893c18a523aa12508d4a0b1e2e5f36b1",
+    "semantic_hash": "893c18a523aa12508d4a0b1e2e5f36b1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/__main__.py": {
+    "mtime": 1779306885.4925408,
+    "ast_hash": "24e7bf1aa164bcfde37b3ff36d5eff87",
+    "semantic_hash": "24e7bf1aa164bcfde37b3ff36d5eff87"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/__init__.py": {
+    "mtime": 1779307144.903989,
+    "ast_hash": "1e7c0a4adfe00012f2d4000c7090b800",
+    "semantic_hash": "1e7c0a4adfe00012f2d4000c7090b800"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/routing_context.py": {
+    "mtime": 1779306885.511309,
+    "ast_hash": "eef2e7b15966d470d86d4943585ea9b6",
+    "semantic_hash": "eef2e7b15966d470d86d4943585ea9b6"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/eval_runner.py": {
+    "mtime": 1779306885.4967406,
+    "ast_hash": "df02f761f6380de1556af45998ca5e72",
+    "semantic_hash": "df02f761f6380de1556af45998ca5e72"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/stage4.py": {
+    "mtime": 1779307159.668842,
+    "ast_hash": "ba472e440cfda06ec560e306471a540f",
+    "semantic_hash": "ba472e440cfda06ec560e306471a540f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/guards.py": {
+    "mtime": 1779306885.499429,
+    "ast_hash": "7cd0950417962571cf0a44c36ce40ec4",
+    "semantic_hash": "7cd0950417962571cf0a44c36ce40ec4"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/paths.py": {
+    "mtime": 1779306885.5003853,
+    "ast_hash": "ae39ace443f4ffabf7d53d54ec610c64",
+    "semantic_hash": "ae39ace443f4ffabf7d53d54ec610c64"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/dispatch.py": {
+    "mtime": 1779307159.6681492,
+    "ast_hash": "1f01f3533ab8cb64e6e9738518d6419b",
+    "semantic_hash": "1f01f3533ab8cb64e6e9738518d6419b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/instructions.py": {
+    "mtime": 1779307159.6684625,
+    "ast_hash": "5a1440f15378be5ce31fb1e3a8b2103e",
+    "semantic_hash": "5a1440f15378be5ce31fb1e3a8b2103e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/status_types.py": {
+    "mtime": 1779306885.5016642,
+    "ast_hash": "eff6b49cb9c8d3b998bd62a2a20fe8a1",
+    "semantic_hash": "eff6b49cb9c8d3b998bd62a2a20fe8a1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/checks.py": {
+    "mtime": 1779306885.4985144,
+    "ast_hash": "9c7e52079a35a46ed8c8c214ddc9edd1",
+    "semantic_hash": "9c7e52079a35a46ed8c8c214ddc9edd1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/tool_registry.py": {
+    "mtime": 1779307159.6694863,
+    "ast_hash": "799b7eab8793d0ef91fa159e3f13fec2",
+    "semantic_hash": "799b7eab8793d0ef91fa159e3f13fec2"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/__init__.py": {
+    "mtime": 1779306885.4981542,
+    "ast_hash": "bece8de779a774e2b267a0505ae26b55",
+    "semantic_hash": "bece8de779a774e2b267a0505ae26b55"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/debug.py": {
+    "mtime": 1779306885.4989488,
+    "ast_hash": "916059d885354e20cbeab5c6692c9f19",
+    "semantic_hash": "916059d885354e20cbeab5c6692c9f19"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/runs.py": {
+    "mtime": 1779306885.5007741,
+    "ast_hash": "c0d0899f8a42e8b58f7d9fd388ea47c5",
+    "semantic_hash": "c0d0899f8a42e8b58f7d9fd388ea47c5"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/pipeline/status.py": {
+    "mtime": 1779307159.6692226,
+    "ast_hash": "f102cb52a26ece7d62f821e98fe9c139",
+    "semantic_hash": "f102cb52a26ece7d62f821e98fe9c139"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/user_input/__init__.py": {
+    "mtime": 1779306885.5117924,
+    "ast_hash": "1d630c56d46fbaed445097bfff159c35",
+    "semantic_hash": "1d630c56d46fbaed445097bfff159c35"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/user_input/report.py": {
+    "mtime": 1779306885.512644,
+    "ast_hash": "470959e471fca472dc170171bb7d8663",
+    "semantic_hash": "470959e471fca472dc170171bb7d8663"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/holdout_filter.py": {
+    "mtime": 1779306885.5033908,
+    "ast_hash": "42c4546f23a884a3f15c509929c8886d",
+    "semantic_hash": "42c4546f23a884a3f15c509929c8886d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/__init__.py": {
+    "mtime": 1779307144.9059513,
+    "ast_hash": "fe37e12873f5bcf883fc5c090fc897ef",
+    "semantic_hash": "fe37e12873f5bcf883fc5c090fc897ef"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/search.py": {
+    "mtime": 1779307159.6700387,
+    "ast_hash": "57d06c5278562a60cb5f2584ecdbbe3a",
+    "semantic_hash": "57d06c5278562a60cb5f2584ecdbbe3a"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/search_tree.py": {
+    "mtime": 1779307159.6708772,
+    "ast_hash": "7b16652362dba29516d2d5189e1102fc",
+    "semantic_hash": "7b16652362dba29516d2d5189e1102fc"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/viz.py": {
+    "mtime": 1779306885.5051541,
+    "ast_hash": "940e215ad337f201d83f4b4b6e16485b",
+    "semantic_hash": "940e215ad337f201d83f4b4b6e16485b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/search_ops.py": {
+    "mtime": 1779307159.670403,
+    "ast_hash": "d58dcf1300709dc3f50d515179efb73e",
+    "semantic_hash": "d58dcf1300709dc3f50d515179efb73e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/review/models.py": {
+    "mtime": 1779307159.6725435,
+    "ast_hash": "9dd67313eecafb811a125aa7a0531399",
+    "semantic_hash": "9dd67313eecafb811a125aa7a0531399"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/review/render.py": {
+    "mtime": 1779307159.6732388,
+    "ast_hash": "7fa1eb0bbb7210e93372b496243c849b",
+    "semantic_hash": "7fa1eb0bbb7210e93372b496243c849b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/review/__init__.py": {
+    "mtime": 1779306885.5094867,
+    "ast_hash": "f3d135a543d20d49ddf8dbc63b7f87fd",
+    "semantic_hash": "f3d135a543d20d49ddf8dbc63b7f87fd"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/review/preprocessor.py": {
+    "mtime": 1779307159.6729107,
+    "ast_hash": "2276a5b09b57d3815fa6053333269cce",
+    "semantic_hash": "2276a5b09b57d3815fa6053333269cce"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/review/ops.py": {
+    "mtime": 1779307144.910333,
+    "ast_hash": "decd1f759d5fbc0b0841606e4899c490",
+    "semantic_hash": "decd1f759d5fbc0b0841606e4899c490"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/data_validation/checks.py": {
+    "mtime": 1779306885.494918,
+    "ast_hash": "a73ccfdd2d05f38cb6ada992f57e894b",
+    "semantic_hash": "a73ccfdd2d05f38cb6ada992f57e894b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/data_validation/__init__.py": {
+    "mtime": 1779306885.4946208,
+    "ast_hash": "5a6ad3a9d09ec8bd875059108f2645a8",
+    "semantic_hash": "5a6ad3a9d09ec8bd875059108f2645a8"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/data_validation/split.py": {
+    "mtime": 1779306885.4959974,
+    "ast_hash": "1065199be1b02c2a7277d47ca49f3cbd",
+    "semantic_hash": "1065199be1b02c2a7277d47ca49f3cbd"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/data_validation/transform.py": {
+    "mtime": 1779306885.4963136,
+    "ast_hash": "281bb01edb5b80cd840c62bc960f536c",
+    "semantic_hash": "281bb01edb5b80cd840c62bc960f536c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/data_validation/detect.py": {
+    "mtime": 1779306885.4950552,
+    "ast_hash": "4f9599e17102cf01c1d802fd15577c13",
+    "semantic_hash": "4f9599e17102cf01c1d802fd15577c13"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/final_report/models.py": {
+    "mtime": 1779306885.4973109,
+    "ast_hash": "d6bc275c0d313519860f31a5c90bdffc",
+    "semantic_hash": "d6bc275c0d313519860f31a5c90bdffc"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/final_report/__init__.py": {
+    "mtime": 1779306885.4968567,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/final_report/preprocessor.py": {
+    "mtime": 1779307159.6677167,
+    "ast_hash": "744514affb17a1241b8ebe1818955555",
+    "semantic_hash": "744514affb17a1241b8ebe1818955555"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/orchestrator_tools.py": {
+    "mtime": 1779307159.6741264,
+    "ast_hash": "feaf4ef0066f143bf23c1ea2939189c0",
+    "semantic_hash": "feaf4ef0066f143bf23c1ea2939189c0"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/server.py": {
+    "mtime": 1779307159.6753554,
+    "ast_hash": "9a48c1215f75bcc969e9e42789d1a015",
+    "semantic_hash": "9a48c1215f75bcc969e9e42789d1a015"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/review_tools.py": {
+    "mtime": 1779307159.6750479,
+    "ast_hash": "867de4090b4d3b7737b9338db27000f4",
+    "semantic_hash": "867de4090b4d3b7737b9338db27000f4"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/backend_setup_tools.py": {
+    "mtime": 1779306885.5221257,
+    "ast_hash": "c536256187d34647fbe8147a018f840d",
+    "semantic_hash": "c536256187d34647fbe8147a018f840d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/__init__.py": {
+    "mtime": 1779307159.6738153,
+    "ast_hash": "5653ebe4a8540161557d3d8a484e597c",
+    "semantic_hash": "5653ebe4a8540161557d3d8a484e597c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/prompts.py": {
+    "mtime": 1779307159.6747055,
+    "ast_hash": "8026d55fef933584b6f822703f14bf6b",
+    "semantic_hash": "8026d55fef933584b6f822703f14bf6b"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/input_report_tools.py": {
+    "mtime": 1779306885.523266,
+    "ast_hash": "63e77e73ddcaa41d22677705b72c3c73",
+    "semantic_hash": "63e77e73ddcaa41d22677705b72c3c73"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/prompt_building_tools.py": {
+    "mtime": 1779385397.097468,
+    "ast_hash": "0ece03a384ff66dbca220228a211013c",
+    "semantic_hash": "0ece03a384ff66dbca220228a211013c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/final_report_tools.py": {
+    "mtime": 1779307154.4079964,
+    "ast_hash": "0706d614d7efbc2acaeeb74b53ee455f",
+    "semantic_hash": "0706d614d7efbc2acaeeb74b53ee455f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/resources.py": {
+    "mtime": 1779306885.524628,
+    "ast_hash": "693f06ea5a5d3556303e2e0798e79b19",
+    "semantic_hash": "693f06ea5a5d3556303e2e0798e79b19"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/_render.py": {
+    "mtime": 1779306885.5218043,
+    "ast_hash": "d7036afeec4336a4a057bf16bf42a420",
+    "semantic_hash": "d7036afeec4336a4a057bf16bf42a420"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/data_validation_tools.py": {
+    "mtime": 1779306885.5224464,
+    "ast_hash": "5bda1de7ac37389d7abd4fc3cc1b7ce3",
+    "semantic_hash": "5bda1de7ac37389d7abd4fc3cc1b7ce3"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/__main__.py": {
+    "mtime": 1779306885.5211499,
+    "ast_hash": "41c650f6efcdc1270869819ae45fe24d",
+    "semantic_hash": "41c650f6efcdc1270869819ae45fe24d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/_initiate_rerun.py": {
+    "mtime": 1779306885.5215466,
+    "ast_hash": "d69651788c3244d71e780f1ac530b28c",
+    "semantic_hash": "d69651788c3244d71e780f1ac530b28c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/metrics.py": {
+    "mtime": 1779306885.5195656,
+    "ast_hash": "6c95a507cc5ba045096cb0c73cd219f5",
+    "semantic_hash": "6c95a507cc5ba045096cb0c73cd219f5"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/controller.py": {
+    "mtime": 1779306885.5177295,
+    "ast_hash": "89ad0168bcc914126970daaa9d96ea6c",
+    "semantic_hash": "89ad0168bcc914126970daaa9d96ea6c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/models.py": {
+    "mtime": 1779306885.5197778,
+    "ast_hash": "0432571e2d9c374b725247fd55446112",
+    "semantic_hash": "0432571e2d9c374b725247fd55446112"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/confidence.py": {
+    "mtime": 1780259154.387506,
+    "ast_hash": "53b45b95cf9e8bad983410dc9953740d",
+    "semantic_hash": "53b45b95cf9e8bad983410dc9953740d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/batch_eval.py": {
+    "mtime": 1779306885.5163503,
+    "ast_hash": "0071e82f9305ec5db83260d9ad95e19d",
+    "semantic_hash": "0071e82f9305ec5db83260d9ad95e19d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/protocols.py": {
+    "mtime": 1779306885.5202136,
+    "ast_hash": "ab81ed1a580d46b29ac59729e8ec2e2c",
+    "semantic_hash": "ab81ed1a580d46b29ac59729e8ec2e2c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/collector.py": {
+    "mtime": 1779306885.5168178,
+    "ast_hash": "326739d7b9e39f37f0914e4c130f6000",
+    "semantic_hash": "326739d7b9e39f37f0914e4c130f6000"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/rate_limiter.py": {
+    "mtime": 1779306885.5203326,
+    "ast_hash": "a365c486b19c9c52ba8ecc725b1d0e2f",
+    "semantic_hash": "a365c486b19c9c52ba8ecc725b1d0e2f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/__init__.py": {
+    "mtime": 1779306885.5136404,
+    "ast_hash": "a0fd8b328d48f7b8377dd3eb35527020",
+    "semantic_hash": "a0fd8b328d48f7b8377dd3eb35527020"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/dataset.py": {
+    "mtime": 1779306885.51794,
+    "ast_hash": "b562b6692e15b75128d0117829bb4cbc",
+    "semantic_hash": "b562b6692e15b75128d0117829bb4cbc"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/pricing.py": {
+    "mtime": 1779306885.5199828,
+    "ast_hash": "e9eb8ea8cc03bb7ce1a9dcb9d52ffac3",
+    "semantic_hash": "e9eb8ea8cc03bb7ce1a9dcb9d52ffac3"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/diff.py": {
+    "mtime": 1779306885.5180414,
+    "ast_hash": "a6775488d7176e6b3b6a736f037b037e",
+    "semantic_hash": "a6775488d7176e6b3b6a736f037b037e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/README.md": {
+    "mtime": 1779307155.2609005,
+    "ast_hash": "99945641fed99d68d184c04e926f3890",
+    "semantic_hash": "99945641fed99d68d184c04e926f3890"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/CLAUDE.md": {
+    "mtime": 1779306885.4911253,
+    "ast_hash": "740871440833a6156ec48fa8b4fc53a5",
+    "semantic_hash": "740871440833a6156ec48fa8b4fc53a5"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/12_existing_backend_selection.md": {
+    "mtime": 1779306885.5401688,
+    "ast_hash": "4d100f1819bca1823e5c5db3679eb91a",
+    "semantic_hash": "4d100f1819bca1823e5c5db3679eb91a"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/11_new_backend_creation.md": {
+    "mtime": 1779306885.5397398,
+    "ast_hash": "39ea02c0e97611b3c72311a607f0febe",
+    "semantic_hash": "39ea02c0e97611b3c72311a607f0febe"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/03_happy_path_binary_routing.md": {
+    "mtime": 1779306885.5364876,
+    "ast_hash": "e9d49596387b0e8968c1e58dfbcb8f03",
+    "semantic_hash": "e9d49596387b0e8968c1e58dfbcb8f03"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/15_full_end_to_end_with_report.md": {
+    "mtime": 1779306885.5411222,
+    "ast_hash": "fd3822e80a8cf185aecca4acfec03d4c",
+    "semantic_hash": "fd3822e80a8cf185aecca4acfec03d4c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/07_domain_mismatch_rejected.md": {
+    "mtime": 1779306885.5382814,
+    "ast_hash": "69ab2a690187f4759a22eaec824e0a88",
+    "semantic_hash": "69ab2a690187f4759a22eaec824e0a88"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/10_missing_expected_field.md": {
+    "mtime": 1779306885.5393891,
+    "ast_hash": "4cc6198d2bd9f2482ab04702428288bb",
+    "semantic_hash": "4cc6198d2bd9f2482ab04702428288bb"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/05_input_clarification_then_success.md": {
+    "mtime": 1779306885.5371575,
+    "ast_hash": "351551c64bfbd4c6f621e0f044563d22",
+    "semantic_hash": "351551c64bfbd4c6f621e0f044563d22"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/09_data_warnings_proceed.md": {
+    "mtime": 1779306885.5389845,
+    "ast_hash": "2133e852f70b278192c07a23ab8bb58c",
+    "semantic_hash": "2133e852f70b278192c07a23ab8bb58c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/08_malformed_data_fix_revalidate.md": {
+    "mtime": 1779306885.538596,
+    "ast_hash": "5c0c12ad3b66f1d81c6fc504de6bb84d",
+    "semantic_hash": "5c0c12ad3b66f1d81c6fc504de6bb84d"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/README.md": {
+    "mtime": 1779307159.6756644,
+    "ast_hash": "8da59c916f55f21ec732dac22886b388",
+    "semantic_hash": "8da59c916f55f21ec732dac22886b388"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/14_review_convergence_exit.md": {
+    "mtime": 1779306885.5408883,
+    "ast_hash": "66f076e42a0968d9208fa0b0841df13a",
+    "semantic_hash": "66f076e42a0968d9208fa0b0841df13a"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/18_emosa_calibration_round.md": {
+    "mtime": 1779306885.5415556,
+    "ast_hash": "7648b167590583b3894f663f133d6f27",
+    "semantic_hash": "7648b167590583b3894f663f133d6f27"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/06_vague_description_refined.md": {
+    "mtime": 1779306885.537726,
+    "ast_hash": "dcba8b6493555e3e3fd740c8b0aeed03",
+    "semantic_hash": "dcba8b6493555e3e3fd740c8b0aeed03"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/19_emosa_steady_state_round.md": {
+    "mtime": 1779306885.5421338,
+    "ast_hash": "81ec18eb6104c6efa59cc4f6e81db1ce",
+    "semantic_hash": "81ec18eb6104c6efa59cc4f6e81db1ce"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/01_happy_path_mock_eval.md": {
+    "mtime": 1779306885.535796,
+    "ast_hash": "278f281f67f51a73c85d988ac24e3f63",
+    "semantic_hash": "278f281f67f51a73c85d988ac24e3f63"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/13_review_regression_guard.md": {
+    "mtime": 1779306885.5405166,
+    "ast_hash": "1235a9aea80d94e4ee91773ee8241b1e",
+    "semantic_hash": "1235a9aea80d94e4ee91773ee8241b1e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/02_happy_path_openai.md": {
+    "mtime": 1779306885.5361857,
+    "ast_hash": "22c95ac6c6f09be66e05fdf299fc78f8",
+    "semantic_hash": "22c95ac6c6f09be66e05fdf299fc78f8"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/scenarios/04_happy_path_defaults.md": {
+    "mtime": 1779306885.5369148,
+    "ast_hash": "7a42b7b43742cc9738a5e0d76759be5a",
+    "semantic_hash": "7a42b7b43742cc9738a5e0d76759be5a"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/fixtures/minimal_config.yaml": {
+    "mtime": 1774008922.919862,
+    "ast_hash": "349c539c42a38b8304ff357431d5bfc1",
+    "semantic_hash": "349c539c42a38b8304ff357431d5bfc1"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/fixtures/integration/run_config.yaml": {
+    "mtime": 1774008922.9194837,
+    "ast_hash": "45b13f7eda43f8e2d1c090276fc1476a",
+    "semantic_hash": "45b13f7eda43f8e2d1c090276fc1476a"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/tests/fixtures/integration/README.md": {
+    "mtime": 1779306885.5354176,
+    "ast_hash": "6a14885163f840154e9d85c81163a69e",
+    "semantic_hash": "6a14885163f840154e9d85c81163a69e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/.claude/prism.md": {
+    "mtime": 1780472569.229099,
+    "ast_hash": "f7e2b528a0e25127516eb11fa52c82c6",
+    "semantic_hash": "f7e2b528a0e25127516eb11fa52c82c6"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/.claude/rules/generalize-fix-routing.md": {
+    "mtime": 1779306885.4895997,
+    "ast_hash": "e9cb8de521ba431afa5d3b00dba48195",
+    "semantic_hash": "e9cb8de521ba431afa5d3b00dba48195"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/.claude/rules/generalize-merge-discipline.md": {
+    "mtime": 1779307144.9026823,
+    "ast_hash": "932c9f493d49ea3db2c3810f1c3ccdcf",
+    "semantic_hash": "932c9f493d49ea3db2c3810f1c3ccdcf"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/.claude/rules/update-docs-before-commit.md": {
+    "mtime": 1774441008.882404,
+    "ast_hash": "9c9d910ed4b8c4edc7663d2cc460d4ba",
+    "semantic_hash": "9c9d910ed4b8c4edc7663d2cc460d4ba"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/.claude/rules/compass-stage4-dispatch.md": {
+    "mtime": 1779370662.7519453,
+    "ast_hash": "8e053be3271f22ae6ab9f54d4026b89f",
+    "semantic_hash": "8e053be3271f22ae6ab9f54d4026b89f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/.claude/rules/pr-base-branch.md": {
+    "mtime": 1778508410.4467494,
+    "ast_hash": "bec428eaa7c771a945067b61aa27ed68",
+    "semantic_hash": "bec428eaa7c771a945067b61aa27ed68"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/.claude/rules/model-routing.md": {
+    "mtime": 1774946377.7303822,
+    "ast_hash": "4ea756544bec295a0214ce7124038e1f",
+    "semantic_hash": "4ea756544bec295a0214ce7124038e1f"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/architecture.md": {
+    "mtime": 1779370662.7525852,
+    "ast_hash": "0f991451371113699f5148284479a6d2",
+    "semantic_hash": "0f991451371113699f5148284479a6d2"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/algorithm.md": {
+    "mtime": 1779307154.410133,
+    "ast_hash": "682ace74962448d2fed6bebc8ce95510",
+    "semantic_hash": "682ace74962448d2fed6bebc8ce95510"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/project-overview.md": {
+    "mtime": 1779306885.5278437,
+    "ast_hash": "52ee6831457037958fdac6f1fa446c4a",
+    "semantic_hash": "52ee6831457037958fdac6f1fa446c4a"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/plans/2026-04-02-parallel-beam-search-refinement.md": {
+    "mtime": 1779306885.529841,
+    "ast_hash": "f9ae4faf37ce4986bc52132e05a51409",
+    "semantic_hash": "f9ae4faf37ce4986bc52132e05a51409"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/plans/2026-04-28-reconcile-feature-branches.md": {
+    "mtime": 1779306885.5304997,
+    "ast_hash": "925a9ae40ceacba94bbd976e12c34f65",
+    "semantic_hash": "925a9ae40ceacba94bbd976e12c34f65"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/plans/2026-03-31-rerun-different-backend.md": {
+    "mtime": 1779306885.5287445,
+    "ast_hash": "8681254787d224766ebd697d4e0345d9",
+    "semantic_hash": "8681254787d224766ebd697d4e0345d9"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/plans/2026-03-31-stage5-final-report-redesign.md": {
+    "mtime": 1774959681.3807518,
+    "ast_hash": "fcce33e503751df5529157cabbb49035",
+    "semantic_hash": "fcce33e503751df5529157cabbb49035"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/specs/2026-04-02-parallel-beam-search-refinement-design.md": {
+    "mtime": 1779306885.5329554,
+    "ast_hash": "516e2a107b669d129975d9e6216ef653",
+    "semantic_hash": "516e2a107b669d129975d9e6216ef653"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/specs/2026-04-02-review-agent-vocabulary-directives-design.md": {
+    "mtime": 1775123008.857611,
+    "ast_hash": "d04f83823b1db53a603f331806a164eb",
+    "semantic_hash": "d04f83823b1db53a603f331806a164eb"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/specs/2026-03-31-rerun-different-backend-design.md": {
+    "mtime": 1779306885.5312912,
+    "ast_hash": "e2b6c5f30b1d2da289a2132953058b13",
+    "semantic_hash": "e2b6c5f30b1d2da289a2132953058b13"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/specs/2026-04-02-convergence-logic-improvements-design.md": {
+    "mtime": 1775119435.1394162,
+    "ast_hash": "304976549e5b6da62a2330e2377abaf2",
+    "semantic_hash": "304976549e5b6da62a2330e2377abaf2"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/docs/superpowers/specs/2026-03-31-stage5-final-report-redesign.md": {
+    "mtime": 1779306885.5319,
+    "ast_hash": "efef9ef0db502437dbcfd05cd2e1e863",
+    "semantic_hash": "efef9ef0db502437dbcfd05cd2e1e863"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/README.md": {
+    "mtime": 1779307154.3991823,
+    "ast_hash": "790855a3a7f28d49a2ed4f20ae9533e6",
+    "semantic_hash": "790855a3a7f28d49a2ed4f20ae9533e6"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/backend_setup_defaults.md": {
+    "mtime": 1779306885.494109,
+    "ast_hash": "90b6c56a0421c39f74e90abbd02e3bf9",
+    "semantic_hash": "90b6c56a0421c39f74e90abbd02e3bf9"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/backend_setup_taxonomy.md": {
+    "mtime": 1779306885.4942236,
+    "ast_hash": "96847f64428f8d6bfcc44190a3f08707",
+    "semantic_hash": "96847f64428f8d6bfcc44190a3f08707"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/user_input/defaults.md": {
+    "mtime": 1779306885.512434,
+    "ast_hash": "ba672f8be9f71d744acfd4100d077793",
+    "semantic_hash": "ba672f8be9f71d744acfd4100d077793"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/user_input/taxonomy.md": {
+    "mtime": 1779306885.512942,
+    "ast_hash": "48b12307b3b19ea1f00bde9d820e0ba5",
+    "semantic_hash": "48b12307b3b19ea1f00bde9d820e0ba5"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/user_input/context.md": {
+    "mtime": 1779306885.5121896,
+    "ast_hash": "362de9a54c82e45543f0e6421c3077e5",
+    "semantic_hash": "362de9a54c82e45543f0e6421c3077e5"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/user_input/report_template.md": {
+    "mtime": 1779306885.5128436,
+    "ast_hash": "fe2e9d9f55ac492d8685eab9e183f5a9",
+    "semantic_hash": "fe2e9d9f55ac492d8685eab9e183f5a9"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/conventions_openai_gpt-5-2.md": {
+    "mtime": 1779306885.5032868,
+    "ast_hash": "342238989a0f00fa13d0cf45c9d66031",
+    "semantic_hash": "342238989a0f00fa13d0cf45c9d66031"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/conventions_claude.md": {
+    "mtime": 1779306885.5030048,
+    "ast_hash": "b1eaf2fb06e4b2dbec8afe28719d2528",
+    "semantic_hash": "b1eaf2fb06e4b2dbec8afe28719d2528"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/README.md": {
+    "mtime": 1779307159.6697412,
+    "ast_hash": "0d6f5b1b6b85c0fbab3ff17bd48c5b39",
+    "semantic_hash": "0d6f5b1b6b85c0fbab3ff17bd48c5b39"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/conventions_openai.md": {
+    "mtime": 1779306885.5031526,
+    "ast_hash": "cbb32c50faef5d53336266469f2d320c",
+    "semantic_hash": "cbb32c50faef5d53336266469f2d320c"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/prompt_builder/best_practices.md": {
+    "mtime": 1779306885.5027666,
+    "ast_hash": "2a276c870f70803129d4bd94e72ad5b4",
+    "semantic_hash": "2a276c870f70803129d4bd94e72ad5b4"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/data_validation/output.md": {
+    "mtime": 1779306885.4956717,
+    "ast_hash": "31628f8c984eed1edc057fab866e9699",
+    "semantic_hash": "31628f8c984eed1edc057fab866e9699"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/agents/data_validation/format.md": {
+    "mtime": 1779306885.4953654,
+    "ast_hash": "4ba11d75ada842addc7de8f76888efdd",
+    "semantic_hash": "4ba11d75ada842addc7de8f76888efdd"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/mcp/README.md": {
+    "mtime": 1779307159.673564,
+    "ast_hash": "59b0099442276d959604e7faf44f8803",
+    "semantic_hash": "59b0099442276d959604e7faf44f8803"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/skills/structured-clarification/SKILL.md": {
+    "mtime": 1779306885.5264864,
+    "ast_hash": "6ccfd42272ca54a543a17375223eac78",
+    "semantic_hash": "6ccfd42272ca54a543a17375223eac78"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/README.md": {
+    "mtime": 1779306885.513423,
+    "ast_hash": "5b3c72b41ffe8d3ea03db49fe6bb83c9",
+    "semantic_hash": "5b3c72b41ffe8d3ea03db49fe6bb83c9"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/docs/architecture.md": {
+    "mtime": 1779306885.518864,
+    "ast_hash": "941ee4101ea3896c16f2779a9217e142",
+    "semantic_hash": "941ee4101ea3896c16f2779a9217e142"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/docs/backends.md": {
+    "mtime": 1779306885.519343,
+    "ast_hash": "910504c2f51e181d78d123dc6176f40e",
+    "semantic_hash": "910504c2f51e181d78d123dc6176f40e"
+  },
+  "/Users/thymo.fieten/Documents/Compass/project-compass/compass/eval/docs/README.md": {
+    "mtime": 1779306885.518485,
+    "ast_hash": "7a79b35a58f6d57c9af4c0845ff76bb5",
+    "semantic_hash": "7a79b35a58f6d57c9af4c0845ff76bb5"
+  }
+}
