@@ -1,0 +1,250 @@
+name: OpenSource Ally — Compliance Checks
+
+# Deterministic compliance gates for Prosus open source releases.
+#
+# BLOCKING checks (fail the workflow -> block the PR via branch protection):
+#   - Required files present (LICENSE, README)
+#   - No verified secrets in the code / git history
+#   - No copyleft dependencies (GPL / AGPL / LGPL / MPL / EPL)
+#
+# ADVISORY checks (reported, never block):
+#   - CONTRIBUTING / NOTICE / SECURITY present
+#   - Copyright headers in source files
+#
+# Judgement-heavy checks (provenance, IP-leakage semantics, GenAI training-data
+# clearance, investee entity, legal approvals) are intentionally NOT here — they
+# are handled by the local AI agent (`/opensource-audit` Claude Code skill).
+#
+# A machine-readable `compliance-summary.json` is produced as an artifact so a
+# future GitHub App / central dashboard can consume results without re-running.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # BLOCKING: required compliance files
+  # ---------------------------------------------------------------------------
+  required-files:
+    name: Required files (blocking)
+    runs-on: ubuntu-latest
+    outputs:
+      license: ${{ steps.check.outputs.license }}
+      readme: ${{ steps.check.outputs.readme }}
+      contributing: ${{ steps.check.outputs.contributing }}
+      notice: ${{ steps.check.outputs.notice }}
+      security: ${{ steps.check.outputs.security }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: check
+        name: Detect compliance files
+        run: |
+          has() { for f in "$@"; do [ -f "$f" ] && { echo true; return; }; done; echo false; }
+
+          LICENSE=$(has LICENSE LICENSE.txt LICENSE.md)
+          README=$(has README.md README.txt README)
+          CONTRIBUTING=$(has CONTRIBUTING.md CONTRIBUTING.txt CONTRIBUTING)
+          NOTICE=$(has NOTICE NOTICE.txt NOTICE.md)
+          SECURITY=$(has SECURITY.md .github/SECURITY.md docs/SECURITY.md)
+
+          {
+            echo "license=$LICENSE"
+            echo "readme=$README"
+            echo "contributing=$CONTRIBUTING"
+            echo "notice=$NOTICE"
+            echo "security=$SECURITY"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Required files"
+            echo "| File | Present | Severity |"
+            echo "|------|---------|----------|"
+            echo "| LICENSE | $LICENSE | blocking |"
+            echo "| README | $README | blocking |"
+            echo "| CONTRIBUTING | $CONTRIBUTING | advisory |"
+            echo "| NOTICE | $NOTICE | advisory |"
+            echo "| SECURITY | $SECURITY | advisory |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce required files
+        if: steps.check.outputs.license != 'true' || steps.check.outputs.readme != 'true'
+        run: |
+          echo "::error::Missing required files. LICENSE=${{ steps.check.outputs.license }} README=${{ steps.check.outputs.readme }}"
+          echo "LICENSE and README are Legally Required before an open source release."
+          exit 1
+
+      - name: Advisory notices
+        run: |
+          [ "${{ steps.check.outputs.contributing }}" = "true" ] || echo "::warning::CONTRIBUTING.md missing — add CLA / contribution terms."
+          [ "${{ steps.check.outputs.security }}" = "true" ]     || echo "::warning::SECURITY.md missing — add a vulnerability reporting policy."
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING: secrets (verified findings only -> low false-positive rate)
+  # ---------------------------------------------------------------------------
+  secrets-scan:
+    name: Secrets scan (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # scan full git history, not just the tip
+
+      - name: TruffleHog (fail on verified secrets)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          extra_args: --results=verified
+
+      - name: Note
+        if: always()
+        run: echo "Blocks on *verified* live secrets. Unverified/likely secrets are surfaced by the local /opensource-audit agent." >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # BLOCKING: copyleft dependency licenses (real SBOM-based detection)
+  # ---------------------------------------------------------------------------
+  license-scan:
+    name: Dependency license scan (blocking)
+    runs-on: ubuntu-latest
+    outputs:
+      copyleft_found: ${{ steps.scan.outputs.copyleft_found }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - id: scan
+        name: Flag copyleft licenses
+        run: |
+          # GPL / AGPL / LGPL / MPL / EPL are blocking under the Prosus
+          # Apache-2.0 release policy (Phase A). "GPL" substring also catches
+          # LGPL / AGPL, which are blocked too.
+          BLOCK_REGEX='GPL|AGPL|LGPL|MPL-1|MPL-2|MPL\b|EPL-1|EPL-2|EPL\b'
+
+          # Extract "<pkg>\t<concluded>\t<declared>" for every package.
+          jq -r '.packages[]? | [.name, (.licenseConcluded // "NOASSERTION"), (.licenseDeclared // "NOASSERTION")] | @tsv' \
+            sbom.spdx.json > all-licenses.tsv || : > all-licenses.tsv
+
+          OFFENDERS=$(grep -iE "$BLOCK_REGEX" all-licenses.tsv || true)
+
+          if [ -n "$OFFENDERS" ]; then
+            echo "copyleft_found=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### ❌ Copyleft dependencies detected (BLOCKING)"
+              echo '```'
+              echo "$OFFENDERS"
+              echo '```'
+              echo "These are incompatible with an Apache-2.0 release. Replace the dependency or escalate to Legal (Phase A / Phase D)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Copyleft (GPL/AGPL/LGPL/MPL/EPL) dependencies found — Legal review required before release."
+          else
+            echo "copyleft_found=false" >> "$GITHUB_OUTPUT"
+            echo "### ✅ No copyleft dependencies detected" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+          retention-days: 30
+
+      - name: Enforce
+        if: steps.scan.outputs.copyleft_found == 'true'
+        run: exit 1
+
+  # ---------------------------------------------------------------------------
+  # ADVISORY: copyright headers
+  # ---------------------------------------------------------------------------
+  copyright-headers:
+    name: Copyright headers (advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check headers
+        run: |
+          MISSING=0
+          while IFS= read -r file; do
+            if ! head -n 15 "$file" | grep -qiE "copyright|©|spdx-license-identifier"; then
+              echo "::warning file=$file::Missing copyright / SPDX header"
+              MISSING=$((MISSING + 1))
+            fi
+          done < <(find . -type f \
+              \( -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.go' \
+                 -o -name '*.java' -o -name '*.rs' -o -name '*.rb' -o -name '*.c' \
+                 -o -name '*.h' -o -name '*.cpp' -o -name '*.cs' \) \
+              -not -path './.git/*' -not -path './node_modules/*' -not -path './vendor/*' \
+              2>/dev/null | head -500)
+
+          {
+            echo "### Copyright headers (advisory)"
+            echo "$MISSING source file(s) missing a copyright/SPDX header."
+            echo "Recommended: \`Copyright © $(date +%Y) MIH AI B.V. — SPDX-License-Identifier: Apache-2.0\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Machine-readable summary (contract for a future GitHub App / dashboard)
+  # ---------------------------------------------------------------------------
+  summary:
+    name: Compliance summary
+    runs-on: ubuntu-latest
+    needs: [required-files, secrets-scan, license-scan, copyright-headers]
+    if: always()
+    steps:
+      - name: Build compliance-summary.json
+        run: |
+          status() { echo "${1:-skipped}"; }
+
+          REQ='${{ needs.required-files.result }}'
+          SEC='${{ needs.secrets-scan.result }}'
+          LIC='${{ needs.license-scan.result }}'
+          COPYLEFT='${{ needs.license-scan.outputs.copyleft_found }}'
+
+          if [ "$REQ" = "success" ] && [ "$SEC" = "success" ] && [ "$LIC" = "success" ]; then
+            OVERALL="PASS"
+          else
+            OVERALL="FAIL"
+          fi
+
+          cat > compliance-summary.json <<JSON
+          {
+            "tool": "opensource-ally",
+            "schema_version": "1.0",
+            "overall_status": "$OVERALL",
+            "checks": {
+              "required_files": {
+                "result": "$(status "$REQ")",
+                "license": "${{ needs.required-files.outputs.license }}",
+                "readme": "${{ needs.required-files.outputs.readme }}",
+                "contributing": "${{ needs.required-files.outputs.contributing }}",
+                "notice": "${{ needs.required-files.outputs.notice }}",
+                "security": "${{ needs.required-files.outputs.security }}"
+              },
+              "secrets_scan": { "result": "$(status "$SEC")", "scanner": "trufflehog", "mode": "verified-only" },
+              "license_scan": { "result": "$(status "$LIC")", "copyleft_found": "${COPYLEFT:-false}", "blocked": ["GPL","AGPL","LGPL","MPL","EPL"] },
+              "copyright_headers": { "result": "$(status '${{ needs.copyright-headers.result }}')", "severity": "advisory" }
+            },
+            "reference": { "policy": "Prosus Open Source Guidelines 2025", "benchmark": "Project Echo (Apache-2.0)" }
+          }
+          JSON
+          cat compliance-summary.json
+
+      - name: Upload summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-summary
+          path: compliance-summary.json
+          retention-days: 30
