@@ -38,8 +38,8 @@ JSONL — one JSON object per line. UTF-8 encoded. Blank lines and trailing newl
 5. **Consistent model set (dataset-level)** — all records must have the same keys in `expected.routes`.
 6. **Non-empty routes** — `expected.routes` must contain at least one entry.
 7. **Unique IDs** — all `id` values must be unique within a dataset.
-8. **Minimum record count** — each routing tier must meet thresholds defined in THP-69.
-9. **Quality scores** — no range constraint imposed; normalization is handled conversationally (see THP-145).
+8. **Minimum record count** — each routing tier must meet thresholds defined in the routing context.
+9. **Quality scores** — no range constraint imposed; normalization is handled conversationally.
 
 ## Informative Field Alias Table
 

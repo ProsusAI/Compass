@@ -62,7 +62,7 @@ _(Section omitted entirely if status is `proceed`.)_
 3. **Gap Report** is omitted entirely if no gaps are detected.
 4. **Assumed Defaults** is omitted entirely if no defaults were applied (i.e., status is `proceed`).
 5. Non-blocking gap entries include the default value applied and a user-facing note.
-6. Gap Report headings use the exact field identifier from THP-69 (e.g., `### evaluation_threshold`, not "Evaluation Threshold").
+6. Gap Report headings use the exact field identifier from the input taxonomy (e.g., `### evaluation_threshold`, not "Evaluation Threshold").
 7. Confirmed Inputs headings use title-case display names (e.g., `### Routing Dataset`).
 
 ## Status Values

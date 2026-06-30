@@ -5,10 +5,8 @@
 """Data validation checks for the Data Validation agent.
 
 Provides three validation functions that operate on raw parsed JSONL rows
-and return typed Pydantic models. Used by THP-145 (validation logic) and
-referenced by THP-106 (system prompt).
-
-See: docs/superpowers/specs/2026-03-23-thp-81-data-validation-output-design.md
+and return typed Pydantic models. Used by the data-validation logic and
+referenced by the data-validation system prompt.
 """
 
 from __future__ import annotations
@@ -113,7 +111,7 @@ _CANONICAL_ROUTE_FIELDS = frozenset({"cost", "quality_score"})
 
 
 def check_schema_conformance(rows: list[dict]) -> list[SchemaFinding]:
-    """Check all rows against the THP-80 schema.
+    """Check all rows against the canonical schema.
 
     Returns one SchemaFinding per check type (not per row).
     ``row_indices`` collects all failing rows for that check.

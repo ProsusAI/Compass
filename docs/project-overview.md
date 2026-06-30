@@ -75,7 +75,7 @@ The pipeline is structured as six sequential stages, with an inner refinement lo
 
 ## 4. Agents
 
-### 4.1 User Input Agent (THP-68)
+### 4.1 User Input Agent
 
 | | |
 |---|---|
@@ -87,7 +87,7 @@ The pipeline is structured as six sequential stages, with an inner refinement lo
 
 ---
 
-### 4.2 Data Validation Agent (THP-73)
+### 4.2 Data Validation Agent
 
 | | |
 |---|---|
@@ -99,7 +99,7 @@ This agent works together with the User Input Agent during the triage phase — 
 
 ---
 
-### 4.3 Eval Framework (THP-75)
+### 4.3 Eval Framework
 
 The evaluation engine is fully implemented in `compass/eval/`. It is a production-grade async Python engine:
 
@@ -113,11 +113,9 @@ The evaluation engine is fully implemented in `compass/eval/`. It is a productio
 | **Results Collector** | Writes per-result JSONL immediately; aggregates + diffs against prior run on completion |
 | **Run Controller** | Single-call orchestrator: `run(backend, prompt_version, data_source, split, metrics_config)` |
 
-Completed tasks: THP-87 through THP-93, THP-113, THP-114, THP-115, THP-116.
-
 ---
 
-### 4.4 Eval Runner Agent (THP-76)
+### 4.4 Eval Runner Agent
 
 | | |
 |---|---|
@@ -130,7 +128,7 @@ During Stage 4, the pipeline calls `run_batch_eval` as the MCP tool entry point.
 
 ---
 
-### 4.5 Prompt Builder Agent (THP-77)
+### 4.5 Prompt Builder Agent
 
 | | |
 |---|---|
@@ -143,7 +141,7 @@ Produces the initial v0 baseline and then refines the prompt on each loop iterat
 
 ---
 
-### 4.6 Review Agent (THP-78)
+### 4.6 Review Agent
 
 | | |
 |---|---|
@@ -157,7 +155,7 @@ This agent is the central intelligence of the refinement loop. It has access to 
 
 ---
 
-### 4.7 Final Reporting Agent (THP-79)
+### 4.7 Final Reporting Agent
 
 | | |
 |---|---|
@@ -234,15 +232,15 @@ The system exposes `run_batch_eval` as the Stage 4 MCP tool for prompt-version e
 
 ## 7. Current Status
 
-| Epic | Title | Status |
-|---|---|---|
-| THP-68 | User Input Agent | Done |
-| THP-73 | Data Validation Agent | Done |
-| THP-75 | Eval Framework Code | Done |
-| THP-76 | Eval Runner Agent | Done |
-| THP-77 | Prompt Builder Agent | Done |
-| THP-78 | Review Agent | Done |
-| THP-79 | Final Reporting Agent | Done |
+| Agent / Component | Status |
+|---|---|
+| User Input Agent | Done |
+| Data Validation Agent | Done |
+| Eval Framework Code | Done |
+| Eval Runner Agent | Done |
+| Prompt Builder Agent | Done |
+| Review Agent | Done |
+| Final Reporting Agent | Done |
 
 ---
 

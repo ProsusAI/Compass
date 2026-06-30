@@ -2,7 +2,6 @@
 # Licensed under the Apache License, Version 2.0
 # See LICENSE file in the project root
 
-# compass/agents/prompt_builder_search_ops.py
 """File-backed state operations for the Prompt Builder Agent search loop.
 
 Provides pure functions for initialising, loading, and mutating SearchState
@@ -12,8 +11,6 @@ module-level mutable state, making the module safe across MCP server restarts.
 Persistence layout:
     outputs/<run_id>/search/search_state.json
     outputs/<run_id>/search/pending_candidates.json
-
-See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 """
 
 from __future__ import annotations

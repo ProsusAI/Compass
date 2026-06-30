@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 # See LICENSE file in the project root
 
-"""Tests for the User Input agent defaults table (THP-71)."""
+"""Tests for the User Input agent defaults table."""
 
 from pathlib import Path
 
@@ -75,8 +75,8 @@ class TestDefaultValues:
 
     def test_target_metrics_defaults_to_f1(self) -> None:
         content = DEFAULTS_PATH.read_text()
-        # Must mention f1 as the default for target_metrics (not accuracy — per THP-108 design decision)
-        assert "f1" in content.lower(), "target_metrics should default to F1 (per THP-108 design decision)"
+        # Must mention f1 as the default for target_metrics (not accuracy — per the design decision)
+        assert "f1" in content.lower(), "target_metrics should default to F1 (per the design decision)"
 
     def test_evaluation_threshold_is_080(self) -> None:
         content = DEFAULTS_PATH.read_text()

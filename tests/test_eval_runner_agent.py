@@ -2,7 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 # See LICENSE file in the project root
 
-"""Tests for run_eval (THP-131)."""
+"""Tests for run_eval."""
 
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def _write_run_config(tmp_path: Path) -> Path:
 
 
 # ---------------------------------------------------------------------------
-# THP-131 Case 1: Successful run
+# Case 1: Successful run
 # ---------------------------------------------------------------------------
 
 
@@ -156,7 +156,7 @@ class TestEvalRunnerAgentSuccess:
 
 
 # ---------------------------------------------------------------------------
-# THP-131 Case 3: All-errored run
+# Case 3: All-errored run
 # ---------------------------------------------------------------------------
 
 
@@ -189,7 +189,7 @@ class TestEvalRunnerAgentAllErrors:
 
 
 # ---------------------------------------------------------------------------
-# THP-131 Case 4: Previous run diff
+# Case 4: Previous run diff
 # ---------------------------------------------------------------------------
 
 
@@ -228,7 +228,7 @@ class TestEvalRunnerAgentDiff:
 
 
 # ---------------------------------------------------------------------------
-# THP-131 Case 5: Tool call / controller failures
+# Case 5: Tool call / controller failures
 # ---------------------------------------------------------------------------
 
 

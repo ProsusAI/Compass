@@ -14,7 +14,7 @@ whether to proceed, apply defaults, or request clarification.
 |---|---|---|---|
 | `routing_dataset` | Blocking | No default can substitute a reference to real labeled routing data; contents validated downstream by Data Validation agent | — |
 | `problem_description` | Blocking | Analysis agent cannot extract patterns without it | — |
-| `target_metrics` | Non-blocking | Metrics are fixed in THP-69 context; F1 is a strong general-purpose default | F1 score |
+| `target_metrics` | Non-blocking | Metrics are fixed in the routing context; F1 is a strong general-purpose default | F1 score |
 | `evaluation_threshold` | Non-blocking | Conservative threshold consistent with routing literature | 0.80 |
 | `data_split_ratio` | Non-blocking | 20/80 keeps dev evals fast while preserving holdout reliability | 0.80 |
 | `evaluation_budget` | Non-blocking | Bounds cost while allowing convergence | 60 |

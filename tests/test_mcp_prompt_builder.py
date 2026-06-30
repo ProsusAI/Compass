@@ -13,10 +13,9 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from compass.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
 from mcp.server.fastmcp.exceptions import ToolError
 
+from compass.agents.prompt_builder.search import Candidate, RoundSummary, SearchState
 from compass.mcp import (
     filter_holdout_dataset,
     get_child_variants,
@@ -508,10 +507,7 @@ class TestRecordEvalResultCrossCheck:
         self._write_report(tmp_path, "v1")
         self._write_state(tmp_path)
         novel = 0.0123456789
-        assert all(
-            not math.isclose(novel, v, rel_tol=1e-9, abs_tol=1e-12)
-            for v in self._METRICS.values()
-        )
+        assert all(not math.isclose(novel, v, rel_tol=1e-9, abs_tol=1e-12) for v in self._METRICS.values())
         with (
             _patch_project_dir(tmp_path),
             patch(

@@ -7,8 +7,6 @@
 Removes few-shot examples from the holdout evaluation set to prevent data
 contamination — few-shot examples drawn from the holdout set must be excluded
 before final evaluation.
-
-See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 """
 
 from __future__ import annotations

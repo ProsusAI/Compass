@@ -43,13 +43,13 @@ async def backend_setup_defaults() -> str:
 
 @mcp.resource("compass://agents/data-validation/format-spec")
 async def data_validation_format_spec() -> str:
-    """Data format specification (THP-80) for the data validation agent."""
+    """Data format specification for the data validation agent."""
     return _load_text("compass/agents/data_validation/format.md")
 
 
 @mcp.resource("compass://agents/data-validation/output-spec")
 async def data_validation_output_spec() -> str:
-    """Output format specification (THP-81) for the data validation agent."""
+    """Output format specification for the data validation agent."""
     return _load_text("compass/agents/data_validation/output.md")
 
 

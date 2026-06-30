@@ -32,6 +32,10 @@ from compass.agents.prompt_builder.search_ops import (
 from compass.agents.prompt_builder.search_ops import (
     register_candidate as _register_candidate_impl,
 )
+from compass.agents.review.models import INITIAL_PARENT_VERSION
+from compass.eval.models import MetricConfig, OutputConfig, RunConfig
+from compass.mcp._render import render_search_state_md
+from compass.mcp.server import mcp
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +55,7 @@ def _check_metric_field(
     """
     tol = {"rel_tol": 1e-9, "abs_tol": 1e-12}
     canonical_value = metrics.get(canonical)
-    if isinstance(canonical_value, (int, float)) and math.isclose(
-        passed, canonical_value, **tol
-    ):
+    if isinstance(canonical_value, (int, float)) and math.isclose(passed, canonical_value, **tol):
         return
     for key, value in metrics.items():
         if key == canonical or not isinstance(value, (int, float)):
@@ -66,10 +68,6 @@ def _check_metric_field(
                 f"canonical field from BatchEvalResult.metrics, not a "
                 f"different one."
             )
-from compass.agents.review.models import INITIAL_PARENT_VERSION
-from compass.eval.models import MetricConfig, OutputConfig, RunConfig
-from compass.mcp._render import render_search_state_md
-from compass.mcp.server import mcp
 
 
 def build_pipeline_config(
@@ -265,8 +263,7 @@ async def record_eval_result(
     report = _try_load_existing_report(run_id, prompt_version, output_dir)
     if report is None:
         logger.warning(
-            "record_eval_result: no eval report on disk for %s/%s; "
-            "accepting agent-provided values without cross-check",
+            "record_eval_result: no eval report on disk for %s/%s; accepting agent-provided values without cross-check",
             run_id,
             prompt_version,
         )
@@ -278,9 +275,7 @@ async def record_eval_result(
         except FileNotFoundError:
             canonical_q = "quality_change"
         _check_metric_field(metrics, canonical_q, quality_score, "quality_score", prompt_version)
-        _check_metric_field(
-            metrics, "cost_change_with_overhead", cost, "cost", prompt_version
-        )
+        _check_metric_field(metrics, "cost_change_with_overhead", cost, "cost", prompt_version)
     try:
         result = _record_eval_result_impl(
             run_id=run_id,

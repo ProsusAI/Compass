@@ -113,11 +113,11 @@ The command is idempotent and will not overwrite existing files.
 
 ```bash
 git clone https://github.com/thymofieten-prosus/Compass.git
-cd project-compass
+cd Compass
 uv sync
 ```
 
-For local development, the repo includes a `.mcp.json` that runs the server from source:
+For local development, create a `.mcp.json` in the project root that runs the server from source:
 
 ```json
 {

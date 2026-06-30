@@ -41,7 +41,7 @@ updated value and produces a new validated input report.
 
 ## Propagation
 
-Assumed defaults are flagged in the validated input report (THP-72) so downstream agents
+Assumed defaults are flagged in the validated input report so downstream agents
 know which values were user-specified and which were assumed.
 
 **In the `assumed_defaults` array:**

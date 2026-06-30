@@ -2,13 +2,10 @@
 # Licensed under the Apache License, Version 2.0
 # See LICENSE file in the project root
 
-# compass/agents/prompt_builder_search.py
 """Search state models and Pareto dominance logic for the Prompt Builder Agent.
 
 Tracks the tournament-selection optimization loop with Pareto tracking across
 quality and cost dimensions.
-
-See: docs/superpowers/specs/2026-03-24-thp-77-prompt-builder-agent-design.md
 """
 
 from __future__ import annotations

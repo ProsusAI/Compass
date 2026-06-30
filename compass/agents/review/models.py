@@ -2,10 +2,7 @@
 # Licensed under the Apache License, Version 2.0
 # See LICENSE file in the project root
 
-"""Data models for the Review Agent.
-
-See docs/superpowers/specs/2026-03-25-review-agent-design.md for the full spec.
-"""
+"""Data models for the Review Agent."""
 
 from __future__ import annotations
 
