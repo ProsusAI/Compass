@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Holdout dataset filter for the Prompt Builder agent.
 
 Removes few-shot examples from the holdout evaluation set to prevent data

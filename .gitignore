@@ -232,3 +232,11 @@ mcp.json
 # Generated test artifacts
 tests/scenarios/data/holdout_filtered.jsonl
 .worktrees/
+
+# Internal-only / not for public release
+# (developer tooling, internal planning docs, and knowledge-graph build
+#  artifacts — these leak internal codenames and local paths; keep out of the
+#  open-source distribution)
+.claude/
+/graphify-out/
+docs/superpowers/

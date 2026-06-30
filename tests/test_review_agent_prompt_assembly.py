@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Tests for the Review Agent three-tier prompt assembly — beam leaf.
 
 These tests validate the beam-specific overlay map.  Unknown algorithms raise

@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Bedrock backend — Anthropic models via AWS Bedrock using the Anthropic SDK."""
 
 from __future__ import annotations

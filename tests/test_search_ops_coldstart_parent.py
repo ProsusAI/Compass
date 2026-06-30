@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Coercion of parent_version to "base" during beam cold-start (round 0).
 
 The beam cold-start overlay (review_agent_cold_start_overlay_beam.md) mandates

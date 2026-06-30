@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Smoke test: _try_write_viz is called and produces viz.html at state-mutation call sites.
 
 This test requires init_search_state to work (i.e., _BRANCH_ALGORITHM must be set).

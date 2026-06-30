@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Tests for compass.agents.prompt_builder_search_ops.
 
 Most tests in this file require a concrete _BRANCH_ALGORITHM set on the

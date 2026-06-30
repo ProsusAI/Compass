@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 # compass/agents/prompt_builder_search_ops.py
 """File-backed state operations for the Prompt Builder Agent search loop.
 

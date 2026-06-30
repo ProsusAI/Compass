@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """File-backed persistence for Review Agent state.
 
 Follows the same pattern as prompt_builder_search_ops.py:

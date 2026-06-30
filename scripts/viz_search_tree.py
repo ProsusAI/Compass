@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Generate a search tree HTML visualization for an EMOSA search run.
 
 Usage:

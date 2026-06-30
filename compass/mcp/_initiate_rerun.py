@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Business logic for the initiate_rerun MCP tool.
 
 Separated from the MCP decorator layer so it can be tested without an async context.

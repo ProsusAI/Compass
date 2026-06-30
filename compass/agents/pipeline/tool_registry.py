@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Tool allowlists for Stage 4 sub-agent dispatch."""
 
 COLD_REVIEW_TOOLS: list[str] = [

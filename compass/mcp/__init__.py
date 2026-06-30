@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """MCP server package for Compass."""
 
 from compass.agents.pipeline.status import get_pipeline_status as _get_pipeline_status  # noqa: F401

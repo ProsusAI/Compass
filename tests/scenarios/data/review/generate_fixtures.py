@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Generate fixture data for Review Agent integration test scenarios 51-53.
 
 Run from the project root:

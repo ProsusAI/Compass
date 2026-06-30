@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Stage-completion check helpers for the pipeline status module.
 
 Each ``_check_stage_*`` function returns ``(status, artifact_paths, detail)``

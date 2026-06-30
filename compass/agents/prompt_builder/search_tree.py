@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Search tree visualization module for prompt-builder search runs.
 
 Provides functions to collect search data from a run directory and render

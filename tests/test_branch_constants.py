@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Per-leaf invariant — guards against propagation merges overwriting leaf algo state."""
 
 from compass.agents.prompt_builder.search_ops import _BRANCH_ALGORITHM

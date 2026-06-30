@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Tests for baseline computation in holdout eval."""
 
 from compass.mcp.final_report_tools import _compute_baselines

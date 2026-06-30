@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Backend profile model — validated configuration loaded from YAML."""
 
 from __future__ import annotations

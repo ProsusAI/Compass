@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Tests for _append_archive / _load_archive helpers and archive wiring in advance_round."""
 
 from __future__ import annotations

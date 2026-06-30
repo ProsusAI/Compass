@@ -1,3 +1,7 @@
+# Copyright © 2026 MIH AI B.V.
+# Licensed under the Apache License, Version 2.0
+# See LICENSE file in the project root
+
 """Smoke tests for Prompt Builder MCP tools."""
 
 from __future__ import annotations
