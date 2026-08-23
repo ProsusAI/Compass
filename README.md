@@ -202,6 +202,12 @@ Synthesises all pipeline artifacts into a structured evaluation report.
 
 ---
 
+## Datasets
+
+The [`datasets/`](datasets/) directory contains supplementary datasets accompanying the Compass paper appendix (model routing and image-generation routing benchmarks), licensed separately under CC-BY-4.0. See [`datasets/README.md`](datasets/README.md) for the data card.
+
+---
+
 ## Testing
 
 ### Unit tests
