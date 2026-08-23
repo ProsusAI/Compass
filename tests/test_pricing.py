@@ -74,6 +74,18 @@ class TestDefaultPricing:
         assert pricing.cache_write_5m_cost_per_million_tokens == 0.0
         assert pricing.cache_write_1h_cost_per_million_tokens == 0.0
 
+    def test_claude_opus_5_resolves(self) -> None:
+        pricing = get_default_pricing("anthropic", "claude-opus-5")
+        assert pricing is not None
+        assert pricing.input_cost_per_million_tokens == 5.00
+        assert pricing.output_cost_per_million_tokens == 25.00
+
+    def test_gpt_5_6_sol_resolves(self) -> None:
+        pricing = get_default_pricing("openai", "gpt-5.6-sol")
+        assert pricing is not None
+        assert pricing.input_cost_per_million_tokens == 5.00
+        assert pricing.output_cost_per_million_tokens == 30.00
+
     def test_unknown_model_returns_none(self) -> None:
         pricing = get_default_pricing("anthropic", "nonexistent-model")
         assert pricing is None

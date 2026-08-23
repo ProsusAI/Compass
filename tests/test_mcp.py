@@ -486,6 +486,37 @@ class TestModelSpecificConventions:
             result = await model_specific_conventions("openai", "gpt-5.2-turbo-preview")
             assert result == ""
 
+    async def test_reads_real_claude_fable_5_addendum(self) -> None:
+        """The real conventions_claude_claude-fable-5.md file resolves via the live project root."""
+        result = await model_specific_conventions("claude", "claude-fable-5")
+        assert "Fable 5" in result
+        assert "reasoning_extraction" in result
+
+    async def test_reads_real_claude_opus_5_addendum(self) -> None:
+        """The real conventions_claude_claude-opus-5.md file resolves via the live project root."""
+        result = await model_specific_conventions("claude", "claude-opus-5")
+        assert "Opus 5" in result
+
+    async def test_reads_real_claude_sonnet_5_addendum(self) -> None:
+        """The real conventions_claude_claude-sonnet-5.md file resolves via the live project root."""
+        result = await model_specific_conventions("claude", "claude-sonnet-5")
+        assert "Sonnet 5" in result
+
+    async def test_reads_real_gpt_5_6_addendum(self) -> None:
+        """The real conventions_openai_gpt-5-6.md file resolves via the live project root."""
+        result = await model_specific_conventions("openai", "gpt-5.6")
+        assert "GPT-5.6" in result
+
+    async def test_reads_real_gpt_5_6_sol_addendum(self) -> None:
+        """The canonical gpt-5.6-sol model ID (not just the gpt-5.6 alias) resolves to an addendum."""
+        result = await model_specific_conventions("openai", "gpt-5.6-sol")
+        assert "GPT-5.6" in result
+
+    async def test_reads_real_gpt_5_3_codex_addendum_with_dotted_model_id(self) -> None:
+        """Dotted model IDs with a non-date suffix (gpt-5.3-codex) normalize to the correct filename."""
+        result = await model_specific_conventions("openai", "gpt-5.3-codex")
+        assert "GPT-5.3-Codex" in result
+
 
 class TestGetPipelineStatus:
     """Tests for the get_pipeline_status MCP tool."""

@@ -49,6 +49,27 @@ def compute_cost(pricing: ModelPricing | None, usage: TokenUsage) -> float | Non
 
 DEFAULT_PRICING: dict[tuple[str, str], ModelPricing] = {
     # Anthropic
+    ("anthropic", "claude-fable-5"): ModelPricing(
+        input_cost_per_million_tokens=10.00,
+        cached_cost_per_million_tokens=1.00,
+        cache_write_5m_cost_per_million_tokens=12.50,
+        cache_write_1h_cost_per_million_tokens=20.00,
+        output_cost_per_million_tokens=50.00,
+    ),
+    ("anthropic", "claude-opus-5"): ModelPricing(
+        input_cost_per_million_tokens=5.00,
+        cached_cost_per_million_tokens=0.50,
+        cache_write_5m_cost_per_million_tokens=6.25,
+        cache_write_1h_cost_per_million_tokens=10.00,
+        output_cost_per_million_tokens=25.00,
+    ),
+    ("anthropic", "claude-sonnet-5"): ModelPricing(
+        input_cost_per_million_tokens=2.00,
+        cached_cost_per_million_tokens=0.20,
+        cache_write_5m_cost_per_million_tokens=2.50,
+        cache_write_1h_cost_per_million_tokens=4.00,
+        output_cost_per_million_tokens=10.00,
+    ),
     ("anthropic", "claude-haiku-4-5"): ModelPricing(
         input_cost_per_million_tokens=0.80,
         cached_cost_per_million_tokens=0.08,
@@ -71,6 +92,31 @@ DEFAULT_PRICING: dict[tuple[str, str], ModelPricing] = {
         output_cost_per_million_tokens=75.00,
     ),
     # OpenAI
+    ("openai", "gpt-5.6-sol"): ModelPricing(
+        input_cost_per_million_tokens=5.00,
+        cached_cost_per_million_tokens=0.50,
+        output_cost_per_million_tokens=30.00,
+    ),
+    ("openai", "gpt-5.6-terra"): ModelPricing(
+        input_cost_per_million_tokens=2.00,
+        cached_cost_per_million_tokens=0.20,
+        output_cost_per_million_tokens=12.00,
+    ),
+    ("openai", "gpt-5.6-luna"): ModelPricing(
+        input_cost_per_million_tokens=0.20,
+        cached_cost_per_million_tokens=0.02,
+        output_cost_per_million_tokens=1.20,
+    ),
+    ("openai", "gpt-5.5"): ModelPricing(
+        input_cost_per_million_tokens=5.00,
+        cached_cost_per_million_tokens=0.50,
+        output_cost_per_million_tokens=30.00,
+    ),
+    ("openai", "gpt-5.3-codex"): ModelPricing(
+        input_cost_per_million_tokens=1.75,
+        cached_cost_per_million_tokens=0.175,
+        output_cost_per_million_tokens=14.00,
+    ),
     ("openai", "gpt-5.4"): ModelPricing(
         input_cost_per_million_tokens=2.50,
         cached_cost_per_million_tokens=0.25,

@@ -15,8 +15,16 @@ The subpackage is code-only; the Prompt Builder Agent (LLM-driven, system prompt
 | [`holdout_filter.py`](holdout_filter.py) | `filter_holdout_dataset()` — removes few-shot example IDs from the holdout JSONL before final evaluation to prevent data contamination. |
 | [`best_practices.md`](best_practices.md) | MCP resource: model-agnostic routing prompt best practices (role framing, rule ordering, few-shot design). |
 | [`conventions_claude.md`](conventions_claude.md) | MCP resource: Claude-specific routing prompt conventions (XML tags, extended thinking, tool use patterns). |
+| [`conventions_claude_claude-sonnet-5.md`](conventions_claude_claude-sonnet-5.md) | MCP resource: Claude Sonnet 5 specific conventions. |
+| [`conventions_claude_claude-opus-5.md`](conventions_claude_claude-opus-5.md) | MCP resource: Claude Opus 5 specific conventions. |
+| [`conventions_claude_claude-fable-5.md`](conventions_claude_claude-fable-5.md) | MCP resource: Claude Fable 5 specific conventions. |
 | [`conventions_openai.md`](conventions_openai.md) | MCP resource: OpenAI GPT routing prompt conventions. |
 | [`conventions_openai_gpt-5-2.md`](conventions_openai_gpt-5-2.md) | MCP resource: GPT-5-2 specific conventions. |
+| [`conventions_openai_gpt-5-3-codex.md`](conventions_openai_gpt-5-3-codex.md) | MCP resource: GPT-5.3-Codex specific conventions. |
+| [`conventions_openai_gpt-5-4.md`](conventions_openai_gpt-5-4.md) | MCP resource: GPT-5.4 specific conventions. |
+| [`conventions_openai_gpt-5-5.md`](conventions_openai_gpt-5-5.md) | MCP resource: GPT-5.5 specific conventions. |
+| [`conventions_openai_gpt-5-6.md`](conventions_openai_gpt-5-6.md) | MCP resource: GPT-5.6 specific conventions (matches the `gpt-5.6` alias). |
+| [`conventions_openai_gpt-5-6-sol.md`](conventions_openai_gpt-5-6-sol.md) | MCP resource: GPT-5.6 specific conventions (matches the canonical `gpt-5.6-sol` model ID; content identical to the `gpt-5-6` file). |
 
 ## Persistence layout
 
