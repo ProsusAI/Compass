@@ -39,7 +39,7 @@ request.
 ## Development Setup
 
 ```bash
-git clone https://github.com/thymofieten-prosus/Compass.git
+git clone https://github.com/ProsusAI/Compass.git
 cd Compass
 uv sync
 ```

@@ -27,7 +27,7 @@ export OPENAI_API_KEY="sk-..."          # For OpenAI backends
 One command:
 
 ```bash
-claude mcp add compass -- uvx --from git+https://github.com/thymofieten-prosus/Compass compass
+claude mcp add compass -- uvx --from git+https://github.com/ProsusAI/Compass compass
 ```
 
 The server inherits your shell environment, so exported API keys work automatically.
@@ -38,7 +38,7 @@ To pass keys explicitly instead:
 claude mcp add compass \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e OPENAI_API_KEY=sk-... \
-  -- uvx --from git+https://github.com/thymofieten-prosus/Compass compass
+  -- uvx --from git+https://github.com/ProsusAI/Compass compass
 ```
 
 Verify with `claude mcp list`.
@@ -52,7 +52,7 @@ Add to `claude_desktop_config.json`:
   "mcpServers": {
     "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/Compass", "compass"]
+      "args": ["--from", "git+https://github.com/ProsusAI/Compass", "compass"]
     }
   }
 }
@@ -67,7 +67,7 @@ Add to `.cursor/mcp.json` (or equivalent):
   "mcpServers": {
     "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/Compass", "compass"],
+      "args": ["--from", "git+https://github.com/ProsusAI/Compass", "compass"],
       "env": {
         "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}",
         "OPENAI_API_KEY": "${OPENAI_API_KEY}"
@@ -88,7 +88,7 @@ Add to your client's MCP config (usually `.mcp.json`):
   "mcpServers": {
     "compass": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/thymofieten-prosus/Compass", "compass"]
+      "args": ["--from", "git+https://github.com/ProsusAI/Compass", "compass"]
     }
   }
 }
@@ -112,7 +112,7 @@ The command is idempotent and will not overwrite existing files.
 ### Development setup
 
 ```bash
-git clone https://github.com/thymofieten-prosus/Compass.git
+git clone https://github.com/ProsusAI/Compass.git
 cd Compass
 uv sync
 ```
