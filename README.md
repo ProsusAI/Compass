@@ -1,7 +1,10 @@
 # Project Compass  
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Paper: coming soon](https://img.shields.io/badge/Paper-coming_soon-lightgrey.svg)]()
 
 **Improved Agentic Routing Optimizer** — a multi-agent pipeline that iteratively refines few-shot routing prompts using an automated evaluation loop. Deployed as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server.
+
+> 📄 This repo accompanies a research paper (link to follow once published). See [`datasets/`](datasets/) for the paper's appendix datasets.
 
 Given a routing dataset, a problem description, and target metrics, Compass validates the data, sets up the evaluation backend, and iteratively builds and refines a prompt through an automated eval-review-revise loop — producing a production-ready routing prompt with full performance transparency.
 
@@ -205,49 +208,6 @@ Synthesises all pipeline artifacts into a structured evaluation report.
 ## Datasets
 
 The [`datasets/`](datasets/) directory contains supplementary datasets accompanying the Compass paper appendix (model routing and image-generation routing benchmarks), licensed separately under CC-BY-4.0. See [`datasets/README.md`](datasets/README.md) for the data card.
-
----
-
-## Testing
-
-### Unit tests
-
-```bash
-uv run pytest
-```
-
-### MCP integration tests (scenario runbooks)
-
-Integration tests are Markdown runbooks in `tests/scenarios/`. Each scenario defines a simulated user conversation that exercises one or more pipeline agents end-to-end through the MCP server.
-
-**Prerequisites:**
-- The Compass MCP server must be connected to your AI coding assistant (see [Setup](#setup))
-- At least one LLM API key must be set (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) — scenarios make real LLM API calls
-
-**Running a scenario:**
-
-Open your MCP-connected AI assistant (Claude Code, Cursor, or any MCP-compatible client) in the project directory and say:
-
-> Run the integration test in `tests/scenarios/01_complete_submission.md`
-
-The assistant reads the scenario file, spins up a User Simulator sub-agent to play the user role, brokers a multi-turn conversation with the agent under test, then runs a Verification Agent to check the outcome against the scenario's pass/fail criteria. Each scenario has a 20-turn safety limit.
-
-**Running multiple scenarios:**
-
-> Run all integration tests in `tests/scenarios/` from 01 to 12
-
-**Scenario coverage:**
-
-| Range | Focus | Count |
-|-------|-------|-------|
-| 01-04 | Full pipeline happy paths | 4 |
-| 05-07 | Pipeline with input issues | 3 |
-| 08-10 | Pipeline with data validation issues | 3 |
-| 11-12 | Pipeline with backend setup variations | 2 |
-| 13-14 | Pipeline with refinement loop edge cases | 2 |
-| 15 | Full pipeline end-to-end with final report | 1 |
-
-See `tests/scenarios/README.md` for the full protocol, scenario file format, and how to add new scenarios.
 
 ---
 
