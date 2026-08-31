@@ -10,6 +10,37 @@ Given a routing dataset, a problem description, and target metrics, Compass vali
 
 ---
 
+## Pipeline
+
+Compass runs as six sequential stages with an inner refinement loop. Each stage runs as its own sub-agent, dispatched by the orchestrator via `start_stage` / `complete_stage`.
+
+```mermaid
+flowchart TD
+    U(["You provide: routing dataset + problem description + target metrics"])
+
+    U --> S1["1 · Input Validation<br/>LLM — validate the submission, flag blocking gaps"]
+    S1 -->|"input report"| S2["2 · Data Validation<br/>LLM — detect format, map to schema, run quality checks, split dev / holdout"]
+    S2 -->|"routing context + dev / holdout splits"| S3["3 · Backend Setup<br/>LLM — pick the evaluation model, write a backend profile"]
+    S3 -->|backend profile| S4
+
+    subgraph S4 ["4 · Refinement Loop — LLM + code"]
+        direction TB
+        PB["Prompt Builder<br/>compile candidate prompts v1, v2, …"]
+        ER["Eval Runner<br/>score candidates on the dev split"]
+        RA["Review Agent<br/>rank, diagnose failures, propose child variants"]
+        PB --> ER --> RA
+        RA -->|"loop_signal = refine"| PB
+    end
+
+    S4 -->|"loop_signal = exit / converged — best candidates"| S5["5 · Holdout Validation<br/>code + LLM — drop few-shot ids, final eval on unseen data"]
+    S5 -->|"holdout scores"| S6["6 · Final Report<br/>LLM — synthesise every artifact into one report"]
+    S6 -->|"final routing prompt + evaluation report"| U
+```
+
+Internally the orchestrator tracks five dispatcher stages (`compass/agents/pipeline/status.py`): Holdout Validation and Final Report are handled by one stage. See [`docs/architecture.md`](docs/architecture.md) for the agent-level view and [`docs/algorithm.md`](docs/algorithm.md) for the search algorithm.
+
+---
+
 ## Setup
 
 Compass runs as an MCP server. Pick the setup that matches your client.
@@ -135,6 +166,60 @@ For local development, create a `.mcp.json` in the project root that runs the se
 
 ---
 
+## Quickstart: run the included dataset
+
+This walks through a full pipeline run against a bundled dataset using the `mock-echo` backend — no API key, no cost. It assumes an MCP client that can drive multi-step tool conversations (the examples use Claude Code).
+
+1. **Clone and install:**
+   ```bash
+   git clone https://github.com/ProsusAI/Compass.git
+   cd Compass
+   uv sync
+   ```
+
+2. **Register the server from source.** Create `.mcp.json` in the repo root:
+   ```json
+   {
+     "mcpServers": {
+       "compass": {
+         "command": "uv",
+         "args": ["run", "python", "-m", "compass.mcp"]
+       }
+     }
+   }
+   ```
+   File I/O (`outputs/`, `prompts/`, `backends/`) resolves against the server's working directory. If your client does not start the server with the repo as its working directory, set `COMPASS_PROJECT_DIR` (or a `cwd` key) to the repo path — see [`docs/architecture.md`](docs/architecture.md) §8.
+
+3. **Scaffold the project directories:**
+   ```bash
+   uv run compass init
+   ```
+   This creates `outputs/`, `prompts/`, and `backends/` with a `mock-echo.yaml` starter. `mock-echo` needs no API key.
+
+4. **Start the run.** Open the repo in your MCP client and send:
+   > Optimize a routing prompt. Dataset: `tests/scenarios/data/full_pipeline_dataset.jsonl` (100 labelled examples — 50 haiku, 30 sonnet, 20 opus). Problem: route customer-support queries to haiku, sonnet, or opus by complexity — simple factual questions go to haiku, moderate multi-step tasks to sonnet, complex reasoning or ambiguous edge cases to opus. Target accuracy ≥ 0.90, evaluation threshold 0.80, split ratio 0.70, max 5 iterations. Use the `mock-echo` backend.
+
+5. **What happens.** The six stages run as sub-agents. You confirm the field mapping in Stage 2; everything else is automatic. The run writes everything under `outputs/<run_id>/`:
+   ```
+   outputs/<run_id>/
+     input/input_report.md        # Stage 1
+     validation/                  # Stage 2 — quality report, routing context
+     analysis/dev.jsonl           # Stage 2 — dev / holdout split
+     analysis/holdout.jsonl
+     search/search_state.json     # Stage 4 — beam search state, elite set, round history
+     search/viz.html              # Stage 4 — interactive candidate tree + Pareto scatter
+     eval/v*/report.json          # Stage 4 — per-candidate dev scores
+     holdout_eval/v*/report.json  # Stage 5 — per-candidate holdout scores
+     reports/final_report.md      # Stage 6 — the report to read
+     reports/charts/*.png
+   ```
+
+6. **Read the output.** Open `outputs/<run_id>/reports/final_report.md` — Executive Summary, Compared Candidates, Candidate Details (full prompt text, per-class metrics, confusion matrix), Optimization Process, and Pareto Front. Open `outputs/<run_id>/search/viz.html` in a browser to explore the candidate search tree.
+
+> **`mock-echo` is a plumbing test, not a real optimization.** It echoes the ground-truth route, so accuracy is ≈ 1.0 and the loop converges on the first round. It still exercises every stage and produces a real report in the real format. For a genuine run, add an `anthropic` or `openai` backend profile in `backends/` (needs the matching API key) and point Stage 1 at your own dataset in the canonical schema ([`compass/agents/data_validation/format.md`](compass/agents/data_validation/format.md)).
+
+---
+
 ## Usage
 
 After setup, start the pipeline by asking your MCP-connected assistant:
@@ -168,7 +253,7 @@ The stage produces a data quality report covering schema conformance, label dist
 Configures the LLM backend used for evaluation.
 
 **What you provide:**
-- **Backend selection** — which LLM provider and model to use for evaluation (e.g. "openai/gpt-4o-mini", "anthropic/claude-haiku")
+- **Backend selection** — which LLM provider and model to use for evaluation (e.g. "openai/gpt-5.2", "anthropic/claude-haiku-4-5")
 
 The agent looks up default pricing and writes a backend config file. A starter `mock-echo.yaml` config is included from `compass init` for testing.
 
@@ -185,6 +270,33 @@ The core refinement loop. Starts with seed example selection, compiles an initia
 6. Steps 3–5 repeat until the loop converges (no further improvement) or hits the round limit
 
 The loop tracks a Pareto front of candidates (quality vs. cost) and detects stagnation to avoid wasting iterations.
+
+**Inside the loop: the candidate search tree.** The refinement loop is a **beam search** (`beam_width = 3`) over prompt candidates. Round 1 seeds three diverse candidates from `base`; round 2 gives each seed one child; from round 3 on, the Review Agent spends the three-child budget across the most promising members of the current elite set — concentrating (3 children on 1 parent), splitting (2 + 1), or spreading (1 + 1 + 1) — and may merge two parents into one child. After every round the elite set is recomputed as the non-dominated (quality ↑, cost ↓) front and pruned by NSGA-II crowding distance to `2·beam_width + 1 = 7`. The loop stops when the evaluation budget (default 60) is spent and hypervolume has stagnated, when `max_rounds` is reached, or when the Review Agent signals `exit`.
+
+```mermaid
+graph TD
+    base["base<br/>(starting prompt)"]
+
+    base --> v1["v1 · r1<br/>Δq +0.02 · Δc −0.05"]
+    base --> v2["v2 · r1<br/>Δq +0.05 · Δc +0.01"]
+    base --> v3["v3 · r1<br/>Δq −0.01 · Δc −0.18"]
+
+    v1 --> v4["v4 · r2<br/>Δq +0.09 · Δc −0.06"]
+    v2 --> v5["v5 · r2<br/>Δq +0.07 · Δc +0.02"]
+    v3 --> v6["v6 · r2<br/>Δq +0.01 · Δc −0.20"]
+
+    v4 --> v7["v7 · r3<br/>Δq +0.13 · Δc −0.07"]
+    v4 --> v8["v8 · r3<br/>Δq +0.10 · Δc +0.04"]
+    v5 --> v9["v9 · r3<br/>Δq +0.12 · Δc −0.15"]
+    v6 -. secondary parent .-> v9
+
+    classDef elite fill:#2f81f7,stroke:#1f6feb,color:#ffffff;
+    classDef dominated fill:none,stroke:#8b949e,color:#8b949e;
+    class v4,v7,v9 elite;
+    class v1,v2,v3,v5,v6,v8 dominated;
+```
+
+Filled nodes are on the current Pareto front; outlined nodes were evaluated but dominated. Each node shows its version, the round it was introduced (`r1`…), and its quality / cost change versus the baseline route. A live, interactive version of this tree — with the quality/cost Pareto scatter and a per-round slider — is written to `outputs/<run_id>/search/viz.html` after every round.
 
 ### Stage 5: Holdout Validation
 
@@ -208,6 +320,8 @@ Synthesises all pipeline artifacts into a structured evaluation report.
 ## Datasets
 
 The [`datasets/`](datasets/) directory contains supplementary datasets accompanying the Compass paper appendix (model routing and image-generation routing benchmarks), licensed separately under CC-BY-4.0. See [`datasets/README.md`](datasets/README.md) for the data card.
+
+These appendix datasets are research artifacts and are **not** in Compass's runnable routing schema. For a dataset you can run the pipeline against out of the box, use [`tests/scenarios/data/full_pipeline_dataset.jsonl`](tests/scenarios/data/full_pipeline_dataset.jsonl) — see [Quickstart](#quickstart-run-the-included-dataset).
 
 ---
 

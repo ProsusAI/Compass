@@ -19,10 +19,11 @@ def _load_prompt(name: str) -> str:
 def _overlay_filename(algorithm: str, phase: Literal["iterative", "cold_start", "post_coldstart"]) -> str:
     """Return the overlay prompt filename stem for the given (algorithm, phase) pair.
 
-    | phase            | overlay used                              |
-    |------------------|-------------------------------------------|
-    | iterative        | algorithm-specific iterative overlay      |
-    | cold_start       | algorithm-specific cold-start overlay     |
+    | phase            | overlay used                                |
+    |------------------|---------------------------------------------|
+    | iterative        | review_agent_iterative_overlay_beam         |
+    | cold_start       | review_agent_cold_start_overlay_beam        |
+    | post_coldstart   | review_agent_post_coldstart_overlay_beam    |
 
     Raises:
         ValueError: When the (algorithm, phase) combination is not recognised.
@@ -58,7 +59,7 @@ def assemble_review_prompt(
     the generic iterative diagnostic workflow it modifies.
 
     Args:
-        algorithm: Strategy discriminator — ``"beam"`` on this leaf.
+        algorithm: Search strategy — ``"beam"`` is the only supported value.
         phase: ``"iterative"`` for rounds ≥ 3; ``"cold_start"`` for the seeding
             round; ``"post_coldstart"`` for round 2 of beam search after cold-start.
 
@@ -107,8 +108,8 @@ async def compass_review_agent_iterative(algorithm: str = "beam") -> list[Messag
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — ``"beam"`` on this leaf.
-            Defaults to ``beam``.
+        algorithm: Search strategy — ``"beam"`` is the only supported value
+            (also the default).
     """
     content = assemble_review_prompt(algorithm, "iterative")
     return [UserMessage(content=content)]
@@ -122,8 +123,8 @@ async def compass_review_agent_cold_start(algorithm: str = "beam") -> list[Messa
     strategy overlay for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — ``"beam"`` on this leaf.
-            Defaults to ``beam``.
+        algorithm: Search strategy — ``"beam"`` is the only supported value
+            (also the default).
     """
     content = assemble_review_prompt(algorithm, "cold_start")
     return [UserMessage(content=content)]
@@ -136,8 +137,8 @@ async def compass_review_agent_post_coldstart(algorithm: str = "beam") -> list[M
     Assembles a three-tier prompt: shared base + post-coldstart override + iterative phase base for the given algorithm.
 
     Args:
-        algorithm: Search strategy in use — ``"beam"`` on this leaf.
-            Defaults to ``beam``.
+        algorithm: Search strategy — ``"beam"`` is the only supported value
+            (also the default).
     """
     content = assemble_review_prompt(algorithm, "post_coldstart")
     return [UserMessage(content=content)]

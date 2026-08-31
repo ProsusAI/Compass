@@ -47,9 +47,10 @@ def _default_output_dir() -> Path:
     return get_project_dir() / "outputs"
 
 
-# Branch-level algorithm constants.  On feat/generalize-pipeline (and main)
-# these default to "__unset__".  Search-specific branches (Wave 2) flip
-# exactly these two lines and nothing else.
+# Algorithm-selection constants.  This repo runs beam search.  Using a different
+# search strategy means changing these two lines and providing its own
+# ``advance_round`` implementation; ``AlgorithmType`` (in search.py) currently
+# allows only "beam".
 _BRANCH_ALGORITHM: AlgorithmType = "beam"
 _BRANCH_ALGORITHM_STATE: dict[str, Any] = {"beam_width": 3}
 

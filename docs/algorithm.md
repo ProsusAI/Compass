@@ -1,205 +1,273 @@
-# EMOSA: Decomposition-Based Multi-Objective Simulated Annealing
+# Beam Search over Prompt Candidates
 
-This file is the source of truth for anyone touching the search engine. The algorithm is a clean adaptation of **EMOSA** (Li & Landa-Silva 2011) for LLM-driven prompt search: decomposition-based multi-objective SA with Tchebycheff scalarization, K parallel trajectories, per-trajectory Metropolis acceptance, EMOSA's neighborhood replacement, and a plain non-dominated archive. When reading or modifying `compass/agents/prompt_builder/annealing.py`, `search_ops.py`, `compass/agents/review/preprocessor.py`, or the Review Agent prompts, consult this document first.
+This file is the source of truth for anyone touching the Stage-4 search engine.
+The algorithm is a **multi-objective beam search**: each round expands the current elite set
+into `beam_width` new prompt candidates, evaluates them on the dev split, and keeps the
+non-dominated (quality, cost) front — pruned for spread by NSGA-II crowding distance. The
+mutation operator is the LLM Review Agent + Prompt Builder pipeline, not a random perturbation.
+
+When reading or modifying [`compass/agents/prompt_builder/search.py`](../compass/agents/prompt_builder/search.py),
+[`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py),
+[`compass/agents/review/preprocessor.py`](../compass/agents/review/preprocessor.py), or the
+Review Agent prompts, consult this document first.
+
+> The search strategy is chosen by two constants in `search_ops.py` (see
+> [Configuration](#configuration)); this repo sets them to beam search, which is what this
+> document describes. Using a different strategy means changing those constants and adding
+> its own `advance_round` implementation.
 
 ---
 
 ## Algorithm at a glance
 
-| Component | Technique | Primary reference |
-|-----------|-----------|-------------------|
-| Sub-problem decomposition | Tchebycheff scalarization with K weight vectors | Zhang & Li 2007 (MOEA/D); Li & Landa-Silva 2011 (EMOSA) |
-| Per-sub-problem state | K parallel current-solutions with independent energies | Li & Landa-Silva 2011 |
-| Acceptance criterion | Per-trajectory Metropolis on Tchebycheff energy delta | Kirkpatrick et al. 1983; Li & Landa-Silva 2011 |
-| Neighborhood replacement | Every generated child (accepted or not) replaces any neighbor whose current is scalarized-worse; no Metropolis gate | Li & Landa-Silva 2011 |
-| Archive | Plain non-dominated set; dominance filter only; no size limits | Li & Landa-Silva 2011 |
-| Mutation operator | LLM Review Agent + Prompt Builder pipeline (per-sub-problem-aware) | This codebase |
-| Convergence | Temperature floor, eval budget, Review Agent LoopSignal exit | — |
+| Component | Technique | Where |
+|-----------|-----------|-------|
+| Expansion | `beam_width` children per round, allocated across elite parents by the Review Agent | `review_agent_iterative_overlay_beam.md` |
+| Mutation operator | LLM Review Agent (identify failure → hypothesise → directive) + Prompt Builder compile | `compass/agents/review/`, `compass/agents/prompts/prompt_builder_system.md` |
+| Selection | Pareto dominance on (quality ↑, cost ↓) | `dominates`, `compute_pareto_front` in `search.py` |
+| Diversity / pruning | NSGA-II crowding distance, prune to `2·beam_width + 1`, endpoints protected | `crowding_distance`, `prune_to_size` in `search.py` |
+| Progress metric | 2-D hypervolume of the front vs a worst-seen reference point | `compute_hypervolume` in `search.py` |
+| Stagnation | relative hypervolume improvement ≤ `epsilon` | `advance_round_beam` in `search_ops.py` |
+| Convergence | eval budget spent **and** stagnation ≥ `convergence_limit`, or `max_rounds`, or Review Agent `LoopSignal(action="exit")` | `advance_round_beam` |
 
 ---
 
-## Tchebycheff decomposition
+## Configuration
 
-The scalar energy for a solution `x` under weight vector `λ = (λ_q, λ_c)` is:
+Two module-level constants in `search_ops.py` select the strategy. In this repo:
 
-```
-E(x; λ) = max(
-    λ_q · norm_q(x),
-    λ_c · norm_c(x)
-)
+```python
+_BRANCH_ALGORITHM: AlgorithmType = "beam"
+_BRANCH_ALGORITHM_STATE: dict[str, Any] = {"beam_width": 3}
 ```
 
-where:
-- `norm_q(x) = (nadir_q − quality(x)) / (nadir_q − ideal_q)` — 0 at the ideal, 1 at the nadir
-- `norm_c(x) = (cost(x) − ideal_c) / (nadir_c − ideal_c)` — 0 at the ideal, 1 at the nadir
-- `ideal_q`, `ideal_c` are the best quality and lowest cost seen across all evaluations
-- `nadir_q`, `nadir_c` are the worst quality and highest cost seen
+`init_search_state` copies `_BRANCH_ALGORITHM_STATE` into `SearchState.algorithm_state`.
+`advance_step` (MCP tool) dispatches to `advance_round` → `advance_round_beam`.
 
-Energy `E = 0` is the ideal corner; higher is worse. A solution's **binding axis** is the index `i` where `λ_i × norm_i` is largest — the term that dominates the `max`. Equivalently:
+`SearchState` fields that govern the loop (defaults from `search.py`):
 
-```
-binding_axis = argmax_i ( λ_i · (f_i − ideal_i) / (nadir_i − ideal_i) )
-```
+| Field | Default | Meaning |
+|---|---|---|
+| `algorithm_state["beam_width"]` | `3` | children generated per round |
+| `evaluation_budget` | `60` | total candidate evaluations before convergence is allowed |
+| `max_rounds` | `50` | hard round cap |
+| `stagnation_limit` | `3` | rounds without hypervolume progress before `mutation_mode` may flip / backtrack cues fire |
+| `convergence_limit` | `5` | consecutive stagnant rounds required to converge (must be `> stagnation_limit`) |
+| `epsilon` | `0.001` | minimum *relative* hypervolume improvement that counts as progress |
+| `algorithm_state["epsilon_min"]` | `0.0005` | floor for `epsilon` after tightening |
+| `algorithm_state["backtrack_threshold"]` | `2` | stagnation count at which the round summary sets `backtracking = True` |
+| `mutation_mode` | `"targeted"` | `targeted` (faithful edits) vs `exploratory` (structural rewrite) |
 
-**Why Tchebycheff instead of weighted sum:** A weighted-sum scalarization `E = λ_q · g_q + λ_c · g_c` cannot produce solutions on concave regions of the Pareto front regardless of the weight choice. The Tchebycheff aggregation `E = max(λ_q · g_q, λ_c · g_c)` can reach any point on the Pareto front — convex or concave — by varying `λ`. This property is critical when the quality/cost tradeoff surface is not convex.
-
-**Normalization:** `normalize_objectives` (in `annealing.py`) maps raw quality and cost into `[0, 1]` relative to `ideal_point` and `nadir_point`. After normalization, `norm_q = 0` means the candidate equals the best-ever quality; `norm_q = 1` means it equals the worst-ever quality. Cost is analogous.
-
-**Concrete example:** Suppose `ideal = (0.90 quality, 0.02 cost)`, `nadir = (0.70, 0.10)`. A candidate with quality 0.80 and cost 0.06 gives `norm_q = (0.90 − 0.80)/(0.90 − 0.70) = 0.50`, `norm_c = (0.06 − 0.02)/(0.10 − 0.02) = 0.50`. For trajectory 0 (`λ = (0.9, 0.1)`): `E = max(0.9 × 0.50, 0.1 × 0.50) = max(0.45, 0.05) = 0.45`; binding axis = quality. For trajectory 4 (`λ = (0.1, 0.9)`): `E = max(0.1 × 0.50, 0.9 × 0.50) = max(0.05, 0.45) = 0.45`; binding axis = cost. For a cost-efficient candidate (quality 0.72, cost 0.03): `norm_q = 0.90`, `norm_c = 0.125`; trajectory 0 energy = `max(0.81, 0.013) = 0.81`; trajectory 4 energy = `max(0.09, 0.113) = 0.113`. Trajectory 4 sees it as much better.
-
-**Implementation:** `compute_tchebycheff_energy` in `compass/agents/prompt_builder/annealing.py`. The function normalizes objectives via `normalize_objectives`, then applies the max aggregation using `ideal_point` and `nadir_point` from `AnnealingState`.
-
-**Citations:** Zhang, Q. & Li, H. (2007). *MOEA/D*. IEEE TEC 11(6):712–731. Li, H. & Landa-Silva, D. (2011). *EMOSA*. Evolutionary Computation 19(4):561–595.
+`search_state.json` is auto-created at Stage 4 entry by `_ensure_stage4_search_state`
+(called from `_next_action_for_stage_4` in `status.py`), so cold-start sub-agents always find
+a real `SearchState` on disk.
 
 ---
 
-## Weight vectors and trajectories
+## The candidate tree
 
-`compute_weight_vectors(num_trajectories)` in `annealing.py` generates K evenly-spaced weight vectors spanning `λ_q ∈ [0.1, 0.9]` with `λ_c = 1 − λ_q`. Quality-focused trajectories (`λ_q` close to 0.9) are listed first. For `num_trajectories = 1`, the single vector is `(0.5, 0.5)`; for `num_trajectories = 2`, vectors are `(0.9, 0.1)` and `(0.1, 0.9)`.
+Every candidate is a `Candidate` record (`search.py`):
 
-For the default `num_trajectories = 5`, the generated weight vectors are:
-
-| Trajectory ID | λ_q | λ_c | Sub-problem emphasis |
-|---------------|-----|-----|----------------------|
-| 0 | 0.9 | 0.1 | Heavy quality focus |
-| 1 | 0.7 | 0.3 | Quality-leaning |
-| 2 | 0.5 | 0.5 | Balanced (knee region) |
-| 3 | 0.3 | 0.7 | Cost-leaning |
-| 4 | 0.1 | 0.9 | Heavy cost focus |
-
-Each trajectory maintains its own `current_solution` (the `prompt_version` of the candidate it currently holds) and `current_energy` (the Tchebycheff energy of that candidate under its weight vector). These are stored in `TrajectoryState` inside `AnnealingState`. This design runs K independent SA chains in parallel, one per sub-problem — characteristic of EMOSA and MOEA/D extended with per-sub-problem SA.
-
-The `acceptance_history` field in `TrajectoryState` records the last 5 accept/reject decisions for that trajectory, enabling the Review Agent to detect when a trajectory is stuck (consistently rejecting moves).
-
-The number of trajectories (`num_trajectories`) is configured in `init_annealing_state` (called by `init_search_state_tool`). The default is 5; higher values increase Pareto front coverage at the cost of more evaluations per round.
-
----
-
-## Per-sub-problem SA acceptance
-
-Each trajectory applies the standard SA acceptance rule to its own Tchebycheff energy:
-
-```
-if Δ_E ≤ 0:
-    accept  # improvement always accepted
-else:
-    accept with probability exp(−Δ_E / T)
+```python
+prompt_version: str                 # "v1", "v2", … (monotonic, from SearchState.next_variant_seq)
+parent_version: str | None          # "base" for cold-start seeds, else a prior vN
+secondary_parent_version: str | None # set only for two-parent merges (round ≥ 3)
+quality_score: float                # = metrics "quality_change": signed fraction vs the baseline route
+cost: float                         # = metrics "cost_change_with_overhead": signed fraction vs baseline
+round_introduced: int
+example_ids: list[str]              # few-shot ids embedded in this prompt
+eval_status: "pending" | "running" | "complete" | "failed" | None
 ```
 
-**Implementation:** `metropolis_accept(delta_e, temperature)` in `annealing.py`. Applied inside `_advance_emosa_search` in `search_ops.py` for each trajectory independently against that trajectory's own `temperature`. When a trajectory generates M children (`children_per_trajectory > 1`), the acceptance rule is applied to each child separately and the accepted child with the lowest energy is kept ("Metropolis-then-best-of-accepted" semantics).
+The root is the sentinel string `"base"` (`INITIAL_PARENT_VERSION` in
+`compass/agents/review/models.py`). `parent_version` / `secondary_parent_version` edges form
+the search tree (a DAG once merges appear). Lineage of dominated / evicted candidates is
+preserved in the append-only `outputs/<run_id>/search/candidate_archive.json`; the live tree is
+rendered to `outputs/<run_id>/search/viz.html` after every state mutation.
 
-**Per-trajectory adaptive cooling:** each trajectory holds its own `temperature` and `alpha` on `TrajectoryState`. After Metropolis (and neighborhood replacement) each round, every trajectory that attempted a step adjusts its temperature via `adaptive_cool` based on its recent acceptance rate against a target band:
-
-- if rate > `target_acceptance_high` (default 0.6) → `T ← T × α^cooling_exp_fast` (cool faster, default exp 1.5)
-- if rate < `target_acceptance_low` (default 0.4) → `T ← T × α^cooling_exp_slow` (cool slower, default exp 0.5)
-- otherwise → `T ← T × α` (default geometric step)
-
-`α` is fixed per trajectory at calibration via `compute_cooling_rate(t_initial, t_min, max_steps)`. The adaptive rule modifies the *exponent* applied each round, not `α` itself. This matches Li & Landa-Silva 2011 §3.4. Convergence on `temperature_floor` requires ALL trajectories to be below `t_min`.
-
-**Default `t_initial = 0.2`**: chosen so that for the empirically observed median worsening Δ_E ≈ 0.07 (across the run at `outputs/d92011e7/`), P(accept) at the start of search is ≈ 0.7 — exploration without random-walk. The previous default of 1.0 left SA in random-walk regime for the first 60% of the budget, with acceptance histories of 5/5 True confirming the gate did nothing useful.
-
-**Citations:**
-- Kirkpatrick, S., Gelatt, C. D. & Vecchi, M. P. (1983). *Optimization by simulated annealing*. Science, 220(4598):671–680.
-- Li, H. & Landa-Silva, D. (2011). *EMOSA*. Evolutionary Computation 19(4):561–595.
+**Scores are deltas, not accuracy.** `quality_score` and `cost` are signed fractions relative
+to the dataset's baseline route, produced by `compute_cost_quality_change` in
+[`compass/eval/metrics.py`](../compass/eval/metrics.py). Classifier accuracy is reported in the
+score report and shown in the viz tooltip, but it is not the optimization objective.
 
 ---
 
-## Neighborhood replacement
+## Round structure
 
-Every generated child is offered to its originating trajectory's neighborhood, regardless of whether the originating trajectory's Metropolis accepted it. The originators themselves are excluded from the replacement target set — Metropolis owns that decision. For each neighbor trajectory `j` (in `B(i)` and not in the originating set):
+Each round follows the fixed Prompt Builder tool sequence
+(`compass/agents/prompts/prompt_builder_system.md`):
 
-```
-if compute_tchebycheff_energy(child, λ_j) < neighbor_j.current_energy:
-    neighbor_j.current_solution ← child
-    neighbor_j.current_energy   ← energy under λ_j
-```
+> `register_candidate` (per candidate) → `run_batch_eval` (once) → `record_eval_result`
+> (per succeeded entry) → `advance_step`. Never reorder. Never reuse a version number.
 
-This replacement is **unconditional** — there is no Metropolis random gate on the neighbor step. If the child is better than the neighbor's current under the neighbor's weight, the neighbor adopts it. This is the core EMOSA mechanism that prevents over-specialization: a child generated for one sub-problem can strengthen adjacent sub-problems without any explicit cross-trajectory logic in the Review Agent. Critically, this includes children that the originating trajectory's Metropolis rejected — they are still offered to neighbors, matching the canonical algorithm.
+`run_batch_eval` evaluates all of a round's candidates concurrently under one shared rate
+limiter (`compass/eval/batch_eval.py`).
 
-**Default:** B = 4 for K = 5 (each trajectory sees every other trajectory's accepted children). B is a config field in `AnnealingState`.
+### Round 1 — cold start
 
-**Citations:** Li & Landa-Silva 2011 (EMOSA neighborhood replacement); Zhang & Li 2007 (MOEA/D neighborhood structure as precedent).
+Overlay: `review_agent_cold_start_overlay_beam.md`.
+
+The Review Agent produces **K = `beam_width`** diverse seed candidates with no eval data yet.
+Seeds must span confusion cells *and* cost regions. All seeds have `parent_version = "base"`.
+
+`advance_round_beam` special-cases round 1: `update_elite_set(..., is_cold_start_round=True)`
+**bypasses Pareto filtering and crowding-distance pruning** — every scored seed is retained so
+each initial strategy gets a second data point in round 2. `validate_elite_set` is skipped for
+the same reason. Stagnation count is forced to 0.
+
+### Round 2 — post-cold-start
+
+Overlay: `review_agent_post_coldstart_overlay_beam.md`.
+
+The elite set this round holds every scored round-1 seed as a **protected parent**. The Review
+Agent must emit **exactly one `ChildVariant` per scored elite member**, using that member as
+`parent_version`:
+
+- one child per protected parent — no doubling up;
+- `secondary_parent_version` must be `null` (no merges yet);
+- failed cold-start seeds (`eval_status != "complete"`) are skipped;
+- `LoopSignal.continue_search = true` unconditionally — round 2 is a structured exploration
+  step, not a convergence check.
+
+Standard Pareto competition begins in round 3.
+
+### Round ≥ 3 — steady-state iterative
+
+Overlay: `review_agent_iterative_overlay_beam.md`.
+
+The Review Agent emits `beam_width` children total, **allocated at its discretion** across 1–3
+members of the current elite set:
+
+- **Concentrate** (3 → 1): one elite is clearly most promising toward the threshold (or, once
+  the threshold is met, toward the oracle point);
+- **Split** (2 + 1): two elites look comparably promising;
+- **Spread** (1 + 1 + 1): a child from each of three elites.
+
+Per-child workflow (from `review_agent_iterative_base_system.md`): **identify failure mode →
+hypothesise from data → create directive(s)**. The hypothesis is grounded in specific example
+ids or metric patterns. Confusion cells are ranked by **threshold gap** while the user
+threshold is unmet, and by **oracle gap** (`oracle_quality_change` / `oracle_cost_change` per
+cell) once it is met. Multiple children off one parent must target *different* cells. Two-parent
+merges (`secondary_parent_version`) are allowed from round 3 on.
+
+The Prompt Builder compiles each `ChildVariant`'s `EditDirective`s (`block_type` ∈ `rule`,
+`example`, `output_schema`, `vocabulary`, `contrast_pair`) into a concrete prompt in the fixed
+section order Objective → Categories → Decision Logic → Examples → Output Format.
 
 ---
 
-## External archive
+## Selection: elite set update
 
-The global non-dominated archive (`elite_set` in `SearchState`) accumulates Pareto-optimal candidates across all trajectories. Archive management is a plain dominance filter:
+`advance_round_beam` calls `update_elite_set(current_elite, scored_pending, max_size = 2*beam_width + 1)`:
 
-- **Dominance filter:** `update_archive` in `annealing.py` rejects any new candidate dominated by an existing archive member and removes existing members dominated by the new candidate.
-- **No size limits:** the archive grows monotonically, bounded only by the total evaluation budget. There is no soft limit, no hard limit, and no pruning step.
+1. Combine the current elite with the newly scored candidates; drop placeholder `(0.0, 0.0)`
+   entries; dedupe by `prompt_version`.
+2. `compute_pareto_front` — keep only non-dominated candidates. `dominates(a, b)` is true when
+   `a.quality_score >= b.quality_score` **and** `a.cost <= b.cost` with at least one strict
+   inequality.
+3. `prune_to_size(front, 2*beam_width + 1)` — while the front exceeds the cap, repeatedly
+   remove the non-endpoint candidate with the smallest **NSGA-II crowding distance**. The two
+   endpoints (highest quality, lowest cost) are protected every iteration.
 
-The archive is shared across all trajectories: any trajectory can add a Pareto-improving candidate regardless of which trajectory generated it.
+`crowding_distance` gives endpoints `inf` and each interior point the sum over the quality and
+cost axes of the normalized gap between its two neighbours — the standard NSGA-II diversity
+measure. With `beam_width = 3` the elite set holds at most **7** candidates.
 
-**Citation:** Li & Landa-Silva 2011.
-
----
-
-## Ideal and nadir point updates
-
-The Tchebycheff normalization depends on `ideal_point` and `nadir_point`. These are updated incrementally in `_advance_emosa_search`: after collecting scored candidates, the ideal and nadir are expanded to include any new extremes discovered this round. The ideal point never regresses (quality only increases, cost only decreases); the nadir can expand in either direction.
-
-This incremental update means early rounds operate with a narrow reference interval (small difference between ideal and nadir), which compresses the energy values toward zero. As more of the tradeoff surface is explored, the normalization spreads out and energy differences become more informative.
-
-To keep the Metropolis Δ_E comparison range-consistent, each trajectory caches the raw `(current_quality, current_cost)` of its `current_solution`. At the top of `advance_round`, after the new ideal/nadir are computed, every trajectory's `current_energy` is **recomputed** under the new normalization before the Metropolis gate runs. Without this refresh, stored energies from rounds with narrower normalization are systematically lower than newly-computed energies under expanded normalization — the Metropolis Δ_E is positive even when the child strictly dominates under the current weight, biasing the gate toward keeping the held current and stranding trajectories on early picks.
-
----
-
-## Initial seeding / Calibration phase
-
-Before the main search loop begins, the algorithm runs a **calibration phase** to seed each trajectory with an initial current solution and energy.
-
-**Steps (`calibration_complete` in `search_ops.py`):**
-1. The Review Agent cold-start produces K diverse hypotheses (one per trajectory) without axis pre-commitment. See `review_agent_cold_start_system.md`.
-2. The Prompt Builder compiles and evaluates one candidate per hypothesis.
-3. The ideal and nadir points are initialized from the calibration candidates: `ideal_q = max quality seen`, `ideal_c = min cost seen`, `nadir_q = min quality seen`, `nadir_c = max cost seen`.
-4. Each trajectory's `current_solution` and `current_energy` are seeded 1:1 in generation order: variant 0 → trajectory 0, variant 1 → trajectory 1, and so on. The assignment is arbitrary by design.
-5. The archive is initialized with all non-dominated calibration candidates.
-6. `AnnealingState.phase` transitions from `"calibration"` to `"search"`.
-
-**Alignment via neighborhood replacement:** The initial 1:1 assignment makes no attempt to match hypotheses to weight-vector axes. Alignment between each trajectory's current solution and its weight vector emerges naturally during the first several rounds via neighborhood replacement — trajectories that receive a well-aligned child quickly converge on it; misaligned starting seeds are superseded. This is consistent with EMOSA's design and is not a defect.
-
-The calibration phase corresponds to what the cold-start prompt calls "round 0". The `amosa_calibration_step_tool` wraps `calibration_complete` for MCP-level invocation.
+`validate_elite_set` recomputes the front defensively after every round except round 1 and logs
+if it had to drop a dominated member.
 
 ---
 
-## LLM Review Agent as mutation operator
+## Progress and stagnation
 
-EMOSA is operator-agnostic: it specifies the acceptance criterion and neighborhood replacement, but not how candidate mutations are generated. In this codebase, the Review Agent + Prompt Builder pipeline realizes the per-sub-problem-aware mutation slot. Each round, the Review Agent for trajectory `i` proposes directives targeted at reducing the term dominating the Tchebycheff max on that trajectory's binding axis — a semantically richer mutation than random perturbation. The Prompt Builder compiles the directives into a concrete candidate prompt for evaluation.
+After updating the elite set, `advance_round_beam`:
 
-Neighborhood replacement prevents over-specialization: a strong cross-axis child generated under one trajectory's mandate can propagate to neighboring trajectories if it scalarizes better there. The Review Agent does not need to anticipate this; it focuses on its own trajectory's binding axis.
+1. Builds a **worst-seen reference point** from all elite + scored candidates this round:
+   `ref = (worst_quality * 0.9 or -0.1, worst_cost * 1.1 or 0.1)` — a lower-left corner below
+   every point seen.
+2. Computes `new_hypervolume = compute_hypervolume(new_elite, ref)` — the 2-D area the front
+   dominates, via a sweepline over quality.
+3. Stagnation (skipped on round 1):
+   ```
+   relative_improvement = (new_hypervolume - hypervolume_prev) / hypervolume_prev   # or new_hypervolume if prev == 0
+   new_stagnation_count  = 0 if relative_improvement > state.epsilon else state.stagnation_count + 1
+   ```
+4. **Epsilon tightening (one-time):** when all user targets are first met by the elite set,
+   `epsilon ← max(epsilon / 2, epsilon_min)`, the stagnation count resets to 0, and a flag is
+   set so this never repeats. This raises the bar for "progress" once the loop is in
+   refinement territory.
+5. **Backtracking flag:** `backtracking = new_stagnation_count >= backtrack_threshold` (2). The
+   iterative overlay surfaces `stagnation_signal.hypervolume_delta` to the Review Agent as a
+   cue to change which elite(s) it expands and pick a different confusion cell.
+
+Hypervolume, previous hypervolume, and the reference point are stored back into
+`algorithm_state` for the next round; the per-round values are also recorded on the
+`RoundSummary` (`hypervolume`, `reference_point`, `backtracking`, `target_improvement`,
+`front_quality_spread`, `stagnation_count`).
 
 ---
 
 ## Convergence
 
-The search converges when any of the following conditions is met:
+```
+total_evaluated = sum(len(r.candidates_evaluated) for r in round_history) + len(this_round)
+budget_reached  = total_evaluated >= evaluation_budget                     # default 60
+converged       = (budget_reached and new_stagnation_count >= convergence_limit)   # default 5
+                  or new_round >= max_rounds                               # default 50
+```
 
-| Condition | `convergence_reason` value |
-|-----------|---------------------------|
-| Temperature falls below `t_min` | `"temperature_floor"` |
-| `total_evals >= max_evals` | `"eval_budget"` |
-| Review Agent emits `LoopSignal(action="exit")` | `"review_exit"` |
+`convergence_reason` is `"max_rounds"` when the round cap is hit, otherwise `"stagnation"`.
+On the terminal round `RoundSummary.converged` is `True`, `SearchState.converged` is set, and
+`loop_phase` flips to `"build"` (the Prompt Builder closes the run out instead of dispatching
+another review).
 
-All convergence checks happen inside `advance_round`. The round summary's `converged` field is `True` on the terminal round; `AnnealingState.phase` transitions to `"converged"`. The Prompt Builder Agent reads phase to decide whether to call `advance_round_tool` again or close out the run.
+The Review Agent can also end the loop early by emitting `LoopSignal(action="exit")`. Per
+`review_agent_iterative_base_system.md`, this is only safe when `single_candidate_meets_all` is
+true — one candidate meets *every* declared user target.
+
+After `advance_round_beam` returns, scored candidates are appended to
+`candidate_archive.json`, `pending_candidates.json` is cleared, and `viz.html` is regenerated.
+
+---
+
+## Mutation modes
+
+`SearchState.mutation_mode` toggles between:
+
+- **`targeted`** — faithful paraphrase / reorder / example swap against the parent prompt;
+- **`exploratory`** — structural rewrite with different example sets.
+
+The mode flips toward `exploratory` when the search stalls (stagnation), giving the Review
+Agent licence to propose larger changes. See `prompt_builder_system.md` for how each mode
+constrains the compiled prompt.
 
 ---
 
 ## Pointers for future changes
 
-- **Changing the scalarization** (e.g., to PBI — Penalty-Boundary Intersection, per Zhang & Li 2007): edit `compute_tchebycheff_energy` in `compass/agents/prompt_builder/annealing.py` and update the "Tchebycheff decomposition" section above. PBI is a natural next extension; EMOSA's original paper discusses it as an alternative.
-- **Adding an axis** (e.g., latency): update `classify_user_target` in `preprocessor.py`, add weight-vector logic in `compute_weight_vectors`, extend `compute_tchebycheff_energy` to K-objective form, and extend this document's "Tchebycheff decomposition" and "Weight vectors and trajectories" sections.
-- **Changing neighborhood size B**: edit the `neighborhood_size` field in `AnnealingState` (default 4, set when constructing the `algorithm_state` pocket on `init_search_state`) and update the "Neighborhood replacement" section above.
-- **Changing archive behavior** (e.g., adding crowding-distance-based pruning if archive grows too large): edit `update_archive` in `annealing.py` and update the "External archive" section above.
-- **Changing convergence detection**: edit the convergence checks in `_advance_emosa_search` in `search_ops.py` and update the "Convergence" section above.
-- **Tuning the adaptive cooling band**: adjust `target_acceptance_low`/`target_acceptance_high`/`cooling_exp_fast`/`cooling_exp_slow` defaults on `AnnealingState` in `annealing.py`. The defaults (0.4 / 0.6 / 1.5 / 0.5) follow Li & Landa-Silva 2011 §3.4. Lower bands push trajectories to cool faster overall.
+- **Change the beam width:** edit `_BRANCH_ALGORITHM_STATE` in `search_ops.py`. The elite-set
+  cap (`2*beam_width + 1`) and per-round child count both follow from it; the iterative overlay
+  reads `briefing.beam_width`.
+- **Change the selection objective** (e.g. add latency as a third axis): extend `Candidate`,
+  `dominates`, `compute_pareto_front`, `crowding_distance`, and `compute_hypervolume` in
+  `search.py` to K objectives, and update `classify_user_target` in
+  `compass/agents/review/preprocessor.py`.
+- **Change pruning** (e.g. reference-point-based instead of crowding distance): edit
+  `prune_to_size` / `crowding_distance` in `search.py`.
+- **Change convergence detection:** edit the `converged` / `budget_reached` logic in
+  `advance_round_beam` in `search_ops.py` and update the "Convergence" section above.
+- **Tune stagnation sensitivity:** `epsilon`, `epsilon_min`, `stagnation_limit`,
+  `convergence_limit`, `backtrack_threshold`. Note the `convergence_limit > stagnation_limit`
+  invariant enforced by a `model_validator` on `SearchState`.
 
 ---
 
 ## References
 
-Kirkpatrick, S., Gelatt, C. D. & Vecchi, M. P. (1983). Optimization by simulated annealing. *Science*, 220(4598):671–680.
+Deb, K., Pratap, A., Agarwal, S. & Meyarivan, T. (2002). *A fast and elitist multiobjective
+genetic algorithm: NSGA-II.* IEEE Transactions on Evolutionary Computation, 6(2):182–197.
+*(Crowding-distance diversity operator used in `prune_to_size`.)*
 
-Li, H. & Landa-Silva, D. (2011). An adaptive evolutionary multi-objective approach based on simulated annealing. *Evolutionary Computation*, 19(4):561–595. *(Primary reference — EMOSA.)*
-
-Zhang, Q. & Li, H. (2007). MOEA/D: A multiobjective evolutionary algorithm based on decomposition. *IEEE Transactions on Evolutionary Computation*, 11(6):712–731. *(Tchebycheff decomposition and neighborhood structure.)*
+Zitzler, E. & Thiele, L. (1999). *Multiobjective evolutionary algorithms: a comparative case
+study and the strength Pareto approach.* IEEE Transactions on Evolutionary Computation,
+3(4):257–271. *(Hypervolume indicator used as the progress metric.)*
