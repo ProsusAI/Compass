@@ -16,8 +16,15 @@ Compass runs as six sequential stages with an inner refinement loop. Each stage 
 
 ```mermaid
 flowchart LR
-    S1["1 · Input<br/>Validation"] --> S2["2 · Data<br/>Validation"] --> S3["3 · Backend<br/>Setup"] --> S4["4 · Refinement<br/>Loop"] --> S5["5 · Holdout<br/>Validation"] --> S6["6 · Final<br/>Report"]
-    S4 -. refine .-> S4
+    S1["1 · Input<br/>Validation"] --> S2["2 · Data<br/>Validation"] --> S3["3 · Backend<br/>Setup"] --> S4
+
+    subgraph S4 ["4 · Refinement Loop"]
+        direction LR
+        PB["Prompt<br/>Builder"] --> RA["Review<br/>Agent"]
+        RA -. refine .-> PB
+    end
+
+    S4 --> S5["5 · Holdout<br/>Validation"] --> S6["6 · Final<br/>Report"]
 ```
 
 **Input:** routing dataset + problem description + target metrics. **Output:** a production-ready routing prompt + evaluation report.
