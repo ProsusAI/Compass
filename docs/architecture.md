@@ -6,15 +6,18 @@ Quick re-orientation guide for the Compass multi-agent routing optimizer.
 
 ```mermaid
 graph TD
-    U["User"] -->|problem + dataset| A1["User Input Agent<br/><em>LLM-driven</em><br/>Status: done"]
-    A1 -->|validated_input_report_path| A2["Data Validation Agent<br/><em>LLM-driven</em><br/>Phase 1: ingest &amp; map → Phase 2: validate + split<br/>Status: done"]
-    A2 -->|RoutingContext + dev/holdout splits| A3["Prompt Builder Agent<br/><em>LLM-driven</em><br/>Status: done"]
-    A3 -->|prompt version| A4["Eval Runner Agent<br/><em>code-driven</em><br/>Status: done"]
-    A4 -->|eval_score_report| A5["Review Agent<br/><em>LLM-driven</em><br/>Status: done"]
-    A5 -->|iterate| A3
-    A5 -->|accept| A6["Final Report Agent<br/><em>Hybrid (code + LLM)</em><br/>Holdout eval + report<br/>Status: done"]
+    U["User"] -->|problem + dataset| A1["Stage 1 · User Input Agent<br/><em>LLM-driven</em>"]
+    A1 -->|validated_input_report_path| A2["Stage 2 · Data Validation Agent<br/><em>LLM-driven</em><br/>Phase 1: ingest &amp; map → Phase 2: validate + split"]
+    A2 -->|RoutingContext + dev/holdout splits| A2b["Stage 3 · Backend Setup Agent<br/><em>LLM-driven</em><br/>write backend profile"]
+    A2b -->|backend profile| A3["Stage 4 · Prompt Builder Agent<br/><em>LLM-driven</em>"]
+    A3 -->|prompt version| A4["Stage 4 · Eval Runner Agent<br/><em>code-driven</em>"]
+    A4 -->|eval_score_report| A5["Stage 4 · Review Agent<br/><em>LLM-driven</em>"]
+    A5 -->|loop_signal = refine| A3
+    A5 -->|loop_signal = exit / converged| A6["Stage 5–6 · Final Report Agent<br/><em>Hybrid (code + LLM)</em><br/>Holdout eval + report"]
     A6 -->|final report| U
 ```
+
+**Stage numbering.** The six agent roles above map to five internal dispatcher stages in [`compass/agents/pipeline/status.py`](../compass/agents/pipeline/status.py) (`_STAGES`): Stage 4 covers the Prompt Builder ↔ Eval Runner ↔ Review Agent loop, and internal Stage 5 ("Final Report") runs both holdout evaluation and report generation. The README's `## Usage` section presents the same flow as six user-facing stages.
 
 **Rerun mode:** When Stage 4 has converged, the orchestrator can call `initiate_rerun` to re-enter the pipeline at Stage 3 for a different backend. The rerun flow is: Stage 3 (new backend) → Stage 4 (Prompt Builder Rerun: format restructure + single eval) → Stage 5 (final report). The original search state is preserved as `search_state_original.json`; `rerun_config.json` drives rerun-mode behavior throughout `status.py`.
 
@@ -26,9 +29,9 @@ graph TD
 | Data Validation | LLM-driven | [`compass/agents/prompts/data_validation_system.md`](../compass/agents/prompts/data_validation_system.md), [`compass/agents/data_validation/checks.py`](../compass/agents/data_validation/checks.py), [`compass/agents/data_validation/split.py`](../compass/agents/data_validation/split.py) | Done | `validated_input_report_path` | `data_quality_report`, `routing_context`, `dataset_path`, `original_dataset_path`, `dev_jsonl_path`, `holdout_jsonl_path`, `split_report_path` (debug-only) |
 | Eval Runner | Code-driven | [`compass/agents/eval_runner.py`](../compass/agents/eval_runner.py) | Done | `prompt_version`, `data_source`, `backend`, `run_config` or `config_path` | `eval_score_report` |
 | Backend Setup | LLM-driven | [`compass/agents/prompts/backend_setup_system.md`](../compass/agents/prompts/backend_setup_system.md) | Done | (user conversation) | `backend` (new YAML file written to `backends/`) |
-| Prompt Builder | LLM-driven | (planned) | Planned | `routing_context`, `dev_jsonl_path` | `prompt_version` |
+| Prompt Builder | LLM-driven | [`compass/agents/prompts/prompt_builder_system.md`](../compass/agents/prompts/prompt_builder_system.md), [`compass/agents/prompt_builder/search.py`](../compass/agents/prompt_builder/search.py), [`search_ops.py`](../compass/agents/prompt_builder/search_ops.py) | Done | `routing_context`, `dev_jsonl_path`, child variants | `prompt_version` (one file per candidate) |
 | Prompt Builder Rerun | LLM-driven | [`compass/agents/prompts/prompt_builder_rerun_system.md`](../compass/agents/prompts/prompt_builder_rerun_system.md) | Done | `run_id`, `source_prompt_version`, `new_backend` (from subagent instruction) | `prompt_version` (restructured) |
-| Review | Hybrid (code + LLM) | [`compass/agents/review/models.py`](../compass/agents/review/models.py), [`compass/agents/review/preprocessor.py`](../compass/agents/review/preprocessor.py), [`compass/agents/review/ops.py`](../compass/agents/review/ops.py), three-tier prompt: `review_agent_base_system.md` + phase base + strategy overlay (see Prompts table) | Done | `eval_score_report`, `review_briefing` | `review_result` (debug-only) |
+| Review | Hybrid (code + LLM) | [`compass/agents/review/models.py`](../compass/agents/review/models.py), [`compass/agents/review/preprocessor.py`](../compass/agents/review/preprocessor.py), [`compass/agents/review/ops.py`](../compass/agents/review/ops.py), layered prompt: `review_agent_base_system.md` + phase base + beam overlay (see Prompts table) | Done | `eval_score_report`, `review_briefing` | `review_result` (debug-only) |
 | Final Report | Hybrid (code + LLM) | [`compass/agents/final_report/models.py`](../compass/agents/final_report/models.py), [`compass/agents/final_report/preprocessor.py`](../compass/agents/final_report/preprocessor.py), [`compass/agents/prompts/final_report_system.md`](../compass/agents/prompts/final_report_system.md), [`compass/agents/prompts/final_report_template.md`](../compass/agents/prompts/final_report_template.md) | Done | holdout dataset, search state, all eval reports | `final_report.md`, per-version `baseline_comparison.json`, optimization charts |
 
 ## 3. Context Dict Reference
@@ -56,29 +59,28 @@ graph TD
 ## 4. Shared Models
 
 **`Candidate` / `SearchState` / `RoundSummary`** ([`compass/agents/prompt_builder/search.py`](../compass/agents/prompt_builder/search.py))
-`Candidate` is the canonical prompt-candidate record. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Optional fields (all default `None`): `secondary_parent_version`, `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`, `trajectory_id`. Accepts `iteration_introduced` as an alias for `round_introduced` (back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`).
+`Candidate` is the canonical prompt-candidate record. Core fields: `prompt_version`, `parent_version`, `quality_score`, `cost`, `round_introduced`, `example_ids`. Optional fields (all default `None`): `secondary_parent_version` (two-parent merges), `eval_status` (parallel eval tracking), `mutation_strategy`, `route_metrics`. `trajectory_id` is present for other search strategies and unused by beam. Accepts `iteration_introduced` as an alias for `round_introduced` (back-compat). Old state files carrying `dominated` load without error (`extra="ignore"`).
 
 `SearchState` holds the mutable search loop state. Key fields:
 
 | Field | Type | Description |
 |---|---|---|
 | `elite_set` | `list[Candidate]` | Current non-dominated candidate set (formerly `pareto_front`; old files with `pareto_front` key are migrated on load) |
-| `algorithm` | `str` | Discriminator set from `_BRANCH_ALGORITHM` at `init_search_state` time; trunk default is `"__unset__"`, leaf branches set a concrete value (e.g. `"hill_climb"`) |
-| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket; hardcoded per branch via `_BRANCH_ALGORITHM_STATE` in `search_ops.py` (empty `{}` on trunk) |
-| `round`, `stagnation_count`, `mutation_mode` | — | Bookkeeping fields (semantics may vary by algorithm) |
-| `converged`, `loop_phase` | — | Convergence flag and current sub-phase; base phases on trunk: `"build"`, `"review"`, `"build_recovering"`; leaf branches extend with algorithm-specific phases (e.g. `"calibration"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`) |
+| `algorithm` | `str` | Discriminator set from `_BRANCH_ALGORITHM` at `init_search_state` time; this repo sets `"beam"` |
+| `algorithm_state` | `dict[str, Any]` | Strategy-specific sub-state pocket, set from `_BRANCH_ALGORITHM_STATE` in `search_ops.py` (`{"beam_width": 3}`) |
+| `round`, `stagnation_count`, `mutation_mode` | — | Search-loop bookkeeping |
+| `converged`, `loop_phase` | — | Convergence flag and current sub-phase. Beam uses `"build"`, `"review"`, `"build_recovering"`; the enum also carries reserved values (`"calibration"`, `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"`) for other search strategies |
 | `active_evals` | `list[str]` | Prompt versions currently being evaluated (pending or running). Invariant: non-empty iff `loop_phase == "build"` and a concurrent batch eval was interrupted. `_detect_stage_4_phase` returns `"build_recovering"` when this field is non-empty. |
 
-`RoundSummary` is the per-round progress record. Field names follow the unified cross-branch schema:
+`RoundSummary` is the per-round progress record. A few fields were renamed from earlier names, which still load via a `model_validator(mode="before")`:
 
-| Canonical field | Renamed from | Strategy |
-|---|---|---|
-| `new_elite_entries` | `new_pareto_points` (main) | all |
-| `elite_size` | `front_size` (main) | all |
-| `target_improvement` | `front_improvement` (main) | all |
-| `mutation_mode`, `stagnation_count` | — (main only) | optional (hill-climb) |
+| Field | Legacy alias |
+|---|---|
+| `new_elite_entries` | `new_pareto_points` |
+| `elite_size` | `front_size` |
+| `target_improvement` | `front_improvement` |
 
-Old state files with `new_pareto_points` / `front_size` / `front_improvement` are migrated on load via a `model_validator(mode="before")`.
+`mutation_mode` and `stagnation_count` are optional (`None` when unset).
 
 **`DataQualityReport`** ([`compass/agents/data_validation/checks.py`](../compass/agents/data_validation/checks.py))
 Top-level report from the Data Validation agent containing `SchemaFinding` list, `LabelDistribution`, `VolumeAssessment`, and optional `QueryLengthDistribution`. The LLM agent writes the narrative `summary`; the Python checks populate the structured sections.
@@ -91,18 +93,15 @@ Domain-agnostic routing configuration holding a `domain` description, `RouteDefi
 
 `build_review_briefing` now returns a **markdown progressive-disclosure summary** (rendered by [`compass/agents/review/render.py`](../compass/agents/review/render.py)) rather than raw JSON. Companion detail-fetch tools (`get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `query_dev_examples`, `query_holdout_examples`, `get_dataset_oracle_distribution`, `get_per_class_recall`) provide on-demand drill-down without reloading the full briefing on every call. Dataset rows remain query-only: row tools page results with `offset`/`limit` and never inline an entire dataset. `get_directive_history` and `get_batch_outcomes` are retained only as deprecated MCP placeholders because the legacy `round_reports` persistence they depended on is no longer written by production code. `ReviewResult` is the LLM output: `candidate_ranking`, `child_variants`, `promotion_decisions`, `loop_signal`, and `regression_guards`. Review-side persistence and legacy artifact loading live in [`review/ops.py`](../compass/agents/review/ops.py). Child variants are persisted to `child_variants.json` via `record_directive_outcomes` and retrieved by the Prompt Builder via `get_child_variants`. `get_edit_directives` is a back-compat helper that flattens all directives across variants into a single list.
 
-Strategy-specific optional fields pre-provisioned as `None`-default slots in the model; each leaf branch's preprocessor function populates the slots relevant to its algorithm:
+`ReviewBriefing` also carries optional `None`-default slots, populated by the round-advance preprocessor:
 
-| Field | Type | Algorithm | Populated by |
-|---|---|---|---|
-| `parent_a_version`, `parent_b_version` | `str \| None` | all | `build_review_briefing` |
-| `trajectory_id` | `int \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
-| `weight_vector` | `tuple[float, float] \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
-| `binding_axis` | `"quality" \| "cost" \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
-| `acceptance_history` | `list[bool] \| None` | leaf branch | `_populate_*_review_fields` (leaf branch) |
-| `stagnation_signal` | `dict \| None` | all | algorithm-specific `_populate_*_review_fields` on the leaf branch |
+| Field | Type | Used by |
+|---|---|---|
+| `parent_a_version`, `parent_b_version` | `str \| None` | beam — set by `build_review_briefing` for two-parent merges |
+| `stagnation_signal` | `dict \| None` | beam — hypervolume-delta cue for the iterative overlay |
+| `trajectory_id`, `weight_vector`, `binding_axis`, `acceptance_history` | — | other search strategies only; `None` under beam |
 
-Algorithm-specific advance logic (e.g. hill-climb step, beam step) lives entirely on the leaf branches' `search_ops.py`.
+The round-advance logic for beam search (`advance_round_beam`) lives in [`search_ops.py`](../compass/agents/prompt_builder/search_ops.py).
 
 **`ScoreReport` / `RunReport`** ([`compass/eval/models.py`](../compass/eval/models.py))
 `RunReport` is the full evaluation output (config, metrics, results, summary). `ScoreReport` is the inter-agent contract (context key `eval_score_report`) containing metrics, summary, error breakdown, run-over-run `RunDiff`, and output file paths.
@@ -155,10 +154,10 @@ Pydantic model representing a validated backend configuration loaded from a YAML
 | `save_final_report` | Implemented | Save the final report markdown to disk | [`compass/mcp/final_report_tools.py`](../compass/mcp/final_report_tools.py) |
 | `get_pipeline_status` | Implemented | Read-only inspector for pipeline progress. Not part of the dispatch loop — orchestrators use `start_stage` directly. | [`compass/agents/pipeline/status.py`](../compass/agents/pipeline/status.py) |
 | `get_default_pricing` | Implemented | Look up default pricing for a (provider, model) pair; used by the backend setup agent | [`compass/eval/pricing.py`](../compass/eval/pricing.py) |
-| `init_search_state` | Implemented | Initialize prompt-builder search state for a run; algorithm is hardcoded per branch — no `algorithm`/`algorithm_state` params | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
+| `init_search_state` | Implemented | Initialize prompt-builder search state for a run; the algorithm is set from the module constants in `search_ops.py` — no `algorithm`/`algorithm_state` params | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
 | `register_candidate` | Implemented | Register a new prompt candidate for evaluation | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
 | `record_eval_result` | Implemented | Record evaluation results for Pareto tracking | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
-| `advance_step` | Implemented | Strategy-dispatched step advance; implementation provided by the leaf branch's `advance_round` in `search_ops.py` | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
+| `advance_step` | Implemented | Advance the search by one round; dispatches to `advance_round` → `advance_round_beam` in `search_ops.py` | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
 | `get_search_state` | Implemented | Return a markdown summary of the current search state via the shared renderer, with round history capped to the last 3 rounds | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
 | `filter_holdout_dataset` | Implemented | Remove few-shot examples from holdout before final eval | [`compass/agents/prompt_builder/holdout_filter.py`](../compass/agents/prompt_builder/holdout_filter.py) |
 | `get_child_variants` | Implemented | Retrieve the current round's child variants (grouped directives per child prompt) for the Prompt Builder | [`compass/mcp/prompt_building_tools.py`](../compass/mcp/prompt_building_tools.py) |
@@ -181,7 +180,7 @@ The orchestrator calls `start_stage(run_id)` before spawning a sub-agent (no `st
 | `prompt_building` | `init_search_state`, `register_candidate`, `run_batch_eval`, `record_eval_result`, `advance_step`, `get_search_state`, `get_routing_context`, `get_edit_directives`, `get_child_variants`, `get_prompt_text`, `get_score_report`, `save_prompt`, `signal_eval_complete`, `get_pipeline_status` |
 | `review_cold` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `get_search_state`, `get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `get_dataset_oracle_distribution`, `get_per_class_recall`, `get_pipeline_status` |
 | `review` | `build_review_briefing`, `record_directive_outcomes`, `query_dev_examples`, `query_holdout_examples`, `get_prompt_text`, `get_search_state`, `get_score_report`, `get_confusion_cell`, `get_round_child_variants`, `get_dataset_oracle_distribution`, `get_per_class_recall`, `get_pipeline_status` |
-| `calibration` | Algorithm-specific phase — tool set defined by the leaf branch |
+| `calibration` | Reserved phase for other search strategies; not used by beam |
 | `final_report` | `filter_holdout_dataset`, `run_holdout_eval`, `build_final_report_briefing`, `save_final_report`, `get_pipeline_status` |
 
 #### Model Routing
@@ -226,12 +225,12 @@ The shared guard layer lives in [`compass/agents/pipeline/dispatch.py`](../compa
 |---|---|
 | `"review"` | all strategies (default) |
 | `"build"` | all strategies |
-| `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"` | reserved — strategy-branch warmup phases |
-| `"calibration"` | reserved — strategy-branch cold-start calibration phase |
-| `"build_recovering"` | All strategies — entered when `active_evals` is non-empty (interrupted batch eval). Recovery sub-agent calls `run_batch_eval(candidates=[])` to resume. |
-| `"review_post_coldstart"` | Leaf-branch-specific derived phase (not stored on disk); leaf branch `_detect_stage_4_phase` logic returns this for algorithm-specific post-cold-start handling. |
+| `"warmup_seed"`, `"warmup_build"`, `"warmup_reduce"` | reserved for other search strategies — warmup phases |
+| `"calibration"` | reserved for other search strategies — cold-start calibration phase |
+| `"build_recovering"` | entered when `active_evals` is non-empty (interrupted batch eval). Recovery sub-agent calls `run_batch_eval(candidates=[])` to resume. |
+| `"review_post_coldstart"` | derived phase (not stored on disk); `_detect_stage_4_phase` returns it for the round-2 post-cold-start review. |
 
-The trunk pipeline uses only `"build"`, `"review"`, and `"build_recovering"`. Other values are reserved for leaf branches; unknown values encountered in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
+Beam uses `"build"`, `"review"`, `"build_recovering"`, and the derived `"review_post_coldstart"`. The remaining values are reserved for other search strategies; unknown values in legacy JSON are silently remapped to `"review"` by a `model_validator(mode="before")`.
 
 **Dispatch markers**
 
@@ -242,11 +241,11 @@ Two JSON sentinel files signal that a sub-agent is in-flight for the current rou
 | `search/build_dispatched.json` | `register_candidate` (first builder action) | `advance_step` (round complete); `run_batch_eval_impl` (when `active_evals` drains after batch eval) | `complete_stage("prompt_building")` rejects while present |
 | `search/review_dispatched.json` | `build_review_briefing` (reviewer dispatch) | `record_directive_outcomes` (directives saved) | `complete_stage("review")` checks fanout |
 
-`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is `{"round": N}` for single-slot algorithms; multi-slot leaf branches may extend this to include additional tracking fields.
+`build_dispatched.json` contains `{"round": N}`.  `review_dispatched.json` is `{"round": N}`. (A search strategy that dispatches several parallel reviewers per round would extend this; beam uses one reviewer.)
 
-**Multi-trajectory review fanout (leaf-branch feature)**
+**Multi-trajectory review fanout (extension point)**
 
-Algorithms with multiple parallel trajectories extend `_next_action_for_stage_4` on their leaf branch to dispatch N Review Agent sub-agents in parallel — one per trajectory ID.  The trunk pipeline uses a single-slot (`expected=1`) fanout; `complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` and checks `is_complete`.
+`_next_action_for_stage_4` can be extended to dispatch N Review Agent sub-agents in parallel — one per trajectory — for a search strategy that needs it.  Beam uses a single-slot (`expected=1`) fanout; `complete_stage("review")` calls `review_fanout_status(run_id, expected=1)` and checks `is_complete`.
 
 **`DispatchFanout` and `review_fanout_status`**
 
@@ -261,11 +260,11 @@ Algorithms with multiple parallel trajectories extend `_next_action_for_stage_4`
 | `is_complete` | `bool` | `len(completed) >= expected` |
 | `missing` | `list[int]` | `in_flight + not_dispatched` |
 
-For `expected=1` (single-slot — the trunk default), fanout is complete when `search/child_variants.json` exists.  Multi-slot dispatch is a leaf-branch concern; leaf branches extend `review_fanout_status` as needed.
+For `expected=1` (single-slot — what beam uses), fanout is complete when `search/child_variants.json` exists.  Multi-slot dispatch is an extension point: `review_fanout_status` would be extended for a strategy that needs it.
 
 **`child_variants.json`**
 
-Written by `record_directive_outcomes`; acts as the canonical review-completion sentinel.  Multi-slot per-trajectory variants (`child_variants_t<N>.json`) are a leaf-branch extension.
+Written by `record_directive_outcomes`; acts as the canonical review-completion sentinel.  (Per-trajectory variants `child_variants_t<N>.json` are an extension point for a multi-trajectory strategy.)
 
 **Defense-in-depth phase flip**
 
@@ -281,27 +280,28 @@ Retained as a back-compat shim for runs paused before automated marker clearing 
 |---|---|---|
 | `compass_routing_input` | Activate the User Input agent conversation | [`compass/agents/prompts/user_input_system.md`](../compass/agents/prompts/user_input_system.md) |
 | `compass_data_validation` | Activate the Data Validation agent conversation | [`compass/agents/prompts/data_validation_system.md`](../compass/agents/prompts/data_validation_system.md) |
-| `compass_review_agent_iterative(algorithm)` | Review Agent — iterative phase (round ≥ 2); assembled from three-tier prompt: base + iterative phase base + strategy overlay | see Review Agent prompt files below |
-| `compass_review_agent_cold_start(algorithm)` | Review Agent — cold-start / seeding phase; assembled from three-tier prompt: base + cold-start phase base + strategy overlay | see Review Agent prompt files below |
-| `compass_review_agent_post_coldstart(algorithm)` | Review Agent — round-2 post-cold-start phase (leaf-branch-specific); assembled from four-tier prompt: base + iterative phase base + post-coldstart override + strategy overlay | see Review Agent prompt files below |
+| `compass_prompt_builder` | Activate the Prompt Builder agent (Stage 4 build phase) | [`compass/agents/prompts/prompt_builder_system.md`](../compass/agents/prompts/prompt_builder_system.md) |
+| `compass_review_agent_iterative(algorithm)` | Review Agent — iterative phase (round ≥ 3); assembled from three layers: base + iterative phase base + beam overlay | see Review Agent prompt files below |
+| `compass_review_agent_cold_start(algorithm)` | Review Agent — cold-start / seeding phase (round 1); assembled from three layers: base + cold-start phase base + beam overlay | see Review Agent prompt files below |
+| `compass_review_agent_post_coldstart(algorithm)` | Review Agent — round-2 post-cold-start phase; assembled from three layers: base + post-coldstart override + iterative phase base | see Review Agent prompt files below |
 | `compass_backend_setup` | Backend setup agent — select or create backend | [`compass/agents/prompts/backend_setup_system.md`](../compass/agents/prompts/backend_setup_system.md) |
 | `compass_final_report` | Final Report agent — holdout eval + report generation | [`compass/agents/prompts/final_report_system.md`](../compass/agents/prompts/final_report_system.md) |
 | `compass_prompt_builder_rerun` | Prompt Builder Rerun agent — format-only restructure for a different backend (single eval round) | [`compass/agents/prompts/prompt_builder_rerun_system.md`](../compass/agents/prompts/prompt_builder_rerun_system.md) |
 
-**Review Agent prompt files — three-tier structure (trunk)**
+**Review Agent prompt files — layered structure**
 
-The Review Agent prompt is assembled at dispatch time from three layers (iterative / cold-start): a shared base, a phase-specific base, and a strategy overlay. The `algorithm` argument on the MCP prompt selects the overlay. Leaf branches may extend this to four layers by adding a post-coldstart override and their own overlay files.
+The Review Agent prompt is assembled at dispatch time (see [`assemble_review_prompt`](../compass/mcp/prompts.py)) from a shared base, a phase-specific base, and a beam overlay — three layers for the iterative and cold-start phases. Round 2 uses base + post-cold-start override + iterative base. The `algorithm` argument on the MCP prompt selects the overlay (`beam` in this repo).
 
-**Dispatch protocol.** The Stage-4 dispatcher (any session driving the MCP) MUST fetch the canonical system prompt via `compass_review_agent_cold_start(algorithm)` when `SearchState.warm_up_complete == False` and via `compass_review_agent_iterative(algorithm)` otherwise, and pass the returned text verbatim as the sub-agent system prompt. Hand-rolling the dispatch prompt is forbidden: the `ChildVariant` / `EditDirective` schema is declared with `extra="forbid"` ([`compass/agents/review/models.py:272-310`](../compass/agents/review/models.py)) and cannot be safely re-stated, and the canonical prompt owns the no-Bash invariant ([`review_agent_base_system.md:13-15`](../compass/agents/prompts/review_agent_base_system.md)) needed to keep the sub-agent on the MCP surface. See [`.claude/rules/compass-stage4-dispatch.md`](../.claude/rules/compass-stage4-dispatch.md).
+**Dispatch protocol.** The Stage-4 dispatcher (any session driving the MCP) MUST fetch the canonical system prompt via `compass_review_agent_cold_start(algorithm)` for the seeding round (round 1), `compass_review_agent_post_coldstart(algorithm)` for round 2, and `compass_review_agent_iterative(algorithm)` for rounds ≥ 3, and pass the returned text verbatim as the sub-agent system prompt. Hand-rolling the dispatch prompt is forbidden: the `ChildVariant` / `EditDirective` schema is declared with `extra="forbid"` ([`compass/agents/review/models.py:272-310`](../compass/agents/review/models.py)) and cannot be safely re-stated, and the canonical prompt owns the no-Bash invariant ([`review_agent_base_system.md`](../compass/agents/prompts/review_agent_base_system.md)) needed to keep the sub-agent on the MCP surface.
 
 | File | Role |
 |---|---|
-| [`compass/agents/prompts/review_agent_base_system.md`](../compass/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
-| [`compass/agents/prompts/review_agent_iterative_base_system.md`](../compass/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
-| [`compass/agents/prompts/review_agent_cold_start_base_system.md`](../compass/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
-| [`compass/agents/prompts/review_agent_post_coldstart_base_system.md`](../compass/agents/prompts/review_agent_post_coldstart_base_system.md) | Post-cold-start override (leaf-branch-specific) — present on trunk for leaf branches to compose against |
-| `review_agent_iterative_overlay_<algorithm>.md` | Algorithm-specific iterative overlay — lives on the leaf branch, not the trunk |
-| `review_agent_cold_start_overlay_<algorithm>.md` | Algorithm-specific cold-start overlay — lives on the leaf branch, not the trunk |
+| [`review_agent_base_system.md`](../compass/agents/prompts/review_agent_base_system.md) | Shared base — entry verification, briefing schema, directive types, output schema, self-check rules |
+| [`review_agent_iterative_base_system.md`](../compass/agents/prompts/review_agent_iterative_base_system.md) | Iterative phase base — "identify failure mode → hypothesise → create directive" flow |
+| [`review_agent_cold_start_base_system.md`](../compass/agents/prompts/review_agent_cold_start_base_system.md) | Cold-start phase base — "formulate diverse strategies" flow |
+| [`review_agent_cold_start_overlay_beam.md`](../compass/agents/prompts/review_agent_cold_start_overlay_beam.md) | Cold-start overlay — K = `beam_width` seeds, diversity across confusion cells and cost regions |
+| [`review_agent_iterative_overlay_beam.md`](../compass/agents/prompts/review_agent_iterative_overlay_beam.md) | Iterative overlay (round ≥ 3) — child allocation modes, confusion-cell ranking, stagnation cue |
+| [`review_agent_post_coldstart_overlay_beam.md`](../compass/agents/prompts/review_agent_post_coldstart_overlay_beam.md) | Round-2 override — one protected child per cold-start seed, no merges |
 
 ### Resources
 
@@ -322,15 +322,25 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 | `compass://agents/backend-setup/defaults` | Backend defaults and pricing resolution | [`compass/agents/backend_setup_defaults.md`](../compass/agents/backend_setup_defaults.md) |
 | `compass://agents/final-report/template` | Markdown skeleton for the final report — section order and placeholders | [`compass/agents/prompts/final_report_template.md`](../compass/agents/prompts/final_report_template.md) |
 
-## 6. Strategy Extension Points
+## 6. Search Algorithm
 
-`feat/generalize-pipeline` is the algorithm-agnostic trunk. Strategy-specific implementations live on dedicated leaf branches cut from this branch. Leaf branches override exactly two module-level constants in `search_ops.py` to activate their algorithm.
+The Stage-4 search strategy is selected by two module-level constants in [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py). This repo runs **beam search**:
 
-**Algorithm is hardcoded per branch.** `search_ops.py` exposes two module-level constants (`_BRANCH_ALGORITHM`, `_BRANCH_ALGORITHM_STATE`) that strategy branches flip. On the trunk `_BRANCH_ALGORITHM = "__unset__"` — `init_search_state` raises `RuntimeError` if called on trunk. `search_state.json` is **auto-created at Stage 4 entry** by `_ensure_stage4_search_state` (called from `_next_action_for_stage_4` in `status.py`) before `_detect_stage_4_phase` runs, so cold-start sub-agents always find a real `SearchState` on disk.
+```python
+_BRANCH_ALGORITHM: AlgorithmType = "beam"
+_BRANCH_ALGORITHM_STATE: dict[str, Any] = {"beam_width": 3}
+```
 
-| Strategy | Branch | Algorithm module | Dispatcher arm | Preprocessor populate fn | Prompt overlays |
-|---|---|---|---|---|---|
-| `hill_climb` | `feat/generalize-hill_climb` | `prompt_builder/search.py`, `search_ops.py` | `_advance_hill_climb` | (none — default fields) | `review_agent_iterative_overlay_hillclimb.md`, `review_agent_cold_start_overlay_hillclimb.md` |
+`init_search_state` reads them when it creates `search_state.json`. That file is **auto-created at Stage 4 entry** by `_ensure_stage4_search_state` (called from `_next_action_for_stage_4` in `status.py`) before `_detect_stage_4_phase` runs, so cold-start sub-agents always find a real `SearchState` on disk. `advance_step` dispatches to `advance_round` → `advance_round_beam`.
+
+| Component | Where |
+|---|---|
+| Models, Pareto dominance, crowding distance, hypervolume | [`compass/agents/prompt_builder/search.py`](../compass/agents/prompt_builder/search.py) |
+| Round advance (`advance_round_beam`), elite-set update, convergence | [`compass/agents/prompt_builder/search_ops.py`](../compass/agents/prompt_builder/search_ops.py) |
+| Review Agent overlays (cold-start / iterative / post-cold-start) | `compass/agents/prompts/review_agent_*_overlay_beam.md` |
+| Full algorithm write-up | [`docs/algorithm.md`](algorithm.md) |
+
+These two constants are the seam for a different strategy: change them and supply the matching `advance_round` implementation. `AlgorithmType` in `search.py` currently allows only `"beam"`.
 
 ## 7. Directory Guide
 
@@ -351,8 +361,8 @@ The Review Agent prompt is assembled at dispatch time from three layers (iterati
 | `outputs/<run_id>/validation/` | Pipeline run: transformed dataset, quality report, routing context |
 | `outputs/<run_id>/analysis/` | Pipeline run: dev/holdout splits |
 | `outputs/<run_id>/prompts/` | Pipeline run: versioned routing prompts (v1.txt, v2.txt, ...) |
-| `outputs/<run_id>/search/` | Pipeline run: search state, candidates, round reports, directive history |
-| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (tree + scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../compass/agents/prompt_builder/search_ops.py). Node coloring reflects `on_front` (Pareto elite-set) membership; algorithm-specific overlays can be added on leaf branches. |
+| `outputs/<run_id>/search/` | Pipeline run: search state, pending candidates, candidate archive, `viz.html` |
+| `outputs/<run_id>/search/viz.html` | Self-contained interactive visualization (candidate tree + Pareto scatter + round slider); regenerated after each state mutation by `_try_write_viz` in [`search_ops.py`](../compass/agents/prompt_builder/search_ops.py). Nodes are coloured by Pareto elite-set membership. |
 | `outputs/<run_id>/search/child_variants.json` | `ChildVariant[]` — Review Agent output: grouped directives with parent preferences and hypotheses (canonical directive storage; retrieved via `get_child_variants`) |
 | `outputs/<run_id>/rerun_config.json` | Rerun mode marker: `mode`, `source_prompt_version`, `original_backend`, `new_backend` (null until Stage 3 completes) |
 | `outputs/<run_id>/search/search_state_original.json` | Preserved original search state from before rerun initiation |

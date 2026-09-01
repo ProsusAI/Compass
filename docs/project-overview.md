@@ -29,11 +29,11 @@ Doing this manually is slow, inconsistent, and hard to validate. This pipeline a
 
 ## 3. Pipeline Architecture
 
-The pipeline is structured as six sequential stages, with an inner refinement loop. The diagram below maps to the Excalidraw design file (`Agentic-Workflow-Prompt-Routing.excalidraw`).
+The pipeline is structured as six sequential stages, with an inner refinement loop.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ Stage 1: User Input                                      │
+│ Stage 1: Input Validation                                │
 │  Collect routing dataset, problem description, metrics  │
 │  Check for blocking gaps; request clarification if any  │
 └────────────────────────────┬────────────────────────────┘
@@ -70,6 +70,10 @@ The pipeline is structured as six sequential stages, with an inner refinement lo
 │  Synthesise all artifacts → Final Prompt + Eval Report  │
 └─────────────────────────────────────────────────────────┘
 ```
+
+> Internally the orchestrator tracks **five** dispatcher stages
+> (`compass/agents/pipeline/status.py`, `_STAGES`): Stages 5 and 6 above (Holdout Validation
+> and Final Report) are one internal stage. See [docs/architecture.md](architecture.md).
 
 ---
 
@@ -272,7 +276,7 @@ compass/
   agents/             # Agent implementations
     prompts/          # Agent system prompts
   eval/               # Evaluation engine (complete)
-    backends/         # Backend registry + LiteLLM client
+    backends/         # Backend registry (Anthropic, OpenAI, Bedrock, mock-echo)
     controller.py     # Run Controller
     dataset.py        # Dataset Manager
     metrics.py        # Metrics Engine
@@ -283,10 +287,10 @@ compass/
     models.py         # Data models
     docs/             # Eval engine documentation
   prompts/            # Prompt Manager
-data/                 # Dataset files (JSONL)
-outputs/              # Run outputs and reports
-prompts/              # Routing prompt store (versioned prompts)
-configs/              # Run configuration YAML
-tests/                # Full test suite
+datasets/             # Paper appendix datasets (CC-BY-4.0)
+outputs/              # Run outputs, reports, run_config.yaml  (runtime, gitignored)
+prompts/              # Routing prompt store — versioned prompts (runtime, gitignored)
+backends/             # Backend profile YAML                   (runtime, gitignored)
+tests/                # Full test suite (unit + tests/scenarios/ MCP runbooks)
 docs/                 # Design specs and plans
 ```
