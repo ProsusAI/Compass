@@ -15,27 +15,14 @@ Given a routing dataset, a problem description, and target metrics, Compass vali
 Compass runs as six sequential stages with an inner refinement loop. Each stage runs as its own sub-agent, dispatched by the orchestrator via `start_stage` / `complete_stage`.
 
 ```mermaid
-flowchart TD
-    U(["You provide: routing dataset + problem description + target metrics"])
-
-    U --> S1["1 · Input Validation<br/>LLM — validate the submission, flag blocking gaps"]
-    S1 -->|"input report"| S2["2 · Data Validation<br/>LLM — detect format, map to schema, run quality checks, split dev / holdout"]
-    S2 -->|"routing context + dev / holdout splits"| S3["3 · Backend Setup<br/>LLM — pick the evaluation model, write a backend profile"]
-    S3 -->|backend profile| S4
-
-    subgraph S4 ["4 · Refinement Loop — LLM + code"]
-        direction TB
-        PB["Prompt Builder<br/>compile candidate prompts v1, v2, …"]
-        ER["Eval Runner<br/>score candidates on the dev split"]
-        RA["Review Agent<br/>rank, diagnose failures, propose child variants"]
-        PB --> ER --> RA
-        RA -->|"loop_signal = refine"| PB
-    end
-
-    S4 -->|"loop_signal = exit / converged — best candidates"| S5["5 · Holdout Validation<br/>code + LLM — drop few-shot ids, final eval on unseen data"]
-    S5 -->|"holdout scores"| S6["6 · Final Report<br/>LLM — synthesise every artifact into one report"]
-    S6 -->|"final routing prompt + evaluation report"| U
+flowchart LR
+    S1["1 · Input<br/>Validation"] --> S2["2 · Data<br/>Validation"] --> S3["3 · Backend<br/>Setup"] --> S4["4 · Refinement<br/>Loop"] --> S5["5 · Holdout<br/>Validation"] --> S6["6 · Final<br/>Report"]
+    S4 -. refine .-> S4
 ```
+
+**Input:** routing dataset + problem description + target metrics. **Output:** a production-ready routing prompt + evaluation report.
+
+Each stage runs as its own sub-agent, dispatched by the orchestrator via `start_stage` / `complete_stage`. Stage 4 is an inner loop: Prompt Builder compiles candidate prompts, the Eval Runner scores them on the dev split, and the Review Agent ranks results and proposes child variants until the search converges.
 
 Internally the orchestrator tracks five dispatcher stages (`compass/agents/pipeline/status.py`): Holdout Validation and Final Report are handled by one stage. See [`docs/architecture.md`](docs/architecture.md) for the agent-level view and [`docs/algorithm.md`](docs/algorithm.md) for the search algorithm.
 
